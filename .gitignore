@@ -1,0 +1,10 @@
+*~
+*.class
+\#*\#
+\.\#*
+target/*
+project/target/*
+.DS_Store
+tmp/*
+
+
