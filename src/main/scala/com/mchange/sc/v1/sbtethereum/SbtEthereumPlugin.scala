@@ -2,6 +2,7 @@ package com.mchange.sc.v1.sbtethereum
 
 import sbt._
 import sbt.Keys._
+import plugins.JvmPlugin
 
 object SbtEthereumPlugin extends AutoPlugin {
 
@@ -32,12 +33,21 @@ object SbtEthereumPlugin extends AutoPlugin {
         import scala.concurrent.ExecutionContext.Implicits.global
 
         doCompileSolidity( log, jsonRpcUrl, solSource, solDestination )
+      },
+
+      compile in Compile := {
+        val dummy = (compileSolidity in Compile).value;
+        (compile in Compile).value
       }
     )
   }
 
 
   import autoImport._
+
+  // very important to ensure the ordering of settings,
+  // so that compile actually gets overridden
+  override def requires = JvmPlugin
 
   override def trigger = allRequirements
 

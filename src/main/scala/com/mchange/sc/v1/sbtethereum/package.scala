@@ -42,31 +42,35 @@ package object sbtethereum {
         val filePairs = files.map( file => ( file, new File( solDestination, solToJson( file.getName() ) ) ) ) // (sourceFile, destinationFile)
         val compileFiles = filePairs.filter( tup => changed( tup._2, tup._1 ) )
 
-        log.info( s"compileSolidity: ${compileFiles.length} files to compile." )
+        val cfl = compileFiles.length
+        if ( cfl > 0 ) {
+          val mbS = if ( cfl > 1 ) "s" else ""
+          log.info( s"Compiling ${compileFiles.length} Solidity source${mbS} to ${solDestination}..." )
 
-        val compileFuts = compileFiles.map { tup =>
-          val srcFile  = tup._1
-          val destFile = tup._2
-          borrow( Source.fromFile( srcFile )(Codec.UTF8) )( _.close() ){ source =>
-            val code = source.foldLeft("")( _ + _ )
-            client.eth.compileSolidity( code ).map( result => ( destFile, result ) )
+          val compileFuts = compileFiles.map { tup =>
+            val srcFile  = tup._1
+            val destFile = tup._2
+            borrow( Source.fromFile( srcFile )(Codec.UTF8) )( _.close() ){ source =>
+              val code = source.foldLeft("")( _ + _ )
+              client.eth.compileSolidity( code ).map( result => ( destFile, result ) )
+            }
           }
-        }
-        val failures = awaitAndGatherFailures( compileFuts )
-        val failureCount = failures.size
-        if ( failureCount > 0 ) {
-          log.error( s"compileSolidity failed. [${failureCount} failures]" )
-          failures.foreach {
-            case jf : jsonrpc20.Failure => log.error( jf.message )
-            case other                  => log.error( other.toString )
-          }
-          throw failures.head
-        } else {
-          import Json._
-          compileFuts.map { fut =>
-            fut.map {
-              case ( destFile, result ) => {
-                borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) )( _.write( stringify( toJson ( result ) ) ) )
+          val failures = awaitAndGatherFailures( compileFuts )
+          val failureCount = failures.size
+          if ( failureCount > 0 ) {
+            log.error( s"compileSolidity failed. [${failureCount} failures]" )
+            failures.foreach {
+              case jf : jsonrpc20.Failure => log.error( jf.message )
+              case other                  => log.error( other.toString )
+            }
+            throw failures.head
+          } else {
+            import Json._
+            compileFuts.map { fut =>
+              fut.map {
+                case ( destFile, result ) => {
+                  borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) )( _.write( stringify( toJson ( result ) ) ) )
+                }
               }
             }
           }
