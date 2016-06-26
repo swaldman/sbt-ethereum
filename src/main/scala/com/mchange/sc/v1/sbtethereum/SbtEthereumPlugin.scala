@@ -2,22 +2,38 @@ package com.mchange.sc.v1.sbtethereum
 
 import sbt._
 import sbt.Keys._
-import plugins.JvmPlugin
+import plugins.{JvmPlugin,InteractionServicePlugin}
+
+import java.io.File
+
+import com.mchange.sc.v1.consuela.ethereum._
 
 object SbtEthereumPlugin extends AutoPlugin {
 
+  val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
+
   object autoImport {
-    val ethJsonRpcVersion = settingKey[String]("Version of Ethereum's JSON-RPC spec the build should work with.")
+    val ethJsonRpcVersion = settingKey[String]("Version of Ethereum's JSON-RPC spec the build should work with")
     val ethJsonRpcUrl     = settingKey[String]("URL of the Ethereum JSON-RPC service build should work with")
+
+    val ethAddress = settingKey[String]("The address from which transactions will be sent")
+
+    val ethGethKeystore = settingKey[File]("geth-style keystore directory from which V3 wallets can be loaded")
 
     val soliditySource      = settingKey[File]("Solidity source code directory")
     val solidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
 
     val compileSolidity = taskKey[Unit]("Compiles solidity files")
 
+    val ethGethWallet = taskKey[Option[wallet.V3]]("Loads a V3 wallet from a geth keystore") 
+
     lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
       ethJsonRpcVersion := "2.0",
       ethJsonRpcUrl     := "http://localhost:8545",
+
+      ethGethKeystore := clients.geth.KeyStore.directory.get,
+
+      ethAddress := ZeroEthAddress,
 
       soliditySource in Compile      := (sourceDirectory in Compile).value / "solidity",
       solidityDestination in Compile := target.value / "solidity",
@@ -29,7 +45,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val solSource      = (soliditySource in Compile).value
         val solDestination = (solidityDestination in Compile).value
 
-        // XXX: provisionally, for now... but what sort of ExecutioContext would be best when?
+        // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
         import scala.concurrent.ExecutionContext.Implicits.global
 
         doCompileSolidity( log, jsonRpcUrl, solSource, solDestination )
@@ -38,6 +54,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       compile in Compile := {
         val dummy = (compileSolidity in Compile).value;
         (compile in Compile).value
+      },
+
+      ethGethWallet := {
+        clients.geth.KeyStore.walletForAddress( ethGethKeystore.value, EthAddress( ethAddress.value ) ).toOption
       }
     )
   }
@@ -47,7 +67,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // very important to ensure the ordering of settings,
   // so that compile actually gets overridden
-  override def requires = JvmPlugin
+  override def requires = JvmPlugin && InteractionServicePlugin
 
   override def trigger = allRequirements
 
