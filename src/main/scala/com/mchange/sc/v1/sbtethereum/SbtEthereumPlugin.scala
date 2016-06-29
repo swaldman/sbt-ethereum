@@ -21,41 +21,64 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val BufferSize = 4096
 
-  val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
+  private val ContractNameParser = (Space ~> ID)
+
+  private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
 
   object autoImport {
-    val ethJsonRpcVersion = settingKey[String]("Version of Ethereum's JSON-RPC spec the build should work with")
-    val ethJsonRpcUrl     = settingKey[String]("URL of the Ethereum JSON-RPC service build should work with")
+
+    // settings
 
     val ethAddress = settingKey[String]("The address from which transactions will be sent")
 
+    val ethGasOverrides = settingKey[Map[String,BigInt]]("Map of contract names to gas limits for contract creation transactions, overriding automatic estimates")
+
+    val ethGasMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
+
+    val ethGasPrice = settingKey[BigInt]("If nonzero, use this gas price (in wei)) rather than the current blockchain default gas price.")
+
     val ethGethKeystore = settingKey[File]("geth-style keystore directory from which V3 wallets can be loaded")
+
+    val ethJsonRpcVersion = settingKey[String]("Version of Ethereum's JSON-RPC spec the build should work with")
+
+    val ethJsonRpcUrl = settingKey[String]("URL of the Ethereum JSON-RPC service build should work with")
 
     val ethTargetDir = settingKey[File]("Location in target directory where ethereum artifacts will be placed")
 
-    val soliditySource      = settingKey[File]("Solidity source code directory")
-    val solidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
+    val ethSoliditySource = settingKey[File]("Solidity source code directory")
 
-    val compileSolidity = taskKey[Unit]("Compiles solidity files")
+    val ethSolidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
+
+    // tasks
+
+    val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
+
+    val ethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
+
+    val ethDeployOnly = inputKey[String]("Deploys the specified named contract")
 
     val ethGethWallet = taskKey[Option[wallet.V3]]("Loads a V3 wallet from a geth keystore")
 
     val ethGetCredential = taskKey[Option[String]]("Requests masked input of a credential (wallet passphrase or hex private key)")
 
-    val ethDefaultGasPrice = taskKey[Long]("Finds the current default gas price")
-
-    val ethNextNonce = taskKey[Long]("Finds the next nonce for the address defined by setting 'ethAddress'")
-
     val ethLoadCompilations = taskKey[Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
 
     val ethLoadContractHex = inputKey[String]("Loads hex contract initialization code for a specified named contract")
 
-    val ethDeployContract= inputKey[String]("Deploys the specified named contract")
+    val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
+
+    // definitions
 
     lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
 
       ethJsonRpcVersion := "2.0",
       ethJsonRpcUrl     := "http://localhost:8545",
+
+      ethGasMarkup := 0.2,
+
+      ethGasOverrides := Map.empty[String,BigInt],
+
+      ethGasPrice := 0,
 
       ethGethKeystore := clients.geth.KeyStore.directory.get,
 
@@ -63,21 +86,22 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
 
-      soliditySource in Compile      := (sourceDirectory in Compile).value / "solidity",
-      solidityDestination in Compile := (ethTargetDir in Compile).value / "solidity",
+      ethSoliditySource in Compile      := (sourceDirectory in Compile).value / "solidity",
 
-      compileSolidity in Compile := {
+      ethSolidityDestination in Compile := (ethTargetDir in Compile).value / "solidity",
+
+      ethCompileSolidity in Compile := {
         val log            = streams.value.log
         val jsonRpcUrl     = ethJsonRpcUrl.value
 
-        val solSource      = (soliditySource in Compile).value
-        val solDestination = (solidityDestination in Compile).value
+        val solSource      = (ethSoliditySource in Compile).value
+        val solDestination = (ethSolidityDestination in Compile).value
 
         doCompileSolidity( log, jsonRpcUrl, solSource, solDestination )
       },
 
       compile in Compile := {
-        val dummy = (compileSolidity in Compile).value;
+        val dummy = (ethCompileSolidity in Compile).value;
         (compile in Compile).value
       },
 
@@ -95,9 +119,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethLoadCompilations := {
-        val dummy = (compileSolidity in Compile).value // ensure compilation has completed
+        val dummy = (ethCompileSolidity in Compile).value // ensure compilation has completed
 
-        val dir = (solidityDestination in Compile).value
+        val dir = (ethSolidityDestination in Compile).value
 
         def addContracts( addTo : Map[String,jsonrpc20.Compilation.Contract], name : String ) = {
           val next = borrow( new BufferedInputStream( new FileInputStream( new File( dir, name ) ), BufferSize ) )( Json.parse( _ ).as[jsonrpc20.Result.eth.compileSolidity] )
@@ -116,16 +140,27 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethLoadContractHex := {
-        val contractName = (Space ~> ID).parsed
+        val contractName = ContractNameParser.parsed
         val contractsMap = ethLoadCompilations.value
 
         contractsMap( contractName ).code
       },
 
       // TODO...
-      ethDeployContract := {
-        val hex = ethLoadContractHex.evaluated
-        hex
+      ethDeployOnly := {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val contractName = ContractNameParser.parsed
+        val hex = ethLoadContractHex.evaluated // let this input task recurse to the input of the evaluated input task
+        val nextNonce = ethNextNonce.value
+        val gasPrice = {
+          val egp = ethGasPrice.value
+          if ( egp > 0 ) egp else ethDefaultGasPrice.value
+        }
+        val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, ethAddress.value, hex, jsonrpc20.Client.BlockNumber.Pending ) )
+        val unsigned = EthTransaction.Unsigned.ContractCreation( nextNonce, Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex )
+        val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value )
+        val signed = unsigned.sign( privateKey )
       }
     )
   }

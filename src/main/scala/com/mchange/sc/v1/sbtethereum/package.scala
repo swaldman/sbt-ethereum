@@ -89,13 +89,31 @@ package object sbtethereum {
     }
   }
 
-  private [sbtethereum] def doGetDefaultGasPrice( log : sbt.Logger, jsonRpcUrl : String )( implicit ec : ExecutionContext ) : Long = {
+  private [sbtethereum] def doGetDefaultGasPrice( log : sbt.Logger, jsonRpcUrl : String )( implicit ec : ExecutionContext ) : BigInt = {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.gasPrice(), Duration.Inf ).price )
   }
 
-  private [sbtethereum] def doGetTransactionCount( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : Long = {
+  private [sbtethereum] def doGetTransactionCount( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), Duration.Inf ).count )
   }
+
+  private [sbtethereum] def doEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : EthAddress, data : immutable.Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data), blockNumber ), Duration.Inf ).gas )
+  }
+
+  private [sbtethereum] def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
+    mbGethWallet.fold( EthPrivateKey( credential ) ){ gethWallet =>
+      try {
+        wallet.V3.decodePrivateKey( gethWallet )
+      } catch {
+        case v3e : wallet.V3.Exception => {
+          log.warning("Credential is not correct geth wallet passphrase. Trying as hex private key.")
+          EthPrivateKey( credential )
+        }
+      }
+    }
+  }
+
 }
 
 
