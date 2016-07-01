@@ -15,7 +15,7 @@ import com.mchange.sc.v2.concurrent._
 
 import com.mchange.sc.v2.lang.borrow
 
-import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,wallet,EthAddress,EthPrivateKey}
+import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,wallet,EthAddress,EthHash,EthPrivateKey,EthTransaction}
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc20.MapStringCompilationContractFormat
 
 import play.api.libs.json._
@@ -100,6 +100,10 @@ package object sbtethereum {
 
   private [sbtethereum] def doEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : EthAddress, data : Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data), blockNumber = blockNumber ), Duration.Inf ) )
+  }
+
+  private [sbtethereum] def doSendSignedTransaction( log : sbt.Logger, jsonRpcUrl : String, signedTransaction : EthTransaction.Signed )( implicit ec : ExecutionContext ) : EthHash = {
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.sendSignedTransaction( signedTransaction ), Duration.Inf ) )
   }
 
   private [sbtethereum] def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {

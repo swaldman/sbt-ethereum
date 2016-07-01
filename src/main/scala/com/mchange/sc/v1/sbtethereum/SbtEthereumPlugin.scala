@@ -60,7 +60,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
-    val ethDeployOnly = inputKey[String]("Deploys the specified named contract")
+    val ethDeployOnly = inputKey[EthHash]("Deploys the specified named contract")
 
     val ethGethWallet = taskKey[Option[wallet.V3]]("Loads a V3 wallet from a geth keystore")
 
@@ -166,7 +166,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
         val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value.get )
         val signed = unsigned.sign( privateKey )
-        ???
+        doSendSignedTransaction( log, jsonRpcUrl, signed )
       }
     )
   }
