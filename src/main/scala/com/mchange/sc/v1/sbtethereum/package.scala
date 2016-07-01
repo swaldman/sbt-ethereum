@@ -11,11 +11,12 @@ import scala.util.Failure
 import java.io._
 import scala.collection._
 
-import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.concurrent._
 
+import com.mchange.sc.v2.lang.borrow
 
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,wallet,EthAddress,EthPrivateKey}
+import com.mchange.sc.v1.consuela.ethereum.jsonrpc20.MapStringCompilationContractFormat
 
 import play.api.libs.json._
 
@@ -90,15 +91,15 @@ package object sbtethereum {
   }
 
   private [sbtethereum] def doGetDefaultGasPrice( log : sbt.Logger, jsonRpcUrl : String )( implicit ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.gasPrice(), Duration.Inf ).price )
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.gasPrice(), Duration.Inf ) )
   }
 
   private [sbtethereum] def doGetTransactionCount( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), Duration.Inf ).count )
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), Duration.Inf ) )
   }
 
   private [sbtethereum] def doEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : EthAddress, data : Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data), blockNumber = blockNumber ), Duration.Inf ).gas )
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data), blockNumber = blockNumber ), Duration.Inf ) )
   }
 
   private [sbtethereum] def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
