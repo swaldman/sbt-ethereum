@@ -35,7 +35,8 @@ libraryDependencies += sbtCoreNext.value
 
 libraryDependencies ++= Seq(
   "com.mchange" %% "consuela" % "0.0.2-SNAPSHOT",
-  "com.mchange" %% "mchange-commons-scala" % "0.4.1"
+  "com.mchange" %% "mchange-commons-scala" % "0.4.1",
+  "ch.qos.logback" % "logback-classic" % "1.1.7"
 )
 
 pomExtra <<= name {

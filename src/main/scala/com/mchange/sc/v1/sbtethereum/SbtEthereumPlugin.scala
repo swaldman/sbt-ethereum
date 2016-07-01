@@ -11,16 +11,23 @@ import java.io.{BufferedInputStream,File,FileInputStream}
 import play.api.libs.json.Json
 
 import com.mchange.sc.v2.lang.borrow
+import com.mchange.sc.v1.log._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
 
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 
+import scala.collection._
+
 // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
 import scala.concurrent.ExecutionContext.Implicits.global
 
 object SbtEthereumPlugin extends AutoPlugin {
+
+  // not lazy. make sure the initialization banner is emitted before any tasks are executed
+  // still, generally log through sbt loggers
+  private implicit val logger = MLogger( this ) 
 
   private val BufferSize = 4096
 
@@ -29,6 +36,11 @@ object SbtEthereumPlugin extends AutoPlugin {
   private val Zero256 = Unsigned256( 0 )
 
   private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
+
+//  private val dynamicContractName = Def.inputTaskDyn {
+//    val contractName = ContractNameParser.parsed
+//    Def.taskDyn { Task( contractName ) }
+//  }
 
   object autoImport {
 
@@ -67,8 +79,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethGetCredential = taskKey[Option[String]]("Requests masked input of a credential (wallet passphrase or hex private key)")
 
     val ethLoadCompilations = taskKey[Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
-
-    val ethLoadContractHex = inputKey[String]("Loads hex contract initialization code for a specified named contract")
 
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
@@ -128,27 +138,23 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val dir = (ethSolidityDestination in Compile).value
 
-        def addContracts( addTo : Map[String,jsonrpc20.Compilation.Contract], name : String ) = {
-          val next = borrow( new BufferedInputStream( new FileInputStream( new File( dir, name ) ), BufferSize ) )( Json.parse( _ ).as[jsonrpc20.Result.eth.compileSolidity] )
-          addTo ++ next.compilations
+        def addContracts( addTo : immutable.Map[String,jsonrpc20.Compilation.Contract], name : String ) = {
+          val next = borrow( new BufferedInputStream( new FileInputStream( new File( dir, name ) ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]] )
+          addTo ++ next
         }
 
-        dir.list.foldLeft( Map.empty[String,jsonrpc20.Compilation.Contract] )( addContracts )
+        dir.list.foldLeft( immutable.Map.empty[String,jsonrpc20.Compilation.Contract] )( addContracts )
       },
 
       ethGethWallet := {
-        clients.geth.KeyStore.walletForAddress( ethGethKeystore.value, EthAddress( ethAddress.value ) ).toOption
+        val log = streams.value.log
+        val out = clients.geth.KeyStore.walletForAddress( ethGethKeystore.value, EthAddress( ethAddress.value ) ).toOption
+        log.info( out.fold( s"V3 wallet not found for ${ethAddress.value}" )( _ => s"V3 wallet found for ${ethAddress.value}" ) )
+        out
       },
 
       ethGetCredential := {
         interactionService.value.readLine("Enter passphrase or hex private key: ", mask = true)
-      },
-
-      ethLoadContractHex := {
-        val contractName = ContractNameParser.parsed
-        val contractsMap = ethLoadCompilations.value
-
-        contractsMap( contractName ).code
       },
 
       // TODO...
@@ -156,7 +162,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
         val contractName = ContractNameParser.parsed
-        val hex = ethLoadContractHex.evaluated // let this input task recurse to the input of the evaluated input task
+        val hex = {
+          val contractsMap = ethLoadCompilations.value
+          contractsMap( contractName ).code
+        }
         val nextNonce = ethNextNonce.value
         val gasPrice = {
           val egp = ethGasPrice.value

@@ -99,7 +99,7 @@ package object sbtethereum {
   }
 
   private [sbtethereum] def doEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : EthAddress, data : Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data), blockNumber = blockNumber ), Duration.Inf ) )
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data) ), Duration.Inf ) )
   }
 
   private [sbtethereum] def doSendSignedTransaction( log : sbt.Logger, jsonRpcUrl : String, signedTransaction : EthTransaction.Signed )( implicit ec : ExecutionContext ) : EthHash = {
@@ -107,7 +107,10 @@ package object sbtethereum {
   }
 
   private [sbtethereum] def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
-    mbGethWallet.fold( EthPrivateKey( credential ) ){ gethWallet =>
+    mbGethWallet.fold {
+      log.info( "No wallet available. Trying passphrase as hex private key." )
+      EthPrivateKey( credential )
+    }{ gethWallet =>
       try {
         wallet.V3.decodePrivateKey( gethWallet, credential )
       } catch {
