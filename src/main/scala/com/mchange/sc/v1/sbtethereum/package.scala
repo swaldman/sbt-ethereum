@@ -9,13 +9,13 @@ import scala.concurrent.duration.Duration
 import scala.util.Failure
 
 import java.io._
+import scala.collection._
 
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.concurrent._
-import scala.concurrent.duration.Duration
 
 
-import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,EthAddress}
+import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,wallet,EthAddress,EthPrivateKey}
 
 import play.api.libs.json._
 
@@ -97,17 +97,17 @@ package object sbtethereum {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), Duration.Inf ).count )
   }
 
-  private [sbtethereum] def doEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : EthAddress, data : immutable.Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data), blockNumber ), Duration.Inf ).gas )
+  private [sbtethereum] def doEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : EthAddress, data : Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data), blockNumber = blockNumber ), Duration.Inf ).gas )
   }
 
   private [sbtethereum] def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
     mbGethWallet.fold( EthPrivateKey( credential ) ){ gethWallet =>
       try {
-        wallet.V3.decodePrivateKey( gethWallet )
+        wallet.V3.decodePrivateKey( gethWallet, credential )
       } catch {
         case v3e : wallet.V3.Exception => {
-          log.warning("Credential is not correct geth wallet passphrase. Trying as hex private key.")
+          log.warn("Credential is not correct geth wallet passphrase. Trying as hex private key.")
           EthPrivateKey( credential )
         }
       }

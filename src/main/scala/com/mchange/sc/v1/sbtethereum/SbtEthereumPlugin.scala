@@ -12,7 +12,10 @@ import play.api.libs.json.Json
 
 import com.mchange.sc.v2.lang.borrow
 
+import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
+
+import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 
 // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -22,6 +25,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private val BufferSize = 4096
 
   private val ContractNameParser = (Space ~> ID)
+
+  private val Zero256 = Unsigned256( 0 )
 
   private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
 
@@ -157,10 +162,11 @@ object SbtEthereumPlugin extends AutoPlugin {
           val egp = ethGasPrice.value
           if ( egp > 0 ) egp else ethDefaultGasPrice.value
         }
-        val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, ethAddress.value, hex, jsonrpc20.Client.BlockNumber.Pending ) )
-        val unsigned = EthTransaction.Unsigned.ContractCreation( nextNonce, Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex )
-        val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value )
+        val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending ) )
+        val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
+        val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value.get )
         val signed = unsigned.sign( privateKey )
+        ???
       }
     )
   }
