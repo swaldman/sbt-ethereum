@@ -3,6 +3,7 @@ package com.mchange.sc.v1.sbtethereum
 import sbt._
 import sbt.Keys._
 import sbt.plugins.{JvmPlugin,InteractionServicePlugin}
+import sbt.complete.Parser
 import sbt.complete.DefaultParsers._
 import sbt.InteractionServiceKeys.interactionService
 
@@ -15,8 +16,10 @@ import com.mchange.sc.v1.log._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
+import specification.Denominations
 
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
+import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 
 import scala.collection._
 
@@ -31,8 +34,24 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val BufferSize = 4096
 
-  private val ContractNameParser = (Space ~> ID)
+  private val SendGasAmount = G.transaction
 
+  private val ContractNameParser = (Space.+ ~> ID)
+
+  private val AddressParser = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ), "<recipient-address-hex>").map( chars => EthAddress.apply( chars.mkString ) )
+
+  private val AmountParser = token(Space.* ~> Digit.+, "<amount>").map( chars => BigInt( chars.mkString ) )
+
+  private val UnitParser = {
+    val ( w, s, f, e ) = ( "wei", "szabo", "finney", "ether" );
+    //(Space.* ~>(literal(w) | literal(s) | literal(f) | literal(e))).examples(w, s, f, e)
+    Space.* ~> token(literal(w) | literal(s) | literal(f) | literal(e))
+  }
+
+  private val EthSendEtherParser : Parser[( EthAddress, BigInt )] = {
+    def tupToTup( tup : ( ( EthAddress, BigInt ), String ) ) = ( tup._1._1, tup._1._2 * Denominations.Multiplier.BigInt( tup._2 ) )
+    (AddressParser ~ AmountParser ~ UnitParser).map( tupToTup )
+  }
   private val Zero256 = Unsigned256( 0 )
 
   private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
@@ -82,6 +101,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
+    val ethSendEther = inputKey[EthHash]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
+
+    // anonymous tasks
+
+    val finalGasPrice = Def.task {
+      val egp = ethGasPrice.value
+      if ( egp > 0 ) egp else ethDefaultGasPrice.value
+    }
+
     // definitions
 
     lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
@@ -129,8 +157,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethNextNonce := {
         val log            = streams.value.log
         val jsonRpcUrl     = ethJsonRpcUrl.value
-        val last = doGetTransactionCount( log, jsonRpcUrl, EthAddress( ethAddress.value ), jsonrpc20.Client.BlockNumber.Pending )
-        last + 1
+        doGetTransactionCount( log, jsonRpcUrl, EthAddress( ethAddress.value ), jsonrpc20.Client.BlockNumber.Pending )
       },
 
       ethLoadCompilations := {
@@ -154,10 +181,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethGetCredential := {
-        interactionService.value.readLine("Enter passphrase or hex private key: ", mask = true)
+        interactionService.value.readLine(s"Enter passphrase or hex private key for address '${ethAddress.value}': ", mask = true)
       },
 
-      // TODO...
       ethDeployOnly := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
@@ -167,15 +193,29 @@ object SbtEthereumPlugin extends AutoPlugin {
           contractsMap( contractName ).code
         }
         val nextNonce = ethNextNonce.value
-        val gasPrice = {
-          val egp = ethGasPrice.value
-          if ( egp > 0 ) egp else ethDefaultGasPrice.value
-        }
+        val gasPrice = finalGasPrice.value
         val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
         val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value.get )
         val signed = unsigned.sign( privateKey )
         doSendSignedTransaction( log, jsonRpcUrl, signed )
+      },
+
+      ethSendEther := {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val args = EthSendEtherParser.parsed
+        val to = args._1
+        val amount = args._2
+        val nextNonce = ethNextNonce.value
+        val gasPrice = finalGasPrice.value
+        val gas = SendGasAmount
+        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
+        val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value.get )
+        val signed = unsigned.sign( privateKey )
+        val out = doSendSignedTransaction( log, jsonRpcUrl, signed )
+        log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${out.hex}'." )
+        out
       }
     )
   }
