@@ -118,10 +118,6 @@ package object sbtethereum {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data) ), Duration.Inf ) )
   }
 
-  private [sbtethereum] def doSendSignedTransaction( log : sbt.Logger, jsonRpcUrl : String, signedTransaction : EthTransaction.Signed )( implicit ec : ExecutionContext ) : EthHash = {
-    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.sendSignedTransaction( signedTransaction ), Duration.Inf ) )
-  }
-
   private [sbtethereum] def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
     mbGethWallet.fold {
       log.info( "No wallet available. Trying passphrase as hex private key." )
@@ -138,9 +134,12 @@ package object sbtethereum {
     }
   }
 
-  // XXX: Apparently some consuela generated signatures that validate as (homestead-compatible) signatures
-  //      fail to validate in geth. Not so good, or very clear why. This is a workaround for now, retry until
-  //      we generate a signature that pleases our JSON-RPC client
+
+  private [sbtethereum] def doSignSendTransaction( log : sbt.Logger, jsonRpcUrl : String, signer : EthPrivateKey, unsigned : EthTransaction.Unsigned )( implicit ec : ExecutionContext ) : EthHash = {
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.sendSignedTransaction( unsigned.sign( signer ) ), Duration.Inf ) )
+  }
+
+  // No longer necessary. This worked around a consuela bug, which permitted non-Homestead compatible signatures to be generated.
   @tailrec
   private [sbtethereum] def retryingSignSendTransaction(
     client       : jsonrpc20.Client,
@@ -165,11 +164,7 @@ package object sbtethereum {
     if ( out != null ) out else retryingSignSendTransaction( client, signer, unsigned, maxRetries, currentRetry + 1 )
   }
 
-  private [sbtethereum] def doSignSendTransaction( log : sbt.Logger, jsonRpcUrl : String, signer : EthPrivateKey, unsigned : EthTransaction.Unsigned )( implicit ec : ExecutionContext ) : EthHash = {
-    doWithJsonClient( log, jsonRpcUrl )( client => retryingSignSendTransaction( client, signer, unsigned, InvalidSenderRetries ) )
-  }
-
-  // workaround geth-not-accepting-all-signatures problem
+  // no longer necessary. workaround geth-not-accepting-all-signatures problem
   private def considerInvalidSender( exc : jsonrpc20.Exception ) : Boolean = {
 
     // we could use code == -32000, but I don't think these error codes
