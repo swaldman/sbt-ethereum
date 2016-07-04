@@ -134,9 +134,13 @@ package object sbtethereum {
     }
   }
 
-
   private [sbtethereum] def doSignSendTransaction( log : sbt.Logger, jsonRpcUrl : String, signer : EthPrivateKey, unsigned : EthTransaction.Unsigned )( implicit ec : ExecutionContext ) : EthHash = {
-    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.sendSignedTransaction( unsigned.sign( signer ) ), Duration.Inf ) )
+    doWithJsonClient( log, jsonRpcUrl ){ client =>
+      val signed = unsigned.sign( signer )
+      val hash = Await.result( client.eth.sendSignedTransaction( signed ), Duration.Inf )
+      Repository.logTransaction( hash, signed )
+      hash
+    }
   }
 
   // No longer necessary. This worked around a consuela bug, which permitted non-Homestead compatible signatures to be generated.
