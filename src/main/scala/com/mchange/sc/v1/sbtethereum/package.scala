@@ -7,26 +7,37 @@ import scala.io.{Codec,Source}
 import scala.concurrent.{Await,ExecutionContext,Future}
 import scala.concurrent.duration.Duration
 import scala.util.Failure
+import scala.annotation.tailrec
 
 import java.io._
 import scala.collection._
 
+import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v2.concurrent._
 
 import com.mchange.sc.v2.lang.borrow
 
+import com.mchange.sc.v1.consuela._
+
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,wallet,EthAddress,EthHash,EthPrivateKey,EthTransaction}
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc20.MapStringCompilationContractFormat
+import com.mchange.sc.v1.consuela.ethereum.encoding.RLP
 
 import play.api.libs.json._
 
 package object sbtethereum {
+  private implicit val logger = mlogger( "com.mchange.sc.v1.sbtethereum.package" ) 
+
   final class NoSolidityCompilerException( msg : String ) extends Exception( msg )
 
   private val SolFileRegex = """(.+)\.sol""".r
 
   // XXX: hardcoded
   private val SolidityWriteBufferSize = 1024 * 1024; //1 MiB
+
+  // XXX: geth seems not to be able to validate some subset of the signatures that we validate as good (and homestead compatible)
+  //      to work around this, we just retry a few times when we get "Invalid sender" errors on sending a signed transaction
+  val InvalidSenderRetries = 10
 
   private def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String )( operation : jsonrpc20.Client => T )( implicit ec : ExecutionContext ) : T = {
     try {
@@ -46,6 +57,19 @@ package object sbtethereum {
 
     // TODO XXX: check imported files as well!
     def changed( destinationFile : File, sourceFile : File ) : Boolean = (! destinationFile.exists) || (sourceFile.lastModified() > destinationFile.lastModified() )
+
+    def waitForSeq[T]( futs : Seq[Future[T]], errorMessage : Int => String ) : Unit = {
+      val failures = awaitAndGatherFailures( futs )
+      val failureCount = failures.size
+      if ( failureCount > 0 ) {
+        log.error( errorMessage( failureCount ) )
+        failures.foreach {
+          case jf : jsonrpc20.Exception => log.error( jf.message )
+          case other                    => log.error( other.toString )
+        }
+        throw failures.head
+      }
+    }
 
     doWithJsonClient( log, jsonRpcUrl ){ client =>
       solDestination.mkdirs()
@@ -67,25 +91,17 @@ package object sbtethereum {
             client.eth.compileSolidity( code ).map( result => ( destFile, result ) )
           }
         }
-        val failures = awaitAndGatherFailures( compileFuts )
-        val failureCount = failures.size
-        if ( failureCount > 0 ) {
-          log.error( s"compileSolidity failed. [${failureCount} failures]" )
-          failures.foreach {
-            case jf : jsonrpc20.Failure => log.error( jf.message )
-            case other                  => log.error( other.toString )
-          }
-          throw failures.head
-        } else {
+        waitForSeq( compileFuts, count => s"compileSolidity failed. [${count} failures]" )
+
+        val writerFuts = compileFuts.map { fut =>
           import Json._
-          compileFuts.map { fut =>
-            fut.map {
-              case ( destFile, result ) => {
-                borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) )( _.write( stringify( toJson ( result ) ) ) )
-              }
+          fut.map {
+            case ( destFile, result ) => {
+              borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) )( _.write( stringify( toJson ( result ) ) ) )
             }
           }
         }
+        waitForSeq( writerFuts, count => s"Failed to write the output of some compilations. [${count} failures]" )
       }
     }
   }
@@ -122,6 +138,47 @@ package object sbtethereum {
     }
   }
 
+  // XXX: Apparently some consuela generated signatures that validate as (homestead-compatible) signatures
+  //      fail to validate in geth. Not so good, or very clear why. This is a workaround for now, retry until
+  //      we generate a signature that pleases our JSON-RPC client
+  @tailrec
+  private [sbtethereum] def retryingSignSendTransaction(
+    client       : jsonrpc20.Client,
+    signer       : EthPrivateKey,
+    unsigned     : EthTransaction.Unsigned,
+    maxRetries   : Int,
+    currentRetry : Int = 0
+  )( implicit ec : ExecutionContext) : EthHash = {
+    val signed = unsigned.sign( signer )
+
+    val out = {
+      try { Await.result( client.eth.sendSignedTransaction( signed ), Duration.Inf ) }
+      catch {
+        case exc : jsonrpc20.Exception if ( currentRetry < maxRetries && considerInvalidSender( exc )) => {
+          DEBUG.log( s"JSON-RPC client rejected signed transaction. Signed Transaction: ${signed}, Base transaction hex: 0x${RLP.encode[EthTransaction]( signed.base ).hex}. Attempt ${currentRetry+1} / ${maxRetries}." )
+          null
+        }
+        case other : Throwable => throw other
+      }
+    }
+
+    if ( out != null ) out else retryingSignSendTransaction( client, signer, unsigned, maxRetries, currentRetry + 1 )
+  }
+
+  private [sbtethereum] def doSignSendTransaction( log : sbt.Logger, jsonRpcUrl : String, signer : EthPrivateKey, unsigned : EthTransaction.Unsigned )( implicit ec : ExecutionContext ) : EthHash = {
+    doWithJsonClient( log, jsonRpcUrl )( client => retryingSignSendTransaction( client, signer, unsigned, InvalidSenderRetries ) )
+  }
+
+  // workaround geth-not-accepting-all-signatures problem
+  private def considerInvalidSender( exc : jsonrpc20.Exception ) : Boolean = {
+
+    // we could use code == -32000, but I don't think these error codes
+    // are consistent across clients, alas
+    //
+    // this is very, um, inexact
+
+    exc.getMessage().toLowerCase.indexOf("sender") >= 0
+  }
 }
 
 

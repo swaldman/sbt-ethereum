@@ -12,7 +12,7 @@ import java.io.{BufferedInputStream,File,FileInputStream}
 import play.api.libs.json.Json
 
 import com.mchange.sc.v2.lang.borrow
-import com.mchange.sc.v1.log._
+import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
@@ -30,7 +30,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // not lazy. make sure the initialization banner is emitted before any tasks are executed
   // still, generally log through sbt loggers
-  private implicit val logger = MLogger( this ) 
+  private implicit val logger = mlogger( this ) 
 
   private val BufferSize = 4096
 
@@ -144,7 +144,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       compile in Compile := {
-        val dummy = (ethCompileSolidity in Compile).value;
+        val dummy = (ethCompileSolidity in Compile).value
         (compile in Compile).value
       },
 
@@ -188,17 +188,14 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
         val contractName = ContractNameParser.parsed
-        val hex = {
-          val contractsMap = ethLoadCompilations.value
-          contractsMap( contractName ).code
-        }
+        val contractsMap = ethLoadCompilations.value
+        val hex = contractsMap( contractName ).code
         val nextNonce = ethNextNonce.value
         val gasPrice = finalGasPrice.value
         val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
         val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value.get )
-        val signed = unsigned.sign( privateKey )
-        doSendSignedTransaction( log, jsonRpcUrl, signed )
+        doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
       },
 
       ethSendEther := {
@@ -212,8 +209,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val gas = SendGasAmount
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
         val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value.get )
-        val signed = unsigned.sign( privateKey )
-        val out = doSendSignedTransaction( log, jsonRpcUrl, signed )
+        val out = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${out.hex}'." )
         out
       }
