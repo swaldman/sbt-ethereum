@@ -92,7 +92,7 @@ For now, use an ethereum blockchain browser ([ether.camp](https://live.ether.cam
 
 ## SBT Keys Added
 
-These are likely to be pretty fluid. The docs may not be up-to-date. From within `sbt`, you can see a quick description of settings with
+These are likely to be pretty fluid. From within `sbt`, you can see a quick description of settings with
 
     > settings -V ^eth
     
