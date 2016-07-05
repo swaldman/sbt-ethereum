@@ -86,7 +86,7 @@ If your contract deploys successfully, you'll see no failure, and information ab
 - Mac: `~/Library/sbt-ethereum`
 - Other Unix: `~/.sbt-ethereum`
 
-For the moment, ABI metadata is not yet stored in the repository, but an entry is added to the file `transaction-log` in your repository directory, showing the deployment transaction and the transaction's hash. The ABI can be found, embedded in the JSON files that result from your compilation under the directory `${project-top}/target/ethereum/solidity` (which will be automatically created by the build).
+For the moment, ABI metadata is not yet stored in the repository, but an entry is added to the file `transaction-log` in your repository directory, showing the deployment transaction and the transaction's hash. The ABI can be found, embedded in the JSON files that result from your compilation under the directory `${project-root}/target/ethereum/solidity` (which will be automatically created by the build).
 
 For now, use an ethereum blockchain browser ([ether.camp](https://live.ether.camp), [etherchain](https://www.etherchain.org), [etherscan](http://etherscan.io)) to lookup the address of your deployed contract.
 
@@ -99,48 +99,3 @@ These are likely to be pretty fluid. The docs may not be up-to-date. From within
 and
 
     > tasks -V ^eth
-
-### Settings
-
-- `ethAddress` -- a `String`, the ethereum address that will be responsible for actions from this project. [Defaults to "0x0000000000000000000000000000000000000000"]
-
-- `ethGasMarkup` -- a `Double`, the fraction by which the automatically estimated gas for a deployment should be marked up in setting transaction gas limits. [Defaults to `0.2`, which means a 20% markup.]
-
-- `ethGasOverrides` -- a `Map[String,BigInt]`, lets you directly override the gas amount that would otherwise be automatically computed and marked up for deployment of contracts. If a contract name is in the map, its associated value will be the gas given for the contract's deployment. [Defaults to an empty `Map`.]
-
-- `ethGasPrice` -- a `BigInt`, the gas price in `wei`, lets you set the gas price directly for your transactions rather than relying on 
-the current default gas price. [Defaults to `0`, which signifies reverting to the default gas price.] `// maybe rename to ethForceGasPrice, make it easy to set markups over default rather than just a specific override?`
-
-- `ethGethKeystore` -- a `File`, a directory which contains ethereum V3 wallets, named according to `go-ethereum` keystore conventions. If a wallet for `ethAddress` is contained in this directory, its passphrase can be used as a credential when deploying contracts or sending ETH. [Defaults to the platform-specific `go-ethereum` keystore directory.]
-
-- `ethJsonRpcVersion` -- a `String`, the JSON-RPC version. Currently this is not checked or used for anything. [Defaults to `2.0`]
-
-- `ethJsonRpcUrl` -- a `String`, the URL of the JSON-RPC service. [Defaults to `"http://localhost:8545"`]
-
-- `ethSolidityDestination in Compile` -- a `File`, the directory into which solidity compilations will be emitted as JSON files. [Defaults to `${(sourceDirectory in Compile).value}/solidity`, which is usually just `src/solidity` beneath the project root.]
-
-- `ethSoliditySource in Compile` -- a `File`, the directory which will be searched for solidity source files for compilation. [Defaults to `${ethTargetDir.value}/solidity`, which is usually just `target/ethereum/solidity` beneath the project root.]
- 
-- `ethTargetDir` -- a `File`, the directory into which sbt-ethereum should generate reproducible artifacts (like compilations). [Defaults to `${target.value}/ethereum`, where `${target.value}` is SBT's main target, which is usually just called `target` beneath the project root.]
-
-### Tasks
-
-- `ethCompileSolidity` -- returns `Unit`, compiles source files from `ethSoliditySource` into `ethSolidityDestination`
-
-- `ethDefaultGasPrice` -- returns `BigInt`, looks up the current default gas price via JSON-RPC
-
-- `ethDeployOnly` -- returns `EthHash` of transaction in which the contract was deployed, an `InputTask` that accepts arguments in the form
-    ethSendEther <contract-name>
-deploys the named contract
-
-- `ethGethWallet` -- returns `Option[wallet.V3]`, which will hold an object representing an ethereum V3 wallet if one is available for `ethAddress` in `ethGethKeystore`, or be `None` if no wallet is available
-
-- `ethGetCredential` -- returns `Option[String]`, tries to read a passphrase or a hex private key for `ethAddress`
-
-- `ethLoadCompilations` -- returns `Map[String,jsonrpc20.Compilation.Contract]`, a mapping of contract names to compiled contracts. Forces compilation is it has not already occurred.
-
-- `ethNextNonce` -- returns `BigInt`, looks up the nonce that should be used for the next transaction from `ethAddress`
-
-- `ethSendEther` -- returns `EthHash` of transaction in which the ether was sent, an `InputTask` that accepts arguments in the form
-    ethSendEther <destination-eth-address> <amount> <ether|finney|szabo|wei>
-sends ETH from `ethAddress` to the destination address.
