@@ -8,6 +8,7 @@ import sbt.complete.DefaultParsers._
 import sbt.InteractionServiceKeys.interactionService
 
 import java.io.{BufferedInputStream,File,FileInputStream}
+import java.util.concurrent.atomic.AtomicReference
 
 import play.api.libs.json.Json
 
@@ -30,7 +31,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // not lazy. make sure the initialization banner is emitted before any tasks are executed
   // still, generally log through sbt loggers
-  private implicit val logger = mlogger( this ) 
+  private implicit val logger = mlogger( this )
+
+  private implicit val UnlockedKey = new AtomicReference[Option[(EthAddress,EthPrivateKey)]]( None )
 
   private val BufferSize = 4096
 
@@ -93,13 +96,37 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethGethWallet = taskKey[Option[wallet.V3]]("Loads a V3 wallet from a geth keystore")
 
-    val ethGetCredential = taskKey[Option[String]]("Requests masked input of a credential (wallet passphrase or hex private key)")
-
     val ethLoadCompilations = taskKey[Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
 
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
     val ethSendEther = inputKey[EthHash]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
+
+    // anonymous tasks
+
+    val findCachePrivateKey = Def.task {
+      val CurAddrStr = ethAddress.value
+      val CurAddress = EthAddress(CurAddrStr)
+      val log = streams.value.log
+      val is = interactionService.value
+      val mbWallet = ethGethWallet.value
+
+      def updateCached : EthPrivateKey = {
+        val credential = is.readLine(s"Enter passphrase or hex private key for address '${CurAddrStr}': ", mask = true).get // fail if we can't get a credential
+
+        val privateKey = findPrivateKey( log, mbWallet, credential )
+        UnlockedKey.set( Some( (CurAddress, privateKey) ) )
+        privateKey
+      }
+      def goodCached : Option[EthPrivateKey] = {
+        UnlockedKey.get match {
+          case Some( ( CurAddress, privateKey ) ) => Some( privateKey )
+          case _                                  => None
+        }
+      }
+
+      goodCached.getOrElse( updateCached )
+    }
 
     // definitions
 
@@ -169,10 +196,6 @@ object SbtEthereumPlugin extends AutoPlugin {
         out
       },
 
-      ethGetCredential := {
-        interactionService.value.readLine(s"Enter passphrase or hex private key for address '${ethAddress.value}': ", mask = true)
-      },
-
       ethDeployOnly := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
@@ -183,7 +206,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val gasPrice = ethGasPrice.value
         val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
-        val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value.get )
+        val privateKey = findCachePrivateKey.value
         doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
       },
 
@@ -197,7 +220,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val gasPrice = ethGasPrice.value
         val gas = SendGasAmount
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
-        val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value.get )
+        val privateKey = findCachePrivateKey.value
         val out = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${out.hex}'." )
         out
