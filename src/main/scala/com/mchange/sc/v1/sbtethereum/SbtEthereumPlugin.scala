@@ -71,8 +71,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethGasMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
 
-    val ethGasPrice = settingKey[BigInt]("If nonzero, use this gas price (in wei)) rather than the current blockchain default gas price.")
-
     val ethGethKeystore = settingKey[File]("geth-style keystore directory from which V3 wallets can be loaded")
 
     val ethJsonRpcVersion = settingKey[String]("Version of Ethereum's JSON-RPC spec the build should work with")
@@ -89,9 +87,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
 
-    val ethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
-
     val ethDeployOnly = inputKey[EthHash]("Deploys the specified named contract")
+
+    val ethGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
     val ethGethWallet = taskKey[Option[wallet.V3]]("Loads a V3 wallet from a geth keystore")
 
@@ -103,13 +101,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethSendEther = inputKey[EthHash]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
-    // anonymous tasks
-
-    val finalGasPrice = Def.task {
-      val egp = ethGasPrice.value
-      if ( egp > 0 ) egp else ethDefaultGasPrice.value
-    }
-
     // definitions
 
     lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
@@ -120,8 +111,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethGasMarkup := 0.2,
 
       ethGasOverrides := Map.empty[String,BigInt],
-
-      ethGasPrice := 0,
 
       ethGethKeystore := clients.geth.KeyStore.directory.get,
 
@@ -148,7 +137,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         (compile in Compile).value
       },
 
-      ethDefaultGasPrice := {
+      ethGasPrice := {
         val log            = streams.value.log
         val jsonRpcUrl     = ethJsonRpcUrl.value
         doGetDefaultGasPrice( log, jsonRpcUrl )
@@ -191,7 +180,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val contractsMap = ethLoadCompilations.value
         val hex = contractsMap( contractName ).code
         val nextNonce = ethNextNonce.value
-        val gasPrice = finalGasPrice.value
+        val gasPrice = ethGasPrice.value
         val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
         val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value.get )
@@ -205,7 +194,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val to = args._1
         val amount = args._2
         val nextNonce = ethNextNonce.value
-        val gasPrice = finalGasPrice.value
+        val gasPrice = ethGasPrice.value
         val gas = SendGasAmount
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
         val privateKey = findPrivateKey( log, ethGethWallet.value, ethGetCredential.value.get )
