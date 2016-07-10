@@ -35,7 +35,7 @@ object Repository {
       if ( osn.indexOf( "win" ) >= 0 ) {
         Option( System.getenv("APPDATA") ).map( ad => new java.io.File(ad, "sbt-ethereum") ).toFailable("${tag}: On Windows, but could not find environment variable 'APPDATA'")
       } else if ( osn.indexOf( "mac" ) >= 0 ) {
-        Option( System.getProperty("user.home") ).map( home => new java.io.File( s"${home}/Library/sbt-ethereum" ) ).toFailable("${tag}: On Mac, but could not find System property 'user.home'")
+        Option( System.getProperty("user.home") ).map( home => new java.io.File( s"${home}/Library/Application Support/sbt-ethereum" ) ).toFailable("${tag}: On Mac, but could not find System property 'user.home'")
       } else {
         Option( System.getProperty("user.home") ).map( home => new java.io.File( s"${home}/.sbt-ethereum" ) ).toFailable("${tag}: On Unix, but could not find System property 'user.home'")
       }
