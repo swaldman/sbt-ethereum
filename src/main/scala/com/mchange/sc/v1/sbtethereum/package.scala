@@ -134,11 +134,11 @@ package object sbtethereum {
     }
   }
 
-  private [sbtethereum] def doSignSendTransaction( log : sbt.Logger, jsonRpcUrl : String, signer : EthPrivateKey, unsigned : EthTransaction.Unsigned )( implicit ec : ExecutionContext ) : EthHash = {
+  private [sbtethereum] def doSignSendTransaction( log : sbt.Logger, jsonRpcUrl : String, repository : Repository, signer : EthPrivateKey, unsigned : EthTransaction.Unsigned )( implicit ec : ExecutionContext ) : EthHash = {
     doWithJsonClient( log, jsonRpcUrl ){ client =>
       val signed = unsigned.sign( signer )
       val hash = Await.result( client.eth.sendSignedTransaction( signed ), Duration.Inf )
-      Repository.logTransaction( hash, signed )
+      repository.logTransaction( hash, signed )
       hash
     }
   }

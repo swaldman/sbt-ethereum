@@ -33,7 +33,11 @@ object SbtEthereumPlugin extends AutoPlugin {
   // still, generally log through sbt loggers
   private implicit val logger = mlogger( this )
 
+  // cached items
+
   private implicit val UnlockedKey = new AtomicReference[Option[(EthAddress,EthPrivateKey)]]( None )
+
+  private implicit val CachedRepository = new AtomicReference[Option[(File,Repository)]]( None )
 
   private val BufferSize = 4096
 
@@ -82,6 +86,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethTargetDir = settingKey[File]("Location in target directory where ethereum artifacts will be placed")
 
+    // This setting should rarely be overridden.
+    // If you do override it, consider doing so in a global setting [ http://www.scala-sbt.org/0.13.5/docs/Detailed-Topics/Global-Settings.html ],
+    // both to keep your build transportable and to keep your repository consistent across projects
+    val ethSbtEthereumRepository = settingKey[File](
+      "Directory (outside of individual project directories, shared by many projects) where sbt-ethereum's history and metadata is maintained"
+    )
+
     val ethSoliditySource = settingKey[File]("Solidity source code directory")
 
     val ethSolidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
@@ -101,6 +112,30 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
     val ethSendEther = inputKey[EthHash]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
+
+    // anonymous settings
+
+    val goodRepository = Def.task {
+      val CurRepoDir = ethSbtEthereumRepository.value 
+
+      def goodCached : Option[Repository] = {
+        CachedRepository.get match {
+          case Some( ( CurRepoDir, repository ) ) => Some( repository )
+          case _                                  => None
+        }
+      }
+      def updateCached : Repository = {
+        val created = new Repository( Some( CurRepoDir ) )
+        if (created.directory.isEmpty) {
+          throw new Exception( s"'${CurRepoDir}' is not a suitable repository directory." )
+        } else {
+          CachedRepository.set( Some( (CurRepoDir, created ) ) )
+          created
+        }
+      }
+
+      goodCached.getOrElse( updateCached )
+    }
 
     // anonymous tasks
 
@@ -144,6 +179,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethAddress := ZeroEthAddress,
 
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
+
+      ethSbtEthereumRepository := {
+        //println("EVALUATING ethSbtEthereumRepository")
+        Repository.Default.directory.get // break if this key is not overridden and no default directory can be found
+      },
 
       ethSoliditySource in Compile      := (sourceDirectory in Compile).value / "solidity",
 
@@ -199,6 +239,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethDeployOnly := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
+        val repository = goodRepository.value
         val contractName = ContractNameParser.parsed
         val contractsMap = ethLoadCompilations.value
         val hex = contractsMap( contractName ).code
@@ -207,12 +248,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey.value
-        doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        doSignSendTransaction( log, jsonRpcUrl, repository, privateKey, unsigned )
       },
 
       ethSendEther := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
+        val repository = goodRepository.value
         val args = EthSendEtherParser.parsed
         val to = args._1
         val amount = args._2
@@ -221,7 +263,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val gas = SendGasAmount
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
         val privateKey = findCachePrivateKey.value
-        val out = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        val out = doSignSendTransaction( log, jsonRpcUrl, repository, privateKey, unsigned )
         log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${out.hex}'." )
         out
       }
