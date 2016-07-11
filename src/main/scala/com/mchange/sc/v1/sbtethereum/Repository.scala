@@ -47,8 +47,9 @@ object Repository {
     }
 
     val out = {
-      val mbProperty = Option( System.getProperty( Repository.SystemProperty ) );
-      val mbEnvVar   = Option( System.getenv( Repository.EnvironmentVariable ) );
+      val mbProperty = Option( System.getProperty( Repository.SystemProperty ) )
+      val mbEnvVar   = Option( System.getenv( Repository.EnvironmentVariable ) )
+
       (mbProperty orElse mbEnvVar).fold( defaultLocation )( dir => succeed( new File( dir ) ) )
     }
 

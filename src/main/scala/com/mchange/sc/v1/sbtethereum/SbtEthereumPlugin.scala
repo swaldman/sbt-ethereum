@@ -29,6 +29,9 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 object SbtEthereumPlugin extends AutoPlugin {
 
+  private val EthAddressSystemProperty      = "eth.address"
+  private val EthAddressEnvironmentVariable = "ETH_ADDRESS"
+
   // not lazy. make sure the initialization banner is emitted before any tasks are executed
   // still, generally log through sbt loggers
   private implicit val logger = mlogger( this )
@@ -141,7 +144,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethGethKeystore := clients.geth.KeyStore.directory.get,
 
-      ethAddress := ZeroEthAddress,
+      ethAddress := {
+        val mbProperty = Option( System.getProperty( EthAddressSystemProperty ) )
+        val mbEnvVar   = Option( System.getenv( EthAddressEnvironmentVariable ) )
+
+
+        (mbProperty orElse mbEnvVar).getOrElse( ZeroEthAddress )
+      },
 
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
 
