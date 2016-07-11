@@ -15,6 +15,7 @@ import com.mchange.sc.v1.consuela.ethereum.{EthHash,EthTransaction}
 object Repository {
   private val TimestampPattern = "yyyy-MM-dd'T'HH-mm-ssZ"
 
+  private val SystemProperty      = "sbt.ethereum.repository"
   private val EnvironmentVariable = "SBT_ETHEREUM_REPOSITORY"
 
   def logTransaction( transactionHash : EthHash, transaction : EthTransaction.Signed ) : Unit = {
@@ -45,7 +46,11 @@ object Repository {
       }
     }
 
-    val out = Option( System.getenv( Repository.EnvironmentVariable ) ).fold( defaultLocation )( dir => succeed( new File( dir ) ) )
+    val out = {
+      val mbProperty = Option( System.getProperty( Repository.SystemProperty ) );
+      val mbEnvVar   = Option( System.getenv( Repository.EnvironmentVariable ) );
+      (mbProperty orElse mbEnvVar).fold( defaultLocation )( dir => succeed( new File( dir ) ) )
+    }
 
     def prepareDir( dir : File ) : Failable[File] = {
       try {
