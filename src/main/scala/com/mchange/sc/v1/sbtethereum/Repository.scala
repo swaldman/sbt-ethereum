@@ -18,18 +18,33 @@ object Repository {
   private val SystemProperty      = "sbt.ethereum.repository"
   private val EnvironmentVariable = "SBT_ETHEREUM_REPOSITORY"
 
-  def logTransaction( transactionHash : EthHash, transaction : EthTransaction.Signed ) : Unit = {
-    TransactionLog.flatMap { file =>
+  def logTransaction( transaction : EthTransaction.Signed, transactionHash : EthHash ) : Unit = {
+    TransactionLog.File.flatMap { file =>
       Failable {
-        val df = new SimpleDateFormat(TimestampPattern)
-        val timestamp = df.format( new Date() )
-        val line = s"${timestamp}|0x${transactionHash.bytes.hex}|${transaction}"
-        borrow( new PrintWriter( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( file, true ) ), Codec.UTF8.charSet ) ) )( _.println( line ) )
+        val entry = TransactionLog.Entry( new Date(), transaction, transactionHash ) 
+        borrow( new PrintWriter( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( file, true ) ), Codec.UTF8.charSet ) ) )( _.println( entry ) )
       }
     }.get // Unit or vomit Exception
   }
 
-  lazy val TransactionLog = Directory.map( dir => new File(dir, "transaction-log") )
+  final object TransactionLog {
+    lazy val File = Directory.map( dir => new java.io.File(dir, "transaction-log") )
+
+    case class Entry( timestamp : Date, txn : EthTransaction.Signed, transactionHash : EthHash ) {
+      override def toString() = {
+        val ( ttype, payloadKey, payload ) = txn match {
+          case m  : EthTransaction.Signed.Message          => ("Message", "data", m.data)
+          case cc : EthTransaction.Signed.ContractCreation => ("ContractCreation", "init", cc.init)
+        }
+        val df = new SimpleDateFormat(TimestampPattern)
+        val ts = df.format( timestamp )
+        val first  = s"${ts}:type=${ttype},nonce=${txn.nonce.widen},gasPrice=${txn.gasPrice.widen},gasLimit=${txn.gasLimit.widen},value=${txn.value.widen},"
+        val middle = if ( payload.length > 0 ) s"${payloadKey}=${payload.hex}," else ""
+        val last   = s"v=${txn.v.widen},r=${txn.r.widen},s=${txn.s.widen},transactionHash=${transactionHash.bytes.hex}"
+        first + middle + last
+      }
+    }
+  }
 
   lazy val Directory : Failable[File] = {
     def defaultLocation = {

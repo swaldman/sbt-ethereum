@@ -17,6 +17,7 @@ import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
+import jsonrpc20.ClientTransactionReceipt
 import specification.Denominations
 
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
@@ -39,6 +40,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   private implicit val UnlockedKey = new AtomicReference[Option[(EthAddress,EthPrivateKey)]]( None )
 
   private val BufferSize = 4096
+
+  private val PollSeconds = 15
+
+  private val PollAttempts = 5
 
   private val SendGasAmount = G.transaction
 
@@ -94,7 +99,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
 
-    val ethDeployOnly = inputKey[EthHash]("Deploys the specified named contract")
+    val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
 
     val ethGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
@@ -104,7 +109,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
-    val ethSendEther = inputKey[EthHash]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
+    val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
     // anonymous tasks
 
@@ -217,7 +222,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey.value
-        doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        log.info( s"Contract '${contractName}' deployed in transaction '0x${hash.hex}'." )
+        val out = awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+        out.foreach( receipt => log.info( s"Contract '${contractName}' has been assigned address '0x${receipt.contractAddress.get.bytes.widen.hex}'." ) )
+        out
       },
 
       ethSendEther := {
@@ -231,9 +240,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val gas = SendGasAmount
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
         val privateKey = findCachePrivateKey.value
-        val out = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
-        log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${out.hex}'." )
-        out
+        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
+        awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
       }
     )
   }

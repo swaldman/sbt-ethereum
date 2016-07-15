@@ -20,7 +20,7 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela._
 
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,wallet,EthAddress,EthHash,EthPrivateKey,EthTransaction}
-import com.mchange.sc.v1.consuela.ethereum.jsonrpc20.MapStringCompilationContractFormat
+import com.mchange.sc.v1.consuela.ethereum.jsonrpc20.{ClientTransactionReceipt,MapStringCompilationContractFormat}
 import com.mchange.sc.v1.consuela.ethereum.encoding.RLP
 
 import play.api.libs.json._
@@ -138,8 +138,32 @@ package object sbtethereum {
     doWithJsonClient( log, jsonRpcUrl ){ client =>
       val signed = unsigned.sign( signer )
       val hash = Await.result( client.eth.sendSignedTransaction( signed ), Duration.Inf )
-      Repository.logTransaction( hash, signed )
+      Repository.logTransaction( signed, hash )
       hash
+    }
+  }
+
+  private [sbtethereum] def awaitTransactionReceipt(
+    log : sbt.Logger,
+    jsonRpcUrl : String,
+    transactionHash : EthHash,
+    pollSeconds : Int,
+    maxPollAttempts : Int
+  )( implicit ec : ExecutionContext ) : Option[ClientTransactionReceipt] = {
+    doWithJsonClient( log, jsonRpcUrl ){ client =>
+      def doPoll( attemptNum : Int ) : Option[ClientTransactionReceipt] = {
+        val mbReceipt = Await.result( client.eth.getTransactionReceipt( transactionHash ), Duration.Inf )
+        ( mbReceipt, attemptNum ) match {
+          case ( None, num ) if ( num < maxPollAttempts ) => {
+            log.info(s"Receipt for transaction '0x${transactionHash.bytes.hex}' not yet available, will try again in ${pollSeconds} seconds. Attempt ${attemptNum + 1}/${maxPollAttempts}.")
+            Thread.sleep( pollSeconds * 1000 )
+            doPoll( num + 1 )
+          }
+          case ( None, _ ) => None
+          case _           => mbReceipt
+        }
+      }
+      doPoll( 0 )
     }
   }
 
