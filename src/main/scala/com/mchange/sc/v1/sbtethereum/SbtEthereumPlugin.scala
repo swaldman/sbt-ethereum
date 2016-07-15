@@ -33,7 +33,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private val EthAddressEnvironmentVariable = "ETH_ADDRESS"
 
   // not lazy. make sure the initialization banner is emitted before any tasks are executed
-  // still, generally log through sbt loggers
+  // still, generally we should try to log through sbt loggers
   private implicit val logger = mlogger( this )
 
   private implicit val UnlockedKey = new AtomicReference[Option[(EthAddress,EthPrivateKey)]]( None )
@@ -46,7 +46,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val AddressParser = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ), "<recipient-address-hex>").map( chars => EthAddress.apply( chars.mkString ) )
 
-  private val AmountParser = token(Space.* ~> Digit.+, "<amount>").map( chars => BigInt( chars.mkString ) )
+  private val AmountParser = token(Space.* ~> (Digit|literal('.')).+, "<amount>").map( chars => BigDecimal( chars.mkString ) )
 
   private val UnitParser = {
     val ( w, s, f, e ) = ( "wei", "szabo", "finney", "ether" );
@@ -55,7 +55,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private val EthSendEtherParser : Parser[( EthAddress, BigInt )] = {
-    def tupToTup( tup : ( ( EthAddress, BigInt ), String ) ) = ( tup._1._1, tup._1._2 * Denominations.Multiplier.BigInt( tup._2 ) )
+    def rounded( bd : BigDecimal ) = bd.round( bd.mc ) // work around absence of default rounded method in scala 2.10 BigDecimal
+    def tupToTup( tup : ( ( EthAddress, BigDecimal ), String ) ) = ( tup._1._1, rounded(tup._1._2 * BigDecimal(Denominations.Multiplier.BigInt( tup._2 ))).toBigInt )
     (AddressParser ~ AmountParser ~ UnitParser).map( tupToTup )
   }
   private val Zero256 = Unsigned256( 0 )
@@ -115,7 +116,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val mbWallet = ethGethWallet.value
 
       def updateCached : EthPrivateKey = {
-        val credential = is.readLine(s"Enter passphrase or hex private key for address '${CurAddrStr}': ", mask = true).get // fail if we can't get a credential
+        val credential = is.readLine(s"Enter passphrase or hex private key for address '${CurAddrStr}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
 
         val privateKey = findPrivateKey( log, mbWallet, credential )
         UnlockedKey.set( Some( (CurAddress, privateKey) ) )
