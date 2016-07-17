@@ -5,7 +5,10 @@ import sbt.Keys._
 import sbt.plugins.{JvmPlugin,InteractionServicePlugin}
 import sbt.complete.Parser
 import sbt.complete.DefaultParsers._
+import sbt.Def.Initialize
 import sbt.InteractionServiceKeys.interactionService
+import sbinary._
+import sbinary.DefaultProtocol._
 
 import java.io.{BufferedInputStream,File,FileInputStream,FilenameFilter}
 import java.util.concurrent.atomic.AtomicReference
@@ -18,6 +21,7 @@ import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
 import jsonrpc20.ClientTransactionReceipt
+import jsonrpc20.MapStringCompilationContractFormat
 import specification.Denominations
 
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
@@ -47,8 +51,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val SendGasAmount = G.transaction
 
-  private val ContractNameParser = (Space.+ ~> ID)
-
   private val AddressParser = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ), "<recipient-address-hex>").map( chars => EthAddress.apply( chars.mkString ) )
 
   private val AmountParser = token(Space.* ~> (Digit|literal('.')).+, "<amount>").map( chars => BigDecimal( chars.mkString ) )
@@ -68,10 +70,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
 
-//  private val dynamicContractName = Def.inputTaskDyn {
-//    val contractName = ContractNameParser.parsed
-//    Def.taskDyn { Task( contractName ) }
-//  }
+  /*
+  implicit object CompilationMapSBinaryFormat extends sbinary.Format[immutable.Map[String,jsonrpc20.Compilation.Contract]]{
+    def reads(in : Input) = Json.parse( StringFormat.reads( in ) ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]]
+    def writes(out : Output, value : immutable.Map[String,jsonrpc20.Compilation.Contract]) = StringFormat.writes( out, Json.stringify( Json.toJson( value ) ) )
+  }
+   */
 
   object autoImport {
 
@@ -105,15 +109,31 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethGethWallet = taskKey[Option[wallet.V3]]("Loads a V3 wallet from a geth keystore")
 
-    val ethLoadCompilations = taskKey[Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
+    val ethLoadCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
+
+    val ethCompiledContractNames = taskKey[immutable.Set[String]]("Finds compiled contract names")
 
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
     val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
+    val ethTmp = inputKey[String]("")
+
     // anonymous tasks
 
+    val warnOnZeroAddress = Def.task {
+      val current = ethAddress.value
+
+      if ( current == ZeroEthAddress ) {
+        throw new Exception(s"""No valid EthAddress set. Please use 'set ethAddress := "<your ethereum address>"'""")
+      }
+
+      true
+    }
+
     val findCachePrivateKey = Def.task {
+      val checked = warnOnZeroAddress.value
+
       val CurAddrStr = ethAddress.value
       val CurAddress = EthAddress(CurAddrStr)
       val log = streams.value.log
@@ -139,6 +159,18 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // definitions
 
+    /*
+     * The strategy we are using to support dynamic, post-task tab completions
+     * is taken most closely from here
+     * 
+     *    https://github.com/etsy/sbt-compile-quick-plugin/blob/7c99b0197634c72924791591e3a790bd7e0e3e82/src/main/scala/com/etsy/sbt/CompileQuick.scala
+     * 
+     * See also Josh Suereth here
+     * 
+     *    http://grokbase.com/t/gg/simple-build-tool/151vq0w03t/sbt-sbt-plugin-developing-using-value-from-anither-task-in-parser-exampels-for-tab-completion
+     * 
+     * It is still rather mysterious to me.
+     */ 
     lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
 
       ethJsonRpcVersion := "2.0",
@@ -191,7 +223,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         doGetTransactionCount( log, jsonRpcUrl, EthAddress( ethAddress.value ), jsonrpc20.Client.BlockNumber.Pending )
       },
 
-      ethLoadCompilations := {
+      ethLoadCompilations := { 
         val dummy = (ethCompileSolidity in Compile).value // ensure compilation has completed
 
         val dir = (ethSolidityDestination in Compile).value
@@ -204,30 +236,18 @@ object SbtEthereumPlugin extends AutoPlugin {
         dir.list.foldLeft( immutable.Map.empty[String,jsonrpc20.Compilation.Contract] )( addContracts )
       },
 
+      ethCompiledContractNames <<= ethCompiledContractNamesTask storeAs ethCompiledContractNames triggeredBy (ethCompileSolidity in Compile ),
+
       ethGethWallet := {
+        val checked = warnOnZeroAddress.value
+
         val log = streams.value.log
         val out = clients.geth.KeyStore.walletForAddress( ethGethKeystore.value, EthAddress( ethAddress.value ) ).toOption
         log.info( out.fold( s"V3 wallet not found for ${ethAddress.value}" )( _ => s"V3 wallet found for ${ethAddress.value}" ) )
         out
       },
 
-      ethDeployOnly := {
-        val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        val contractName = ContractNameParser.parsed
-        val contractsMap = ethLoadCompilations.value
-        val hex = contractsMap( contractName ).code
-        val nextNonce = ethNextNonce.value
-        val gasPrice = ethGasPrice.value
-        val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending ) )
-        val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
-        val privateKey = findCachePrivateKey.value
-        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
-        log.info( s"Contract '${contractName}' deployed in transaction '0x${hash.hex}'." )
-        val out = awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
-        out.foreach( receipt => log.info( s"Contract '${contractName}' has been assigned address '0x${receipt.contractAddress.get.bytes.widen.hex}'." ) )
-        out
-      },
+      ethDeployOnly <<= ethDeployOnlyTask,
 
       ethSendEther := {
         val log = streams.value.log
@@ -257,6 +277,40 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
     )
+
+    def ethDeployOnlyTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+      val parser = Defaults.loadForParser(ethCompiledContractNames) { (s, mbNamesSet) =>
+        contractNamesParser(s, mbNamesSet.getOrElse( immutable.Set.empty ) )
+      }
+      Def.inputTask {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val contractName = parser.parsed
+        val contractsMap = ethLoadCompilations.value
+        val hex = contractsMap( contractName ).code
+        val nextNonce = ethNextNonce.value
+        val gasPrice = ethGasPrice.value
+        val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending ) )
+        val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
+        val privateKey = findCachePrivateKey.value
+        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        log.info( s"Contract '${contractName}' deployed in transaction '0x${hash.hex}'." )
+        val out = awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+        out.foreach( receipt => log.info( s"Contract '${contractName}' has been assigned address '0x${receipt.contractAddress.get.bytes.widen.hex}'." ) )
+        out
+      }
+    }
+
+    def contractNamesParser : (State, immutable.Set[String]) => Parser[String] = {
+      (state, contractNames) => {
+        Space ~> token(NotSpace examples contractNames )
+      }
+    }
+
+    def ethCompiledContractNamesTask : Initialize[Task[immutable.Set[String]]] = Def.task {
+      val map = ethLoadCompilations.value
+      immutable.TreeSet( map.keys.toSeq : _* )( Ordering.comparatorToOrdering( String.CASE_INSENSITIVE_ORDER ) )
+    }
   }
 
 
