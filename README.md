@@ -37,8 +37,8 @@ A minimal SBT project looks something like this:
           |—— src/
           |    |
           |    +—— main
-	  |          |
-	  |          +—— solidity/
+          |          |
+          |          +—— solidity/
           |                  |
           |                  +—— my_contract.sol
           |
@@ -67,12 +67,15 @@ If you haven't already, you'll need to let the blockchain sync, which might take
 Open a fresh terminal window, go into your project's top-level director (`my-project/` not `project/` in the example project above), and run `sbt`. If
 you intend to deploy contracts or send ether, you'll want to specify an ethereum address on whose behalf it will act. You can do that three ways:
 
-1. Set the environment variable `ETH_ADDRESS` prior to running `sbt`
-2. Set the JVM System property `eth.address` when running `sbt`, that is, run `sbt -Deth.address=0x465e79b940bc2157e4259ff6b2d92f454497f1e4`
-3. At any time, on the SBT command like, run
-
-    > set ethAddress := "0x465e79b940bc2157e4259ff6b2d92f454497f1e4"
-
+- Set the environment variable `ETH_ADDRESS` prior to running `sbt`
+- Set the JVM System property `eth.address` when running `sbt`, that is, run
+```
+> `sbt -Deth.address=0x465e79b940bc2157e4259ff6b2d92f454497f1e4`
+```
+- At any time, on the SBT command like, run
+```
+> set ethAddress := "0x465e79b940bc2157e4259ff6b2d92f454497f1e4"
+```
 To send ether:
 
     > ethSendEther 0xae79b77e31387a3b2409b70c27cebc7220101026 1500 wei
