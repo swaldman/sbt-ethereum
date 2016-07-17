@@ -43,7 +43,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val PollSeconds = 15
 
-  private val PollAttempts = 5
+  private val PollAttempts = 9
 
   private val SendGasAmount = G.transaction
 

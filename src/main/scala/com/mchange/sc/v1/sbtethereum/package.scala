@@ -159,8 +159,14 @@ package object sbtethereum {
             Thread.sleep( pollSeconds * 1000 )
             doPoll( num + 1 )
           }
-          case ( None, _ ) => None
-          case _           => mbReceipt
+          case ( None, _ ) => {
+            log.warn(s"After ${maxPollAttempts} attempts (${(maxPollAttempts - 1) * pollSeconds} seconds), no receipt has yet been received for transaction '0x${transactionHash.bytes.hex}'.")
+            None
+          }
+          case _           => {
+            log.info(s"Receipt received for transaction '0x${transactionHash.bytes.hex}'.")
+            mbReceipt
+          }
         }
       }
       doPoll( 0 )
