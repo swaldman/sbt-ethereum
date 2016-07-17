@@ -7,7 +7,7 @@ import sbt.complete.Parser
 import sbt.complete.DefaultParsers._
 import sbt.InteractionServiceKeys.interactionService
 
-import java.io.{BufferedInputStream,File,FileInputStream}
+import java.io.{BufferedInputStream,File,FileInputStream,FilenameFilter}
 import java.util.concurrent.atomic.AtomicReference
 
 import play.api.libs.json.Json
@@ -243,6 +243,18 @@ object SbtEthereumPlugin extends AutoPlugin {
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
         awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+      },
+
+      watchSources ++= {
+        val dir = (ethSoliditySource in Compile).value
+        val filter = new FilenameFilter {
+          def accept( dir : File, name : String ) = name.endsWith(".sol")
+        }
+        if ( dir.exists ) {
+          dir.list( filter ).map( name => new File( dir, name ) ).toSeq
+        } else {
+          Nil
+        }
       }
     )
   }
