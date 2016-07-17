@@ -36,7 +36,7 @@ A minimal SBT project looks something like this:
           |
           |—— src/
           |    |
-          |    +—— main
+          |    +—— main/
           |          |
           |          +—— solidity/
           |                  |
