@@ -11,6 +11,7 @@ import sbinary._
 import sbinary.DefaultProtocol._
 
 import java.io.{BufferedInputStream,File,FileInputStream,FilenameFilter}
+import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicReference
 
 import play.api.libs.json.Json
@@ -83,6 +84,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethAddress = settingKey[String]("The address from which transactions will be sent")
 
+    val ethEntropySource = settingKey[SecureRandom]("The source of randomness that will be used for key generation")
+
     val ethGasOverrides = settingKey[Map[String,BigInt]]("Map of contract names to gas limits for contract creation transactions, overriding automatic estimates")
 
     val ethGasMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
@@ -107,6 +110,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
+    val ethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
+
     val ethGethWallet = taskKey[Option[wallet.V3]]("Loads a V3 wallet from a geth keystore")
 
     val ethLoadCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
@@ -116,8 +121,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
     val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
-
-    val ethTmp = inputKey[String]("")
 
     // anonymous tasks
 
@@ -176,6 +179,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethJsonRpcVersion := "2.0",
       ethJsonRpcUrl     := "http://localhost:8545",
 
+      ethEntropySource := new java.security.SecureRandom,
+
       ethGasMarkup := 0.2,
 
       ethGasOverrides := Map.empty[String,BigInt],
@@ -212,9 +217,24 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethGasPrice := {
-        val log            = streams.value.log
-        val jsonRpcUrl     = ethJsonRpcUrl.value
+        val log        = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
         doGetDefaultGasPrice( log, jsonRpcUrl )
+      },
+
+      ethGenKeyPair := {
+        val log = streams.value.log
+        val out = EthKeyPair( ethEntropySource.value )
+
+        // a ridiculous overabundance of caution
+        assert {
+          val checkpub = out.pvt.toPublicKey
+          checkpub == out.pub && checkpub.toAddress == out.address
+        }
+
+        log.info( s"Generated keypair for address '0x${out.address.hex}'" )
+
+        out
       },
 
       ethNextNonce := {
