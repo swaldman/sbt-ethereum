@@ -53,7 +53,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val SendGasAmount = G.transaction
 
-  private val AddressParser = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ), "<recipient-address-hex>").map( chars => EthAddress.apply( chars.mkString ) )
+  private val GenericAddressParser = createAddressParser("<address-hex>")
+
+  private val RecipientAddressParser = createAddressParser("<recipient-address-hex>")
 
   private val AmountParser = token(Space.* ~> (Digit|literal('.')).+, "<amount>").map( chars => BigDecimal( chars.mkString ) )
 
@@ -66,11 +68,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   private val EthSendEtherParser : Parser[( EthAddress, BigInt )] = {
     def rounded( bd : BigDecimal ) = bd.round( bd.mc ) // work around absence of default rounded method in scala 2.10 BigDecimal
     def tupToTup( tup : ( ( EthAddress, BigDecimal ), String ) ) = ( tup._1._1, rounded(tup._1._2 * BigDecimal(Denominations.Multiplier.BigInt( tup._2 ))).toBigInt )
-    (AddressParser ~ AmountParser ~ UnitParser).map( tupToTup )
+    (RecipientAddressParser ~ AmountParser ~ UnitParser).map( tupToTup )
   }
   private val Zero256 = Unsigned256( 0 )
 
   private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
+
+  private def createAddressParser( tabHelp : String ) = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ), tabHelp).map( chars => EthAddress.apply( chars.mkString ) )
 
   /*
   implicit object CompilationMapSBinaryFormat extends sbinary.Format[immutable.Map[String,jsonrpc20.Compilation.Contract]]{
@@ -335,7 +339,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val keystoresV3 = ethKeystoresV3.value
         val log         = streams.value.log
 
-        val address = AddressParser.parsed
+        val address = GenericAddressParser.parsed
         val out = {
           keystoresV3
             .map( wallet.V3.keyStoreMap )
@@ -343,7 +347,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             if ( mb.isEmpty ) nextKeystore.get( address ) else mb
           }
         }
-        log.info( out.fold( s"No V3 wallet found for ${ethAddress.value}" )( _ => s"V3 wallet found for ${ethAddress.value}" ) )
+        log.info( out.fold( s"No V3 wallet found for '0x${address.hex}'" )( _ => s"V3 wallet found for '0x${address.hex}'" ) )
         out
       },
 
@@ -362,7 +366,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val is = interactionService.value
         val log = streams.value.log
         
-        val addressStr = AddressParser.parsed.hex
+        val addressStr = GenericAddressParser.parsed.hex
 
         val s = state.value
 	val extract = Project.extract(s)
@@ -371,7 +375,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val credential = is.readLine(s"Enter passphrase for address '0x${addressStr}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
         val privateKey = findPrivateKey( log, mbWallet, credential )
         val confirmation = {
-          is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = true)
+          is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
             .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
         }
         if ( confirmation == "YES" ) {
