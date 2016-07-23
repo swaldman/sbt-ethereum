@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 import play.api.libs.json.Json
 
+import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.log.MLevel._
 
@@ -90,7 +91,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethGasMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
 
-    val ethGethKeystore = settingKey[File]("geth-style keystore directory from which V3 wallets can be loaded")
+    val ethKeystoresV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
 
     val ethJsonRpcVersion = settingKey[String]("Version of Ethereum's JSON-RPC spec the build should work with")
 
@@ -132,11 +133,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethLoadCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
 
-    val ethLoadGethWallet = taskKey[Option[wallet.V3]]("Loads a V3 wallet from a geth keystore")
+    val ethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
+
+    val ethLoadWalletV3ForAddress = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
     val ethCompiledContractNames = taskKey[immutable.Set[String]]("Finds compiled contract names")
 
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
+
+    val ethRevealPrivateKeyForAddress = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
 
     val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
@@ -159,7 +164,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val CurAddress = EthAddress(CurAddrStr)
       val log = streams.value.log
       val is = interactionService.value
-      val mbWallet = ethLoadGethWallet.value
+      val mbWallet = ethLoadWalletV3.value
 
       def updateCached : EthPrivateKey = {
         val credential = is.readLine(s"Enter passphrase or hex private key for address '${CurAddrStr}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
@@ -203,7 +208,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethGasOverrides := Map.empty[String,BigInt],
 
-      ethGethKeystore := clients.geth.KeyStore.Directory.get,
+      ethKeystoresV3 := {
+        def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
+        def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
+        listify( Repository.KeyStore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
+      },
 
       ethAddress := {
         val mbProperty = Option( System.getProperty( EthAddressSystemProperty ) )
@@ -322,16 +331,55 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethCompiledContractNames <<= ethCompiledContractNamesTask storeAs ethCompiledContractNames triggeredBy (ethCompileSolidity in Compile ),
 
-      ethLoadGethWallet := {
-        val checked = warnOnZeroAddress.value
+      ethLoadWalletV3ForAddress := {
+        val keystoresV3 = ethKeystoresV3.value
+        val log         = streams.value.log
 
-        val log = streams.value.log
-        val out = clients.geth.KeyStore.walletForAddress( ethGethKeystore.value, EthAddress( ethAddress.value ) ).toOption
-        log.info( out.fold( s"V3 wallet not found for ${ethAddress.value}" )( _ => s"V3 wallet found for ${ethAddress.value}" ) )
+        val address = AddressParser.parsed
+        val out = {
+          keystoresV3
+            .map( wallet.V3.keyStoreMap )
+            .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
+            if ( mb.isEmpty ) nextKeystore.get( address ) else mb
+          }
+        }
+        log.info( out.fold( s"No V3 wallet found for ${ethAddress.value}" )( _ => s"V3 wallet found for ${ethAddress.value}" ) )
         out
       },
 
+      ethLoadWalletV3 := {
+        val checked = warnOnZeroAddress.value
+        val s = state.value
+        val addressStr = ethAddress.value
+	val extract = Project.extract(s)
+	val (_, result) = extract.runInputTask(ethLoadWalletV3ForAddress, addressStr, s)
+        result
+      },
+
       ethDeployOnly <<= ethDeployOnlyTask,
+
+      ethRevealPrivateKeyForAddress := {
+        val is = interactionService.value
+        val log = streams.value.log
+        
+        val addressStr = AddressParser.parsed.hex
+
+        val s = state.value
+	val extract = Project.extract(s)
+	val (_, mbWallet) = extract.runInputTask(ethLoadWalletV3ForAddress, addressStr, s)
+
+        val credential = is.readLine(s"Enter passphrase for address '0x${addressStr}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
+        val privateKey = findPrivateKey( log, mbWallet, credential )
+        val confirmation = {
+          is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = true)
+            .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
+        }
+        if ( confirmation == "YES" ) {
+          println( s"0x${privateKey.bytes.widen.hex}" )
+        } else {
+          throw new Exception("Not confirmed by user. Aborted.")
+        }
+      },
 
       ethSendEther := {
         val log = streams.value.log
