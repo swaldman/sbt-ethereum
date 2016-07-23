@@ -102,6 +102,18 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethSolidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
 
+    val ethWalletV3ScryptN = settingKey[Int]("The value to use for parameter N when generating Scrypt V3 wallets")
+
+    val ethWalletV3ScryptR = settingKey[Int]("The value to use for parameter R when generating Scrypt V3 wallets")
+
+    val ethWalletV3ScryptP = settingKey[Int]("The value to use for parameter P when generating Scrypt V3 wallets")
+
+    val ethWalletV3ScryptDkLen = settingKey[Int]("The derived key length parameter used when generating Scrypt V3 wallets")
+
+    val ethWalletV3Pbkdf2C = settingKey[Int]("The value to use for parameter C when generating pbkdf2 V3 wallets")
+
+    val ethWalletV3Pbkdf2DkLen = settingKey[Int]("The derived key length parameter used when generating pbkdf2 V3 wallets")
+
     // tasks
 
     val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
@@ -112,9 +124,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
 
-    val ethGethWallet = taskKey[Option[wallet.V3]]("Loads a V3 wallet from a geth keystore")
+    val ethGenWalletV3Pbkdf2 = taskKey[wallet.V3]("Generates a new pbkdf2 V3 wallet, using ethEntropySource as a source of randomness")
+
+    val ethGenWalletV3Scrypt = taskKey[wallet.V3]("Generates a new scrypt V3 wallet, using ethEntropySource as a source of randomness")
+
+    val ethGenWalletV3 = taskKey[wallet.V3]("Generates a new V3 wallet, using ethEntropySource as a source of randomness")
 
     val ethLoadCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
+
+    val ethLoadGethWallet = taskKey[Option[wallet.V3]]("Loads a V3 wallet from a geth keystore")
 
     val ethCompiledContractNames = taskKey[immutable.Set[String]]("Finds compiled contract names")
 
@@ -141,7 +159,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val CurAddress = EthAddress(CurAddrStr)
       val log = streams.value.log
       val is = interactionService.value
-      val mbWallet = ethGethWallet.value
+      val mbWallet = ethLoadGethWallet.value
 
       def updateCached : EthPrivateKey = {
         val credential = is.readLine(s"Enter passphrase or hex private key for address '${CurAddrStr}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
@@ -185,7 +203,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethGasOverrides := Map.empty[String,BigInt],
 
-      ethGethKeystore := clients.geth.KeyStore.directory.get,
+      ethGethKeystore := clients.geth.KeyStore.Directory.get,
 
       ethAddress := {
         val mbProperty = Option( System.getProperty( EthAddressSystemProperty ) )
@@ -200,6 +218,18 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethSoliditySource in Compile      := (sourceDirectory in Compile).value / "solidity",
 
       ethSolidityDestination in Compile := (ethTargetDir in Compile).value / "solidity",
+
+      ethWalletV3ScryptN := wallet.V3.Default.Scrypt.N,
+
+      ethWalletV3ScryptR := wallet.V3.Default.Scrypt.R,
+
+      ethWalletV3ScryptP := wallet.V3.Default.Scrypt.P,
+
+      ethWalletV3ScryptDkLen := wallet.V3.Default.Scrypt.DkLen,
+
+      ethWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
+
+      ethWalletV3Pbkdf2DkLen := wallet.V3.Default.Pbkdf2.DkLen,
 
       ethCompileSolidity in Compile := {
         val log            = streams.value.log
@@ -237,6 +267,40 @@ object SbtEthereumPlugin extends AutoPlugin {
         out
       },
 
+      ethGenWalletV3Pbkdf2 := {
+        val log   = streams.value.log
+        val c     = ethWalletV3Pbkdf2C.value
+        val dklen = ethWalletV3Pbkdf2DkLen.value
+
+        val is = interactionService.value
+        val keyPair = ethGenKeyPair.value
+        val entropySource = ethEntropySource.value
+
+        log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
+        val passphrase = readConfirmCredential(is, "Enter passphrase for new wallet: ")
+        val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
+        Repository.KeyStore.V3.storeWallet( w ).get // asserts success
+      },
+
+      ethGenWalletV3Scrypt := {
+        val log   = streams.value.log
+        val n     = ethWalletV3ScryptN.value
+        val r     = ethWalletV3ScryptR.value
+        val p     = ethWalletV3ScryptP.value
+        val dklen = ethWalletV3ScryptDkLen.value
+
+        val is = interactionService.value
+        val keyPair = ethGenKeyPair.value
+        val entropySource = ethEntropySource.value
+
+        log.info( s"Generating V3 wallet, alogorithm=scrypt, n=${n}, r=${r}, p=${p}, dklen=${dklen}" )
+        val passphrase = readConfirmCredential(is, "Enter passphrase for new wallet: ")
+        val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
+        Repository.KeyStore.V3.storeWallet( w ).get // asserts success
+      },
+
+      ethGenWalletV3 := ethGenWalletV3Scrypt.value,
+
       ethNextNonce := {
         val log            = streams.value.log
         val jsonRpcUrl     = ethJsonRpcUrl.value
@@ -258,7 +322,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethCompiledContractNames <<= ethCompiledContractNamesTask storeAs ethCompiledContractNames triggeredBy (ethCompileSolidity in Compile ),
 
-      ethGethWallet := {
+      ethLoadGethWallet := {
         val checked = warnOnZeroAddress.value
 
         val log = streams.value.log

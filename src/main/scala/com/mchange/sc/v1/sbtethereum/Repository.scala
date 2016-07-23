@@ -9,8 +9,12 @@ import scala.io.Codec
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.lang.borrow
 
+import com.mchange.sc.v2.util.Platform
+
 import com.mchange.sc.v1.consuela._
-import com.mchange.sc.v1.consuela.ethereum.{EthHash,EthTransaction}
+import com.mchange.sc.v1.consuela.ethereum.{clients,wallet,EthHash,EthTransaction}
+import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
+
 
 object Repository {
   private val TimestampPattern = "yyyy-MM-dd'T'HH-mm-ssZ"
@@ -46,19 +50,23 @@ object Repository {
     }
   }
 
+  final object KeyStore {
+    val DirName = "keystore"
+    lazy val Directory : Failable[File] = Repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
+
+    final object V3 {
+      val DirName = "V3"
+      lazy val Directory : Failable[File] = KeyStore.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
+
+      def storeWallet( w : wallet.V3 ) : Failable[wallet.V3] = Directory.flatMap( clients.geth.KeyStore.add( _, w ) )
+    }
+  }
+
   lazy val Directory : Failable[File] = {
     def defaultLocation = {
-      val tag = "sbt-ethereum: Repository"
-      val osName = Option( System.getProperty("os.name") ).map( _.toLowerCase ).toFailable(s"${tag}: Couldn't detect OS, System property 'os.name' not available.")
-      osName.flatMap { osn =>
-        if ( osn.indexOf( "win" ) >= 0 ) {
-          Option( System.getenv("APPDATA") ).map( ad => new java.io.File(ad, "sbt-ethereum") ).toFailable("${tag}: On Windows, but could not find environment variable 'APPDATA'")
-        } else if ( osn.indexOf( "mac" ) >= 0 ) {
-          Option( System.getProperty("user.home") ).map( home => new java.io.File( s"${home}/Library/Application Support/sbt-ethereum" ) ).toFailable("${tag}: On Mac, but could not find System property 'user.home'")
-        } else {
-          Option( System.getProperty("user.home") ).map( home => new java.io.File( s"${home}/.sbt-ethereum" ) ).toFailable("${tag}: On Unix, but could not find System property 'user.home'")
-        }
-      }
+      Platform.Current
+        .toFailable( "Could not detect the platform to determine the repository directory" )
+        .flatMap( _.appSupportDirectory( "sbt-ethereum" ) )
     }
 
     val out = {

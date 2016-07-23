@@ -173,41 +173,22 @@ package object sbtethereum {
     }
   }
 
-  // No longer necessary. This worked around a consuela bug, which permitted non-Homestead compatible signatures to be generated.
-  @tailrec
-  private [sbtethereum] def retryingSignSendTransaction(
-    client       : jsonrpc20.Client,
-    signer       : EthPrivateKey,
-    unsigned     : EthTransaction.Unsigned,
-    maxRetries   : Int,
-    currentRetry : Int = 0
-  )( implicit ec : ExecutionContext) : EthHash = {
-    val signed = unsigned.sign( signer )
+  private final val CantReadInteraction = "InteractionService failed to read"
 
-    val out = {
-      try { Await.result( client.eth.sendSignedTransaction( signed ), Duration.Inf ) }
-      catch {
-        case exc : jsonrpc20.Exception if ( currentRetry < maxRetries && considerInvalidSender( exc )) => {
-          DEBUG.log( s"JSON-RPC client rejected signed transaction. Signed Transaction: ${signed}, Base transaction hex: 0x${RLP.encode[EthTransaction]( signed.base ).hex}. Attempt ${currentRetry+1} / ${maxRetries}." )
-          null
-        }
-        case other : Throwable => throw other
+  private [sbtethereum] def readConfirmCredential( is : InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
+    if ( attempt < maxAttempts ) {
+      val credential = is.readLine( readPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
+      val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
+      if ( credential == confirmation ) {
+        credential
+      } else {
+        readConfirmCredential( is, readPrompt, confirmPrompt, maxAttempts, attempt + 1 )
       }
+    } else {
+      throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )
     }
-
-    if ( out != null ) out else retryingSignSendTransaction( client, signer, unsigned, maxRetries, currentRetry + 1 )
   }
 
-  // no longer necessary. workaround geth-not-accepting-all-signatures problem
-  private def considerInvalidSender( exc : jsonrpc20.Exception ) : Boolean = {
-
-    // we could use code == -32000, but I don't think these error codes
-    // are consistent across clients, alas
-    //
-    // this is very, um, inexact
-
-    exc.getMessage().toLowerCase.indexOf("sender") >= 0
-  }
 }
 
 
