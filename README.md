@@ -129,7 +129,7 @@ Follow the prompts (to enter and confirm a masked passphrase), and an account an
 The wallet will reside in the sbt-ethereum repository (see below), under `keystore/v3`, in a format and under filenames that are interoperable with `geth`.
 (You can copy these files directly into your `geth` keystore if you'd like.)
 
-** Note: Be sure to test a wallet before sending signficant value to it. And then back it up! **
+__Note: Be sure to test a wallet before sending signficant value to it. And then back it up!__
 
 One way to test your new wallet is with `ethSelfPing`, which causes the currently set `ethAddress` to send a zero ether transaction to itself.
 You'll need to send a small amount of ether to your new account, so that the ping can succeed.
@@ -166,7 +166,7 @@ sbt-ethereum's repository directory, located in
 - Mac: `~/Library/sbt-ethereum`
 - Other Unix: `~/.sbt-ethereum`
 
-** You should be sure to back up this directory, as any account wallets you have created in sbt-ethereum will be stored in the repository's keystore! **
+__You should be sure to back up this directory, as any account wallets you have created in sbt-ethereum will be stored in the repository's keystore!__
 
 For the moment (this may evolve rapidly), the repository contains sbt-ethereum's `transaction-log`, and a `keystore` directory.
 If you have generated new account wallets, those will be found under `keystore/V3` in a format and under filenames that are interoperable with `geth`.
