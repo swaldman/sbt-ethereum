@@ -175,14 +175,15 @@ package object sbtethereum {
 
   private final val CantReadInteraction = "InteractionService failed to read"
 
-  private [sbtethereum] def readConfirmCredential( is : InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
+  private [sbtethereum] def readConfirmCredential(  log : sbt.Logger, is : InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
     if ( attempt < maxAttempts ) {
       val credential = is.readLine( readPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
       val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
       if ( credential == confirmation ) {
         credential
       } else {
-        readConfirmCredential( is, readPrompt, confirmPrompt, maxAttempts, attempt + 1 )
+        log.warn("Entries did not match! Retrying.")
+        readConfirmCredential( log, is, readPrompt, confirmPrompt, maxAttempts, attempt + 1 )
       }
     } else {
       throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )

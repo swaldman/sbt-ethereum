@@ -292,7 +292,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val entropySource = ethEntropySource.value
 
         log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
-        val passphrase = readConfirmCredential(is, "Enter passphrase for new wallet: ")
+        val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
         val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
         Repository.KeyStore.V3.storeWallet( w ).get // asserts success
       },
@@ -309,7 +309,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val entropySource = ethEntropySource.value
 
         log.info( s"Generating V3 wallet, alogorithm=scrypt, n=${n}, r=${r}, p=${p}, dklen=${dklen}" )
-        val passphrase = readConfirmCredential(is, "Enter passphrase for new wallet: ")
+        val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
         val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
         Repository.KeyStore.V3.storeWallet( w ).get // asserts success
       },
