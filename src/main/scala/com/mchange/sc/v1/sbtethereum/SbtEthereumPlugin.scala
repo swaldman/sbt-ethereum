@@ -147,6 +147,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethRevealPrivateKeyForAddress = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
 
+    val ethSelfPing = taskKey[Option[ClientTransactionReceipt]]("Sends 0 ether from ethAddress to itself")
+
     val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
     // anonymous tasks
@@ -383,6 +385,23 @@ object SbtEthereumPlugin extends AutoPlugin {
         } else {
           throw new Exception("Not confirmed by user. Aborted.")
         }
+      },
+
+      ethSelfPing := {
+        val checked  = warnOnZeroAddress.value
+        val address  = ethAddress.value
+        val sendArgs = s" ${address} 0 wei"
+        val log = streams.value.log
+
+        val s = state.value
+	val extract = Project.extract(s)
+	val (_, result) = extract.runInputTask(ethSendEther, sendArgs, s)
+
+        val out = result
+        out.fold( log.warn("Ping failed! Our attempt to send 0 ether from '${address}' to itself may or may not eventually succeed, but we've timed out before hearing back." ) ) { receipt =>
+          log.info( s"Ping succeeded! Sent 0 ether from '${address}' to itself in transaction '0x${receipt.transactionHash.hex}'" )
+        }
+        out
       },
 
       ethSendEther := {
