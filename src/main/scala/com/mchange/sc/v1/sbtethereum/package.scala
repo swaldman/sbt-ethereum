@@ -22,6 +22,8 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,wallet,EthAddress,EthHash,EthPrivateKey,EthTransaction}
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc20.{ClientTransactionReceipt,MapStringCompilationContractFormat}
 import com.mchange.sc.v1.consuela.ethereum.encoding.RLP
+import com.mchange.sc.v1.consuela.ethereum.specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
+
 
 import play.api.libs.json._
 
@@ -104,6 +106,33 @@ package object sbtethereum {
         waitForSeq( writerFuts, count => s"Failed to write the output of some compilations. [${count} failures]" )
       }
     }
+  }
+
+  private [sbtethereum] def doGetBalance( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getBalance( address, blockNumber ), Duration.Inf ) )
+  }
+
+  case class EthValue( wei : BigInt, denominated : BigDecimal, denomination : Denomination )
+
+  private [sbtethereum] def doPrintingGetBalance(
+    log          : sbt.Logger,
+    jsonRpcUrl   : String,
+    address      : EthAddress,
+    blockNumber  : jsonrpc20.Client.BlockNumber,
+    denomination : Denomination
+  )( implicit ec : ExecutionContext ) : EthValue = {
+    import jsonrpc20.Client.BlockNumber._
+
+    val wei = doGetBalance( log, jsonRpcUrl, address, blockNumber )( ec )
+    val out = EthValue( wei, denomination.fromWei( wei ), denomination )
+    val msg = blockNumber match {
+      case Earliest       => s"${out.denominated} ${denomination.unitName} (at the earliest available block, address 0x${address.hex})"
+      case Latest         => s"${out.denominated} ${denomination.unitName} (as of the latest incorporated block, address 0x${address.hex})"
+      case Pending        => s"${out.denominated} ${denomination.unitName} (including currently pending transactions, address 0x${address.hex})"
+      case Quantity( bn ) => s"${out.denominated} ${denomination.unitName} (at block #${bn}, address 0x${address.hex})"
+    }
+    log.info(msg)
+    out
   }
 
   private [sbtethereum] def doGetDefaultGasPrice( log : sbt.Logger, jsonRpcUrl : String )( implicit ec : ExecutionContext ) : BigInt = {

@@ -197,4 +197,4 @@ Consider adding a `build.properties` file under `my-project/project` like this:
     sbt.version=0.13.12
 
 Even if your sbt-launcher is from an older version, this will cause `sbt` to manage your project
-from a sufficientlt recent sbt.
+from a sufficiently recent sbt.

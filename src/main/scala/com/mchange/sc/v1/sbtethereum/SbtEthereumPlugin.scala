@@ -28,6 +28,7 @@ import specification.Denominations
 
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
+import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
 
 import scala.collection._
 
@@ -121,6 +122,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // tasks
 
+    val ethBalance = inputKey[BigDecimal]("Computes the balance in ether of the address set as 'ethAddress'")
+
+    val ethBalanceFor = inputKey[BigDecimal]("Computes the balance in ether of a given address")
+
+    val ethBalanceInWei = inputKey[BigInt]("Computes the balance in wei of the address set as 'ethAddress'")
+
+    val ethBalanceInWeiFor = inputKey[BigInt]("Computes the balance in wei of a given address")
+
     val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
 
     val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
@@ -139,13 +148,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
-    val ethLoadWalletV3ForAddress = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
+    val ethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
     val ethCompiledContractNames = taskKey[immutable.Set[String]]("Finds compiled contract names")
 
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
-    val ethRevealPrivateKeyForAddress = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
+    val ethRevealPrivateKeyFor = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
 
     val ethSelfPing = taskKey[Option[ClientTransactionReceipt]]("Sends 0 ether from ethAddress to itself")
 
@@ -246,6 +255,40 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethWalletV3Pbkdf2DkLen := wallet.V3.Default.Pbkdf2.DkLen,
 
+      ethBalance := {
+        val checked = warnOnZeroAddress.value
+        val s = state.value
+        val addressStr = ethAddress.value
+	val extract = Project.extract(s)
+	val (_, result) = extract.runInputTask(ethBalanceFor, addressStr, s)
+        result
+      },
+
+      ethBalanceFor := {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val address = GenericAddressParser.parsed
+        val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Ether )
+        result.denominated
+      },
+
+      ethBalanceInWei := {
+        val checked = warnOnZeroAddress.value
+        val s = state.value
+        val addressStr = ethAddress.value
+	val extract = Project.extract(s)
+	val (_, result) = extract.runInputTask(ethBalanceInWeiFor, addressStr, s)
+        result
+      },
+
+      ethBalanceInWeiFor := {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val address = GenericAddressParser.parsed
+        val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Wei )
+        result.wei
+      },
+
       ethCompileSolidity in Compile := {
         val log            = streams.value.log
         val jsonRpcUrl     = ethJsonRpcUrl.value
@@ -337,7 +380,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethCompiledContractNames <<= ethCompiledContractNamesTask storeAs ethCompiledContractNames triggeredBy (ethCompileSolidity in Compile ),
 
-      ethLoadWalletV3ForAddress := {
+      ethLoadWalletV3For := {
         val keystoresV3 = ethKeystoresV3.value
         val log         = streams.value.log
 
@@ -358,13 +401,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         val s = state.value
         val addressStr = ethAddress.value
 	val extract = Project.extract(s)
-	val (_, result) = extract.runInputTask(ethLoadWalletV3ForAddress, addressStr, s)
+	val (_, result) = extract.runInputTask(ethLoadWalletV3For, addressStr, s)
         result
       },
 
       ethDeployOnly <<= ethDeployOnlyTask,
 
-      ethRevealPrivateKeyForAddress := {
+      ethRevealPrivateKeyFor := {
         val is = interactionService.value
         val log = streams.value.log
         
@@ -372,7 +415,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val s = state.value
 	val extract = Project.extract(s)
-	val (_, mbWallet) = extract.runInputTask(ethLoadWalletV3ForAddress, addressStr, s)
+	val (_, mbWallet) = extract.runInputTask(ethLoadWalletV3For, addressStr, s)
 
         val credential = is.readLine(s"Enter passphrase for address '0x${addressStr}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
         val privateKey = findPrivateKey( log, mbWallet, credential )
