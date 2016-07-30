@@ -67,7 +67,6 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private val EthSendEtherParser : Parser[( EthAddress, BigInt )] = {
-    def rounded( bd : BigDecimal ) = bd.round( bd.mc ) // work around absence of default rounded method in scala 2.10 BigDecimal
     def tupToTup( tup : ( ( EthAddress, BigDecimal ), String ) ) = ( tup._1._1, rounded(tup._1._2 * BigDecimal(Denominations.Multiplier.BigInt( tup._2 ))).toBigInt )
     (RecipientAddressParser ~ AmountParser ~ UnitParser).map( tupToTup )
   }
@@ -389,8 +388,8 @@ object SbtEthereumPlugin extends AutoPlugin {
           keystoresV3
             .map( wallet.V3.keyStoreMap )
             .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
-            if ( mb.isEmpty ) nextKeystore.get( address ) else mb
-          }
+              if ( mb.isEmpty ) nextKeystore.get( address ) else mb
+            }
         }
         log.info( out.fold( s"No V3 wallet found for '0x${address.hex}'" )( _ => s"V3 wallet found for '0x${address.hex}'" ) )
         out
@@ -454,8 +453,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val to = args._1
         val amount = args._2
         val nextNonce = ethNextNonce.value
+        val markup = ethGasMarkup.value
         val gasPrice = ethGasPrice.value
-        val gas = SendGasAmount
+        val gas = markupEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
         val privateKey = findCachePrivateKey.value
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
@@ -487,8 +487,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val contractsMap = ethLoadCompilations.value
         val hex = contractsMap( contractName ).code
         val nextNonce = ethNextNonce.value
+        val markup = ethGasMarkup.value
         val gasPrice = ethGasPrice.value
-        val gas = ethGasOverrides.value.getOrElse( contractName, doEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending ) )
+        val gas = ethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey.value
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )

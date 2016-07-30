@@ -147,6 +147,13 @@ package object sbtethereum {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data) ), Duration.Inf ) )
   }
 
+  private [sbtethereum] def rounded( bd : BigDecimal ) = bd.round( bd.mc ) // work around absence of default rounded method in scala 2.10 BigDecimal
+
+  private [sbtethereum] def markupEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : EthAddress, data : Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber, markup : Double )( implicit ec : ExecutionContext ) : BigInt = {
+    val rawEstimate = doEstimateGas( log, jsonRpcUrl, from, data, blockNumber )( ec )
+    rounded(BigDecimal(rawEstimate) * BigDecimal(1 + markup)).toBigInt
+  }
+
   private [sbtethereum] def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
     mbGethWallet.fold {
       log.info( "No wallet available. Trying passphrase as hex private key." )
