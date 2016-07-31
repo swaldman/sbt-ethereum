@@ -5,24 +5,63 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.reconcile.Reconcilable
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.ethereum.EthHash
+import com.mchange.sc.v2.sql.getMaybeSingleString
+
 import java.io.StringReader
 import java.sql.{Connection,PreparedStatement,Types}
 import javax.sql.DataSource
 
 object Schema_h2_v0 {
 
+  final val SchemaVersion = 0
+
   def recreateSchema( dataSource : DataSource ) = {
     borrow( dataSource.getConnection() ){ conn =>
       borrow( conn.createStatement() ){ stmt =>
+        stmt.executeUpdate( Table.Metadata.CreateSql )
         stmt.executeUpdate( Table.KnownContracts.CreateSql )
         stmt.executeUpdate( CreateDeployedContracts )
       }
+      Table.Metadata.ensureSchemaVersion( conn )
     }
   }
+
 
   private def codeHash( codeHex : String ) : String = EthHash.hash(codeHex.decodeHex).hex
 
   final object Table {
+    final object Metadata {
+      val CreateSql = "CREATE TABLE IF NOT EXISTS metadata ( key : VARCHAR(64) PRIMARY KEY, value : VARCHAR(64) NOT NULL )"
+
+      def ensureSchemaVersion( conn : Connection ) : Unit = {
+        val currentVersion = select( conn, Key.SchemaVersion )
+        currentVersion.fold( insert( conn, Key.SchemaVersion, SchemaVersion.toString ) ){ versionStr =>
+          val v = versionStr.toInt
+          if ( v != 0 ) throw new DatabaseVersionException( s"Expected version 0, found version ${v}, cannot migrate." )
+        }
+      }
+
+
+      def insert( conn : Connection, key : String, value : String ) : Unit = {
+        borrow( conn.prepareStatement( "INSERT INTO metadata ( key, value ) VALUES ( ?, ? )" ) ) { ps =>
+          ps.setString( 1, key )
+          ps.setString( 2, value )
+          ps.executeUpdate()
+        }
+      }
+
+      def select( conn : Connection, key : String ) : Option[String] = {
+        borrow( conn.prepareStatement( "SELECT value FROM metadata WHERE key = ?" ) ) { ps =>
+          ps.setString(1, key)
+          borrow( ps.executeQuery() )( getMaybeSingleString )
+        }
+      }
+
+      final object Key {
+        val SchemaVersion = "SchemaVersion"
+      }
+    }
+
     final object KnownContracts {
       private def _select( conn : Connection, codeHash : EthHash ) : KnownContracts.CachedContract = ???
 

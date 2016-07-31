@@ -31,6 +31,7 @@ package object sbtethereum {
   private implicit val logger = mlogger( "com.mchange.sc.v1.sbtethereum.package" ) 
 
   final class NoSolidityCompilerException( msg : String ) extends Exception( msg )
+  final class DatabaseVersionException( msg : String ) extends Exception( msg )
 
   private val SolFileRegex = """(.+)\.sol""".r
 
