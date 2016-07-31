@@ -62,6 +62,18 @@ object Repository {
     }
   }
 
+  final object Database {
+    val DirName = "database"
+    lazy val Directory : Failable[File] = Repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
+
+    final object h2_v0 {
+      val DirName = "h2_v0"
+      lazy val Directory : Failable[File] = Database.Directory.flatMap( dbDir => ensureUserOnlyDirectory( new File( dbDir, DirName ) ) )
+
+      lazy val JdbcUrl : Failable[String] = h2_v0.Directory.map( d => s"jdbc:h2:${d.getAbsolutePath}" )
+    }
+  }
+
   lazy val Directory : Failable[File] = {
     def defaultLocation = {
       Platform.Current
