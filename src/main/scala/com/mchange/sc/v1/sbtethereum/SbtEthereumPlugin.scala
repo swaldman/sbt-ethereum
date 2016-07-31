@@ -502,7 +502,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def contractNamesParser : (State, immutable.Set[String]) => Parser[String] = {
       (state, contractNames) => {
-        Space ~> token(NotSpace examples contractNames )
+        val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>") else contractNames
+        Space ~> token( NotSpace examples exSet )
       }
     }
 
