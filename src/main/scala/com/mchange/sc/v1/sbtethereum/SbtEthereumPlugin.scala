@@ -386,7 +386,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val address = GenericAddressParser.parsed
         val out = {
           keystoresV3
-            .map( wallet.V3.keyStoreMap )
+            .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
             .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
               if ( mb.isEmpty ) nextKeystore.get( address ) else mb
             }
