@@ -12,9 +12,10 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.util.Platform
 
 import com.mchange.sc.v1.consuela._
-import com.mchange.sc.v1.consuela.ethereum.{clients,wallet,EthHash,EthTransaction}
+import com.mchange.sc.v1.consuela.ethereum.{clients,wallet,EthHash,EthAddress,EthTransaction}
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 
+import com.mchange.v2.c3p0.ComboPooledDataSource
 
 object Repository {
   private val TimestampPattern = "yyyy-MM-dd'T'HH-mm-ssZ"
@@ -66,11 +67,50 @@ object Repository {
     val DirName = "database"
     lazy val Directory : Failable[File] = Repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
 
+    def markDeployContract(
+      deployerAddress : EthAddress,
+      transactionHash : EthHash,
+      name            : String,
+      code            : String,
+      source          : Option[String],
+      language        : Option[String],
+      languageVersion : Option[String],
+      compilerVersion : Option[String],
+      compilerOptions : Option[String],
+      abiDefinition   : Option[String],
+      userDoc         : Option[String],
+      developerDoc    : Option[String]
+    ) : Failable[EthHash] = {
+      import Schema_h2_v0.{markDeployContract => mdc, PrioritizeNewer}
+      h2_v0.DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection() ) { conn =>
+            mdc( conn, deployerAddress, transactionHash, name, code, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc, PrioritizeNewer )
+            transactionHash
+          }
+        }
+      }
+    }
+
     final object h2_v0 {
       val DirName = "h2_v0"
       lazy val Directory : Failable[File] = Database.Directory.flatMap( dbDir => ensureUserOnlyDirectory( new File( dbDir, DirName ) ) )
 
       lazy val JdbcUrl : Failable[String] = h2_v0.Directory.map( d => s"jdbc:h2:${d.getAbsolutePath}" )
+
+      lazy val DataSource : Failable[javax.sql.DataSource] = {
+        for {
+          _       <- Directory
+          jdbcUrl <- JdbcUrl
+        } yield {
+          val ds = new ComboPooledDataSource
+          ds.setDriverClass( "org.h2.Driver" )
+          ds.setJdbcUrl( jdbcUrl )
+          ds.setTestConnectionOnCheckout( true )
+          Schema_h2_v0.ensureSchema( ds )
+          ds
+        }
+      }
     }
   }
 

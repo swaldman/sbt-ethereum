@@ -485,15 +485,22 @@ object SbtEthereumPlugin extends AutoPlugin {
         val jsonRpcUrl = ethJsonRpcUrl.value
         val contractName = parser.parsed
         val contractsMap = ethLoadCompilations.value
-        val hex = contractsMap( contractName ).code
+        val compilation = contractsMap( contractName )
+        val hex = compilation.code
+        val address = EthAddress( ethAddress.value )
         val nextNonce = ethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = ethGasPrice.value
-        val gas = ethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
+        val gas = ethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, address, hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey.value
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Contract '${contractName}' deployed in transaction '0x${hash.hex}'." )
+        val dbCheck = {
+          import compilation.info._
+          Repository.Database.markDeployContract( address, hash, contractName, hex, mbSource, mbLanguage, mbLanguageVersion, mbCompilerVersion, mbCompilerOptions, mbAbiDefinition, mbUserDoc, mbDeveloperDoc )
+        }
+        dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
         val out = awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
         out.foreach( receipt => log.info( s"Contract '${contractName}' has been assigned address '0x${receipt.contractAddress.get.bytes.widen.hex}'." ) )
         out

@@ -4,29 +4,50 @@ import com.mchange.sc.v1.consuela._
 
 import com.mchange.sc.v1.reconcile.{Reconcilable,CantReconcileException}
 import com.mchange.sc.v2.lang.borrow
-import com.mchange.sc.v1.consuela.ethereum.EthHash
+import com.mchange.sc.v1.consuela.ethereum.{EthAddress,EthHash}
 import com.mchange.sc.v2.sql.getMaybeSingleString
 import com.mchange.sc.v1.log.MLevel._
 
 import java.io.StringReader
-import java.sql.{Connection,PreparedStatement,Types}
+import java.sql.{Connection,PreparedStatement,Types,Timestamp}
+
 import javax.sql.DataSource
 
 object Schema_h2_v0 {
 
   private implicit lazy val logger = mlogger( this )
 
-  final val SchemaVersion = 0
+  val SchemaVersion = 0
 
-  def recreateSchema( dataSource : DataSource ) = {
+  def ensureSchema( dataSource : DataSource ) = {
     borrow( dataSource.getConnection() ){ conn =>
       borrow( conn.createStatement() ){ stmt =>
         stmt.executeUpdate( Table.Metadata.CreateSql )
         stmt.executeUpdate( Table.KnownContracts.CreateSql )
-        stmt.executeUpdate( CreateDeployedContracts )
+        stmt.executeUpdate( Table.DeployedContracts.CreateSql )
       }
       Table.Metadata.ensureSchemaVersion( conn )
     }
+  }
+
+  def markDeployContract(
+    conn             : Connection,
+    deployerAddress  : EthAddress,
+    transactionHash  : EthHash,
+    name             : String,
+    code             : String,
+    source           : Option[String],
+    language         : Option[String],
+    languageVersion  : Option[String],
+    compilerVersion  : Option[String],
+    compilerOptions  : Option[String],
+    abiDefinition    : Option[String],
+    userDoc          : Option[String],
+    developerDoc     : Option[String],
+    policy           : IrreconcilableUpdatePolicy
+  ) : Unit = {
+    Table.KnownContracts.updateKnownContract( conn, name, code, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc, policy )
+    Table.DeployedContracts.insert( conn, code, deployerAddress, transactionHash )
   }
 
   sealed trait IrreconcilableUpdatePolicy;
@@ -42,7 +63,7 @@ object Schema_h2_v0 {
 
   final object Table {
     final object Metadata {
-      val CreateSql = "CREATE TABLE IF NOT EXISTS metadata ( key : VARCHAR(64) PRIMARY KEY, value : VARCHAR(64) NOT NULL )"
+      val CreateSql = "CREATE TABLE IF NOT EXISTS metadata ( key VARCHAR(64) PRIMARY KEY, value VARCHAR(64) NOT NULL )"
 
       def ensureSchemaVersion( conn : Connection ) : Unit = {
         val currentVersion = select( conn, Key.SchemaVersion )
@@ -283,18 +304,36 @@ object Schema_h2_v0 {
         }
       }
     }
+
+    final object DeployedContracts {
+      val CreateSql = {
+        """|CREATE TABLE IF NOT EXISTS deployed_contracts (
+           |   code_hash        VARCHAR(128) PRIMARY KEY,
+           |   deployer_address CHAR(40) NOT NULL,
+           |   txn_hash         CHAR(128) NOT NULL,
+           |   when             TIMESTAMP NOT NULL,
+           |   FOREIGN KEY ( code_hash ) REFERENCES known_contracts( code_hash )
+           |)""".stripMargin
+      }
+
+      private val InsertSql = {
+        """|INSERT INTO deployed_contracts ( code_hash, deployer_address, txn_hash, when )
+           |VALUES( ?, ?, ?, ? )""".stripMargin
+      }
+
+      def insert( conn : Connection, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Unit = {
+        val timestamp = new Timestamp( System.currentTimeMillis )
+        borrow( conn.prepareStatement( InsertSql ) ) { ps =>
+          ps.setString( 1, codeHash( code ).hex )
+          ps.setString( 2, deployerAddress.hex )
+          ps.setString( 3, transactionHash.hex )
+          ps.setTimestamp( 4, timestamp )
+          ps.executeUpdate()
+        }
+      }
+    }
   }
 
-
-  val CreateDeployedContracts = {
-    """|CREATE TABLE IF NOT EXISTS deployed_contracts (
-       |   code_hash        VARCHAR(128) PRIMARY KEY,
-       |   deployer_address CHAR(40),
-       |   txn_hash         CHAR(128),
-       |   when             TIMESTAMP,
-       |   FOREIGN KEY ( code_hash ) REFERENCES known_contracts( code_hash )
-       |)""".stripMargin
-  }
 
 
 }

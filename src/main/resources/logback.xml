@@ -22,6 +22,14 @@
     <appender-ref ref="FILE" />
   </logger>
 
+  <logger name="com.mchange.v2.c3p0" level="INFO" additivity="false">
+    <appender-ref ref="FILE" />
+  </logger>
+
+  <logger name="com.mchange.v2.resourcepool" level="INFO" additivity="false">
+    <appender-ref ref="FILE" />
+  </logger>
+
   <root level="INFO">          
     <appender-ref ref="STDOUT" />
     <appender-ref ref="FILE" />
