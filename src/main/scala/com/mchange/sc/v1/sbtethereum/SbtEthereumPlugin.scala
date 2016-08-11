@@ -68,6 +68,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     def tupToTup( tup : ( ( EthAddress, BigDecimal ), String ) ) = ( tup._1._1, rounded(tup._1._2 * BigDecimal(Denominations.Multiplier.BigInt( tup._2 ))).toBigInt )
     (RecipientAddressParser ~ AmountParser ~ UnitParser).map( tupToTup )
   }
+
+  private val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
+
   private val Zero256 = Unsigned256( 0 )
 
   private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
@@ -127,6 +130,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
 
+    val ethCompiledContractNames = taskKey[immutable.Set[String]]("Finds compiled contract names")
+
     val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
 
     val ethGasPrice = taskKey[BigInt]("Finds the current default gas price")
@@ -145,11 +150,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
-    val ethCompiledContractNames = taskKey[immutable.Set[String]]("Finds compiled contract names")
-
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
     val ethRevealPrivateKeyFor = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
+
+    val ethQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
 
     val ethSelfPing = taskKey[Option[ClientTransactionReceipt]]("Sends 0 ether from ethAddress to itself")
 
@@ -400,6 +405,43 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethDeployOnly <<= ethDeployOnlyTask,
+
+      ethQueryRepositoryDatabase := {
+        val log   = streams.value.log
+        val query = DbQueryParser.parsed
+
+        // XXX: should this be modified to be careful about DDL / inserts / updates / deletes etc?
+        //      for now lets be conservative and restrict to SELECT
+        if (! query.toLowerCase.startsWith("select")) {
+          throw new Exception("For now, ethQueryRepositoryDatabase supports on SELECT statements. Sorry!")
+        }
+
+        val foundDataSource = {
+          Repository.Database.DataSource.map { ds =>
+            borrow( ds.getConnection() ) { conn =>
+              borrow( conn.createStatement() ) { stmt =>
+                borrow( stmt.executeQuery( query ) ) { rs =>
+                  val rsmd = rs.getMetaData
+                  val numCols = rsmd.getColumnCount()
+                  val colRange = (1 to numCols)
+                  val displaySizes = colRange.map( rsmd.getColumnDisplaySize )
+                  val labels = colRange.map( rsmd.getColumnLabel )
+
+                  // XXX: make this pretty. someday.
+                  log.info( labels.mkString(", ") )
+                  while ( rs.next ) {
+                    log.info( colRange.map( rs.getString ).mkString(", ") )
+                  }
+                }
+              }
+            }
+          }
+        }
+        if ( foundDataSource.isFailed ) {
+          log.warn("Failed to find DataSource!")
+          log.warn( foundDataSource.fail.toString )
+        }
+      },
 
       ethRevealPrivateKeyFor := {
         val is = interactionService.value

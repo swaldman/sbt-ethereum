@@ -92,6 +92,8 @@ object Repository {
       }
     }
 
+    lazy val DataSource = h2_v0.DataSource
+
     final object h2_v0 {
       val DirName = "h2_v0"
       lazy val Directory : Failable[File] = Database.Directory.flatMap( dbDir => ensureUserOnlyDirectory( new File( dbDir, DirName ) ) )
