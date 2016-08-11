@@ -52,8 +52,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val PollAttempts = 9
 
-  private val SendGasAmount = G.transaction
-
   private val GenericAddressParser = createAddressParser("<address-hex>")
 
   private val RecipientAddressParser = createAddressParser("<recipient-address-hex>")
@@ -96,8 +94,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethGasMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
 
     val ethKeystoresV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
-
-    val ethJsonRpcVersion = settingKey[String]("Version of Ethereum's JSON-RPC spec the build should work with")
 
     val ethJsonRpcUrl = settingKey[String]("URL of the Ethereum JSON-RPC service build should work with")
 
@@ -213,7 +209,6 @@ object SbtEthereumPlugin extends AutoPlugin {
      */ 
     lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
 
-      ethJsonRpcVersion := "2.0",
       ethJsonRpcUrl     := "http://localhost:8545",
 
       ethEntropySource := new java.security.SecureRandom,
