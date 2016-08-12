@@ -17,6 +17,11 @@ object Schema_h2_v0 {
 
   private implicit lazy val logger = mlogger( this )
 
+  def setClob( ps : PreparedStatement, i : Int, str : String ) = ps.setClob( i, new StringReader( str ) )
+  def setClobOption( ps : PreparedStatement, i : Int, mbs : Option[String] ) = mbs.fold( ps.setNull( i, Types.CLOB ) ){ str =>  setClob( ps, i, str ) }
+  def setVarcharOption( ps : PreparedStatement, i : Int, mbs : Option[String] ) = mbs.fold( ps.setNull( i, Types.VARCHAR ) ){ str =>  ps.setString( i, str ) }
+  def setTimestampOption( ps : PreparedStatement, i : Int, mbl : Option[Long] ) = mbl.fold( ps.setNull( i, Types.TIMESTAMP ) ){ l =>  ps.setTimestamp( i, new Timestamp(l) ) }
+
   val SchemaVersion = 0
 
   def ensureSchema( dataSource : DataSource ) = {
@@ -25,17 +30,17 @@ object Schema_h2_v0 {
         stmt.executeUpdate( Table.Metadata.CreateSql )
         stmt.executeUpdate( Table.KnownContracts.CreateSql )
         stmt.executeUpdate( Table.DeployedContracts.CreateSql )
+        //stmt.executeUpdate( Table.Stubs.CreateSql )
       }
       Table.Metadata.ensureSchemaVersion( conn )
     }
   }
 
-  def markDeployContract(
+  /*
+  def createUpdateKnownContract(
     conn             : Connection,
-    deployerAddress  : EthAddress,
-    transactionHash  : EthHash,
-    name             : String,
     code             : String,
+    name             : Option[String],
     source           : Option[String],
     language         : Option[String],
     languageVersion  : Option[String],
@@ -45,19 +50,23 @@ object Schema_h2_v0 {
     userDoc          : Option[String],
     developerDoc     : Option[String],
     policy           : IrreconcilableUpdatePolicy
-  ) : Unit = {
-    Table.KnownContracts.updateKnownContract( conn, name, code, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc, policy )
-    Table.DeployedContracts.insert( conn, code, deployerAddress, transactionHash )
+  ) : Boolean = {
+    Table.KnownContracts.updateKnownContract( conn, code, name, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc, policy )
   }
 
-  sealed trait IrreconcilableUpdatePolicy;
-  final case object UseOriginal        extends IrreconcilableUpdatePolicy
-  final case object UseNewer           extends IrreconcilableUpdatePolicy
-  final case object PrioritizeOriginal extends IrreconcilableUpdatePolicy
-  final case object PrioritizeNewer    extends IrreconcilableUpdatePolicy
-  final case object Throw              extends IrreconcilableUpdatePolicy
+  def recordContractDeployment(
+    conn             : Connection,
+    contractAddress  : EthAddress,
+    deployerAddress  : EthAddress,
+    transactionHash  : EthHash
+  ) : Unit = {
+    Table.DeployedContracts.insert( conn, code, contractAddress, deployerAddress, transactionHash )
+  }
 
-  final class ContractMergeException( message : String, cause : Throwable = null ) extends Exception( message, cause )
+  def createUpdateStub( conn : Connection, address : EthAddress, abiDefinition : Option[String], name : Option[String], policy : IrreconcilableUpdatePolicy ) : Boolean = {
+    Table.Stubs.updateStub( conn, address, abiDefinition, name, policy )
+  }
+  */ 
 
   private def codeHash( codeHex : String ) : EthHash = EthHash.hash(codeHex.decodeHex)
 
@@ -109,7 +118,7 @@ object Schema_h2_v0 {
             if ( rs.next() ) {
               val ok = CachedContract(
                 rs.getString(1),
-                rs.getString(2),
+                Option( rs.getString( 2) ),
                 Option( rs.getString( 3) ),
                 Option( rs.getString( 4) ),
                 Option( rs.getString( 5) ),
@@ -119,7 +128,7 @@ object Schema_h2_v0 {
                 Option( rs.getString( 9) ),
                 Option( rs.getString(10) )
               )
-              assert(!rs.next(), s"Huh? More than one row with the same codeHash in entries? [codeHash=${codeHash.hex}]" )
+              assert(!rs.next(), s"Huh? More than one row with the same codeHash in known_contracts? [codeHash=${codeHash.hex}]" )
               Some( ok )
             } else {
               None
@@ -128,10 +137,10 @@ object Schema_h2_v0 {
         }
       }
 
-      def updateKnownContract( 
+      def createUpdateKnownContract( 
         conn             : Connection,
-        name             : String,
         code             : String,
+        name             : Option[String],
         source           : Option[String],
         language         : Option[String],
         languageVersion  : Option[String],
@@ -141,31 +150,34 @@ object Schema_h2_v0 {
         userDoc          : Option[String],
         developerDoc     : Option[String],
         policy           : IrreconcilableUpdatePolicy = Throw
-      ) : Unit = {
+      ) : Boolean = {
         val ch = codeHash(code)
         val mbAlreadyKnownContract = _select( conn, ch )
-        mbAlreadyKnownContract.fold( insert( conn, name, code, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc ) ) { akc =>
-          val newc = CachedContract( name, code, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc )
-          val reconciled = try {
-            newc.reconcile( akc )
-          } catch {
-            case cre : CantReconcileException => {
+        mbAlreadyKnownContract.fold( merge( conn, code, name, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc ) ) { akc =>
+          val newc = CachedContract( code, name, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc )
+          try {
+            val next = newc reconcile akc
+            akc != next
+          } catch { 
+            case cre : CantReconcileException => { // we know newc and akc are different, or the reconciliztion would have succeeded
               DEBUG.log( s"Attempt to reconcile ${newc} with ${akc} failed.", cre )
               policy match {
                 case UseOriginal => {
                   /* nothing to do */
+                  false
                 }
                 case UseNewer => {
-                  delete( conn, ch )
-                  insert( conn, newc )
+                  merge( conn, newc )
+                  true
                 }
                 case PrioritizeOriginal => {
-                  delete( conn, ch )
-                  insert( conn, akc reconcileOver newc )
+                  val next = akc reconcileOver newc
+                  merge( conn, next )
+                  akc != next
                 }
                 case PrioritizeNewer => {
-                  delete( conn, ch )
-                  insert( conn, newc reconcileOver akc )
+                  merge( conn, newc reconcileOver akc )
+                  true
                 } 
                 case Throw => {
                   throw new ContractMergeException("Could not merge old and new versions of contract metadata for contracts with identical code", cre )
@@ -176,14 +188,14 @@ object Schema_h2_v0 {
         }
       }
 
-      def insert( conn : Connection, cc : CachedContract ) : Unit = {
-        insert( conn, cc.name, cc.code, cc.source, cc.language, cc.languageVersion, cc.compilerVersion, cc.compilerOptions, cc.abiDefinition, cc.userDoc, cc.developerDoc )
+      private def merge( conn : Connection, cc : CachedContract ) : Boolean = {
+        merge( conn, cc.code, cc.name, cc.source, cc.language, cc.languageVersion, cc.compilerVersion, cc.compilerOptions, cc.abiDefinition, cc.userDoc, cc.developerDoc )
       }
 
-      def insert(
+      private def merge(
         conn             : Connection,
-        name             : String,
         code             : String,
+        name             : Option[String],
         source           : Option[String],
         language         : Option[String],
         languageVersion  : Option[String],
@@ -192,36 +204,34 @@ object Schema_h2_v0 {
         abiDefinition    : Option[String],
         userDoc          : Option[String],
         developerDoc     : Option[String]
-      ) : Unit = {
-        borrow( conn.prepareStatement( InsertSql ) ){ ps =>
+      ) : Boolean = {
+        borrow( conn.prepareStatement( MergeSql ) ){ ps =>
 
-          def setClob( i : Int, str : String ) = ps.setClob( i, new StringReader( str ) )
-          def setClobOption( i : Int, mbs : Option[String] ) = mbs.fold( ps.setNull( i, Types.CLOB ) ){ str =>  setClob( i, str ) }
-          def setVarcharOption( i : Int, mbs : Option[String] ) = mbs.fold( ps.setNull( i, Types.VARCHAR ) ){ str =>  ps.setString( i, str ) }
-
-          ps.setString(     1, codeHash(code).hex )
-          ps.setString(     2, name )
-          setClob(          3, code )
-          setClobOption(    4, source )
-          setVarcharOption( 5, language )
-          setVarcharOption( 6, languageVersion )
-          setVarcharOption( 7, compilerVersion )
-          setVarcharOption( 8, compilerOptions )
-          setClobOption(    9, abiDefinition )
-          setClobOption(   10, userDoc )
-          setClobOption(   11, developerDoc )
+          ps.setString(          1, codeHash(code).hex )
+          setClob(          ps,  2, code )
+          setVarcharOption( ps,  3, name )
+          setClobOption(    ps,  4, source )
+          setVarcharOption( ps,  5, language )
+          setVarcharOption( ps,  6, languageVersion )
+          setVarcharOption( ps,  7, compilerVersion )
+          setVarcharOption( ps,  8, compilerOptions )
+          setClobOption(    ps,  9, abiDefinition )
+          setClobOption(    ps, 10, userDoc )
+          setClobOption(    ps, 11, developerDoc )
 
           ps.executeUpdate()
+
+          true
         }
       }
 
-      private val InsertSql = {
-        """|INSERT INTO known_contracts ( code_hash, name, code, source, language, language_version, compiler_version, compiler_options, abi_definition, user_doc, developer_doc )
+      private val MergeSql = {
+        """|MERGE INTO known_contracts ( code_hash, code, name, source, language, language_version, compiler_version, compiler_options, abi_definition, user_doc, developer_doc )
            |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
       }
 
       private val SelectSql = {
-        """|SELECT name, code, source, language, language_version, compiler_version, compiler_options, abi_definition, user_doc, developer_doc
+        """|SELECT code, name, source, language, language_version, compiler_version, compiler_options, abi_definition, user_doc, developer_doc
            |FROM known_contracts WHERE code_hash = ?""".stripMargin
       }
 
@@ -230,8 +240,8 @@ object Schema_h2_v0 {
       val CreateSql = {
         """|CREATE TABLE IF NOT EXISTS known_contracts (
            |   code_hash         CHAR(128) PRIMARY KEY,
-           |   name              VARCHAR(128) NOT NULL,
            |   code              CLOB NOT NULL,
+           |   name              VARCHAR(128),
            |   source            CLOB,
            |   language          VARCHAR(64),
            |   language_version  VARCHAR(64),
@@ -244,8 +254,8 @@ object Schema_h2_v0 {
       }
 
       private case class CachedContract(
-        name            : String,
         code            : String,
+        name            : Option[String],
         source          : Option[String],
         language        : Option[String],
         languageVersion : Option[String],
@@ -260,9 +270,8 @@ object Schema_h2_v0 {
           def n( str : String ) = s"${str.length}.${str}"
           def xo( mbstr : Option[String] ) = mbstr.fold( "-1" )( str => n(str) )
 
-          n( codeHash( code ).hex ) +
-          n( name ) +
-          n(code) +
+          n( code) +
+          xo( name ) +
           xo(source) +
           xo(language) +
           xo(languageVersion) +
@@ -275,8 +284,8 @@ object Schema_h2_v0 {
 
         def reconcile(other : CachedContract) : CachedContract = {
           CachedContract(
-            Reconcilable.reconcileLeaf( this.name, other.name ),
             Reconcilable.reconcileLeaf( this.code, other.code ),
+            Reconcilable.reconcileLeaf( this.name, other.name ),
             Reconcilable.reconcileLeaf( this.source, other.source ),
             Reconcilable.reconcileLeaf( this.language, other.language ),
             Reconcilable.reconcileLeaf( this.languageVersion, other.languageVersion ),
@@ -290,8 +299,8 @@ object Schema_h2_v0 {
 
         def reconcileOver(other : CachedContract) : CachedContract = {
           CachedContract(
-            Reconcilable.reconcileOverLeaf( this.name, other.name ),
             Reconcilable.reconcileOverLeaf( this.code, other.code ),
+            Reconcilable.reconcileOverLeaf( this.name, other.name ),
             Reconcilable.reconcileOverLeaf( this.source, other.source ),
             Reconcilable.reconcileOverLeaf( this.language, other.language ),
             Reconcilable.reconcileOverLeaf( this.languageVersion, other.languageVersion ),
@@ -309,33 +318,160 @@ object Schema_h2_v0 {
       val CreateSql = {
         """|CREATE TABLE IF NOT EXISTS deployed_contracts (
            |   code_hash        VARCHAR(128) PRIMARY KEY,
-           |   deployer_address CHAR(40) NOT NULL,
-           |   txn_hash         CHAR(128) NOT NULL,
-           |   when             TIMESTAMP NOT NULL,
+           |   address          CHAR(40) NOT NULL,
+           |   deployer_address CHAR(40),
+           |   txn_hash         CHAR(128),
+           |   deployed_when    TIMESTAMP,
            |   FOREIGN KEY ( code_hash ) REFERENCES known_contracts( code_hash )
            |)""".stripMargin
       }
 
-      private val InsertSql = {
-        """|INSERT INTO deployed_contracts ( code_hash, deployer_address, txn_hash, when )
-           |VALUES( ?, ?, ?, ? )""".stripMargin
+      private val MergeSql = {
+        """|MERGE INTO deployed_contracts ( code_hash, address, deployer_address, txn_hash, deployed_when )
+           |VALUES( ?, ?, ?, ?, ? )""".stripMargin
       }
 
-      def insert( conn : Connection, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Unit = {
-        val timestamp = new Timestamp( System.currentTimeMillis )
-        borrow( conn.prepareStatement( InsertSql ) ) { ps =>
+      def insertExistingDeployment( conn : Connection, code : String, contractAddress : EthAddress ) : Unit = {
+        borrow( conn.prepareStatement( MergeSql ) ) { ps =>
           ps.setString( 1, codeHash( code ).hex )
-          ps.setString( 2, deployerAddress.hex )
-          ps.setString( 3, transactionHash.hex )
-          ps.setTimestamp( 4, timestamp )
+          ps.setString( 2, contractAddress.hex )
+          ps.setNull( 3, Types.CHAR )
+          ps.setNull( 4, Types.CHAR )
+          ps.setNull( 5, Types.TIMESTAMP )
+          ps.executeUpdate()
+        }
+      }
+
+      def insertNewDeployment( conn : Connection, code : String, contractAddress : EthAddress, deployerAddress : EthAddress, transactionHash : EthHash ) : Unit = {
+        val timestamp = new Timestamp( System.currentTimeMillis )
+        borrow( conn.prepareStatement( MergeSql ) ) { ps =>
+          ps.setString( 1, codeHash( code ).hex )
+          ps.setString( 2, contractAddress.hex )
+          ps.setString( 3, deployerAddress.hex )
+          ps.setString( 4, transactionHash.hex )
+          ps.setTimestamp( 5, timestamp )
           ps.executeUpdate()
         }
       }
     }
+
+    /*
+    final object Stubs {
+
+      case class CachedStub( address : EthAddress, abiDefinition : Option[String], name : Option[String] ) extends Reconcilable[CachedContract] {
+        def reconcile(other : CachedStub) : CachedStub = {
+          CachedStub(
+            Reconcilable.reconcileLeaf( this.address, other.address ),
+            Reconcilable.reconcileLeaf( this.abiDefinition, other.abiDefinition ),
+            Reconcilable.reconcileLeaf( this.name, other.name )
+          )
+        }
+        def reconcileOver(other : CachedStub) : CachedStub = {
+          CachedStub(
+            Reconcilable.reconcileOverLeaf( this.address, other.address ),
+            Reconcilable.reconcileOverLeaf( this.abiDefinition, other.abiDefinition ),
+            Reconcilable.reconcileOverLeaf( this.name, other.name )
+          )
+        }
+
+      }
+
+      val CreateSql = {
+        """|CREATE TABLE IF NOT EXISTS stubs (
+           |   address          CHAR(40) PRIMARY KEY,
+           |   abi_definition   CLOB NOT NULL,
+           |   name             VARCHAR(128),
+           |)""".stripMargin
+      }
+
+      private val InsertSql = {
+        """|INSERT INTO stubs ( address, abi_definition, name )
+           |VALUES( ?, ?, ? )""".stripMargin
+      
+      }
+
+      private val SelectSql = "SELECT address, abi_definition, name FROM stubs WHERE address = ?"
+
+      private def _select( conn : Connection, address : EthAddress ) : Option[CachedStub] = {
+        borrow( conn.prepareStatement( SelectSql ) ) { ps =>
+          ps.setString(1, address.hex)
+          borrow( ps.executeQuery ) { rs =>
+            if ( rs.next() ) {
+              val ok = CachedStub(
+                EthAddress( rs.getString(1) ),
+                Option( rs.getString( 2) ),
+                Option( rs.getString( 3) ),
+              )
+              assert(!rs.next(), s"Huh? More than one row with the same address in stubs? [address=${address.hex}]" )
+              Some( ok )
+            } else {
+              None
+            }
+          
+        }
+      }
+
+      private def insert( conn : Connection, address : EthAddress, abiDefinition : String, name : Option[String] ) : Boolean = {
+        borrow( conn.prepareStatement( InsertSql ) ){ ps =>
+
+          ps.setString(          1, address.hex )
+          setClob(          ps,  2, abiDefinition )
+          setVarcharOption( ps,  3, name )
+
+          ps.executeUpdate()
+
+          true
+        }
+      }
+
+      def updateStub( 
+        conn          : Connection,
+        address       : EthAddress,
+        abiDefinition : Option[String],
+        name          : Option[String],
+        policy        : IrreconcilableUpdatePolicy = Throw
+      ) : Boolean = {
+        val mbAlreadyKnown = _select( conn, address.hex )
+        mbAlreadyKnown.fold( insert( conn, address.hex, abiDefinition, name ) ) { ak =>
+          val newStub = CachedStub( address, Some( abiDefinition ), Some( name ) )
+          val reconciled = try {
+            val next = newStub reconcile ak
+            ak != next
+          } catch { 
+            case cre : CantReconcileException => { // we know newStub and ak are different, or the reconciliztion would have succeeded
+              DEBUG.log( s"Attempt to reconcile ${newStub} with ${ak} failed.", cre )
+              policy match {
+                case UseOriginal => {
+                  /* nothing to do */
+                  false
+                }
+                case UseNewer => {
+                  delete( conn, ch )
+                  insert( conn, newStub )
+                  true
+                }
+                case PrioritizeOriginal => {
+                  val next = ak reconcileOver newStb
+                  delete( conn, ch )
+                  insert( conn, next )
+                  ak != next
+                }
+                case PrioritizeNewer => {
+                  delete( conn, ch )
+                  insert( conn, newc reconcileOver akc )
+                  true
+                } 
+                case Throw => {
+                  throw new ContractMergeException("Could not merge old and new versions of contract stub information", cre )
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    */
   }
-
-
-
 }
 
 

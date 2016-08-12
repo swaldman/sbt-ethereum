@@ -1,10 +1,12 @@
 package com.mchange.sc.v1.sbtethereum
 
 import java.io.{BufferedOutputStream,File,FileOutputStream,OutputStreamWriter,PrintWriter}
+import java.sql.Connection
 import java.text.SimpleDateFormat
 import java.util.Date
 
 import scala.io.Codec
+import scala.util.control.NonFatal
 
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.lang.borrow
@@ -12,7 +14,7 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.util.Platform
 
 import com.mchange.sc.v1.consuela._
-import com.mchange.sc.v1.consuela.ethereum.{clients,wallet,EthHash,EthAddress,EthTransaction}
+import com.mchange.sc.v1.consuela.ethereum.{clients,jsonrpc20,wallet,EthHash,EthAddress,EthTransaction}
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 
 import com.mchange.v2.c3p0.ComboPooledDataSource
@@ -67,28 +69,89 @@ object Repository {
     val DirName = "database"
     lazy val Directory : Failable[File] = Repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
 
-    def markDeployContract(
-      deployerAddress : EthAddress,
-      transactionHash : EthHash,
-      name            : String,
-      code            : String,
-      source          : Option[String],
-      language        : Option[String],
-      languageVersion : Option[String],
-      compilerVersion : Option[String],
-      compilerOptions : Option[String],
-      abiDefinition   : Option[String],
-      userDoc         : Option[String],
-      developerDoc    : Option[String]
-    ) : Failable[EthHash] = {
-      import Schema_h2_v0.{markDeployContract => mdc, PrioritizeNewer}
+    def insertNewDeployment( code : String, contractAddress : EthAddress, deployerAddress : EthAddress, transactionHash : EthHash ) : Failable[Unit] = {
+      import Schema_h2_v0._
+
       h2_v0.DataSource.flatMap { ds =>
         Failable {
-          borrow( ds.getConnection() ) { conn =>
-            mdc( conn, deployerAddress, transactionHash, name, code, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc, PrioritizeNewer )
-            transactionHash
+          borrow( ds.getConnection() ){ conn =>
+            Table.DeployedContracts.insertNewDeployment( conn, code, contractAddress, deployerAddress, transactionHash )
           }
         }
+      }
+    }
+
+    /*
+     *  this could be a bit less convoluted.
+     * 
+     *  okay. it could be a lot less convoluted.
+     */ 
+    def updateContractDatabase( compilations : Map[String,jsonrpc20.Compilation.Contract], stubNameToAddressCodes : Map[String,Map[EthAddress,String]], policy : IrreconcilableUpdatePolicy ) : Failable[Boolean] = {
+      import Schema_h2_v0._
+
+      val ( compiledContracts, stubs ) = compilations.partition { case ( name, compilation ) => compilation.code.decodeHex.length > 0 }
+
+      def updateKnownContracts( conn : Connection ) : Failable[Boolean] = {
+        def doUpdate( conn : Connection, contractTuple : Tuple2[String,jsonrpc20.Compilation.Contract] ) : Failable[Boolean] = Failable {
+          val name        = contractTuple._1
+          val compilation = contractTuple._2
+          val code        = compilation.code
+
+          import compilation.info._
+
+          Table.KnownContracts.createUpdateKnownContract( conn, code, Some(name), mbSource, mbLanguage, mbLanguageVersion, mbCompilerVersion, mbCompilerOptions, mbAbiDefinition, mbUserDoc, mbDeveloperDoc, policy )
+        }
+        compiledContracts.toSeq.foldLeft( succeed( false ) )( ( failable, tup ) => failable.flatMap( last => doUpdate( conn, tup ).map( next => last || next ) ) )
+      }
+      def updateStubs( conn : Connection ) : Failable[Boolean] = {
+        def doUpdate( address : EthAddress, code : String, name : String, abiDefinition : String ) : Failable[Boolean] = {
+          for {
+            check0 <- Failable( Table.KnownContracts.createUpdateKnownContract( conn, code, Some(name), None, None, None, None, None, Some( abiDefinition ), None, None, policy ) )
+            check1 <- Failable( Table.DeployedContracts.insertExistingDeployment( conn, code, address ) )
+          } yield {
+            check0
+          }
+        }
+        stubNameToAddressCodes.toSeq.foldLeft( succeed( false ) ) { case ( last, ( name, addressToCode ) ) =>
+          last.flatMap { l =>
+            val fabi = {
+              (for {
+                compilation <- stubs.get( name )
+                out         <- compilation.info.mbAbiDefinition
+              } yield {
+                out
+              }).toFailable( s"Could not find abi definition for '${name}' in stub compilations. [ present in compilations? ${compilations.contains(name)}; zero-code stub? ${stubs.contains(name)} ]" )
+            }
+            val fb = fabi.flatMap { abi =>
+              addressToCode.toSeq.foldLeft( succeed( false ) ){ ( failable, tup ) =>
+                failable.flatMap( last => doUpdate( tup._1, tup._2, name, abi ).map( next => last || next ) )
+              }
+            }
+            fb.map( b => l || b )
+          }
+        }
+      }
+
+      h2_v0.DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection() ){ conn =>
+            conn.setAutoCommit( true )
+            try {
+              for {
+                knownContractsCheck <- updateKnownContracts( conn )
+                stubsCheck          <- updateStubs( conn )
+              } yield {
+                conn.commit()
+                knownContractsCheck || stubsCheck
+              }
+            } catch {
+              case NonFatal( t ) => {
+                conn.rollback()
+                throw t
+              }
+            }
+          }
+        }.flatten
       }
     }
 

@@ -53,6 +53,15 @@ package object sbtethereum {
     }
   }
 
+  sealed trait IrreconcilableUpdatePolicy;
+  final case object UseOriginal        extends IrreconcilableUpdatePolicy
+  final case object UseNewer           extends IrreconcilableUpdatePolicy
+  final case object PrioritizeOriginal extends IrreconcilableUpdatePolicy
+  final case object PrioritizeNewer    extends IrreconcilableUpdatePolicy
+  final case object Throw              extends IrreconcilableUpdatePolicy
+
+  final class ContractMergeException( message : String, cause : Throwable = null ) extends Exception( message, cause )
+
   private [sbtethereum] def doCompileSolidity( log : sbt.Logger, jsonRpcUrl : String, solSource : File, solDestination : File )( implicit ec : ExecutionContext ) : Unit = {
     def solToJson( filename : String ) : String = filename match {
       case SolFileRegex( base ) => base + ".json"
@@ -111,6 +120,10 @@ package object sbtethereum {
 
   private [sbtethereum] def doGetBalance( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getBalance( address, blockNumber ), Duration.Inf ) )
+  }
+
+  private [sbtethereum] def doCodeForAddress( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : immutable.Seq[Byte] = {
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getCode( address, blockNumber ), Duration.Inf ) )
   }
 
   case class EthValue( wei : BigInt, denominated : BigDecimal, denomination : Denomination )

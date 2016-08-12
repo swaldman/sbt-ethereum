@@ -98,7 +98,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethKeystoresV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
 
+    val ethKnownStubAddresses = settingKey[immutable.Map[String,immutable.Set[String]]]("Names of stubs that might be generated in compilation mapped to addresses known to conform to their ABIs.")
+
     val ethJsonRpcUrl = settingKey[String]("URL of the Ethereum JSON-RPC service build should work with")
+
+    val ethContractDatabaseUpdatePolicy = settingKey[IrreconcilableUpdatePolicy]("Defines how inconsistencies between newly compiled artifacts and items already in the contract database are resolved")
 
     val ethTargetDir = settingKey[File]("Location in target directory where ethereum artifacts will be placed")
 
@@ -144,6 +148,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethGenWalletV3 = taskKey[wallet.V3]("Generates a new V3 wallet, using ethEntropySource as a source of randomness")
 
+    val ethListKeystoreAddresses = taskKey[immutable.Map[EthAddress,immutable.Set[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined.")
+
     val ethLoadCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
 
     val ethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
@@ -159,6 +165,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethSelfPing = taskKey[Option[ClientTransactionReceipt]]("Sends 0 ether from ethAddress to itself")
 
     val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
+
+    val ethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts and stubs (defined in ethKnownStubAddresses) into the contract database. Returns true if changes were made.")
 
     // anonymous tasks
 
@@ -228,6 +236,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         listify( Repository.KeyStore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
       },
 
+      ethKnownStubAddresses := Map.empty,
+
       ethAddress := {
         val mbProperty = Option( System.getProperty( EthAddressSystemProperty ) )
         val mbEnvVar   = Option( System.getenv( EthAddressEnvironmentVariable ) )
@@ -238,7 +248,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
 
-      ethSoliditySource in Compile      := (sourceDirectory in Compile).value / "solidity",
+      ethContractDatabaseUpdatePolicy := PrioritizeNewer,
+
+      ethSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
 
       ethSolidityDestination in Compile := (ethTargetDir in Compile).value / "solidity",
 
@@ -362,6 +374,21 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log            = streams.value.log
         val jsonRpcUrl     = ethJsonRpcUrl.value
         doGetTransactionCount( log, jsonRpcUrl, EthAddress( ethAddress.value ), jsonrpc20.Client.BlockNumber.Pending )
+      },
+
+      ethListKeystoreAddresses := {
+        val keystoresV3 = ethKeystoresV3.value
+        val log         = streams.value.log
+        val combined = {
+          keystoresV3
+            .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
+            .foldLeft( Map.empty[EthAddress,wallet.V3] )( ( accum, next ) => accum ++ next )
+        }
+
+        // TODO: Aliases as values
+        val out = combined.map( tup => ( tup._1, immutable.Set.empty[String] ) )
+        immutable.TreeSet( out.keySet.toSeq.map( address => s"0x${address.hex}" ) : _* ).foreach( println )
+        out
       },
 
       ethLoadCompilations := { 
@@ -500,6 +527,20 @@ object SbtEthereumPlugin extends AutoPlugin {
         awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
       },
 
+      ethUpdateContractDatabase := {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val policy                 = ethContractDatabaseUpdatePolicy.value
+        val compilations           = ethLoadCompilations.value
+        val stubNameToAddresses    = ethKnownStubAddresses.value.mapValues( stringSet => stringSet.map( EthAddress.apply ) )
+        val stubNameToAddressCodes  = {
+          stubNameToAddresses.map { case ( name, addresses ) =>
+            ( name, immutable.Map( addresses.map( address => ( address, doCodeForAddress( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Pending ).hex ) ).toSeq : _* ) )
+          }
+        }
+        Repository.Database.updateContractDatabase( compilations, stubNameToAddressCodes, policy ).get
+      },
+
       watchSources ++= {
         val dir = (ethSoliditySource in Compile).value
         val filter = new FilenameFilter {
@@ -531,15 +572,20 @@ object SbtEthereumPlugin extends AutoPlugin {
         val gas = ethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, address, hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey.value
+        val updateChangedDb = ethUpdateContractDatabase.value
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Contract '${contractName}' deployed in transaction '0x${hash.hex}'." )
-        val dbCheck = {
-          import compilation.info._
-          Repository.Database.markDeployContract( address, hash, contractName, hex, mbSource, mbLanguage, mbLanguageVersion, mbCompilerVersion, mbCompilerOptions, mbAbiDefinition, mbUserDoc, mbDeveloperDoc )
-        }
-        dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
         val out = awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
-        out.foreach( receipt => log.info( s"Contract '${contractName}' has been assigned address '0x${receipt.contractAddress.get.bytes.widen.hex}'." ) )
+        out.foreach { receipt =>
+          receipt.contractAddress.foreach { ca =>
+            log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
+            val dbCheck = {
+              import compilation.info._
+              Repository.Database.insertNewDeployment( hex, ca, address, hash )
+            }
+            dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
+          }
+        }
         out
       }
     }
