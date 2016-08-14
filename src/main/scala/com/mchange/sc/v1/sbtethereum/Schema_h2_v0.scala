@@ -30,43 +30,10 @@ object Schema_h2_v0 {
         stmt.executeUpdate( Table.Metadata.CreateSql )
         stmt.executeUpdate( Table.KnownContracts.CreateSql )
         stmt.executeUpdate( Table.DeployedContracts.CreateSql )
-        //stmt.executeUpdate( Table.Stubs.CreateSql )
       }
       Table.Metadata.ensureSchemaVersion( conn )
     }
   }
-
-  /*
-  def createUpdateKnownContract(
-    conn             : Connection,
-    code             : String,
-    name             : Option[String],
-    source           : Option[String],
-    language         : Option[String],
-    languageVersion  : Option[String],
-    compilerVersion  : Option[String],
-    compilerOptions  : Option[String],
-    abiDefinition    : Option[String],
-    userDoc          : Option[String],
-    developerDoc     : Option[String],
-    policy           : IrreconcilableUpdatePolicy
-  ) : Boolean = {
-    Table.KnownContracts.updateKnownContract( conn, code, name, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc, policy )
-  }
-
-  def recordContractDeployment(
-    conn             : Connection,
-    contractAddress  : EthAddress,
-    deployerAddress  : EthAddress,
-    transactionHash  : EthHash
-  ) : Unit = {
-    Table.DeployedContracts.insert( conn, code, contractAddress, deployerAddress, transactionHash )
-  }
-
-  def createUpdateStub( conn : Connection, address : EthAddress, abiDefinition : Option[String], name : Option[String], policy : IrreconcilableUpdatePolicy ) : Boolean = {
-    Table.Stubs.updateStub( conn, address, abiDefinition, name, policy )
-  }
-  */ 
 
   private def codeHash( codeHex : String ) : EthHash = EthHash.hash(codeHex.decodeHex)
 
@@ -354,123 +321,6 @@ object Schema_h2_v0 {
         }
       }
     }
-
-    /*
-    final object Stubs {
-
-      case class CachedStub( address : EthAddress, abiDefinition : Option[String], name : Option[String] ) extends Reconcilable[CachedContract] {
-        def reconcile(other : CachedStub) : CachedStub = {
-          CachedStub(
-            Reconcilable.reconcileLeaf( this.address, other.address ),
-            Reconcilable.reconcileLeaf( this.abiDefinition, other.abiDefinition ),
-            Reconcilable.reconcileLeaf( this.name, other.name )
-          )
-        }
-        def reconcileOver(other : CachedStub) : CachedStub = {
-          CachedStub(
-            Reconcilable.reconcileOverLeaf( this.address, other.address ),
-            Reconcilable.reconcileOverLeaf( this.abiDefinition, other.abiDefinition ),
-            Reconcilable.reconcileOverLeaf( this.name, other.name )
-          )
-        }
-
-      }
-
-      val CreateSql = {
-        """|CREATE TABLE IF NOT EXISTS stubs (
-           |   address          CHAR(40) PRIMARY KEY,
-           |   abi_definition   CLOB NOT NULL,
-           |   name             VARCHAR(128),
-           |)""".stripMargin
-      }
-
-      private val InsertSql = {
-        """|INSERT INTO stubs ( address, abi_definition, name )
-           |VALUES( ?, ?, ? )""".stripMargin
-      
-      }
-
-      private val SelectSql = "SELECT address, abi_definition, name FROM stubs WHERE address = ?"
-
-      private def _select( conn : Connection, address : EthAddress ) : Option[CachedStub] = {
-        borrow( conn.prepareStatement( SelectSql ) ) { ps =>
-          ps.setString(1, address.hex)
-          borrow( ps.executeQuery ) { rs =>
-            if ( rs.next() ) {
-              val ok = CachedStub(
-                EthAddress( rs.getString(1) ),
-                Option( rs.getString( 2) ),
-                Option( rs.getString( 3) ),
-              )
-              assert(!rs.next(), s"Huh? More than one row with the same address in stubs? [address=${address.hex}]" )
-              Some( ok )
-            } else {
-              None
-            }
-          
-        }
-      }
-
-      private def insert( conn : Connection, address : EthAddress, abiDefinition : String, name : Option[String] ) : Boolean = {
-        borrow( conn.prepareStatement( InsertSql ) ){ ps =>
-
-          ps.setString(          1, address.hex )
-          setClob(          ps,  2, abiDefinition )
-          setVarcharOption( ps,  3, name )
-
-          ps.executeUpdate()
-
-          true
-        }
-      }
-
-      def updateStub( 
-        conn          : Connection,
-        address       : EthAddress,
-        abiDefinition : Option[String],
-        name          : Option[String],
-        policy        : IrreconcilableUpdatePolicy = Throw
-      ) : Boolean = {
-        val mbAlreadyKnown = _select( conn, address.hex )
-        mbAlreadyKnown.fold( insert( conn, address.hex, abiDefinition, name ) ) { ak =>
-          val newStub = CachedStub( address, Some( abiDefinition ), Some( name ) )
-          val reconciled = try {
-            val next = newStub reconcile ak
-            ak != next
-          } catch { 
-            case cre : CantReconcileException => { // we know newStub and ak are different, or the reconciliztion would have succeeded
-              DEBUG.log( s"Attempt to reconcile ${newStub} with ${ak} failed.", cre )
-              policy match {
-                case UseOriginal => {
-                  /* nothing to do */
-                  false
-                }
-                case UseNewer => {
-                  delete( conn, ch )
-                  insert( conn, newStub )
-                  true
-                }
-                case PrioritizeOriginal => {
-                  val next = ak reconcileOver newStb
-                  delete( conn, ch )
-                  insert( conn, next )
-                  ak != next
-                }
-                case PrioritizeNewer => {
-                  delete( conn, ch )
-                  insert( conn, newc reconcileOver akc )
-                  true
-                } 
-                case Throw => {
-                  throw new ContractMergeException("Could not merge old and new versions of contract stub information", cre )
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    */
   }
 }
 
