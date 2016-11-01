@@ -274,10 +274,14 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethWalletV3Pbkdf2DkLen := wallet.V3.Default.Pbkdf2.DkLen,
 
       ethAbiForContractAddress := {
-        //val log = streams.value.log
-        //val jsonRpcUrl = ethJsonRpcUrl.value
-        //val address = GenericAddressParser.parsed
-        ???
+        val address = GenericAddressParser.parsed
+
+        val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if we've failed
+        mbDeployedContractInfo.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} is not known in the sbt-ethereum repository." ) ) { deployedContractInfo =>
+          deployedContractInfo.abiDefinition.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} does not have an ABI associated with it in the sbt-ethereum repository." ) ) { abiStr =>
+            Json.parse( abiStr ).as[Abi.Definition]
+          }
+        }
       },
 
       ethBalance := {

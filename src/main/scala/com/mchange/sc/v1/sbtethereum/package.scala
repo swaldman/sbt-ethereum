@@ -30,8 +30,10 @@ import play.api.libs.json._
 package object sbtethereum {
   private implicit val logger = mlogger( "com.mchange.sc.v1.sbtethereum.package" ) 
 
-  final class NoSolidityCompilerException( msg : String ) extends Exception( msg )
-  final class DatabaseVersionException( msg : String ) extends Exception( msg )
+  abstract class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
+  final class NoSolidityCompilerException( msg : String ) extends SbtEthereumException( msg )
+  final class DatabaseVersionException( msg : String ) extends SbtEthereumException( msg )
+  final class ContractUnknownException( msg : String ) extends SbtEthereumException( msg )
 
   private val SolFileRegex = """(.+)\.sol""".r
 
