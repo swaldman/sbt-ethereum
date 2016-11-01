@@ -22,8 +22,7 @@ import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
-import jsonrpc20.ClientTransactionReceipt
-import jsonrpc20.MapStringCompilationContractFormat
+import jsonrpc20.{Abi,ClientTransactionReceipt,MapStringCompilationContractFormat}
 import specification.Denominations
 
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
@@ -96,6 +95,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethGasMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
 
+    val ethGasPriceMarkup = settingKey[Double]("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
+
     val ethKeystoresV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
 
     val ethKnownStubAddresses = settingKey[immutable.Map[String,immutable.Set[String]]]("Names of stubs that might be generated in compilation mapped to addresses known to conform to their ABIs.")
@@ -124,6 +125,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // tasks
 
+    val ethAbiForContractAddress = inputKey[Abi.Definition]("Finds the ABI for a contract address, if known")
+
     val ethBalance = inputKey[BigDecimal]("Computes the balance in ether of the address set as 'ethAddress'")
 
     val ethBalanceFor = inputKey[BigDecimal]("Computes the balance in ether of a given address")
@@ -136,9 +139,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethCompiledContractNames = taskKey[immutable.Set[String]]("Finds compiled contract names")
 
+    val ethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
+
     val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
 
-    val ethGasPrice = taskKey[BigInt]("Finds the current default gas price")
+    val ethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
 
     val ethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
 
@@ -230,6 +235,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethGasOverrides := Map.empty[String,BigInt],
 
+      ethGasPriceMarkup := 0.0, // by default, use conventional gas price
+
       ethKeystoresV3 := {
         def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
         def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
@@ -265,6 +272,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
 
       ethWalletV3Pbkdf2DkLen := wallet.V3.Default.Pbkdf2.DkLen,
+
+      ethAbiForContractAddress := {
+        //val log = streams.value.log
+        //val jsonRpcUrl = ethJsonRpcUrl.value
+        //val address = GenericAddressParser.parsed
+        ???
+      },
 
       ethBalance := {
         val checked = warnOnZeroAddress.value
@@ -315,10 +329,20 @@ object SbtEthereumPlugin extends AutoPlugin {
         (compile in Compile).value
       },
 
-      ethGasPrice := {
+      ethDefaultGasPrice := {
         val log        = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
         doGetDefaultGasPrice( log, jsonRpcUrl )
+      },
+
+      ethGasPrice := {
+        val log        = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+
+        val markup          = ethGasPriceMarkup.value
+        val defaultGasPrice = ethDefaultGasPrice.value
+
+        rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) ).toBigInt 
       },
 
       ethGenKeyPair := {
@@ -581,7 +605,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
             val dbCheck = {
               import compilation.info._
-              Repository.Database.insertNewDeployment( hex, ca, address, hash )
+              Repository.Database.insertNewDeployment( ca, hex, address, hash )
             }
             dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
           }

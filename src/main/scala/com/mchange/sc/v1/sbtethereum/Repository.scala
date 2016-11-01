@@ -69,13 +69,13 @@ object Repository {
     val DirName = "database"
     lazy val Directory : Failable[File] = Repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
 
-    def insertNewDeployment( code : String, contractAddress : EthAddress, deployerAddress : EthAddress, transactionHash : EthHash ) : Failable[Unit] = {
+    def insertNewDeployment( contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Failable[Unit] = {
       import Schema_h2_v0._
 
       h2_v0.DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ){ conn =>
-            Table.DeployedContracts.insertNewDeployment( conn, code, contractAddress, deployerAddress, transactionHash )
+            Table.DeployedContracts.insertNewDeployment( conn, contractAddress, code, deployerAddress, transactionHash )
           }
         }
       }
@@ -107,7 +107,7 @@ object Repository {
         def doUpdate( address : EthAddress, code : String, name : String, abiDefinition : String ) : Failable[Boolean] = {
           for {
             check0 <- Failable( Table.KnownContracts.createUpdateKnownContract( conn, code, Some(name), None, None, None, None, None, Some( abiDefinition ), None, None, policy ) )
-            check1 <- Failable( Table.DeployedContracts.insertExistingDeployment( conn, code, address ) )
+            check1 <- Failable( Table.DeployedContracts.insertExistingDeployment( conn, address, code ) )
           } yield {
             check0
           }
@@ -152,6 +152,56 @@ object Repository {
             }
           }
         }.flatten
+      }
+    }
+
+    case class DeployedContractInfo (
+      address         : EthAddress,
+      code            : String,
+      deployerAddress : Option[EthAddress],
+      transactionHash : Option[EthHash],
+      deployedWhen    : Option[Long],
+      name            : Option[String],
+      source          : Option[String],
+      language        : Option[String],
+      languageVersion : Option[String],
+      compilerVersion : Option[String],
+      compilerOptions : Option[String],
+      abiDefinition   : Option[String],
+      userDoc         : Option[String],
+      developerDoc    : Option[String]
+    )
+
+    def deployedContractInfoForAddress( address : EthAddress ) : Failable[Option[DeployedContractInfo]] =  {
+      import Schema_h2_v0._
+      
+      h2_v0.DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection ) { conn =>
+            for {
+              deployedContract <- Table.DeployedContracts.getByAddress( conn, address )
+              codeHash = deployedContract.codeHash
+              knownContract <- Table.KnownContracts.getByCodeHash( conn, deployedContract.codeHash )
+            } yield {
+              DeployedContractInfo (
+                address         = deployedContract.address,
+                code            = knownContract.code,
+                deployerAddress = deployedContract.deployerAddress,
+                transactionHash = deployedContract.transactionHash,
+                deployedWhen    = deployedContract.deployedWhen,
+                name            = knownContract.name,
+                source          = knownContract.source,
+                language        = knownContract.language,
+                languageVersion = knownContract.languageVersion,
+                compilerVersion = knownContract.compilerVersion,
+                compilerOptions = knownContract.compilerOptions,
+                abiDefinition   = knownContract.abiDefinition,
+                userDoc         = knownContract.userDoc,
+                developerDoc    = knownContract.developerDoc
+              )
+            }
+          }
+        }
       }
     }
 

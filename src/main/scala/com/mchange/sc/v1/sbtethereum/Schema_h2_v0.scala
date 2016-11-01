@@ -5,11 +5,11 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.reconcile.{Reconcilable,CantReconcileException}
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress,EthHash}
-import com.mchange.sc.v2.sql.getMaybeSingleString
+import com.mchange.sc.v2.sql.{getMaybeSingleString,getMaybeSingleValue}
 import com.mchange.sc.v1.log.MLevel._
 
 import java.io.StringReader
-import java.sql.{Connection,PreparedStatement,Types,Timestamp}
+import java.sql.{Connection,PreparedStatement,ResultSet,Types,Timestamp}
 
 import javax.sql.DataSource
 
@@ -103,6 +103,8 @@ object Schema_h2_v0 {
           }
         }
       }
+
+      def getByCodeHash( conn : Connection, codeHash : EthHash ) : Option[KnownContracts.CachedContract] = _select( conn, codeHash )
 
       def createUpdateKnownContract( 
         conn             : Connection,
@@ -220,7 +222,7 @@ object Schema_h2_v0 {
            |)""".stripMargin
       }
 
-      private case class CachedContract(
+      final case class CachedContract(
         code            : String,
         name            : Option[String],
         source          : Option[String],
@@ -284,8 +286,8 @@ object Schema_h2_v0 {
     final object DeployedContracts {
       val CreateSql = {
         """|CREATE TABLE IF NOT EXISTS deployed_contracts (
-           |   code_hash        VARCHAR(128) PRIMARY KEY,
-           |   address          CHAR(40) NOT NULL,
+           |   address          CHAR(40) PRIMARY KEY,
+           |   code_hash        VARCHAR(128) NOT NULL,
            |   deployer_address CHAR(40),
            |   txn_hash         CHAR(128),
            |   deployed_when    TIMESTAMP,
@@ -294,14 +296,34 @@ object Schema_h2_v0 {
       }
 
       private val MergeSql = {
-        """|MERGE INTO deployed_contracts ( code_hash, address, deployer_address, txn_hash, deployed_when )
+        """|MERGE INTO deployed_contracts ( address, code_hash, deployer_address, txn_hash, deployed_when )
            |VALUES( ?, ?, ?, ?, ? )""".stripMargin
       }
 
-      def insertExistingDeployment( conn : Connection, code : String, contractAddress : EthAddress ) : Unit = {
+      private val SelectSql = "SELECT code_hash, deployer_address, txn_hash, deployed_when FROM deployed_contracts WHERE address = ?"
+
+      final case class Contract( address : EthAddress, codeHash : EthHash, deployerAddress : Option[EthAddress], transactionHash : Option[EthHash], deployedWhen : Option[Long] )
+
+      private def _select( conn : Connection, address : EthAddress ) : Option[Contract] = {
+        val extractor : ResultSet => Contract = { rs =>
+          val codeHash = EthHash.withBytes(rs.getString(1).decodeHexAsSeq)
+          val deployerAddress = Option( rs.getString(2) ).map( EthAddress.apply )
+          val transactionHash = Option( rs.getString(3) ).map( _.decodeHexAsSeq ).map( EthHash.withBytes )
+          val deployedWhen = Option( rs.getTimestamp(4) ).map( _.getTime )
+          Contract( address, codeHash, deployerAddress, transactionHash, deployedWhen )
+        }
+        borrow( conn.prepareStatement( SelectSql ) ) { ps =>
+          ps.setString( 1, address.hex )
+          borrow( ps.executeQuery() )( rs => getMaybeSingleValue( extractor )( rs ) )
+        }
+      }
+
+      def getByAddress( conn : Connection, address : EthAddress ) : Option[Contract] = _select( conn, address )
+
+      def insertExistingDeployment( conn : Connection, contractAddress : EthAddress, code : String ) : Unit = {
         borrow( conn.prepareStatement( MergeSql ) ) { ps =>
-          ps.setString( 1, codeHash( code ).hex )
-          ps.setString( 2, contractAddress.hex )
+          ps.setString( 1, contractAddress.hex )
+          ps.setString( 2, codeHash( code ).hex )
           ps.setNull( 3, Types.CHAR )
           ps.setNull( 4, Types.CHAR )
           ps.setNull( 5, Types.TIMESTAMP )
@@ -309,11 +331,11 @@ object Schema_h2_v0 {
         }
       }
 
-      def insertNewDeployment( conn : Connection, code : String, contractAddress : EthAddress, deployerAddress : EthAddress, transactionHash : EthHash ) : Unit = {
+      def insertNewDeployment( conn : Connection, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Unit = {
         val timestamp = new Timestamp( System.currentTimeMillis )
         borrow( conn.prepareStatement( MergeSql ) ) { ps =>
-          ps.setString( 1, codeHash( code ).hex )
-          ps.setString( 2, contractAddress.hex )
+          ps.setString( 1, contractAddress.hex )
+          ps.setString( 2, codeHash( code ).hex )
           ps.setString( 3, deployerAddress.hex )
           ps.setString( 4, transactionHash.hex )
           ps.setTimestamp( 5, timestamp )
