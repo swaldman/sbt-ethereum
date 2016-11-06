@@ -3,7 +3,7 @@ package com.mchange.sc.v1.sbtethereum
 import sbt._
 import sbt.Keys._
 import sbt.plugins.{JvmPlugin,InteractionServicePlugin}
-import sbt.complete.Parser
+import sbt.complete.{FixedSetExamples,Parser}
 import sbt.complete.DefaultParsers._
 import sbt.Def.Initialize
 import sbt.InteractionServiceKeys.interactionService
@@ -51,6 +51,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val PollAttempts = 9
 
+  private val ZWSP = "\u200B" // we add zero-width space to parser examples lists where we don't want autocomplete to apply to unique examples
+
   private val GenericAddressParser = createAddressParser("<address-hex>")
 
   private val RecipientAddressParser = createAddressParser("<recipient-address-hex>")
@@ -66,6 +68,107 @@ object SbtEthereumPlugin extends AutoPlugin {
   private val EthSendEtherParser : Parser[( EthAddress, BigInt )] = {
     def tupToTup( tup : ( ( EthAddress, BigDecimal ), String ) ) = ( tup._1._1, rounded(tup._1._2 * BigDecimal(Denominations.Multiplier.BigInt( tup._2 ))).toBigInt )
     (RecipientAddressParser ~ AmountParser ~ UnitParser).map( tupToTup )
+  }
+
+  private def functionParser( abi : Abi.Definition ) : Parser[Abi.Function] = {
+    val namesToFunctions           = abi.functions.groupBy( _.name )
+
+    println( s"namesToFunctions: ${namesToFunctions}" )
+
+    val overloadedNamesToFunctions = namesToFunctions.filter( _._2.length > 1 )
+    val nonoverloadedNamesToFunctions : Map[String,Abi.Function] = (namesToFunctions -- overloadedNamesToFunctions.keySet).map( tup => ( tup._1, tup._2.head ) )
+
+    println( s"overloadedNamesToFunctions: ${overloadedNamesToFunctions}" )
+    println( s"nonoverloadedNamesToFunctions: ${nonoverloadedNamesToFunctions}" )
+
+    def createQualifiedNameForOverload( function : Abi.Function ) : String = function.name + "(" + function.inputs.map( _.`type` ).mkString(",") + ")"
+
+    def createOverloadBinding( function : Abi.Function ) : ( String, Abi.Function ) = ( createQualifiedNameForOverload( function ), function )
+
+    val qualifiedOverloadedNamesToFunctions : Map[String, Abi.Function] = overloadedNamesToFunctions.values.flatMap( _.map( createOverloadBinding ) ).toMap
+
+    println( s"qualifiedOverloadedNamesToFunctions: ${qualifiedOverloadedNamesToFunctions}" )
+
+    val processedNamesToFunctions = (qualifiedOverloadedNamesToFunctions ++ nonoverloadedNamesToFunctions).toMap
+
+    println( s"processedNamesToFunctions: ${processedNamesToFunctions}" )
+
+    val baseParser = processedNamesToFunctions.keySet.foldLeft( failure("not a function name") : Parser[String] )( ( nascent, next ) => nascent | literal( next ) )
+
+    baseParser.map( processedNamesToFunctions )
+    //NotSpace.examples( FixedSetExamples(processedNamesToFunctions.keySet) ).map( processedNamesToFunctions )
+  }
+
+  private def inputParser( input : Abi.Function.Parameter, unique : Boolean ) : Parser[String] = {
+    val displayName = if ( input.name.length == 0 ) "mapping key" else input.name
+    NotSpace.examples( FixedSetExamples( immutable.Set( s"<${displayName}, of type ${input.`type`}>", ZWSP ) ) )
+  }
+
+  private def inputsParser( inputs : immutable.Seq[Abi.Function.Parameter] ) : Parser[immutable.Seq[String]] = {
+    val unique = inputs.size <= 1
+    val parserMaker : Abi.Function.Parameter => Parser[String] = param => inputParser( param, unique )
+    inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space ~> next.map( str => partial :+ str ) ) )
+  }
+
+  def functionAndInputsParser( abi : Abi.Definition ) : Parser[(Abi.Function, immutable.Seq[String])] = {
+    token( functionParser( abi ) ).flatMap( function => inputsParser( function.inputs ).map( seq => ( function, seq ) ) )
+  }
+
+  val TestAbiDefinition = Json.parse("""[{"name":"redeem","inputs":[{"name":"issuer","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"name":"ok","type":"bool"}],"constant":false,"type":"function"},{"name":"floats","inputs":[{"name":"","type":"address"}],"outputs":[{"name":"","type":"uint256"}],"constant":true,"type":"function"},{"name":"float","inputs":[{"name":"issuer","type":"address"}],"outputs":[{"name":"float","type":"uint256"}],"constant":true,"type":"function"},{"name":"issue","inputs":[{"name":"recipient","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"name":"ok","type":"bool"}],"constant":false,"type":"function"},{"name":"transfer","inputs":[{"name":"recipient","type":"address"},{"name":"issuer","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"name":"ok","type":"bool"}],"constant":false,"type":"function"},{"name":"balances","inputs":[{"name":"","type":"address"},{"name":"","type":"address"}],"outputs":[{"name":"","type":"uint256"}],"constant":true,"type":"function"},{"name":"balance","inputs":[{"name":"issuer","type":"address"}],"outputs":[{"name":"balance","type":"uint256"}],"constant":true,"type":"function"},{"name":"Issuance","inputs":[{"name":"recipient","type":"address","indexed":true},{"name":"issuer","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"Redemption","inputs":[{"name":"redeemer","type":"address","indexed":true},{"name":"issuer","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"Transfer","inputs":[{"name":"payer","type":"address","indexed":true},{"name":"recipient","type":"address","indexed":true},{"name":"issuer","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"InsufficientBalance","inputs":[{"name":"payer","type":"address","indexed":true},{"name":"recipient","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false},{"name":"balance","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"SelfIssuanceForbidden","inputs":[{"name":"blockedIssuer","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false,"type":"event"}]""").as[Abi.Definition]
+
+  /*
+
+  // simplification for StackOverflow question
+
+  case class Param( name : String, tpe : String ) // tpe is for param type
+  case class Func( name : String, params : immutable.Seq[Param] )
+
+  def funcParser( funcs : immutable.Set[Func] ) : Parser[Func] = {
+    val funcsByName = funcs.map( func => (func.name, func) ).toMap
+    NotSpace.examples( funcsByName.keySet ).map( funcsByName )
+  }
+
+  def paramParser( param : Param ) : Parser[String] = {
+    NotSpace.examples( s"<${param.name}, of type ${param.tpe}>" )
+  }
+
+  def paramsParser( params : immutable.Seq[Param] ) : Parser[immutable.Seq[String]] = {
+    params.map( paramParser ).foldLeft( success( immutable.Seq.empty[String] ) ){
+      (nascent, next) => nascent.flatMap( partial => Space ~> next.map( str => partial :+ str ) )
+    }
+  }
+
+  def funcAndParamsParser( funcs : immutable.Set[Func] ) : Parser[(Func,immutable.Seq[String])] = {
+    funcParser( funcs ).flatMap( func => paramsParser( func.params ).map( seq => ( func, seq ) ) )
+  }
+
+  val func0 = Func( "move", Param("x", "Int") :: Param("y", "Int") :: Nil )
+  val func1 = Func( "fill", Param("color", "Color") :: Nil )
+  val testParser = Space ~> funcAndParamsParser( immutable.Set( func0, func1 ) )
+  */
+
+  /*
+  val items = List( "apple", "orange", "banana" )
+
+  def select1(items: Iterable[String]) = token(Space ~> StringBasic.examples(FixedSetExamples(items)))
+
+  def selectSome(items: Seq[String]): Parser[Seq[String]] = {
+    select1(items).flatMap { v ⇒
+      val remaining = items filter { _ != v }
+      if (remaining.size == 0)
+        success(v :: Nil)
+      else
+        selectSome(remaining).?.map(v +: _.getOrElse(Seq()))
+    }
+  }
+  */ 
+
+  val TestDynamicParser = { //Space.* ~> (token(Digit).flatMap( c => literal("hello " + c) ))
+    // Space ~> functionParser( TestAbiDefinition )
+    // Space ~> inputsParser( TestAbiDefinition.functions.head.inputs )
+    Space ~> functionAndInputsParser( TestAbiDefinition )
+    // testParser
+    // selectSome( items )
   }
 
   private val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
@@ -172,6 +275,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
     val ethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts and stubs (defined in ethKnownStubAddresses) into the contract database. Returns true if changes were made.")
+
+    val tmpTestDynamicParser = inputKey[String]("A temporary task to play with dynamic parsers a bit.") // TODO: Remove
 
     // anonymous tasks
 
@@ -569,6 +674,15 @@ object SbtEthereumPlugin extends AutoPlugin {
         Repository.Database.updateContractDatabase( compilations, stubNameToAddressCodes, policy ).get
       },
 
+      tmpTestDynamicParser := {
+        TestDynamicParser.parsed.toString
+
+        //val function = functionParser( TestAbiDefinition ).parsed
+        //val inputs   = inputsParser( function.inputs ).parsed
+
+        //s"${function} {inputs}"
+      },
+
       watchSources ++= {
         val dir = (ethSoliditySource in Compile).value
         val filter = new FilenameFilter {
@@ -620,7 +734,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def contractNamesParser : (State, immutable.Set[String]) => Parser[String] = {
       (state, contractNames) => {
-        val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", "\u00A0") else contractNames // non-breaking space to prevent autocompletion to dummy example
+        val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", ZWSP) else contractNames // non-breaking space to prevent autocompletion to dummy example
         Space ~> token( NotSpace examples exSet )
       }
     }
