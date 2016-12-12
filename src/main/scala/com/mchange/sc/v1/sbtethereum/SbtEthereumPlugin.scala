@@ -28,7 +28,7 @@ import specification.Denominations
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
-
+import com.mchange.sc.v1.consuela.ethereum.ethabi.callDataForFunctionNameAndArgs
 import scala.collection._
 
 // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
@@ -51,6 +51,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val PollAttempts = 9
 
+  private val Zero = BigInt(0)
+
   private val ZWSP = "\u200B" // we add zero-width space to parser examples lists where we don't want autocomplete to apply to unique examples
 
   private val GenericAddressParser = createAddressParser("<address-hex>")
@@ -65,21 +67,22 @@ object SbtEthereumPlugin extends AutoPlugin {
     Space.* ~> token(literal(w) | literal(s) | literal(f) | literal(e))
   }
 
+  private val ValueInWeiParser = (AmountParser ~ UnitParser).map { case ( amount, unit ) => rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt }
+
   private val EthSendEtherParser : Parser[( EthAddress, BigInt )] = {
-    def tupToTup( tup : ( ( EthAddress, BigDecimal ), String ) ) = ( tup._1._1, rounded(tup._1._2 * BigDecimal(Denominations.Multiplier.BigInt( tup._2 ))).toBigInt )
-    (RecipientAddressParser ~ AmountParser ~ UnitParser).map( tupToTup )
+    RecipientAddressParser ~ ValueInWeiParser
   }
 
   private def functionParser( abi : Abi.Definition ) : Parser[Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
 
-    println( s"namesToFunctions: ${namesToFunctions}" )
+    // println( s"namesToFunctions: ${namesToFunctions}" )
 
     val overloadedNamesToFunctions = namesToFunctions.filter( _._2.length > 1 )
     val nonoverloadedNamesToFunctions : Map[String,Abi.Function] = (namesToFunctions -- overloadedNamesToFunctions.keySet).map( tup => ( tup._1, tup._2.head ) )
 
-    println( s"overloadedNamesToFunctions: ${overloadedNamesToFunctions}" )
-    println( s"nonoverloadedNamesToFunctions: ${nonoverloadedNamesToFunctions}" )
+    // println( s"overloadedNamesToFunctions: ${overloadedNamesToFunctions}" )
+    // println( s"nonoverloadedNamesToFunctions: ${nonoverloadedNamesToFunctions}" )
 
     def createQualifiedNameForOverload( function : Abi.Function ) : String = function.name + "(" + function.inputs.map( _.`type` ).mkString(",") + ")"
 
@@ -87,16 +90,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val qualifiedOverloadedNamesToFunctions : Map[String, Abi.Function] = overloadedNamesToFunctions.values.flatMap( _.map( createOverloadBinding ) ).toMap
 
-    println( s"qualifiedOverloadedNamesToFunctions: ${qualifiedOverloadedNamesToFunctions}" )
+    // println( s"qualifiedOverloadedNamesToFunctions: ${qualifiedOverloadedNamesToFunctions}" )
 
     val processedNamesToFunctions = (qualifiedOverloadedNamesToFunctions ++ nonoverloadedNamesToFunctions).toMap
 
-    println( s"processedNamesToFunctions: ${processedNamesToFunctions}" )
+    // println( s"processedNamesToFunctions: ${processedNamesToFunctions}" )
 
     val baseParser = processedNamesToFunctions.keySet.foldLeft( failure("not a function name") : Parser[String] )( ( nascent, next ) => nascent | literal( next ) )
 
     baseParser.map( processedNamesToFunctions )
-    //NotSpace.examples( FixedSetExamples(processedNamesToFunctions.keySet) ).map( processedNamesToFunctions )
   }
 
   private def inputParser( input : Abi.Function.Parameter, unique : Boolean ) : Parser[String] = {
@@ -114,61 +116,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     token( functionParser( abi ) ).flatMap( function => inputsParser( function.inputs ).map( seq => ( function, seq ) ) )
   }
 
-  val TestAbiDefinition = Json.parse("""[{"name":"redeem","inputs":[{"name":"issuer","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"name":"ok","type":"bool"}],"constant":false,"type":"function"},{"name":"floats","inputs":[{"name":"","type":"address"}],"outputs":[{"name":"","type":"uint256"}],"constant":true,"type":"function"},{"name":"float","inputs":[{"name":"issuer","type":"address"}],"outputs":[{"name":"float","type":"uint256"}],"constant":true,"type":"function"},{"name":"issue","inputs":[{"name":"recipient","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"name":"ok","type":"bool"}],"constant":false,"type":"function"},{"name":"transfer","inputs":[{"name":"recipient","type":"address"},{"name":"issuer","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"name":"ok","type":"bool"}],"constant":false,"type":"function"},{"name":"balances","inputs":[{"name":"","type":"address"},{"name":"","type":"address"}],"outputs":[{"name":"","type":"uint256"}],"constant":true,"type":"function"},{"name":"balance","inputs":[{"name":"issuer","type":"address"}],"outputs":[{"name":"balance","type":"uint256"}],"constant":true,"type":"function"},{"name":"Issuance","inputs":[{"name":"recipient","type":"address","indexed":true},{"name":"issuer","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"Redemption","inputs":[{"name":"redeemer","type":"address","indexed":true},{"name":"issuer","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"Transfer","inputs":[{"name":"payer","type":"address","indexed":true},{"name":"recipient","type":"address","indexed":true},{"name":"issuer","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"InsufficientBalance","inputs":[{"name":"payer","type":"address","indexed":true},{"name":"recipient","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false},{"name":"balance","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"SelfIssuanceForbidden","inputs":[{"name":"blockedIssuer","type":"address","indexed":true},{"name":"amount","type":"uint256","indexed":false}],"anonymous":false,"type":"event"}]""").as[Abi.Definition]
-
-  /*
-
-  // simplification for StackOverflow question
-
-  case class Param( name : String, tpe : String ) // tpe is for param type
-  case class Func( name : String, params : immutable.Seq[Param] )
-
-  def funcParser( funcs : immutable.Set[Func] ) : Parser[Func] = {
-    val funcsByName = funcs.map( func => (func.name, func) ).toMap
-    NotSpace.examples( funcsByName.keySet ).map( funcsByName )
-  }
-
-  def paramParser( param : Param ) : Parser[String] = {
-    NotSpace.examples( s"<${param.name}, of type ${param.tpe}>" )
-  }
-
-  def paramsParser( params : immutable.Seq[Param] ) : Parser[immutable.Seq[String]] = {
-    params.map( paramParser ).foldLeft( success( immutable.Seq.empty[String] ) ){
-      (nascent, next) => nascent.flatMap( partial => Space ~> next.map( str => partial :+ str ) )
+  val AddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
+    GenericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { tup =>
+      val address = tup._1
+      val abi     = tup._2 
+      ( Space ~> functionAndInputsParser( abi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
     }
-  }
-
-  def funcAndParamsParser( funcs : immutable.Set[Func] ) : Parser[(Func,immutable.Seq[String])] = {
-    funcParser( funcs ).flatMap( func => paramsParser( func.params ).map( seq => ( func, seq ) ) )
-  }
-
-  val func0 = Func( "move", Param("x", "Int") :: Param("y", "Int") :: Nil )
-  val func1 = Func( "fill", Param("color", "Color") :: Nil )
-  val testParser = Space ~> funcAndParamsParser( immutable.Set( func0, func1 ) )
-  */
-
-  /*
-  val items = List( "apple", "orange", "banana" )
-
-  def select1(items: Iterable[String]) = token(Space ~> StringBasic.examples(FixedSetExamples(items)))
-
-  def selectSome(items: Seq[String]): Parser[Seq[String]] = {
-    select1(items).flatMap { v ⇒
-      val remaining = items filter { _ != v }
-      if (remaining.size == 0)
-        success(v :: Nil)
-      else
-        selectSome(remaining).?.map(v +: _.getOrElse(Seq()))
-    }
-  }
-  */ 
-
-  val TestDynamicParser = { //Space.* ~> (token(Digit).flatMap( c => literal("hello " + c) ))
-    // Space ~> functionParser( TestAbiDefinition )
-    // Space ~> inputsParser( TestAbiDefinition.functions.head.inputs )
-    Space ~> functionAndInputsParser( TestAbiDefinition )
-    // testParser
-    // selectSome( items )
   }
 
   private val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
@@ -256,6 +209,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethGenWalletV3 = taskKey[wallet.V3]("Generates a new V3 wallet, using ethEntropySource as a source of randomness")
 
+    val ethInvoke = inputKey[Option[ClientTransactionReceipt]]("Calls a function on a deployed smart contract")
+
+    val ethInvokeData = inputKey[immutable.Seq[Byte]]("Reveals the data portion that would be sent in a message invoking a function and its arguments on a deployed smart contract")
+
     val ethListKeystoreAddresses = taskKey[immutable.Map[EthAddress,immutable.Set[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined.")
 
     val ethLoadCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
@@ -275,8 +232,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
     val ethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts and stubs (defined in ethKnownStubAddresses) into the contract database. Returns true if changes were made.")
-
-    val tmpTestDynamicParser = inputKey[String]("A temporary task to play with dynamic parsers a bit.") // TODO: Remove
 
     // anonymous tasks
 
@@ -378,16 +333,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethWalletV3Pbkdf2DkLen := wallet.V3.Default.Pbkdf2.DkLen,
 
-      ethAbiForContractAddress := {
-        val address = GenericAddressParser.parsed
-
-        val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if we've failed
-        mbDeployedContractInfo.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} is not known in the sbt-ethereum repository." ) ) { deployedContractInfo =>
-          deployedContractInfo.abiDefinition.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} does not have an ABI associated with it in the sbt-ethereum repository." ) ) { abiStr =>
-            Json.parse( abiStr ).as[Abi.Definition]
-          }
-        }
-      },
+      ethAbiForContractAddress := abiForAddress( GenericAddressParser.parsed ),
 
       ethBalance := {
         val checked = warnOnZeroAddress.value
@@ -502,6 +448,34 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethGenWalletV3 := ethGenWalletV3Scrypt.value,
+
+      ethInvoke := {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val caller = EthAddress( ethAddress.value )
+        val nextNonce = ethNextNonce.value
+        val markup = ethGasMarkup.value
+        val gasPrice = ethGasPrice.value
+        val ( ( contractAddress, function, args, abi ), mbWei ) = (AddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
+        val amount = mbWei.getOrElse( Zero )
+        val privateKey = findCachePrivateKey.value
+        val callData = callDataForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the call data
+        log.info( s"Call data for function call: ${callData.hex}" )
+        val gas = markupEstimateGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
+        log.info( s"Gas estimated for function call: ${gas}" )
+        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), contractAddress, Unsigned256( amount ), callData )
+        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei to address '0x${contractAddress.hex}' in transaction '0x${hash.hex}'.""" )
+        awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+      },
+
+      ethInvokeData := {
+        val ( contractAddress, function, args, abi ) = AddressFunctionInputsAbiParser.parsed
+        val callData = callDataForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the call data
+        val log = streams.value.log
+        log.info( s"Call data: ${callData.hex}" )
+        callData
+      },
 
       ethNextNonce := {
         val log            = streams.value.log
@@ -652,7 +626,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val nextNonce = ethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = ethGasPrice.value
-        val gas = markupEstimateGas( log, jsonRpcUrl, EthAddress( ethAddress.value ), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
+        val gas = markupEstimateGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
         val privateKey = findCachePrivateKey.value
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
@@ -672,15 +646,6 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
         Repository.Database.updateContractDatabase( compilations, stubNameToAddressCodes, policy ).get
-      },
-
-      tmpTestDynamicParser := {
-        TestDynamicParser.parsed.toString
-
-        //val function = functionParser( TestAbiDefinition ).parsed
-        //val inputs   = inputsParser( function.inputs ).parsed
-
-        //s"${function} {inputs}"
       },
 
       watchSources ++= {
@@ -711,7 +676,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val nextNonce = ethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = ethGasPrice.value
-        val gas = ethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, address, hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
+        val gas = ethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, Some(address), None, hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey.value
         val updateChangedDb = ethUpdateContractDatabase.value

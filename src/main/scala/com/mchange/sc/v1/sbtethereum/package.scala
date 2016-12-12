@@ -20,7 +20,7 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela._
 
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,wallet,EthAddress,EthHash,EthPrivateKey,EthTransaction}
-import com.mchange.sc.v1.consuela.ethereum.jsonrpc20.{ClientTransactionReceipt,MapStringCompilationContractFormat}
+import com.mchange.sc.v1.consuela.ethereum.jsonrpc20.{Abi,ClientTransactionReceipt,MapStringCompilationContractFormat}
 import com.mchange.sc.v1.consuela.ethereum.encoding.RLP
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 
@@ -159,14 +159,14 @@ package object sbtethereum {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), Duration.Inf ) )
   }
 
-  private [sbtethereum] def doEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : EthAddress, data : Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = Some(from), data = Some(data) ), Duration.Inf ) )
+  private [sbtethereum] def doEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : Option[EthAddress], to : Option[EthAddress], data : Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = from, to = to, data = Some(data) ), Duration.Inf ) )
   }
 
   private [sbtethereum] def rounded( bd : BigDecimal ) = bd.round( bd.mc ) // work around absence of default rounded method in scala 2.10 BigDecimal
 
-  private [sbtethereum] def markupEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : EthAddress, data : Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber, markup : Double )( implicit ec : ExecutionContext ) : BigInt = {
-    val rawEstimate = doEstimateGas( log, jsonRpcUrl, from, data, blockNumber )( ec )
+  private [sbtethereum] def markupEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : Option[EthAddress], to : Option[EthAddress], data : Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber, markup : Double )( implicit ec : ExecutionContext ) : BigInt = {
+    val rawEstimate = doEstimateGas( log, jsonRpcUrl, from, to, data, blockNumber )( ec )
     rounded(BigDecimal(rawEstimate) * BigDecimal(1 + markup)).toBigInt
   }
 
@@ -215,8 +215,8 @@ package object sbtethereum {
             log.warn(s"After ${maxPollAttempts} attempts (${(maxPollAttempts - 1) * pollSeconds} seconds), no receipt has yet been received for transaction '0x${transactionHash.bytes.hex}'.")
             None
           }
-          case _           => {
-            log.info(s"Receipt received for transaction '0x${transactionHash.bytes.hex}'.")
+          case ( Some( receipt ), _ ) => {
+            log.info(s"Receipt received for transaction '0x${transactionHash.bytes.hex}':\n${receipt}")
             mbReceipt
           }
         }
@@ -242,6 +242,14 @@ package object sbtethereum {
     }
   }
 
+  private [sbtethereum] def abiForAddress( address : EthAddress ) : Abi.Definition= {
+    val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if there's a database problem
+    mbDeployedContractInfo.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} is not known in the sbt-ethereum repository." ) ) { deployedContractInfo =>
+      deployedContractInfo.abiDefinition.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} does not have an ABI associated with it in the sbt-ethereum repository." ) ) { abiStr =>
+        Json.parse( abiStr ).as[Abi.Definition]
+      }
+    }
+  }
 }
 
 
