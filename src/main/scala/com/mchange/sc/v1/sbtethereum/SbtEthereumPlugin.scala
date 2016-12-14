@@ -103,7 +103,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def inputParser( input : Abi.Function.Parameter, unique : Boolean ) : Parser[String] = {
     val displayName = if ( input.name.length == 0 ) "mapping key" else input.name
-    NotSpace.examples( FixedSetExamples( immutable.Set( s"<${displayName}, of type ${input.`type`}>", ZWSP ) ) )
+    (StringEscapable.map( str => s""""${str}"""") | NotQuoted).examples( FixedSetExamples( immutable.Set( s"<${displayName}, of type ${input.`type`}>", ZWSP ) ) )
   }
 
   private def inputsParser( inputs : immutable.Seq[Abi.Function.Parameter] ) : Parser[immutable.Seq[String]] = {
