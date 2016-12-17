@@ -69,7 +69,7 @@ object Repository {
     val DirName = "database"
     lazy val Directory : Failable[File] = Repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
 
-    def insertKnownAbiForAddress( contractAddress : EthAddress, abiDefinition : String ) : Failable[Unit] = {
+    def upsertKnownAbiForAddress( contractAddress : EthAddress, abiDefinition : String ) : Failable[Unit] = {
       import Schema_h2_v0._
 
       h2_v0.DataSource.flatMap { ds =>

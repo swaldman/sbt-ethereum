@@ -241,7 +241,7 @@ package object sbtethereum {
 
   private final val CantReadInteraction = "InteractionService failed to read"
 
-  private [sbtethereum] def readConfirmCredential(  log : sbt.Logger, is : InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
+  private [sbtethereum] def readConfirmCredential( log : sbt.Logger, is : InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
     if ( attempt < maxAttempts ) {
       val credential = is.readLine( readPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
       val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
@@ -256,8 +256,15 @@ package object sbtethereum {
     }
   }
 
+  private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi.Definition]
+
+  private [sbtethereum] def readAddressAndAbi( log : sbt.Logger, is : InteractionService ) : ( EthAddress, Abi.Definition ) = {
+    val address = EthAddress( is.readLine( "Contract address in hex: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+    val abi = parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+    ( address, abi )
+  }
+
   private [sbtethereum] def abiForAddress( address : EthAddress ) : Abi.Definition = {
-    def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi.Definition]
 
     val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if there's a database problem
     val mbDeployedContractAbi = mbDeployedContractInfo.flatMap( _.abiDefinition.map( parseAbi ) )
