@@ -30,6 +30,7 @@ object Schema_h2_v0 {
         stmt.executeUpdate( Table.Metadata.CreateSql )
         stmt.executeUpdate( Table.KnownContracts.CreateSql )
         stmt.executeUpdate( Table.DeployedContracts.CreateSql )
+        stmt.executeUpdate( Table.KnownAbi.CreateSql )
       }
       Table.Metadata.ensureSchemaVersion( conn )
     }
@@ -66,6 +67,42 @@ object Schema_h2_v0 {
 
       final object Key {
         val SchemaVersion = "SchemaVersion"
+      }
+    }
+
+    final object KnownAbi {
+      val CreateSql = {
+        """|CREATE TABLE IF NOT EXISTS known_abi (
+           |   address        CHAR(40) PRIMARY KEY,
+           |   abi_definition CLOB     NOT NULL
+           |)""".stripMargin
+      }
+      val SelectSql = "SELECT abi_definition FROM known_abi WHERE address = ?"
+
+      val MergeSql = "MERGE INTO known_abi ( address, abi_definition ) VALUES( ?, ? )"
+
+      val DeleteSql = "DELETE FROM known_abi WHERE address = ?"
+
+      def select( conn : Connection, address : EthAddress ) : Option[String] = {
+        borrow( conn.prepareStatement( SelectSql ) ){ ps =>
+          ps.setString( 1, address.hex )
+          borrow( ps.executeQuery() )( getMaybeSingleString )
+        }
+      }
+
+      def upsert( conn : Connection, address : EthAddress, abi : String ) : Int = {
+        borrow( conn.prepareStatement( MergeSql ) ) { ps =>
+          ps.setString( 1, address.hex )
+          ps.setString( 2, abi )
+          ps.executeUpdate()
+        }
+      }
+
+      def delete( conn : Connection, address : EthAddress ) : Int = {
+        borrow( conn.prepareStatement( DeleteSql ) ) { ps =>
+          ps.setString( 1, address.hex )
+          ps.executeUpdate()
+        }
       }
     }
 

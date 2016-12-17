@@ -256,14 +256,19 @@ package object sbtethereum {
     }
   }
 
-  private [sbtethereum] def abiForAddress( address : EthAddress ) : Abi.Definition= {
+  private [sbtethereum] def abiForAddress( address : EthAddress ) : Abi.Definition = {
+    def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi.Definition]
+
     val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if there's a database problem
-    mbDeployedContractInfo.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} is not known in the sbt-ethereum repository." ) ) { deployedContractInfo =>
-      deployedContractInfo.abiDefinition.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} does not have an ABI associated with it in the sbt-ethereum repository." ) ) { abiStr =>
-        Json.parse( abiStr ).as[Abi.Definition]
-      }
+    val mbDeployedContractAbi = mbDeployedContractInfo.flatMap( _.abiDefinition.map( parseAbi ) )
+
+    // this is a def not a val, so we don't do a lookup in known_abi if we don't have to
+    def mbKnownAbi = {
+      val mbAbiText = Repository.Database.knownAbiForAddress( address ).get // throw an Exception if there's a database problem
+      mbAbiText.map( parseAbi )
     }
+    val mbAnyAbi = mbDeployedContractAbi orElse mbKnownAbi
+    mbAnyAbi.getOrElse( throw new ContractUnknownException( s"The contract at address ${address.hex} is not known in the sbt-ethereum repository." ) )
   }
 }
-
 
