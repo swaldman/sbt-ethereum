@@ -151,6 +151,20 @@ package object sbtethereum {
     out
   }
 
+  private [sbtethereum] def doEthCallEphemeral(
+    log         : sbt.Logger,
+    jsonRpcUrl  : String,
+    from        : Option[EthAddress],
+    to          : EthAddress,
+    gas         : Option[BigInt],
+    gasPrice    : Option[BigInt],
+    value       : Option[BigInt],
+    data        : Option[Seq[Byte]],
+    blockNumber : jsonrpc20.Client.BlockNumber
+  )( implicit ec : ExecutionContext ) : immutable.Seq[Byte] = {
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.call( from, Some(to), gas, gasPrice, value, data, blockNumber), Duration.Inf ) )
+  }
+
   private [sbtethereum] def doGetDefaultGasPrice( log : sbt.Logger, jsonRpcUrl : String )( implicit ec : ExecutionContext ) : BigInt = {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.gasPrice(), Duration.Inf ) )
   }

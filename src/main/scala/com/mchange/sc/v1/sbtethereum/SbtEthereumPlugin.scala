@@ -22,6 +22,7 @@ import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
+import ethabi.Encoder
 import jsonrpc20.{Abi,ClientTransactionReceipt,MapStringCompilationContractFormat}
 import specification.Denominations
 
@@ -190,6 +191,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethBalanceInWei = inputKey[BigInt]("Computes the balance in wei of the address set as 'ethAddress'")
 
     val ethBalanceInWeiFor = inputKey[BigInt]("Computes the balance in wei of a given address")
+
+    val ethCallEphemeral = inputKey[Any]("Makes an ephemeral call against the local copy of the blockchain, usually to constant function. Returns the latest available result.")
 
     val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
 
@@ -367,6 +370,50 @@ object SbtEthereumPlugin extends AutoPlugin {
         val address = GenericAddressParser.parsed
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Wei )
         result.wei
+      },
+
+      ethCallEphemeral := {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val from = if ( ethAddress.value == ZeroEthAddress ) None else Some( EthAddress( ethAddress.value ) )
+        val markup = ethGasMarkup.value
+        val gasPrice = ethGasPrice.value
+        val ( ( contractAddress, function, args, abi ), mbWei ) = (AddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
+        if (! function.constant ) {
+          log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
+        }
+        val amount = mbWei.getOrElse( Zero )
+        val callData = callDataForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the call data
+        log.info( s"Call data for function call: ${callData.hex}" )
+        val gas = markupEstimateGas( log, jsonRpcUrl, from, Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
+        log.info( s"Gas estimated for function call: ${gas}" )
+        val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Latest )
+        log.info( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
+        val result : Any = { 
+          function.outputs.length match {
+            case 0 => {
+              log.warn( s"No return type found for function '${function.name}'. Returning raw bytestring as result." )
+              rawResult : Any
+            }
+            case 1 => {
+              val tpe = function.outputs.head.`type`
+              val mbEncoder = Encoder.encoderForSolidityType( tpe )
+              mbEncoder.fold {
+                log.warn( s"Could not find an encoder for solidity type '$tpe'. Returning raw bytestring as result.")
+                rawResult : Any
+              } { encoder =>
+                val representation = encoder.decodeComplete( rawResult ).get // let the Exception fly if the decode fails
+                encoder.formatUntyped( representation ).fold( fail => log.warn(s"Failed to format retrieved value. Failure ${fail}"), str => log.info(s"Decoded return value of type '$tpe': ${str}") )
+                representation : Any
+              }
+            }
+            case _ => {
+              log.warn( s"Function '${function.name}' yields multiple return types, interpretation of which is not yet supported. Returning raw bytestring as result." )
+              rawResult : Any
+            }
+          }
+        }
+        result
       },
 
       ethCompileSolidity in Compile := {
