@@ -717,7 +717,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       watchSources ++= {
         val dir = (ethSoliditySource in Compile).value
         val filter = new FilenameFilter {
-          def accept( dir : File, name : String ) = name.endsWith(".sol")
+          def accept( dir : File, name : String ) = goodSolidityFileName( name )
         }
         if ( dir.exists ) {
           dir.list( filter ).map( name => new File( dir, name ) ).toSeq

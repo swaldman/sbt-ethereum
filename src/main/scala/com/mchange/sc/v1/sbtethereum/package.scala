@@ -64,6 +64,10 @@ package object sbtethereum {
 
   final class ContractMergeException( message : String, cause : Throwable = null ) extends Exception( message, cause )
 
+  private val SolidityBadFirstChars = ".#~"
+
+  def goodSolidityFileName( simpleName : String ) : Boolean =  simpleName.endsWith(".sol") && SolidityBadFirstChars.indexOf( simpleName.head ) < 0
+
   private [sbtethereum] def doCompileSolidity( log : sbt.Logger, jsonRpcUrl : String, solSource : File, solDestination : File )( implicit ec : ExecutionContext ) : Unit = {
     def solToJson( filename : String ) : String = filename match {
       case SolFileRegex( base ) => base + ".json"
@@ -87,7 +91,7 @@ package object sbtethereum {
 
     doWithJsonClient( log, jsonRpcUrl ){ client =>
       solDestination.mkdirs()
-      val files = (solSource ** "*.sol").get
+      val files = (solSource ** "*.sol").get.filter( file => goodSolidityFileName( file.getName ) )
 
       val filePairs = files.map( file => ( file, new File( solDestination, solToJson( file.getName() ) ) ) ) // (sourceFile, destinationFile)
       val compileFiles = filePairs.filter( tup => changed( tup._2, tup._1 ) )
