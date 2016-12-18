@@ -194,6 +194,15 @@ object Schema_h2_v0 {
         }
       }
 
+      def forgetAbi( conn : Connection, code : String ) : Unit = {
+        borrow( conn.prepareStatement( ForgetAbiSql ) ) { ps =>
+          ps.setString( 1, codeHash( code ).hex )
+          ps.executeUpdate()
+        }
+      }
+
+      private val ForgetAbiSql = "UPDATE known_contracts SET abi_definition = NULL WHERE codeHash = ?"
+
       private val MergeSql = {
         """|MERGE INTO known_contracts ( code_hash, code, name, source, language, language_version, compiler_version, compiler_options, abi_definition, user_doc, developer_doc )
            |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
@@ -295,7 +304,7 @@ object Schema_h2_v0 {
            |)""".stripMargin
       }
 
-      private val MergeSql = {
+      private val InsertSql = {
         """|MERGE INTO deployed_contracts ( address, code_hash, deployer_address, txn_hash, deployed_when )
            |VALUES( ?, ?, ?, ?, ? )""".stripMargin
       }
@@ -321,7 +330,7 @@ object Schema_h2_v0 {
       def getByAddress( conn : Connection, address : EthAddress ) : Option[Contract] = _select( conn, address )
 
       def insertExistingDeployment( conn : Connection, contractAddress : EthAddress, code : String ) : Unit = {
-        borrow( conn.prepareStatement( MergeSql ) ) { ps =>
+        borrow( conn.prepareStatement( InsertSql ) ) { ps =>
           ps.setString( 1, contractAddress.hex )
           ps.setString( 2, codeHash( code ).hex )
           ps.setNull( 3, Types.CHAR )
@@ -333,7 +342,7 @@ object Schema_h2_v0 {
 
       def insertNewDeployment( conn : Connection, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Unit = {
         val timestamp = new Timestamp( System.currentTimeMillis )
-        borrow( conn.prepareStatement( MergeSql ) ) { ps =>
+        borrow( conn.prepareStatement( InsertSql ) ) { ps =>
           ps.setString( 1, contractAddress.hex )
           ps.setString( 2, codeHash( code ).hex )
           ps.setString( 3, deployerAddress.hex )

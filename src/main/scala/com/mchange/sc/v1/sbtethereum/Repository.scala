@@ -66,17 +66,59 @@ object Repository {
   }
 
   final object Database {
+    import Schema_h2_v0._
+
     val DirName = "database"
     lazy val Directory : Failable[File] = Repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
 
     def insertNewDeployment( contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Failable[Unit] = {
-      import Schema_h2_v0._
-
       h2_v0.DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ){ conn =>
             Table.DeployedContracts.insertNewDeployment( conn, contractAddress, code, deployerAddress, transactionHash )
           }
+        }
+      }
+    }
+
+    def insertExistingDeployment( contractAddress : EthAddress, code : String ) : Failable[Unit] = {
+      h2_v0.DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection() ){ conn =>
+            Table.DeployedContracts.insertExistingDeployment( conn, contractAddress, code )
+          }
+        }
+      }
+    }
+
+    private def knownContractForCodeHash( codeHash : EthHash ) : Failable[Option[Table.KnownContracts.CachedContract]] = {
+      h2_v0.DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection() ){ conn =>
+            Table.KnownContracts.getByCodeHash( conn, codeHash )
+          }
+        }
+      }
+    }
+
+    /**
+      * Return value is whether any change was made, won't update already set ABIs.
+      * Explicitly forget the ABI if you really need to change the ABI.
+      */ 
+    def setContractAbi( code : Seq[Byte], abiString : String ) : Failable[Boolean] = {
+      h2_v0.DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection() ){ conn =>
+            Table.KnownContracts.createUpdateKnownContract( conn, code.hex, None, None, None, None, None, None, Some( abiString ), None, None, UseOriginal )
+          }
+        }
+      }
+    }
+
+    def forgetContractAbi( code : Seq[Byte] ) : Failable[Unit] = {
+      h2_v0.DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection() )( conn => Table.KnownContracts.forgetAbi( conn, code.hex ) )
         }
       }
     }
@@ -87,8 +129,6 @@ object Repository {
      *  okay. it could be a lot less convoluted.
      */ 
     def updateContractDatabase( compilations : Map[String,jsonrpc20.Compilation.Contract], stubNameToAddressCodes : Map[String,Map[EthAddress,String]], policy : IrreconcilableUpdatePolicy ) : Failable[Boolean] = {
-      import Schema_h2_v0._
-
       val ( compiledContracts, stubs ) = compilations.partition { case ( name, compilation ) => compilation.code.decodeHex.length > 0 }
 
       def updateKnownContracts( conn : Connection ) : Failable[Boolean] = {
@@ -173,8 +213,6 @@ object Repository {
     )
 
     def deployedContractInfoForAddress( address : EthAddress ) : Failable[Option[DeployedContractInfo]] =  {
-      import Schema_h2_v0._
-      
       h2_v0.DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection ) { conn =>

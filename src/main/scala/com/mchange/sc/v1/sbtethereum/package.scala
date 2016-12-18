@@ -256,12 +256,18 @@ package object sbtethereum {
     }
   }
 
+  private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi.Definition]
+
+  private [sbtethereum] def readAddressAndAbi( log : sbt.Logger, is : InteractionService ) : ( EthAddress, Abi.Definition ) = {
+    val address = EthAddress( is.readLine( "Contract address in hex: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+    val abi = parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+    ( address, abi )
+  }
+
   private [sbtethereum] def abiForAddress( address : EthAddress ) : Abi.Definition= {
     val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if there's a database problem
     mbDeployedContractInfo.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} is not known in the sbt-ethereum repository." ) ) { deployedContractInfo =>
-      deployedContractInfo.abiDefinition.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} does not have an ABI associated with it in the sbt-ethereum repository." ) ) { abiStr =>
-        Json.parse( abiStr ).as[Abi.Definition]
-      }
+      deployedContractInfo.abiDefinition.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} does not have an ABI associated with it in the sbt-ethereum repository." ) ) ( parseAbi )
     }
   }
 }

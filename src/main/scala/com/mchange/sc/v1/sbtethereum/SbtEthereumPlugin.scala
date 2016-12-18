@@ -224,6 +224,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
+    val ethMemorizeAbi = taskKey[Unit]("Inserts an ABI definition for a contract into the sbt-ethereum database")
+
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
     val ethRevealPrivateKeyFor = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
@@ -583,6 +585,23 @@ object SbtEthereumPlugin extends AutoPlugin {
 	val extract = Project.extract(s)
 	val (_, result) = extract.runInputTask(ethLoadWalletV3For, addressStr, s)
         result
+      },
+
+      ethMemorizeAbi := {
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val log = streams.value.log
+        val is = interactionService.value
+        val ( address, abi ) = readAddressAndAbi( log, is )
+        val code = doCodeForAddress( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest )
+
+        val check = Repository.Database.setContractAbi( code, Json.stringify( Json.toJson( abi ) ) ).get // thrown an Exception if there's a database issue
+        if (!check) {
+          log.info( s"The contract code at address '$address' was already associated with an ABI, which has not been overwritten." )
+          log.info( s"Associating address with the known ABI.")
+        }
+        Repository.Database.insertExistingDeployment( address, code.hex ).get // thrown an Exception if there's a database issue
+
+        log.info( s"ABI is now known for the contract at address ${address.hex}" )
       },
 
       ethDeployOnly <<= ethDeployOnlyTask,
