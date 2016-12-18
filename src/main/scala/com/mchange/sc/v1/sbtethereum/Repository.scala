@@ -213,6 +213,19 @@ object Repository {
       developerDoc    : Option[String]
     )
 
+    case class KnownContractInfo (
+      code            : String,
+      name            : Option[String],
+      source          : Option[String],
+      language        : Option[String],
+      languageVersion : Option[String],
+      compilerVersion : Option[String],
+      compilerOptions : Option[String],
+      abiDefinition   : Option[String],
+      userDoc         : Option[String],
+      developerDoc    : Option[String]
+    )
+
     def deployedContractInfoForAddress( address : EthAddress ) : Failable[Option[DeployedContractInfo]] =  {
       DataSource.flatMap { ds =>
         Failable {
@@ -228,6 +241,31 @@ object Repository {
                 deployerAddress = deployedContract.deployerAddress,
                 transactionHash = deployedContract.transactionHash,
                 deployedWhen    = deployedContract.deployedWhen,
+                name            = knownContract.name,
+                source          = knownContract.source,
+                language        = knownContract.language,
+                languageVersion = knownContract.languageVersion,
+                compilerVersion = knownContract.compilerVersion,
+                compilerOptions = knownContract.compilerOptions,
+                abiDefinition   = knownContract.abiDefinition,
+                userDoc         = knownContract.userDoc,
+                developerDoc    = knownContract.developerDoc
+              )
+            }
+          }
+        }
+      }
+    }
+
+    def deployedContractInfoForCodeHash( codeHash : EthHash ) : Failable[Option[KnownContractInfo]] =  {
+      DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection ) { conn =>
+            for {
+              knownContract <- Table.KnownContracts.getByCodeHash( conn, codeHash )
+            } yield {
+              KnownContractInfo (
+                code            = knownContract.code,
                 name            = knownContract.name,
                 source          = knownContract.source,
                 language        = knownContract.language,

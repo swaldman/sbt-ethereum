@@ -12,6 +12,7 @@ import sbinary.DefaultProtocol._
 
 import java.io.{BufferedInputStream,File,FileInputStream,FilenameFilter}
 import java.security.SecureRandom
+import java.util.Date
 import java.util.concurrent.atomic.AtomicReference
 
 import play.api.libs.json.Json
@@ -125,6 +126,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  val ContractAddressOrCodeHashParser : Parser[Either[EthAddress,EthHash]] = {
+    val chp = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), "<contract-code-hash>").map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
+    createAddressParser("<address-hex>").map( addr =>Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+  }
+
   private val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
 
   private val Zero256 = Unsigned256( 0 )
@@ -201,6 +207,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
     val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
+
+    val ethDumpContractInfo = inputKey[Unit]("Dumps to the console full information about a contract, based on either a code hash or contract address")
 
     val ethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
 
@@ -428,6 +436,62 @@ object SbtEthereumPlugin extends AutoPlugin {
         val solDestination = (ethSolidityDestination in Compile).value
 
         doCompileSolidity( log, jsonRpcUrl, solSource, solDestination )
+      },
+
+      ethDumpContractInfo := {
+        println()
+        val cap = "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-"
+        println( cap )
+        println("                       CONTRACT INFO DUMP")
+        println( cap )
+
+        def section( title : String, body : Option[String], hex : Boolean = false ) = body.foreach { b =>
+          println( cap )
+          println( s"${title}:")
+          println();
+          println( (if ( hex ) "0x" else "") + b )
+        }
+        val source = ContractAddressOrCodeHashParser.parsed
+        source match {
+          case Left( address ) => {
+            val mbinfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw any db problem
+            mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
+              section( "Contract Address", Some( info.address.hex ), true )
+              section( "Deployer Address", info.deployerAddress.map( _.hex ), true )
+              section( "Transaction Hash", info.transactionHash.map( _.hex ), true )
+              section( "Deployment Timestamp", info.deployedWhen.map( l => (new Date(l)).toString ) )
+              section( "Code Hash", Some( EthHash.hash( info.code.decodeHex ).hex ), true )
+              section( "Code", Some( info.code ), true )
+              section( "Contract Name", info.name )
+              section( "Contract Source", info.source )
+              section( "Contract Language", info.language )
+              section( "Language Version", info.languageVersion )
+              section( "Compiler Version", info.compilerVersion )
+              section( "Compiler Options", info.compilerOptions )
+              section( "ABI Definition", info.abiDefinition )
+              section( "User Documentation", info.userDoc )
+              section( "Developer Documentation", info.developerDoc )
+            }
+          }
+          case Right( hash ) => {
+            val mbinfo = Repository.Database.deployedContractInfoForCodeHash( hash ).get // throw any db problem
+            mbinfo.fold( println( s"Contract with code hash '$hash' not found." ) ) { info =>
+              section( "Code Hash", Some( hash.hex ), true )
+              section( "Code", Some( info.code ), true )
+              section( "Contract Name", info.name )
+              section( "Contract Source", info.source )
+              section( "Contract Language", info.language )
+              section( "Language Version", info.languageVersion )
+              section( "Compiler Version", info.compilerVersion )
+              section( "Compiler Options", info.compilerOptions )
+              section( "ABI Definition", info.abiDefinition )
+              section( "User Documentation", info.userDoc )
+              section( "Developer Documentation", info.developerDoc )
+            }
+          }
+        }
+        println( cap )
+        println()
       },
 
       compile in Compile := {
