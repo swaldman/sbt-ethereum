@@ -1,12 +1,13 @@
 package com.mchange.sc.v1.sbtethereum
 
 import java.io.{BufferedOutputStream,File,FileOutputStream,OutputStreamWriter,PrintWriter}
-import java.sql.Connection
+import java.sql.{Connection,Timestamp}
 import java.text.SimpleDateFormat
 import java.util.Date
 
 import scala.io.Codec
 import scala.util.control.NonFatal
+import scala.collection._
 
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.lang.borrow
@@ -72,7 +73,7 @@ object Repository {
     lazy val Directory : Failable[File] = Repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
 
     def insertNewDeployment( contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Failable[Unit] = {
-      h2_v0.DataSource.flatMap { ds =>
+      DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ){ conn =>
             Table.DeployedContracts.insertNewDeployment( conn, contractAddress, code, deployerAddress, transactionHash )
@@ -82,7 +83,7 @@ object Repository {
     }
 
     def insertExistingDeployment( contractAddress : EthAddress, code : String ) : Failable[Unit] = {
-      h2_v0.DataSource.flatMap { ds =>
+      DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ){ conn =>
             Table.DeployedContracts.insertExistingDeployment( conn, contractAddress, code )
@@ -92,7 +93,7 @@ object Repository {
     }
 
     private def knownContractForCodeHash( codeHash : EthHash ) : Failable[Option[Table.KnownContracts.CachedContract]] = {
-      h2_v0.DataSource.flatMap { ds =>
+      DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ){ conn =>
             Table.KnownContracts.getByCodeHash( conn, codeHash )
@@ -106,7 +107,7 @@ object Repository {
       * Explicitly forget the ABI if you really need to change the ABI.
       */ 
     def setContractAbi( code : Seq[Byte], abiString : String ) : Failable[Boolean] = {
-      h2_v0.DataSource.flatMap { ds =>
+      DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ){ conn =>
             Table.KnownContracts.createUpdateKnownContract( conn, code.hex, None, None, None, None, None, None, Some( abiString ), None, None, UseOriginal )
@@ -116,7 +117,7 @@ object Repository {
     }
 
     def forgetContractAbi( code : Seq[Byte] ) : Failable[Unit] = {
-      h2_v0.DataSource.flatMap { ds =>
+      DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() )( conn => Table.KnownContracts.forgetAbi( conn, code.hex ) )
         }
@@ -172,7 +173,7 @@ object Repository {
         }
       }
 
-      h2_v0.DataSource.flatMap { ds =>
+      DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ){ conn =>
             conn.setAutoCommit( true )
@@ -213,7 +214,7 @@ object Repository {
     )
 
     def deployedContractInfoForAddress( address : EthAddress ) : Failable[Option[DeployedContractInfo]] =  {
-      h2_v0.DataSource.flatMap { ds =>
+      DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection ) { conn =>
             for {
@@ -242,6 +243,28 @@ object Repository {
         }
       }
     }
+
+    def contractsSummary : Failable[immutable.Seq[ContractsSummaryRow]] = {
+      DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection() ) { conn =>
+            borrow( conn.createStatement() ) { stmt =>
+              borrow( stmt.executeQuery( ContractsSummarySql ) ) { rs =>
+                val buffer = new mutable.ArrayBuffer[ContractsSummaryRow]
+                val df = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSSZ" )
+                def mbformat( ts : Timestamp ) : String = if ( ts == null ) null else df.format( ts )
+                while( rs.next() ) {
+                  buffer += ContractsSummaryRow( rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), mbformat( rs.getTimestamp(6) ) )
+                }
+                buffer.toVector
+              }
+            }
+          }
+        }
+      }
+    }
+
+    case class ContractsSummaryRow( contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
 
     lazy val DataSource = h2_v0.DataSource
 

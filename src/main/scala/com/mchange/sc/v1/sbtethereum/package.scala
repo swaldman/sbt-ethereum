@@ -64,6 +64,11 @@ package object sbtethereum {
 
   final class ContractMergeException( message : String, cause : Throwable = null ) extends Exception( message, cause )
 
+  // some formatting functions for ascii tables
+  def emptyOrHex( str : String ) = if (str == null) "" else s"0x$str"
+  def blankNull( str : String ) = if (str == null) "" else str
+  def span( len : Int ) = (0 until len).map(_ => "-").mkString
+
   private val SolidityBadFirstChars = ".#~"
 
   def goodSolidityFileName( simpleName : String ) : Boolean =  simpleName.endsWith(".sol") && SolidityBadFirstChars.indexOf( simpleName.head ) < 0

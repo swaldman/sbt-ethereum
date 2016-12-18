@@ -35,6 +35,12 @@ object Schema_h2_v0 {
     }
   }
 
+  val ContractsSummarySql = {
+    """|SELECT DISTINCT address, name, deployer_address, known_contracts.code_hash, txn_hash, deployed_when
+       |FROM deployed_contracts RIGHT JOIN known_contracts ON deployed_contracts.code_hash = known_contracts.code_hash
+       |ORDER BY deployed_when ASC""".stripMargin
+  }
+
   private def codeHash( codeHex : String ) : EthHash = EthHash.hash(codeHex.decodeHex)
 
   final object Table {
