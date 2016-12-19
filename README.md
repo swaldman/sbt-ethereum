@@ -12,8 +12,8 @@ sbt-ethereum is very much a work in progress. For the moment you can...
 4. Interact with already-deployed ethereum smart contracts
 5. Keep track of ABIs and other metainformation regarding contracts you develop or interact with
 
-**This is new, largely untested code (based on [consuela](https://github.com/swaldman/consuela), also a new, fluid, and largely untested library). Nothing is yet stable about this project.
-Expect everything to change. Obviously, NO WARRANTIES, see the [LICENSE](LICENSE) and all of that. But I'd love it if you gave it a (cautious) try.**
+**_This is new, largely untested code (based on [consuela](https://github.com/swaldman/consuela), also a new, fluid, and largely untested library). Nothing is yet stable about this project.
+Expect everything to change. Obviously, NO WARRANTIES, see the [LICENSE](LICENSE) and all of that. But I'd love it if you gave it a (cautious) try._**
 
 ## Getting Started
 
@@ -21,7 +21,7 @@ Expect everything to change. Obviously, NO WARRANTIES, see the [LICENSE](LICENSE
 preferably (for security reasons) running only on the localhost interface. sbt-ethereum has mostly been tried against [go-ethereum](https://github.com/ethereum/go-ethereum) by
 running `geth --rpc`, but it should work with any client that supports the JSON-RPC interface.
 
-2. You'll need to download [sbt](http://www.scala-sbt.org) if you don't have it already. This is an "autoplugin", which requires sbt 0.13.5 or later.
+2. You'll need to download [sbt](http://www.scala-sbt.org) if you don't have it already. sbt-ethereum is an "autoplugin", which requires sbt 0.13.5 or later.
 
 3. Define a standard project (see [below](https://gist.github.com/swaldman/38ffc4f069a8672b2b86841892fd6762#sbt-project-layout)) that includes the plugin and
 sets an `ethAddress` key, representing the address from which you will be deploying your contracts and/or sending ether
@@ -67,14 +67,10 @@ Open a fresh terminal window, go into your project's top-level director (`my-pro
 you intend to deploy contracts or send ether, you'll want to specify an ethereum address on whose behalf it will act. You can do that three ways:
 
 - Set the environment variable `ETH_ADDRESS` prior to running `sbt`
-- Set the JVM System property `eth.address` when running `sbt`, that is, run
-```
-> `sbt -Deth.address=0x465e79b940bc2157e4259ff6b2d92f454497f1e4`
-```
+- Set the JVM System property `eth.address` when running `sbt`, that is, run `sbt -Deth.address=0x465e79b940bc2157e4259ff6b2d92f454497f1e4`
 - At any time, on the SBT command like, run
-```
-> set ethAddress := "0x465e79b940bc2157e4259ff6b2d92f454497f1e4"
-```
+
+    > set ethAddress := "0x465e79b940bc2157e4259ff6b2d92f454497f1e4"
 
 Your `ethAddress` will be stable throughout your interactive session (unless you reset it with `set ethAddress` as above).
 You will be prompted for its passphrase only once. (Be careful, as commands to send ether or deploy contracts will execute
@@ -90,11 +86,11 @@ to other developers.
 If geth is running on the local machine, everything should "just work", but if you want to interact with a JSON-RPC server on another machine or on a nonstandard
 port, you can set the key `ethJsonRpcUrl`, either in `build.sbt` or by typing
 
-> set ethJsonRpcUrl := "http://my.host:8545"
+    > set ethJsonRpcUrl := "http://my.host:8545"
 
 ### Sending ether
 
-**Please bear in mind that sbt-ethereum is young, largely untested code, offered without warranties. Don't try high-stakes stuff, or work from high-stakes addresses!**
+**_Please bear in mind that sbt-ethereum is young, largely untested code, offered without warranties. Don't try high-stakes stuff, or work from high-stakes addresses!_**
 
 To send ether:
 
@@ -131,7 +127,7 @@ You can search on the transaction hash, or on the address from which you are dep
 
 ### Interacting with deployed smart contracts
 
-**Please bear in mind that sbt-ethereum is young, largely untested code, offered without warranties. Don't try high-stakes stuff, or work from high-stakes addresses!**
+**_Please bear in mind that sbt-ethereum is young, largely untested code, offered without warranties. Don't try high-stakes stuff, or work from high-stakes addresses!_**
 
 Metainformation about any smart contract you deploy, from any project, will be saved in the sbt-ethereum database. You can interact with those contracts using
 the `ethInvoke` task. [_Note: The call below is restricted to the contract's issuer, `0x465e79b940bc2157e4259ff6b2d92f454497f1e4`. You won't be able to try this example at home._]
