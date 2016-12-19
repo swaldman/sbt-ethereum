@@ -69,8 +69,9 @@ you intend to deploy contracts or send ether, you'll want to specify an ethereum
 - Set the environment variable `ETH_ADDRESS` prior to running `sbt`
 - Set the JVM System property `eth.address` when running `sbt`, that is, run `sbt -Deth.address=0x465e79b940bc2157e4259ff6b2d92f454497f1e4`
 - At any time, on the SBT command like, run
-
-    > set ethAddress := "0x465e79b940bc2157e4259ff6b2d92f454497f1e4"
+```
+> set ethAddress := "0x465e79b940bc2157e4259ff6b2d92f454497f1e4"
+```    
 
 Your `ethAddress` will be stable throughout your interactive session (unless you reset it with `set ethAddress` as above).
 You will be prompted for its passphrase only once. (Be careful, as commands to send ether or deploy contracts will execute
