@@ -54,7 +54,7 @@ Here's a minimal `build.sbt`:
     
     version := "0.0.1-SNAPSHOT"
     
-And `plugins.sbt`:
+And `project/plugins.sbt`:
 
     addSbtPlugin("com.mchange" % "sbt-ethereum" % "0.0.1")
 
