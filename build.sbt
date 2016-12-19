@@ -10,7 +10,7 @@ organization := "com.mchange"
 
 name := "sbt-ethereum"
 
-version := "0.0.1-SNAPSHOT"
+version := "0.0.1"
 
 sbtPlugin := true
 
@@ -34,12 +34,12 @@ publishTo <<= version {
 libraryDependencies += sbtCoreNext.value
 
 libraryDependencies ++= Seq(
-  "com.mchange" %% "consuela" % "0.0.2-SNAPSHOT",
-  "com.mchange" %% "mchange-commons-scala" % "0.4.2-SNAPSHOT",
-  "com.mchange" %% "mlog-scala" % "0.3.9-SNAPSHOT",
-  "com.mchange"    % "c3p0"            % "0.9.5.2",
-  "com.h2database" % "h2"              % "1.4.192",
-  "ch.qos.logback" % "logback-classic" % "1.1.7"
+  "com.mchange"    %% "consuela"              % "0.0.2",
+  "com.mchange"    %% "mchange-commons-scala" % "0.4.2",
+  "com.mchange"    %% "mlog-scala"            % "0.3.9",
+  "com.mchange"    %  "c3p0"                  % "0.9.5.2",
+  "com.h2database" %  "h2"                    % "1.4.192",
+  "ch.qos.logback" %  "logback-classic"       % "1.1.7"
 )
 
 pomExtra := {
