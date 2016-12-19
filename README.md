@@ -106,8 +106,12 @@ You can use the `<tab>` key for suggestions and completions. Instead of `wei`, y
 Compilation of soldity contracts is integrated into sbt's standard compilation pipeline. So, just type
 
     > compile
+
+You can have sbt continually compile your contracts, every time you save by typing
     
 To compile your contracts.
+
+    > ~compile
 
 To deploy one of the contracts in your `src/main/solidity` directory, use the `ethDeployOnly` task:
 
