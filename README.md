@@ -21,12 +21,14 @@ Expect everything to change. Obviously, NO WARRANTIES, see the [LICENSE](LICENSE
 preferably (for security reasons) running only on the localhost interface. sbt-ethereum has mostly been tried against [go-ethereum](https://github.com/ethereum/go-ethereum) by
 running `geth --rpc`, but it should work with any client that supports the JSON-RPC interface.
 
-2. You'll need to download [sbt](http://www.scala-sbt.org) if you don't have it already. sbt-ethereum is an "autoplugin", which requires sbt 0.13.5 or later.
+2. You will also need the [solidity compiler solc](https://github.com/ethereum/solidity) installed on your computer (available in the `PATH` visible to geth).
 
-3. Define a standard project (see [below](https://gist.github.com/swaldman/38ffc4f069a8672b2b86841892fd6762#sbt-project-layout)) that includes the plugin and
+3. You'll need to download [sbt](http://www.scala-sbt.org) if you don't have it already. sbt-ethereum is an "autoplugin", which requires sbt 0.13.5 or later.
+
+4. Define a standard project (see [below](https://gist.github.com/swaldman/38ffc4f069a8672b2b86841892fd6762#sbt-project-layout)) that includes the plugin and
 sets an `ethAddress` key, representing the address from which you will be deploying your contracts and/or sending ether
 
-4. Enter your project's top-level directory in a terminal and type `sbt` to enter the environment. sbt-ethereum functionality will now be available.
+5. Enter your project's top-level directory in a terminal and type `sbt` to enter the environment. sbt-ethereum functionality will now be available.
 
 ## SBT project layout
 
