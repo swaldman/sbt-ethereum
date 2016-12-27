@@ -310,7 +310,7 @@ object Repository {
       val DirName = "h2_v0"
       lazy val Directory : Failable[File] = Database.Directory.flatMap( dbDir => ensureUserOnlyDirectory( new File( dbDir, DirName ) ) )
 
-      lazy val JdbcUrl : Failable[String] = h2_v0.Directory.map( d => s"jdbc:h2:${d.getAbsolutePath}" )
+      lazy val JdbcUrl : Failable[String] = h2_v0.Directory.map( d => s"jdbc:h2:${d.getAbsolutePath};AUTO_SERVER=TRUE" )
 
       lazy val DataSource : Failable[javax.sql.DataSource] = {
         for {
