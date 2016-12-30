@@ -419,7 +419,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             def formatResult( idx : Int, result : DecodedReturnValue ) : String = {
               val param = result.parameter
               val sb = new StringBuilder(256)
-              sb.append( s"   + Result ${idx} of type '${param.`type`}'")
+              sb.append( s" + Result ${idx} of type '${param.`type`}'")
               if ( param.name.length > 0 ) {
                 sb.append( s", named '${param.name}'," )
               }
