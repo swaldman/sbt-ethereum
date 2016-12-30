@@ -411,9 +411,9 @@ object SbtEthereumPlugin extends AutoPlugin {
             assert( abiFunction.outputs.length == n )
 
             if ( n == 1 ) {
-              log.info( s"The function ${abiFunction.name} yields 1 result." )
+              log.info( s"The function '${abiFunction.name}' yields 1 result." )
             } else {
-              log.info( s"The function ${abiFunction.name} yields ${n} results." )
+              log.info( s"The function '${abiFunction.name}' yields ${n} results." )
             }
 
             def formatResult( idx : Int, result : DecodedReturnValue ) : String = {
@@ -445,13 +445,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethDumpContractInfo := {
         println()
-        val cap = "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-"
+        val cap =     "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-"
+        val minicap = "------------------------------------------------------------------------"
         println( cap )
         println("                       CONTRACT INFO DUMP")
         println( cap )
 
         def section( title : String, body : Option[String], hex : Boolean = false ) = body.foreach { b =>
-          println( cap )
+          println( minicap )
           println( s"${title}:")
           println();
           println( (if ( hex ) "0x" else "") + b )
