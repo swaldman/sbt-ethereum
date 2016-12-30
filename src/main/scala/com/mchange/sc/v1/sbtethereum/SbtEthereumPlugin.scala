@@ -23,14 +23,13 @@ import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
-import ethabi.Encoder
 import jsonrpc20.{Abi,ClientTransactionReceipt,MapStringCompilationContractFormat}
 import specification.Denominations
 
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
-import com.mchange.sc.v1.consuela.ethereum.ethabi.callDataForFunctionNameAndArgs
+import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAndArgs,callDataForAbiFunction,decodeReturnValuesForFunction,DecodedReturnValue,Encoder}
 import scala.collection._
 
 // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
@@ -198,7 +197,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethBalanceInWeiFor = inputKey[BigInt]("Computes the balance in wei of a given address")
 
-    val ethCallEphemeral = inputKey[Any]("Makes an ephemeral call against the local copy of the blockchain, usually to constant function. Returns the latest available result.")
+    val ethCallEphemeral = inputKey[(Abi.Function,immutable.Seq[DecodedReturnValue])]("Makes an ephemeral call against the local copy of the blockchain, usually to constant function. Returns the latest available result.")
 
     val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
 
@@ -395,37 +394,43 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
         }
         val amount = mbWei.getOrElse( Zero )
-        val callData = callDataForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the call data
+        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
+        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Call data for function call: ${callData.hex}" )
         val gas = markupEstimateGas( log, jsonRpcUrl, from, Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
         log.info( s"Gas estimated for function call: ${gas}" )
         val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Latest )
         log.info( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
-        val result : Any = { 
-          function.outputs.length match {
-            case 0 => {
-              log.warn( s"No return type found for function '${function.name}'. Returning raw bytestring as result." )
-              rawResult : Any
+        val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception is we can't get results
+        results.length match {
+          case 0 => {
+            assert( abiFunction.outputs.length == 0 )
+            log.info( s"The function ${abiFunction.name} yields no result." )
+          }
+          case n => {
+            assert( abiFunction.outputs.length == n )
+
+            if ( n == 1 ) {
+              log.info( s"The function ${abiFunction.name} yields 1 result." )
+            } else {
+              log.info( s"The function ${abiFunction.name} yields ${n} results." )
             }
-            case 1 => {
-              val tpe = function.outputs.head.`type`
-              val mbEncoder = Encoder.encoderForSolidityType( tpe )
-              mbEncoder.fold {
-                log.warn( s"Could not find an encoder for solidity type '$tpe'. Returning raw bytestring as result.")
-                rawResult : Any
-              } { encoder =>
-                val representation = encoder.decodeComplete( rawResult ).get // let the Exception fly if the decode fails
-                encoder.formatUntyped( representation ).fold( fail => log.warn(s"Failed to format retrieved value. Failure ${fail}"), str => log.info(s"Decoded return value of type '$tpe': ${str}") )
-                representation : Any
+
+            def formatResult( idx : Int, result : DecodedReturnValue ) : String = {
+              val param = result.parameter
+              val sb = new StringBuilder(256)
+              sb.append( s"   + Result ${idx} of type '${param.`type`}'")
+              if ( param.name.length > 0 ) {
+                sb.append( s", named ${param.name}," )
               }
+              sb.append( s" is ${result.stringRep}" )
+              sb.toString
             }
-            case _ => {
-              log.warn( s"Function '${function.name}' yields multiple return types, interpretation of which is not yet supported. Returning raw bytestring as result." )
-              rawResult : Any
-            }
+
+            Stream.from(1).zip(results).foreach { case ( idx, result ) => log.info( formatResult( idx, result ) ) }
           }
         }
-        result
+        ( abiFunction, results )
       },
 
       ethCompileSolidity in Compile := {
@@ -574,7 +579,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         val ( ( contractAddress, function, args, abi ), mbWei ) = (AddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
         val amount = mbWei.getOrElse( Zero )
         val privateKey = findCachePrivateKey.value
-        val callData = callDataForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the call data
+        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
+        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Call data for function call: ${callData.hex}" )
         val gas = markupEstimateGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
         log.info( s"Gas estimated for function call: ${gas}" )
@@ -586,7 +592,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethInvokeData := {
         val ( contractAddress, function, args, abi ) = AddressFunctionInputsAbiParser.parsed
-        val callData = callDataForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the call data
+        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
+        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         val log = streams.value.log
         log.info( s"Call data: ${callData.hex}" )
         callData
