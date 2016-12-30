@@ -421,7 +421,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               val sb = new StringBuilder(256)
               sb.append( s"   + Result ${idx} of type '${param.`type`}'")
               if ( param.name.length > 0 ) {
-                sb.append( s", named ${param.name}," )
+                sb.append( s", named '${param.name}'," )
               }
               sb.append( s" is ${result.stringRep}" )
               sb.toString
@@ -445,7 +445,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethDumpContractInfo := {
         println()
-        val cap =     "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-"
+        val cap =     "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
         val minicap = "------------------------------------------------------------------------"
         println( cap )
         println("                       CONTRACT INFO DUMP")
