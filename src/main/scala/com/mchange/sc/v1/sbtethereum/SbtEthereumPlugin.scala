@@ -260,6 +260,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
+    val ethShowWalletV3For = inputKey[Unit]("Prints for a V3 wallet to the console the JSON.")
+
     val ethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts and stubs (defined in ethKnownStubAddresses) into the contract database. Returns true if changes were made.")
 
     // anonymous tasks
@@ -802,6 +804,14 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.info( s"Ping succeeded! Sent 0 ether from '${address}' to itself in transaction '0x${receipt.transactionHash.hex}'" )
         }
         out
+      },
+
+      ethShowWalletV3For := {
+        val w = ethLoadWalletV3For.evaluated.getOrElse {
+          val locationString = Repository.KeyStore.Directory.fold( _ => "Could not find or create Repository keystore directory.", file => file.getAbsolutePath() )
+          throw new Exception( s"Could not find V3 wallet for the specified address in the sbt-ethereum repository keystore: ${locationString}" )
+        }
+        println( Json.stringify( w.withLowerCaseKeys ) )
       },
 
       ethSendEther := {
