@@ -248,7 +248,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
-    val ethMemorizeAbi = taskKey[Unit]("Inserts an ABI definition for a contract into the sbt-ethereum database")
+    val ethMemorizeAbi = taskKey[Unit]("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
+
+    val ethMemorizeWalletV3 = taskKey[Unit]("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
 
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
@@ -725,6 +727,15 @@ object SbtEthereumPlugin extends AutoPlugin {
         Repository.Database.insertExistingDeployment( address, code.hex ).get // thrown an Exception if there's a database issue
 
         log.info( s"ABI is now known for the contract at address ${address.hex}" )
+      },
+
+      ethMemorizeWalletV3 := {
+        val log = streams.value.log
+        val is = interactionService.value
+        val w = readV3Wallet( is )
+        val address = w.address // a very cursory check of the wallet, NOT full validation
+        Repository.KeyStore.V3.storeWallet( w ).get // asserts success
+        log.info( s"Imported JSON wallet for address '0x${address.hex}', consider validating the JSON using ethTestWalletV3." )
       },
 
       ethDeployOnly <<= ethDeployOnlyTask,

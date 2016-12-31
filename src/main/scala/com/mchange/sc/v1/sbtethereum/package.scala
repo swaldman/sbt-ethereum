@@ -273,6 +273,12 @@ package object sbtethereum {
     ( address, abi )
   }
 
+  private [sbtethereum] def readV3Wallet( is : InteractionService ) : wallet.V3 = {
+    val jsonStr = is.readLine( "V3 Wallet JSON: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
+    val jsv = Json.parse( jsonStr )
+    wallet.V3( jsv.as[JsObject] )
+  }
+
   private [sbtethereum] def abiForAddress( address : EthAddress ) : Abi.Definition= {
     val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if there's a database problem
     mbDeployedContractInfo.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} is not known in the sbt-ethereum repository." ) ) { deployedContractInfo =>
