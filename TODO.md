@@ -1,8 +1,8 @@
 # TODO
 
+* Implement ethTestWalletV3
+* Import wallet json from file
 * Careful support of imports in solidity, with incremental compilation
-* Show wallet json (to copy)
-* Import wallet json (by paste or from file)
 * Import raw private key as wallet
 * Backup / restore of repository (especially db)
 * Import/Export of contract metadata between repositories
