@@ -74,7 +74,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     RecipientAddressParser ~ ValueInWeiParser
   }
 
-  private def functionParser( abi : Abi.Definition ) : Parser[Abi.Function] = {
+  private def functionParser( abi : Abi.Definition, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
 
     // println( s"namesToFunctions: ${namesToFunctions}" )
@@ -93,7 +93,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // println( s"qualifiedOverloadedNamesToFunctions: ${qualifiedOverloadedNamesToFunctions}" )
 
-    val processedNamesToFunctions = (qualifiedOverloadedNamesToFunctions ++ nonoverloadedNamesToFunctions).toMap
+    val processedNamesToFunctions = {
+      val raw = (qualifiedOverloadedNamesToFunctions ++ nonoverloadedNamesToFunctions).toMap
+      if ( restrictToConstants ) {
+        raw.filter( _._2.constant )
+      } else {
+        raw
+      }
+    }
 
     // println( s"processedNamesToFunctions: ${processedNamesToFunctions}" )
 
@@ -113,15 +120,23 @@ object SbtEthereumPlugin extends AutoPlugin {
     inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space ~> next.map( str => partial :+ str ) ) )
   }
 
-  def functionAndInputsParser( abi : Abi.Definition ) : Parser[(Abi.Function, immutable.Seq[String])] = {
-    token( functionParser( abi ) ).flatMap( function => inputsParser( function.inputs ).map( seq => ( function, seq ) ) )
+  def functionAndInputsParser( abi : Abi.Definition, restrictToConstants : Boolean ) : Parser[(Abi.Function, immutable.Seq[String])] = {
+    token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs ).map( seq => ( function, seq ) ) )
   }
 
-  val AddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
+  val UnrestrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
     GenericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { tup =>
       val address = tup._1
       val abi     = tup._2 
-      ( Space ~> functionAndInputsParser( abi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
+      ( Space ~> functionAndInputsParser( abi, false ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
+    }
+  }
+
+  val RestrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
+    GenericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { tup =>
+      val address = tup._1
+      val abi     = tup._2 
+      ( Space ~> functionAndInputsParser( abi, true ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
     }
   }
 
@@ -197,7 +212,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethBalanceInWeiFor = inputKey[BigInt]("Computes the balance in wei of a given address")
 
-    val ethCallEphemeral = inputKey[(Abi.Function,immutable.Seq[DecodedReturnValue])]("Makes an ephemeral call against the local copy of the blockchain, usually to constant function. Returns the latest available result.")
+    val ethCallConstant = inputKey[(Abi.Function,immutable.Seq[DecodedReturnValue])]("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
     val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
 
@@ -383,13 +398,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         result.wei
       },
 
-      ethCallEphemeral := {
+      ethCallConstant := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
         val from = if ( ethAddress.value == ZeroEthAddress ) None else Some( EthAddress( ethAddress.value ) )
         val markup = ethGasMarkup.value
         val gasPrice = ethGasPrice.value
-        val ( ( contractAddress, function, args, abi ), mbWei ) = (AddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
+        val ( ( contractAddress, function, args, abi ), mbWei ) = (RestrictedAddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
         if (! function.constant ) {
           log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
         }
@@ -577,7 +592,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val nextNonce = ethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = ethGasPrice.value
-        val ( ( contractAddress, function, args, abi ), mbWei ) = (AddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
+        val ( ( contractAddress, function, args, abi ), mbWei ) = (UnrestrictedAddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
         val amount = mbWei.getOrElse( Zero )
         val privateKey = findCachePrivateKey.value
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
@@ -592,7 +607,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethInvokeData := {
-        val ( contractAddress, function, args, abi ) = AddressFunctionInputsAbiParser.parsed
+        val ( contractAddress, function, args, abi ) = UnrestrictedAddressFunctionInputsAbiParser.parsed
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
         val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         val log = streams.value.log
