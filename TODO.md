@@ -1,6 +1,5 @@
 # TODO
 
-* Implement ethTestWalletV3
 * Import wallet json from file
 * Careful support of imports in solidity, with incremental compilation
 * Import raw private key as wallet

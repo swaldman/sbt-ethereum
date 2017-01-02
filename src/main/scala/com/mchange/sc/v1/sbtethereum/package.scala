@@ -279,11 +279,20 @@ package object sbtethereum {
     wallet.V3( jsv.as[JsObject] )
   }
 
+  private [sbtethereum] def readCredential( is : InteractionService, address : EthAddress ) : String = {
+    is.readLine(s"Enter passphrase or hex private key for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
+  }
+
   private [sbtethereum] def abiForAddress( address : EthAddress ) : Abi.Definition= {
     val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if there's a database problem
     mbDeployedContractInfo.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} is not known in the sbt-ethereum repository." ) ) { deployedContractInfo =>
       deployedContractInfo.abiDefinition.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} does not have an ABI associated with it in the sbt-ethereum repository." ) ) ( parseAbi )
     }
+  }
+
+  private [sbtethereum] def unknownWallet( loadDirs : Seq[File] ) : Nothing = {
+    val dirs = loadDirs.map( _.getAbsolutePath() ).mkString(", ")
+    throw new Exception( s"Could not find V3 wallet for the specified address in the specified keystore directories: ${dirs}}" )
   }
 }
 

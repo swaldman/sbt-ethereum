@@ -266,6 +266,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts and stubs (defined in ethKnownStubAddresses) into the contract database. Returns true if changes were made.")
 
+    val ethValidateWalletV3For = inputKey[Unit]("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
+
     // anonymous tasks
 
     val warnOnZeroAddress = Def.task {
@@ -288,7 +290,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val mbWallet = ethLoadWalletV3.value
 
       def updateCached : EthPrivateKey = {
-        val credential = is.readLine(s"Enter passphrase or hex private key for address '${CurAddrStr}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
+        val credential = readCredential( is, CurAddress )
 
         val privateKey = findPrivateKey( log, mbWallet, credential )
         UnlockedKey.set( Some( (CurAddress, privateKey) ) )
@@ -735,7 +737,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         val w = readV3Wallet( is )
         val address = w.address // a very cursory check of the wallet, NOT full validation
         Repository.KeyStore.V3.storeWallet( w ).get // asserts success
-        log.info( s"Imported JSON wallet for address '0x${address.hex}', consider validating the JSON using ethTestWalletV3." )
+        log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
+        log.info( s"Consider validating the JSON using 'ethValidateWalletV3For 0x${address.hex}." )
       },
 
       ethDeployOnly <<= ethDeployOnlyTask,
@@ -781,13 +784,14 @@ object SbtEthereumPlugin extends AutoPlugin {
         val is = interactionService.value
         val log = streams.value.log
         
-        val addressStr = GenericAddressParser.parsed.hex
+        val address = GenericAddressParser.parsed
+        val addressStr = address.hex
 
         val s = state.value
 	val extract = Project.extract(s)
 	val (_, mbWallet) = extract.runInputTask(ethLoadWalletV3For, addressStr, s)
 
-        val credential = is.readLine(s"Enter passphrase for address '0x${addressStr}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
+        val credential = readCredential( is, address )
         val privateKey = findPrivateKey( log, mbWallet, credential )
         val confirmation = {
           is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
@@ -818,10 +822,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethShowWalletV3For := {
-        val w = ethLoadWalletV3For.evaluated.getOrElse {
-          val locationString = Repository.KeyStore.Directory.fold( _ => "Could not find or create Repository keystore directory.", file => file.getAbsolutePath() )
-          throw new Exception( s"Could not find V3 wallet for the specified address in the sbt-ethereum repository keystore: ${locationString}" )
-        }
+        val keystoreDirs = ethKeystoresV3.value
+        val w = ethLoadWalletV3For.evaluated.getOrElse( unknownWallet( keystoreDirs ) )
         println( Json.stringify( w.withLowerCaseKeys ) )
       },
 
@@ -854,6 +856,26 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
         Repository.Database.updateContractDatabase( compilations, stubNameToAddressCodes, policy ).get
+      },
+
+      ethValidateWalletV3For := {
+        val log = streams.value.log
+        val is = interactionService.value
+        val keystoreDirs = ethKeystoresV3.value
+        val s = state.value
+	val extract = Project.extract(s)
+        val inputAddress = GenericAddressParser.parsed
+	val (_, mbWallet) = extract.runInputTask(ethLoadWalletV3For, inputAddress.hex, s)
+        val w = mbWallet.getOrElse( unknownWallet( keystoreDirs ) )
+        val credential = readCredential( is, inputAddress )
+        val privateKey = wallet.V3.decodePrivateKey( w, credential )
+        val derivedAddress = privateKey.toPublicKey.toAddress
+        if ( derivedAddress != inputAddress ) {
+          throw new Exception(
+            s"The wallet loaded for '0x${inputAddress.hex}' decodes with the credential given, but to a private key associated with a different address, 0x${derivedAddress}! Keystore files may be mislabeled or corrupted."
+          )
+        }
+        log.info( s"A wallet for address '0x${derivedAddress.hex}' is valid and decodable with the credential supplied." )
       },
 
       watchSources ++= {
