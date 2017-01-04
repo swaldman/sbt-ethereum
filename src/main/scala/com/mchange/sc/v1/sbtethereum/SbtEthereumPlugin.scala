@@ -1,10 +1,10 @@
 package com.mchange.sc.v1.sbtethereum
 
+import Parsers._
+
 import sbt._
 import sbt.Keys._
 import sbt.plugins.{JvmPlugin,InteractionServicePlugin}
-import sbt.complete.{FixedSetExamples,Parser}
-import sbt.complete.DefaultParsers._
 import sbt.Def.Initialize
 import sbt.InteractionServiceKeys.interactionService
 import sbinary._
@@ -54,104 +54,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val Zero = BigInt(0)
 
-  private val ZWSP = "\u200B" // we add zero-width space to parser examples lists where we don't want autocomplete to apply to unique examples
-
-  private val GenericAddressParser = createAddressParser("<address-hex>")
-
-  private val RecipientAddressParser = createAddressParser("<recipient-address-hex>")
-
-  private val AmountParser = token(Space.* ~> (Digit|literal('.')).+, "<amount>").map( chars => BigDecimal( chars.mkString ) )
-
-  private val UnitParser = {
-    val ( w, s, f, e ) = ( "wei", "szabo", "finney", "ether" );
-    //(Space.* ~>(literal(w) | literal(s) | literal(f) | literal(e))).examples(w, s, f, e)
-    Space.* ~> token(literal(w) | literal(s) | literal(f) | literal(e))
-  }
-
-  private val ValueInWeiParser = (AmountParser ~ UnitParser).map { case ( amount, unit ) => rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt }
-
-  private val EthSendEtherParser : Parser[( EthAddress, BigInt )] = {
-    RecipientAddressParser ~ ValueInWeiParser
-  }
-
-  private def functionParser( abi : Abi.Definition, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
-    val namesToFunctions           = abi.functions.groupBy( _.name )
-
-    // println( s"namesToFunctions: ${namesToFunctions}" )
-
-    val overloadedNamesToFunctions = namesToFunctions.filter( _._2.length > 1 )
-    val nonoverloadedNamesToFunctions : Map[String,Abi.Function] = (namesToFunctions -- overloadedNamesToFunctions.keySet).map( tup => ( tup._1, tup._2.head ) )
-
-    // println( s"overloadedNamesToFunctions: ${overloadedNamesToFunctions}" )
-    // println( s"nonoverloadedNamesToFunctions: ${nonoverloadedNamesToFunctions}" )
-
-    def createQualifiedNameForOverload( function : Abi.Function ) : String = function.name + "(" + function.inputs.map( _.`type` ).mkString(",") + ")"
-
-    def createOverloadBinding( function : Abi.Function ) : ( String, Abi.Function ) = ( createQualifiedNameForOverload( function ), function )
-
-    val qualifiedOverloadedNamesToFunctions : Map[String, Abi.Function] = overloadedNamesToFunctions.values.flatMap( _.map( createOverloadBinding ) ).toMap
-
-    // println( s"qualifiedOverloadedNamesToFunctions: ${qualifiedOverloadedNamesToFunctions}" )
-
-    val processedNamesToFunctions = {
-      val raw = (qualifiedOverloadedNamesToFunctions ++ nonoverloadedNamesToFunctions).toMap
-      if ( restrictToConstants ) {
-        raw.filter( _._2.constant )
-      } else {
-        raw
-      }
-    }
-
-    // println( s"processedNamesToFunctions: ${processedNamesToFunctions}" )
-
-    val baseParser = processedNamesToFunctions.keySet.foldLeft( failure("not a function name") : Parser[String] )( ( nascent, next ) => nascent | literal( next ) )
-
-    baseParser.map( processedNamesToFunctions )
-  }
-
-  private def inputParser( input : Abi.Function.Parameter, unique : Boolean ) : Parser[String] = {
-    val displayName = if ( input.name.length == 0 ) "mapping key" else input.name
-    (StringEscapable.map( str => s""""${str}"""") | NotQuoted).examples( FixedSetExamples( immutable.Set( s"<${displayName}, of type ${input.`type`}>", ZWSP ) ) )
-  }
-
-  private def inputsParser( inputs : immutable.Seq[Abi.Function.Parameter] ) : Parser[immutable.Seq[String]] = {
-    val unique = inputs.size <= 1
-    val parserMaker : Abi.Function.Parameter => Parser[String] = param => inputParser( param, unique )
-    inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space ~> next.map( str => partial :+ str ) ) )
-  }
-
-  def functionAndInputsParser( abi : Abi.Definition, restrictToConstants : Boolean ) : Parser[(Abi.Function, immutable.Seq[String])] = {
-    token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs ).map( seq => ( function, seq ) ) )
-  }
-
-  val UnrestrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
-    GenericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { tup =>
-      val address = tup._1
-      val abi     = tup._2 
-      ( Space ~> functionAndInputsParser( abi, false ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
-    }
-  }
-
-  val RestrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
-    GenericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { tup =>
-      val address = tup._1
-      val abi     = tup._2 
-      ( Space ~> functionAndInputsParser( abi, true ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
-    }
-  }
-
-  val ContractAddressOrCodeHashParser : Parser[Either[EthAddress,EthHash]] = {
-    val chp = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), "<contract-code-hash>").map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
-    createAddressParser("<address-hex>").map( addr =>Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
-  }
-
-  private val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
 
   private val Zero256 = Unsigned256( 0 )
 
   private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
-
-  private def createAddressParser( tabHelp : String ) = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ), tabHelp).map( chars => EthAddress.apply( chars.mkString ) )
 
   /*
   implicit object CompilationMapSBinaryFormat extends sbinary.Format[immutable.Map[String,jsonrpc20.Compilation.Contract]]{
@@ -924,13 +830,6 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
         out
-      }
-    }
-
-    def contractNamesParser : (State, immutable.Set[String]) => Parser[String] = {
-      (state, contractNames) => {
-        val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", ZWSP) else contractNames // non-breaking space to prevent autocompletion to dummy example
-        Space ~> token( NotSpace examples exSet )
       }
     }
 
