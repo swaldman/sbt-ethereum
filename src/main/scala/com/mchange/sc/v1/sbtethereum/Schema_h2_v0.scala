@@ -13,6 +13,8 @@ import java.sql.{Connection,PreparedStatement,ResultSet,Types,Timestamp}
 
 import javax.sql.DataSource
 
+import scala.collection._
+
 object Schema_h2_v0 {
 
   private implicit lazy val logger = mlogger( this )
@@ -30,6 +32,8 @@ object Schema_h2_v0 {
         stmt.executeUpdate( Table.Metadata.CreateSql )
         stmt.executeUpdate( Table.KnownContracts.CreateSql )
         stmt.executeUpdate( Table.DeployedContracts.CreateSql )
+        stmt.executeUpdate( Table.AddressAliases.CreateSql )
+        stmt.executeUpdate( Table.AddressAliases.CreateIndex )
       }
       Table.Metadata.ensureSchemaVersion( conn )
     }
@@ -76,7 +80,6 @@ object Schema_h2_v0 {
     }
 
     final object KnownContracts {
-
       private def delete( conn : Connection, codeHash : EthHash ) : Int = {
         borrow( conn.prepareStatement( DeleteSql ) ) { ps =>
           ps.setString(1, codeHash.hex)
@@ -355,6 +358,57 @@ object Schema_h2_v0 {
           ps.setString( 4, transactionHash.hex )
           ps.setTimestamp( 5, timestamp )
           ps.executeUpdate()
+        }
+      }
+    }
+    final object AddressAliases {
+      val CreateSql = {
+        """|CREATE TABLE IF NOT EXISTS address_aliases (
+           |   alias   VARCHAR(128) PRIMARY KEY,
+           |   address CHAR(40) NOT NULL
+           |)""".stripMargin
+      }
+      val CreateIndex = "CREATE INDEX IF NOT EXISTS address_aliases_address_idx ON address_aliases( address )"
+
+      private val InsertSql = {
+        """|MERGE INTO address_aliases ( alias, addres )
+           |VALUES( ?, ? )""".stripMargin
+      }
+      def selectByAlias( conn : Connection, alias : String ) : Option[EthAddress] = {
+        borrow( conn.prepareStatement( "SELECT address FROM address_aliases WHERE alias = ?" ) ) { ps =>
+          ps.setString(1, alias)
+          val mbAddressStr = borrow( ps.executeQuery() )( getMaybeSingleString )
+          mbAddressStr.map( EthAddress.apply )
+        }
+      }
+      def selectByAddress( conn : Connection, address : EthAddress ) : Option[String] = {
+        borrow( conn.prepareStatement( "SELECT alias FROM address_aliases WHERE address = ?" ) ) { ps =>
+          ps.setString(1, address.hex)
+          borrow( ps.executeQuery() )( getMaybeSingleString )
+        }
+      }
+      def select( conn : Connection ) : immutable.SortedMap[String,EthAddress] = {
+        val buffer = mutable.ArrayBuffer.empty[Tuple2[String,EthAddress]]
+        borrow( conn.prepareStatement( "SELECT alias, address FROM address_aliases ORDER BY alias ASC" ) ) { ps =>
+          borrow( ps.executeQuery() ) { rs =>
+            while ( rs.next() ) {
+              buffer += Tuple2( rs.getString(1), EthAddress( rs.getString(2) ) )
+            }
+          }
+        }
+        immutable.SortedMap( buffer : _* )
+      }
+      def upsert( conn : Connection, alias : String, address : EthAddress ) : Unit = {
+        borrow( conn.prepareStatement( "MERGE INTO address_aliases ( alias, address ) VALUES ( ?, ? )" ) ) { ps =>
+          ps.setString( 1, alias )
+          ps.setString( 2, address.hex )
+          ps.executeUpdate()
+        }
+      }
+      def delete( conn : Connection, alias : String ) : Boolean = {
+        borrow( conn.prepareStatement( "DELETE FROM address_aliases WHERE ALIAS = ?" ) ) { ps =>
+          ps.setString( 1, alias )
+          ps.executeUpdate() == 1
         }
       }
     }

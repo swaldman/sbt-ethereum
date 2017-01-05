@@ -236,7 +236,19 @@ For the moment (this may evolve rapidly), the repository contains sbt-ethereum's
 If you have generated new account wallets, those will be found under `keystore/V3` in a format and under filenames that are interoperable with `geth`.
 (You can copy these files into your `geth` keystore if you'd like.)
 
-The database constains metainformation about contracts that you have deployed or interacted with using sbt-ethereum. It is shared by all projects.
+The database constains metainformation about contracts that you have deployed or interacted with using sbt-ethereum. *It is shared by all projects.*
+
+### Aliasing accounts
+
+It can be annoying to type (really, to copy and paste) full Ethereum addresses all the time when sending Ether or invoking contract methods.
+
+sbt-ethereum permits you to define aliases for addresses in the repository, which you can use in place of hex addresses in almost every sbt-ethereum command.
+
+Try `ethAlias<tab>` to see the three alias-related tasks, `ethAliasSet`, `ethAliasList`, and `ethAliasDrop`.
+
+**Note:** Using aliases introduces a potential security issue. If an unauthorized party modifies the address to which an alias points, you may send
+ether to or invoke contract methods on a malicious, unintended recipient. Before doing anything high-stakes, verify that your alias points to where
+you think it points with `ethAliasList`.
 
 ### Examining sbt-ethetherum repository data
 

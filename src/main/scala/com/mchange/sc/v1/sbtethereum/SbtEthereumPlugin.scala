@@ -110,6 +110,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethAbiForContractAddress = inputKey[Abi.Definition]("Finds the ABI for a contract address, if known")
 
+    val ethAliasDrop = inputKey[Unit]("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
+
+    val ethAliasList = inputKey[Unit]("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
+
+    val ethAliasSet = inputKey[Unit]("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
+
     val ethBalance = inputKey[BigDecimal]("Computes the balance in ether of the address set as 'ethAddress'")
 
     val ethBalanceFor = inputKey[BigDecimal]("Computes the balance in ether of a given address")
@@ -274,7 +280,37 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethWalletV3Pbkdf2DkLen := wallet.V3.Default.Pbkdf2.DkLen,
 
-      ethAbiForContractAddress := abiForAddress( GenericAddressParser.parsed ),
+      ethAbiForContractAddress := abiForAddress( genericAddressParser.parsed ),
+
+      ethAliasDrop := {
+        val log = streams.value.log
+        val alias = aliasParser.parsed
+        val check = Repository.Database.dropAlias( alias ).get // assert success
+        if (check) log.info( s"Alias '${alias}' successfully dropped.")
+        else log.info( s"Alias '${alias}' is not defined, and so could not be dropped." )
+      },
+
+      ethAliasList := {
+        val log = streams.value.log
+        val faliases = Repository.Database.findAllAliases
+        faliases.fold(
+          _ => log.warn("Could not read aliases from repository database."),
+          aliases => aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
+        )
+      },
+
+      ethAliasSet := {
+        val log = streams.value.log
+        val ( alias, address ) = NewAliasParser.parsed
+        val check = Repository.Database.createUpdateAlias( alias, address )
+        check.fold(
+          _.vomit,
+          _ => {
+            log.info( s"Alias '${alias}' now points to address '${address.hex}'." )
+            log.warn( s"You will need to restart sbt or run 'reload' before the new alias '${alias}' becomes available to tab completion." )
+          }
+        )
+      },
 
       ethBalance := {
         val checked = warnOnZeroAddress.value
@@ -288,7 +324,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethBalanceFor := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
-        val address = GenericAddressParser.parsed
+        val address = genericAddressParser.parsed
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Ether )
         result.denominated
       },
@@ -305,7 +341,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethBalanceInWeiFor := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
-        val address = GenericAddressParser.parsed
+        val address = genericAddressParser.parsed
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Wei )
         result.wei
       },
@@ -316,7 +352,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val from = if ( ethAddress.value == ZeroEthAddress ) None else Some( EthAddress( ethAddress.value ) )
         val markup = ethGasMarkup.value
         val gasPrice = ethGasPrice.value
-        val ( ( contractAddress, function, args, abi ), mbWei ) = (RestrictedAddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
+        val ( ( contractAddress, function, args, abi ), mbWei ) = (restrictedAddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
         if (! function.constant ) {
           log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
         }
@@ -384,7 +420,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           println();
           println( (if ( hex ) "0x" else "") + b )
         }
-        val source = ContractAddressOrCodeHashParser.parsed
+        val source = contractAddressOrCodeHashParser.parsed
         source match {
           case Left( address ) => {
             val mbinfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw any db problem
@@ -504,7 +540,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val nextNonce = ethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = ethGasPrice.value
-        val ( ( contractAddress, function, args, abi ), mbWei ) = (UnrestrictedAddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
+        val ( ( contractAddress, function, args, abi ), mbWei ) = (unrestrictedAddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
         val amount = mbWei.getOrElse( Zero )
         val privateKey = findCachePrivateKey.value
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
@@ -519,7 +555,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethInvokeData := {
-        val ( contractAddress, function, args, abi ) = UnrestrictedAddressFunctionInputsAbiParser.parsed
+        val ( contractAddress, function, args, abi ) = unrestrictedAddressFunctionInputsAbiParser.parsed
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
         val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         val log = streams.value.log
@@ -599,7 +635,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val keystoresV3 = ethKeystoresV3.value
         val log         = streams.value.log
 
-        val address = GenericAddressParser.parsed
+        val address = genericAddressParser.parsed
         val out = {
           keystoresV3
             .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
@@ -690,7 +726,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val is = interactionService.value
         val log = streams.value.log
         
-        val address = GenericAddressParser.parsed
+        val address = genericAddressParser.parsed
         val addressStr = address.hex
 
         val s = state.value
@@ -736,7 +772,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethSendEther := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
-        val args = EthSendEtherParser.parsed
+        val args = { WARNING.log("ETHSENDETHERPARSER"); ethSendEtherParser.parsed }
         val to = args._1
         val amount = args._2
         val nextNonce = ethNextNonce.value
@@ -770,7 +806,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val keystoreDirs = ethKeystoresV3.value
         val s = state.value
 	val extract = Project.extract(s)
-        val inputAddress = GenericAddressParser.parsed
+        val inputAddress = genericAddressParser.parsed
 	val (_, mbWallet) = extract.runInputTask(ethLoadWalletV3For, inputAddress.hex, s)
         val w = mbWallet.getOrElse( unknownWallet( keystoreDirs ) )
         val credential = readCredential( is, inputAddress )

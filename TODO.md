@@ -5,6 +5,6 @@
 * Import raw private key as wallet
 * Backup / restore of repository (especially db)
 * Import/Export of contract metadata between repositories
-* Aliases for contracts and addresses
+* Make tab completion re aliases for contracts and addresses dynamic
 * Tags for contracts and addresses
 

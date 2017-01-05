@@ -301,6 +301,26 @@ object Repository {
         }
       }
     }
+    def createUpdateAlias( alias : String, address : EthAddress ) : Failable[Unit] = {
+      DataSource.flatMap { ds =>
+        Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, alias, address ) ) )
+      }
+    }
+    def findAllAliases : Failable[immutable.SortedMap[String,EthAddress]] = {
+      DataSource.flatMap { ds =>
+        Failable( borrow( ds.getConnection() )( Table.AddressAliases.select ) )
+      }
+    }
+    def findAddressByAlias( alias : String ) : Failable[Option[EthAddress]] = {
+      DataSource.flatMap { ds =>
+        Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, alias ) ) )
+      }
+    }
+    def dropAlias( alias : String ) : Failable[Boolean] = {
+      DataSource.flatMap { ds =>
+        Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, alias ) ) )
+      }
+    }
 
     case class ContractsSummaryRow( contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
 

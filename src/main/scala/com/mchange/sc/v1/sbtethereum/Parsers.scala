@@ -10,16 +10,54 @@ import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,specification,EthAddress,E
 import specification.Denominations
 import jsonrpc20.Abi
 
+import com.mchange.sc.v2.failable._
+
+import com.mchange.sc.v1.log.MLevel._
+
 import scala.collection._
 
 object Parsers {
+  private implicit lazy val logger = mlogger( this )
+
   private val ZWSP = "\u200B" // we add zero-width space to parser examples lists where we don't want autocomplete to apply to unique examples
 
-  private [sbtethereum] def createAddressParser( tabHelp : String ) = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ), tabHelp).map( chars => EthAddress.apply( chars.mkString ) )
+  private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
 
-  private [sbtethereum] val GenericAddressParser = createAddressParser("<address-hex>")
+  private def createSimpleAddressParser( tabHelp : String ) = Space.* ~> token( RawAddressParser, tabHelp )
 
-  private [sbtethereum] val RecipientAddressParser = createAddressParser("<recipient-address-hex>")
+  private def rawAliasedAddressParser( aliases : SortedMap[String,EthAddress] ) = {
+    aliases.keys.foldLeft( failure("not a known alias") : Parser[EthAddress] )( ( nascent, next ) => nascent | literal( next ).map( aliases ) )
+  }
+
+  private def rawAliasParser( aliases : SortedMap[String,EthAddress] ) = {
+    aliases.keys.foldLeft( failure("not a known alias") : Parser[String] )( ( nascent, next ) => nascent | literal( next ) )
+  }
+
+  private def createAddressParser( tabHelp : String ) = {
+    val faliases = Repository.Database.findAllAliases
+    if ( faliases.isFailed ) {
+      WARNING.log("Could not select address aliases from the repository database, so aliases cannot be parsed")
+      createSimpleAddressParser( tabHelp )
+    } else {
+      val aliases = faliases.get
+      if ( aliases.isEmpty ) {
+        createSimpleAddressParser( tabHelp )
+      } else {
+        // println("CREATING COMPOUND PARSER")
+        Space.* ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) )
+      }
+    }
+  }
+
+  private [sbtethereum] def aliasParser = { // def not val so that ideally they'd pick up new aliases, but doesn't work
+    Space.* ~> Repository.Database.findAllAliases.fold( _ => ID, aliases => rawAliasParser( aliases ) )
+  }
+
+  private [sbtethereum] def genericAddressParser = createAddressParser("<address-hex>") // def not val so that ideally they'd pick up new aliases, but doesn't work
+
+  private [sbtethereum] def recipientAddressParser = createAddressParser("<recipient-address-hex>") // def not val so that ideally they'd pick up new aliases, but doesn't work
+
+  private [sbtethereum] val NewAliasParser = token(Space.* ~> ID, "<alias>") ~ createSimpleAddressParser("<hex-address>")
 
   private [sbtethereum] val AmountParser = token(Space.* ~> (Digit|literal('.')).+, "<amount>").map( chars => BigDecimal( chars.mkString ) )
 
@@ -33,8 +71,8 @@ object Parsers {
     (AmountParser ~ UnitParser).map { case ( amount, unit ) => rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt }
   }
 
-  private [sbtethereum] val EthSendEtherParser : Parser[( EthAddress, BigInt )] = {
-    RecipientAddressParser ~ ValueInWeiParser
+  private [sbtethereum] def ethSendEtherParser : Parser[( EthAddress, BigInt )] = { // def not val so that ideally they'd pick up new aliases, but doesn't work
+    recipientAddressParser ~ ValueInWeiParser
   }
 
   private [sbtethereum] def contractNamesParser : (State, immutable.Set[String]) => Parser[String] = {
@@ -85,23 +123,19 @@ object Parsers {
     token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs ).map( seq => ( function, seq ) ) )
   }
 
-  private [sbtethereum] val UnrestrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
-    GenericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { tup =>
-      val address = tup._1
-      val abi     = tup._2 
+  private [sbtethereum] def unrestrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
+    genericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { case ( address, abi ) =>
       ( Space ~> functionAndInputsParser( abi, false ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
     }
   }
 
-  private [sbtethereum] val RestrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
-    GenericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { tup =>
-      val address = tup._1
-      val abi     = tup._2 
+  private [sbtethereum] def restrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
+    genericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { case ( address, abi ) =>
       ( Space ~> functionAndInputsParser( abi, true ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
     }
   }
 
-  private [sbtethereum] val ContractAddressOrCodeHashParser : Parser[Either[EthAddress,EthHash]] = {
+  private [sbtethereum] def contractAddressOrCodeHashParser : Parser[Either[EthAddress,EthHash]] = {
     val chp = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), "<contract-code-hash>").map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
     createAddressParser("<address-hex>").map( addr =>Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
   }
