@@ -48,8 +48,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private implicit val UnlockedKey = new AtomicReference[Option[(EthAddress,EthPrivateKey)]]( None )
 
-  private implicit val CachedAliases = new AtomicReference[Option[immutable.SortedMap[String,EthAddress]]]( None )
-
   private val BufferSize = 4096
 
   private val PollSeconds = 15
@@ -62,13 +60,6 @@ object SbtEthereumPlugin extends AutoPlugin {
   private val Zero256 = Unsigned256( 0 )
 
   private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
-
-  /*
-  implicit object CompilationMapSBinaryFormat extends sbinary.Format[immutable.Map[String,jsonrpc20.Compilation.Contract]]{
-    def reads(in : Input) = Json.parse( StringFormat.reads( in ) ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]]
-    def writes(out : Output, value : immutable.Map[String,jsonrpc20.Compilation.Contract]) = StringFormat.writes( out, Json.stringify( Json.toJson( value ) ) )
-  }
-   */
 
   object autoImport {
 
@@ -175,6 +166,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethRevealPrivateKeyFor = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
 
     val ethQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
+
+    val ethTriggerDirtyAliasCache = taskKey[Unit]("Indirectly provokes an update of the cache of aliases used for tab completions.")
 
     val ethSelfPing = taskKey[Option[ClientTransactionReceipt]]("Sends 0 ether from ethAddress to itself")
 
@@ -297,7 +290,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethAbiForContractAddress := abiForAddress( genericAddressParser.parsed ),
 
-      ethAliasDrop <<= ethAliasDropTask, 
+      ethAliasDrop <<= ethAliasDropTask,
 
       ethAliasList := {
         val log = streams.value.log
@@ -308,19 +301,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         )
       },
 
-      ethAliasSet := {
-        val log = streams.value.log
-        val ( alias, address ) = NewAliasParser.parsed
-        CachedAliases.set( None )
-        val check = Repository.Database.createUpdateAlias( alias, address )
-        check.fold(
-          _.vomit,
-          _ => {
-            log.info( s"Alias '${alias}' now points to address '${address.hex}'." )
-            log.warn( s"You will need to restart sbt or run 'reload' before the new alias '${alias}' becomes available to tab completion." )
-          }
-        )
-      },
+      ethAliasSet <<= ethAliasSetTask,
 
       ethBalance := {
         val checked = warnOnZeroAddress.value
@@ -356,10 +337,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         result.wei
       },
 
-      // unfortunately, can't triggerBy on input tasks... grrr.
-      // ethFindCacheAliasesIfAvailable <<= ethFindCacheAliasesIfAvailableTask.storeAs( ethFindCacheAliasesIfAvailable ).triggeredBy( ethAliasSet ).triggeredBy( ethAliasDrop ),
-
-      ethFindCacheAliasesIfAvailable <<= ethFindCacheAliasesIfAvailableTask,
+      ethFindCacheAliasesIfAvailable <<= ethFindCacheAliasesIfAvailableTask.storeAs( ethFindCacheAliasesIfAvailable ).triggeredBy( ethTriggerDirtyAliasCache ),
 
       ethFindCacheCompiledContractNames <<= ethFindCacheCompiledContractNamesTask storeAs ethFindCacheCompiledContractNames triggeredBy (ethCompileSolidity in Compile ),
 
@@ -796,6 +774,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
       },
 
+      ethTriggerDirtyAliasCache := {
+      },
+
       ethUpdateContractDatabase := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
@@ -844,21 +825,43 @@ object SbtEthereumPlugin extends AutoPlugin {
     )
 
     def ethAliasDropTask : Initialize[InputTask[Unit]] = {
-      println( "Running ethAliasDropTask." )
       val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genAliasParser )
 
-      Def.inputTask {
+      Def.inputTaskDyn {
         val log = streams.value.log
+
+        // not sure why, but without this ethFindCacheAliasesIfAvailable, which should be triggered by the parser,
+        // sometimes fails initialize te parser
+        val ensureAliases = ethFindCacheAliasesIfAvailable
+
         val alias = parser.parsed
-        CachedAliases.set( None )
         val check = Repository.Database.dropAlias( alias ).get // assert success
         if (check) log.info( s"Alias '${alias}' successfully dropped.")
         else log.warn( s"Alias '${alias}' is not defined, and so could not be dropped." )
+
+        Def.taskDyn {
+          ethTriggerDirtyAliasCache
+        }
+      }
+    }
+
+    def ethAliasSetTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
+      val log = streams.value.log
+      val ( alias, address ) = NewAliasParser.parsed
+      val check = Repository.Database.createUpdateAlias( alias, address )
+      check.fold(
+        _.vomit,
+        _ => {
+          log.info( s"Alias '${alias}' now points to address '${address.hex}'." )
+        }
+      )
+
+      Def.taskDyn {
+        ethTriggerDirtyAliasCache
       }
     }
 
     def ethDeployOnlyTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      println( "Running ethDeployOnlyTask." )
       val parser = Defaults.loadForParser(ethFindCacheCompiledContractNames)( genContractNamesParser )
 
       Def.inputTask {
@@ -899,41 +902,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // the caching here is managed by sbt using storedBy and triggeredBy (see above)
     def ethFindCacheCompiledContractNamesTask : Initialize[Task[immutable.Set[String]]] = Def.task {
-      println( "Running ethFindCacheCompiledContractNamesTask." )
       val map = ethLoadCompilations.value
       immutable.TreeSet( map.keys.toSeq : _* )( Ordering.comparatorToOrdering( String.CASE_INSENSITIVE_ORDER ) )
     }
 
     
-    // ugly, but the sleek caching can't be triggered by input tasks
     def ethFindCacheAliasesIfAvailableTask : Initialize[Task[Option[immutable.SortedMap[String,EthAddress]]]] = Def.task {
-      println( s"Running ethFindCacheAliasesIfAvailableTask" )
-
-      val log = streams.value.log
-
-      CachedAliases.get match {
-        case None => {
-          Repository.Database.findAllAliases.fold(
-            fail => {
-              log.warn( s"A problem occured while accessing aliases in the repository database: $fail" )
-              None
-            },
-            aliases => {
-              println( s"SETTING ALIASES: $aliases" )
-              CachedAliases.set( Some( aliases ) )
-              Some( aliases )
-            }
-          )
-        }
-        case good => good
-      }
+      Repository.Database.findAllAliases.toOption
     }
-
-    // if only SBT's built-in caching could be triggered by input tasks...
-    //
-    // def ethFindCacheAliasesIfAvailableTask : Initialize[Task[Option[immutable.SortedMap[String,EthAddress]]]] = Def.task {
-    //   Repository.Database.findAllAliases.toOption
-    // }
   }
 
 

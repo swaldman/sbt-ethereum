@@ -31,19 +31,22 @@ object Parsers {
 
   private def rawAliasedAddressParser( aliases : SortedMap[String,EthAddress] ) : Parser[EthAddress] = rawAliasParser( aliases ).map( aliases )
 
-  private def createAddressParser( tabHelp : String ) = {
+  private def createAddressParser( tabHelp : String, aliases : immutable.SortedMap[String,EthAddress] ) : Parser[EthAddress] = {
+    if ( aliases.isEmpty ) {
+      createSimpleAddressParser( tabHelp )
+    } else {
+      // println("CREATING COMPOUND PARSER")
+      Space.* ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) )
+    }
+  }
+
+  private def createAddressParser( tabHelp : String ) : Parser[EthAddress] = {
     val faliases = Repository.Database.findAllAliases
     if ( faliases.isFailed ) {
       WARNING.log("Could not select address aliases from the repository database, so aliases cannot be parsed")
       createSimpleAddressParser( tabHelp )
     } else {
-      val aliases = faliases.get
-      if ( aliases.isEmpty ) {
-        createSimpleAddressParser( tabHelp )
-      } else {
-        // println("CREATING COMPOUND PARSER")
-        Space.* ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) )
-      }
+      createAddressParser( tabHelp, faliases.get )
     }
   }
 
@@ -117,19 +120,17 @@ object Parsers {
 
   // this is terrible. the nested option is because SBT's loadForParser function returns an Option, in case the task it loads from somehow fails
   private [sbtethereum] def genAliasParser( state : State, mbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] )= {
-    println( s"GENALIASPARSER: ${mbAliases}" )
-
     // XXX: we accept ID when we don't have aliases, bc maybe there was just a problem getting the aliases but they exist. (kind of weak?)
-    Space.* ~> mbAliases.flatten.fold( ID )( aliases => rawAliasParser( aliases ) )
+    Space.* ~> mbAliases.flatten.fold( ID )( aliases => token( rawAliasParser( aliases ).examples( aliases.keySet, false ) ) )
   }
 
-  private [sbtethereum] def genericAddressParser = createAddressParser("<address-hex>") // def not val so that ideally they'd pick up new aliases, but doesn't work
+  private [sbtethereum] def genericAddressParser = createAddressParser("<address-hex or alias>") // def not val so that ideally they'd pick up new aliases, but doesn't work
 
-  private [sbtethereum] def recipientAddressParser = createAddressParser("<recipient-address-hex>") // def not val so that ideally they'd pick up new aliases, but doesn't work
+  private [sbtethereum] def recipientAddressParser = createAddressParser("<recipient-address-hex or alias>") // def not val so that ideally they'd pick up new aliases, but doesn't work
 
   private [sbtethereum] def contractAddressOrCodeHashParser : Parser[Either[EthAddress,EthHash]] = {
     val chp = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), "<contract-code-hash>").map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
-    createAddressParser("<address-hex>").map( addr =>Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+    createAddressParser("<address-hex or alias>").map( addr =>Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
   }
 
   private [sbtethereum] def unrestrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {

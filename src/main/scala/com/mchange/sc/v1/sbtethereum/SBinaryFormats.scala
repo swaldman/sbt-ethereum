@@ -33,4 +33,11 @@ object SBinaryFormats {
 
   implicit val EthAddressAsFormat = rlpSerializingAsFormat[EthAddress]
 
+  /*
+   implicit object CompilationMapSBinaryFormat extends sbinary.Format[immutable.Map[String,jsonrpc20.Compilation.Contract]]{
+     def reads(in : Input) = Json.parse( StringFormat.reads( in ) ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]]
+     def writes(out : Output, value : immutable.Map[String,jsonrpc20.Compilation.Contract]) = StringFormat.writes( out, Json.stringify( Json.toJson( value ) ) )
+   }
+   */
+
 }
