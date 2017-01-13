@@ -94,19 +94,24 @@ object Parsers {
     baseParser.map( processedNamesToFunctions )
   }
 
-  private def inputParser( input : Abi.Function.Parameter, unique : Boolean ) : Parser[String] = {
+  private def inputParser( input : Abi.Function.Parameter, unique : Boolean, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[String] = {
     val displayName = if ( input.name.length == 0 ) "mapping key" else input.name
-    (StringEscapable.map( str => s""""${str}"""") | NotQuoted).examples( FixedSetExamples( immutable.Set( s"<${displayName}, of type ${input.`type`}>", ZWSP ) ) )
+    val sample = s"<${displayName}, of type ${input.`type`}>"
+    if ( input.`type` == "address" && !mbAliases.isEmpty ) { // special case
+      createAddressParser( sample, mbAliases.get ).map( _.hex )
+    } else {
+      (StringEscapable.map( str => s""""${str}"""") | NotQuoted).examples( FixedSetExamples( immutable.Set( sample, ZWSP ) ) )
+    }
   }
 
-  private def inputsParser( inputs : immutable.Seq[Abi.Function.Parameter] ) : Parser[immutable.Seq[String]] = {
+  private def inputsParser( inputs : immutable.Seq[Abi.Function.Parameter], mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[immutable.Seq[String]] = {
     val unique = inputs.size <= 1
-    val parserMaker : Abi.Function.Parameter => Parser[String] = param => inputParser( param, unique )
-    inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space ~> next.map( str => partial :+ str ) ) )
+    val parserMaker : Abi.Function.Parameter => Parser[String] = param => inputParser( param, unique, mbAliases )
+    inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space.* ~> next.map( str => partial :+ str ) ) )
   }
 
-  private def functionAndInputsParser( abi : Abi.Definition, restrictToConstants : Boolean ) : Parser[(Abi.Function, immutable.Seq[String])] = {
-    token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs ).map( seq => ( function, seq ) ) )
+  private def functionAndInputsParser( abi : Abi.Definition, restrictToConstants : Boolean, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[(Abi.Function, immutable.Seq[String])] = {
+    token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs, mbAliases ).map( seq => ( function, seq ) ) )
   }
 
   private [sbtethereum] val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
@@ -115,33 +120,43 @@ object Parsers {
   private [sbtethereum] def genContractNamesParser( state : State, mbContractNames : Option[immutable.Set[String]]) : Parser[String] = {
     val contractNames = mbContractNames.getOrElse( immutable.Set.empty )
     val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", ZWSP) else contractNames // non-breaking space to prevent autocompletion to dummy example
-    Space ~> token( NotSpace examples exSet )
+    Space.* ~> token( NotSpace examples exSet )
   }
 
   // this is terrible. the nested option is because SBT's loadForParser function returns an Option, in case the task it loads from somehow fails
-  private [sbtethereum] def genAliasParser( state : State, mbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] )= {
+  private [sbtethereum] def genAliasParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) = {
     // XXX: we accept ID when we don't have aliases, bc maybe there was just a problem getting the aliases but they exist. (kind of weak?)
-    Space.* ~> mbAliases.flatten.fold( ID )( aliases => token( rawAliasParser( aliases ).examples( aliases.keySet, false ) ) )
+    Space.* ~> mbmbAliases.flatten.fold( ID )( aliases => token( rawAliasParser( aliases ).examples( aliases.keySet, false ) ) )
   }
 
-  private [sbtethereum] def genericAddressParser = createAddressParser("<address-hex or alias>") // def not val so that ideally they'd pick up new aliases, but doesn't work
+  private def _genGenericAddressParser( state : State, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[EthAddress] = {
+    createAddressParser( "<address-hex or alias>", mbAliases.getOrElse( immutable.SortedMap.empty[String,EthAddress] ) )
+  }
+
+  private [sbtethereum] def genGenericAddressParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[EthAddress] = {
+    _genGenericAddressParser( state, mbmbAliases.flatten )
+  }
 
   private [sbtethereum] def recipientAddressParser = createAddressParser("<recipient-address-hex or alias>") // def not val so that ideally they'd pick up new aliases, but doesn't work
 
-  private [sbtethereum] def contractAddressOrCodeHashParser : Parser[Either[EthAddress,EthHash]] = {
+  private [sbtethereum] def genContractAddressOrCodeHashParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[Either[EthAddress,EthHash]] = {
     val chp = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), "<contract-code-hash>").map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
-    createAddressParser("<address-hex or alias>").map( addr =>Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+    genGenericAddressParser( state, mbmbAliases ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
   }
 
-  private [sbtethereum] def unrestrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
-    genericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { case ( address, abi ) =>
-      ( Space ~> functionAndInputsParser( abi, false ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
+  private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
+    state : State,
+    mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]]
+  ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
+    val mbAliases = mbmbAliases.flatten
+    _genGenericAddressParser( state, mbAliases ).map( a => ( a, abiForAddressOrEmpty(a) ) ).flatMap { case ( address, abi ) =>
+      ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbAliases ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
     }
   }
-
-  private [sbtethereum] def restrictedAddressFunctionInputsAbiParser : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
-    genericAddressParser.map( a => ( a, abiForAddress(a) ) ).flatMap { case ( address, abi ) =>
-      ( Space ~> functionAndInputsParser( abi, true ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
-    }
+  private [sbtethereum] def genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants : Boolean  )(
+    state : State,
+    mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]]
+  ) : Parser[((EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition), Option[BigInt])] = {
+    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbmbAliases ) ~ ValueInWeiParser.?
   }
 }

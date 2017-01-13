@@ -44,6 +44,8 @@ package object sbtethereum {
   //      to work around this, we just retry a few times when we get "Invalid sender" errors on sending a signed transaction
   val InvalidSenderRetries = 10
 
+  val EmptyAbi = Abi.Definition.empty
+
   private def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String )( operation : jsonrpc20.Client => T )( implicit ec : ExecutionContext ) : T = {
     try {
       borrow( new jsonrpc20.Client.Simple( new URL( jsonRpcUrl ) ) )( operation )
@@ -283,12 +285,23 @@ package object sbtethereum {
     is.readLine(s"Enter passphrase or hex private key for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
   }
 
-  private [sbtethereum] def abiForAddress( address : EthAddress ) : Abi.Definition= {
+  private [sbtethereum] def abiForAddress( address : EthAddress, defaultNotInDatabase : => Abi.Definition, defaultNoAbi : => Abi.Definition ) : Abi.Definition = {
     val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if there's a database problem
-    mbDeployedContractInfo.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} is not known in the sbt-ethereum repository." ) ) { deployedContractInfo =>
-      deployedContractInfo.abiDefinition.fold( throw new ContractUnknownException( s"The contract at address ${address.hex} does not have an ABI associated with it in the sbt-ethereum repository." ) ) ( parseAbi )
+    mbDeployedContractInfo.fold( defaultNotInDatabase ) { deployedContractInfo =>
+      deployedContractInfo.abiDefinition.fold( defaultNoAbi )( parseAbi )
     }
   }
+
+  private [sbtethereum] def abiForAddress( address : EthAddress ) : Abi.Definition = {
+    def defaultNotInDatabase = throw new ContractUnknownException( s"A contract at address ${address.hex} is not known in the sbt-ethereum repository." )
+    def defaultNoAbi = throw new ContractUnknownException( s"The contract at address ${address.hex} does not have an ABI associated with it in the sbt-ethereum repository." )
+    abiForAddress( address, defaultNotInDatabase, defaultNoAbi )
+  }
+
+  private [sbtethereum] def abiForAddressOrEmpty( address : EthAddress ) : Abi.Definition = {
+    abiForAddress( address, EmptyAbi, EmptyAbi )
+  }
+
 
   private [sbtethereum] def unknownWallet( loadDirs : Seq[File] ) : Nothing = {
     val dirs = loadDirs.map( _.getAbsolutePath() ).mkString(", ")

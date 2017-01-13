@@ -288,7 +288,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         (compile in Compile).value
       },
 
-      ethAbiForContractAddress := abiForAddress( genericAddressParser.parsed ),
+      ethAbiForContractAddress <<= ethAbiForContractAddressTask,
 
       ethAliasDrop <<= ethAliasDropTask,
 
@@ -312,13 +312,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         result
       },
 
-      ethBalanceFor := {
-        val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        val address = genericAddressParser.parsed
-        val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Ether )
-        result.denominated
-      },
+      ethBalanceFor <<= ethBalanceForTask,
 
       ethBalanceInWei := {
         val checked = warnOnZeroAddress.value
@@ -329,67 +323,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         result
       },
 
-      ethBalanceInWeiFor := {
-        val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        val address = genericAddressParser.parsed
-        val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Wei )
-        result.wei
-      },
+      ethBalanceInWeiFor <<= ethBalanceInWeiForTask,
 
       ethFindCacheAliasesIfAvailable <<= ethFindCacheAliasesIfAvailableTask.storeAs( ethFindCacheAliasesIfAvailable ).triggeredBy( ethTriggerDirtyAliasCache ),
 
       ethFindCacheCompiledContractNames <<= ethFindCacheCompiledContractNamesTask storeAs ethFindCacheCompiledContractNames triggeredBy (ethCompileSolidity in Compile ),
 
-      ethCallConstant := {
-        val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        val from = if ( ethAddress.value == ZeroEthAddress ) None else Some( EthAddress( ethAddress.value ) )
-        val markup = ethGasMarkup.value
-        val gasPrice = ethGasPrice.value
-        val ( ( contractAddress, function, args, abi ), mbWei ) = (restrictedAddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
-        if (! function.constant ) {
-          log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
-        }
-        val amount = mbWei.getOrElse( Zero )
-        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
-        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
-        log.info( s"Call data for function call: ${callData.hex}" )
-        val gas = markupEstimateGas( log, jsonRpcUrl, from, Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
-        log.info( s"Gas estimated for function call: ${gas}" )
-        val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Latest )
-        log.info( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
-        val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception is we can't get results
-        results.length match {
-          case 0 => {
-            assert( abiFunction.outputs.length == 0 )
-            log.info( s"The function ${abiFunction.name} yields no result." )
-          }
-          case n => {
-            assert( abiFunction.outputs.length == n )
-
-            if ( n == 1 ) {
-              log.info( s"The function '${abiFunction.name}' yields 1 result." )
-            } else {
-              log.info( s"The function '${abiFunction.name}' yields ${n} results." )
-            }
-
-            def formatResult( idx : Int, result : DecodedReturnValue ) : String = {
-              val param = result.parameter
-              val sb = new StringBuilder(256)
-              sb.append( s" + Result ${idx} of type '${param.`type`}'")
-              if ( param.name.length > 0 ) {
-                sb.append( s", named '${param.name}'," )
-              }
-              sb.append( s" is ${result.stringRep}" )
-              sb.toString
-            }
-
-            Stream.from(1).zip(results).foreach { case ( idx, result ) => log.info( formatResult( idx, result ) ) }
-          }
-        }
-        ( abiFunction, results )
-      },
+      ethCallConstant <<= ethCallConstantTask,
 
       ethCompileSolidity in Compile := {
         val log            = streams.value.log
@@ -401,62 +341,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         doCompileSolidity( log, jsonRpcUrl, solSource, solDestination )
       },
 
-      ethDumpContractInfo := {
-        println()
-        val cap =     "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
-        val minicap = "------------------------------------------------------------------------"
-        println( cap )
-        println("                       CONTRACT INFO DUMP")
-        println( cap )
-
-        def section( title : String, body : Option[String], hex : Boolean = false ) = body.foreach { b =>
-          println( minicap )
-          println( s"${title}:")
-          println();
-          println( (if ( hex ) "0x" else "") + b )
-        }
-        val source = contractAddressOrCodeHashParser.parsed
-        source match {
-          case Left( address ) => {
-            val mbinfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw any db problem
-            mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
-              section( "Contract Address", Some( info.address.hex ), true )
-              section( "Deployer Address", info.deployerAddress.map( _.hex ), true )
-              section( "Transaction Hash", info.transactionHash.map( _.hex ), true )
-              section( "Deployment Timestamp", info.deployedWhen.map( l => (new Date(l)).toString ) )
-              section( "Code Hash", Some( EthHash.hash( info.code.decodeHex ).hex ), true )
-              section( "Code", Some( info.code ), true )
-              section( "Contract Name", info.name )
-              section( "Contract Source", info.source )
-              section( "Contract Language", info.language )
-              section( "Language Version", info.languageVersion )
-              section( "Compiler Version", info.compilerVersion )
-              section( "Compiler Options", info.compilerOptions )
-              section( "ABI Definition", info.abiDefinition )
-              section( "User Documentation", info.userDoc )
-              section( "Developer Documentation", info.developerDoc )
-            }
-          }
-          case Right( hash ) => {
-            val mbinfo = Repository.Database.deployedContractInfoForCodeHash( hash ).get // throw any db problem
-            mbinfo.fold( println( s"Contract with code hash '$hash' not found." ) ) { info =>
-              section( "Code Hash", Some( hash.hex ), true )
-              section( "Code", Some( info.code ), true )
-              section( "Contract Name", info.name )
-              section( "Contract Source", info.source )
-              section( "Contract Language", info.language )
-              section( "Language Version", info.languageVersion )
-              section( "Compiler Version", info.compilerVersion )
-              section( "Compiler Options", info.compilerOptions )
-              section( "ABI Definition", info.abiDefinition )
-              section( "User Documentation", info.userDoc )
-              section( "Developer Documentation", info.developerDoc )
-            }
-          }
-        }
-        println( cap )
-        println()
-      },
+      ethDumpContractInfo <<= ethDumpContractInfoTask, 
 
       ethDefaultGasPrice := {
         val log        = streams.value.log
@@ -523,35 +408,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethGenWalletV3 := ethGenWalletV3Scrypt.value,
 
-      ethInvoke := {
-        val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        val caller = EthAddress( ethAddress.value )
-        val nextNonce = ethNextNonce.value
-        val markup = ethGasMarkup.value
-        val gasPrice = ethGasPrice.value
-        val ( ( contractAddress, function, args, abi ), mbWei ) = (unrestrictedAddressFunctionInputsAbiParser ~ ValueInWeiParser.?).parsed
-        val amount = mbWei.getOrElse( Zero )
-        val privateKey = findCachePrivateKey.value
-        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
-        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
-        log.info( s"Call data for function call: ${callData.hex}" )
-        val gas = markupEstimateGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
-        log.info( s"Gas estimated for function call: ${gas}" )
-        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), contractAddress, Unsigned256( amount ), callData )
-        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
-        log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei to address '0x${contractAddress.hex}' in transaction '0x${hash.hex}'.""" )
-        awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
-      },
+      ethInvoke <<= ethInvokeTask,
 
-      ethInvokeData := {
-        val ( contractAddress, function, args, abi ) = unrestrictedAddressFunctionInputsAbiParser.parsed
-        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
-        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
-        val log = streams.value.log
-        log.info( s"Call data: ${callData.hex}" )
-        callData
-      },
+      ethInvokeData <<= ethInvokeDataTask, 
 
       ethNextNonce := {
         val log            = streams.value.log
@@ -619,21 +478,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         dir.list.foldLeft( immutable.Map.empty[String,jsonrpc20.Compilation.Contract] )( addContracts )
       },
 
-      ethLoadWalletV3For := {
-        val keystoresV3 = ethKeystoresV3.value
-        val log         = streams.value.log
-
-        val address = genericAddressParser.parsed
-        val out = {
-          keystoresV3
-            .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
-            .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
-              if ( mb.isEmpty ) nextKeystore.get( address ) else mb
-            }
-        }
-        log.info( out.fold( s"No V3 wallet found for '0x${address.hex}'" )( _ => s"V3 wallet found for '0x${address.hex}'" ) )
-        out
-      },
+      ethLoadWalletV3For <<= ethLoadWalletV3ForTask,
 
       ethLoadWalletV3 := {
         val checked = warnOnZeroAddress.value
@@ -710,29 +555,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       },
 
-      ethRevealPrivateKeyFor := {
-        val is = interactionService.value
-        val log = streams.value.log
-        
-        val address = genericAddressParser.parsed
-        val addressStr = address.hex
-
-        val s = state.value
-	val extract = Project.extract(s)
-	val (_, mbWallet) = extract.runInputTask(ethLoadWalletV3For, addressStr, s)
-
-        val credential = readCredential( is, address )
-        val privateKey = findPrivateKey( log, mbWallet, credential )
-        val confirmation = {
-          is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
-            .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
-        }
-        if ( confirmation == "YES" ) {
-          println( s"0x${privateKey.bytes.widen.hex}" )
-        } else {
-          throw new Exception("Not confirmed by user. Aborted.")
-        }
-      },
+      ethRevealPrivateKeyFor <<= ethRevealPrivateKeyForTask,
 
       ethSelfPing := {
         val checked  = warnOnZeroAddress.value
@@ -791,25 +614,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         Repository.Database.updateContractDatabase( compilations, stubNameToAddressCodes, policy ).get
       },
 
-      ethValidateWalletV3For := {
-        val log = streams.value.log
-        val is = interactionService.value
-        val keystoreDirs = ethKeystoresV3.value
-        val s = state.value
-	val extract = Project.extract(s)
-        val inputAddress = genericAddressParser.parsed
-	val (_, mbWallet) = extract.runInputTask(ethLoadWalletV3For, inputAddress.hex, s)
-        val w = mbWallet.getOrElse( unknownWallet( keystoreDirs ) )
-        val credential = readCredential( is, inputAddress )
-        val privateKey = wallet.V3.decodePrivateKey( w, credential )
-        val derivedAddress = privateKey.toPublicKey.toAddress
-        if ( derivedAddress != inputAddress ) {
-          throw new Exception(
-            s"The wallet loaded for '0x${inputAddress.hex}' decodes with the credential given, but to a private key associated with a different address, 0x${derivedAddress}! Keystore files may be mislabeled or corrupted."
-          )
-        }
-        log.info( s"A wallet for address '0x${derivedAddress.hex}' is valid and decodable with the credential supplied." )
-      },
+      ethValidateWalletV3For <<= ethValidateWalletV3ForTask, 
 
       watchSources ++= {
         val dir = (ethSoliditySource in Compile).value
@@ -861,6 +666,93 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
+    def ethAbiForContractAddressTask : Initialize[InputTask[Abi.Definition]] = {
+      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+      Def.inputTask {
+        abiForAddress( parser.parsed )
+      }
+    }
+
+    def ethBalanceForTask : Initialize[InputTask[BigDecimal]] = {
+      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+      Def.inputTask {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val address = parser.parsed
+        val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Ether )
+        result.denominated
+      }
+    }
+
+    def ethBalanceInWeiForTask : Initialize[InputTask[BigInt]] = {
+      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+      Def.inputTask {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val address = parser.parsed
+        val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Wei )
+        result.wei
+      }
+    }
+
+    def ethCallConstantTask : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedReturnValue])]] = {
+      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
+
+      Def.inputTask {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val from = if ( ethAddress.value == ZeroEthAddress ) None else Some( EthAddress( ethAddress.value ) )
+        val markup = ethGasMarkup.value
+        val gasPrice = ethGasPrice.value
+        val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
+        if (! function.constant ) {
+          log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
+        }
+        val amount = mbWei.getOrElse( Zero )
+        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
+        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
+        log.info( s"Call data for function call: ${callData.hex}" )
+        val gas = markupEstimateGas( log, jsonRpcUrl, from, Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
+        log.info( s"Gas estimated for function call: ${gas}" )
+        val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Latest )
+        log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
+        log.info( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
+        val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception is we can't get results
+        results.length match {
+          case 0 => {
+            assert( abiFunction.outputs.length == 0 )
+            log.info( s"The function ${abiFunction.name} yields no result." )
+          }
+          case n => {
+            assert( abiFunction.outputs.length == n )
+
+            if ( n == 1 ) {
+              log.info( s"The function '${abiFunction.name}' yields 1 result." )
+            } else {
+              log.info( s"The function '${abiFunction.name}' yields ${n} results." )
+            }
+
+            def formatResult( idx : Int, result : DecodedReturnValue ) : String = {
+              val param = result.parameter
+              val sb = new StringBuilder(256)
+              sb.append( s" + Result ${idx} of type '${param.`type`}'")
+              if ( param.name.length > 0 ) {
+                sb.append( s", named '${param.name}'," )
+              }
+              sb.append( s" is ${result.stringRep}" )
+              sb.toString
+            }
+
+            Stream.from(1).zip(results).foreach { case ( idx, result ) => log.info( formatResult( idx, result ) ) }
+          }
+        }
+        ( abiFunction, results )
+      }
+    }
+
     def ethDeployOnlyTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
       val parser = Defaults.loadForParser(ethFindCacheCompiledContractNames)( genContractNamesParser )
 
@@ -893,6 +785,178 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
         out
+      }
+    }
+
+    def ethDumpContractInfoTask : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genContractAddressOrCodeHashParser )
+
+      Def.inputTask {
+        println()
+        val cap =     "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+        val minicap = "------------------------------------------------------------------------"
+        println( cap )
+        println("                       CONTRACT INFO DUMP")
+        println( cap )
+
+        def section( title : String, body : Option[String], hex : Boolean = false ) = body.foreach { b =>
+          println( minicap )
+          println( s"${title}:")
+          println();
+          println( (if ( hex ) "0x" else "") + b )
+        }
+        val source = parser.parsed
+        source match {
+          case Left( address ) => {
+            val mbinfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw any db problem
+            mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
+              section( "Contract Address", Some( info.address.hex ), true )
+              section( "Deployer Address", info.deployerAddress.map( _.hex ), true )
+              section( "Transaction Hash", info.transactionHash.map( _.hex ), true )
+              section( "Deployment Timestamp", info.deployedWhen.map( l => (new Date(l)).toString ) )
+              section( "Code Hash", Some( EthHash.hash( info.code.decodeHex ).hex ), true )
+              section( "Code", Some( info.code ), true )
+              section( "Contract Name", info.name )
+              section( "Contract Source", info.source )
+              section( "Contract Language", info.language )
+              section( "Language Version", info.languageVersion )
+              section( "Compiler Version", info.compilerVersion )
+              section( "Compiler Options", info.compilerOptions )
+              section( "ABI Definition", info.abiDefinition )
+              section( "User Documentation", info.userDoc )
+              section( "Developer Documentation", info.developerDoc )
+            }
+          }
+          case Right( hash ) => {
+            val mbinfo = Repository.Database.deployedContractInfoForCodeHash( hash ).get // throw any db problem
+            mbinfo.fold( println( s"Contract with code hash '$hash' not found." ) ) { info =>
+              section( "Code Hash", Some( hash.hex ), true )
+              section( "Code", Some( info.code ), true )
+              section( "Contract Name", info.name )
+              section( "Contract Source", info.source )
+              section( "Contract Language", info.language )
+              section( "Language Version", info.languageVersion )
+              section( "Compiler Version", info.compilerVersion )
+              section( "Compiler Options", info.compilerOptions )
+              section( "ABI Definition", info.abiDefinition )
+              section( "User Documentation", info.userDoc )
+              section( "Developer Documentation", info.developerDoc )
+            }
+          }
+        }
+        println( cap )
+        println()
+      }
+    }
+
+    def ethInvokeDataTask : Initialize[InputTask[immutable.Seq[Byte]]] = {
+      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
+
+      Def.inputTask {
+        val ( contractAddress, function, args, abi ) = parser.parsed
+        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
+        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
+        val log = streams.value.log
+        log.info( s"Call data: ${callData.hex}" )
+        callData
+      }
+    }
+
+    def ethInvokeTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
+
+      Def.inputTask {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val caller = EthAddress( ethAddress.value )
+        val nextNonce = ethNextNonce.value
+        val markup = ethGasMarkup.value
+        val gasPrice = ethGasPrice.value
+        val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
+        val amount = mbWei.getOrElse( Zero )
+        val privateKey = findCachePrivateKey.value
+        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
+        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
+        log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
+        log.info( s"Call data for function call: ${callData.hex}" )
+        val gas = markupEstimateGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
+        log.info( s"Gas estimated for function call: ${gas}" )
+        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), contractAddress, Unsigned256( amount ), callData )
+        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei to address '0x${contractAddress.hex}' in transaction '0x${hash.hex}'.""" )
+        awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+      }
+    }
+
+    def ethLoadWalletV3ForTask : Initialize[InputTask[Option[wallet.V3]]] = {
+      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+      Def.inputTask {
+        val keystoresV3 = ethKeystoresV3.value
+        val log         = streams.value.log
+
+        val address = parser.parsed
+        val out = {
+          keystoresV3
+            .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
+            .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
+            if ( mb.isEmpty ) nextKeystore.get( address ) else mb
+          }
+        }
+        log.info( out.fold( s"No V3 wallet found for '0x${address.hex}'" )( _ => s"V3 wallet found for '0x${address.hex}'" ) )
+        out
+      }
+    }
+
+    def ethRevealPrivateKeyForTask : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+      Def.inputTask {
+        val is = interactionService.value
+        val log = streams.value.log
+        
+        val address = parser.parsed
+        val addressStr = address.hex
+
+        val s = state.value
+	val extract = Project.extract(s)
+	val (_, mbWallet) = extract.runInputTask(ethLoadWalletV3For, addressStr, s)
+
+        val credential = readCredential( is, address )
+        val privateKey = findPrivateKey( log, mbWallet, credential )
+        val confirmation = {
+          is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
+            .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
+        }
+        if ( confirmation == "YES" ) {
+          println( s"0x${privateKey.bytes.widen.hex}" )
+        } else {
+          throw new Exception("Not confirmed by user. Aborted.")
+        }
+      }
+    }
+
+    def ethValidateWalletV3ForTask : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+      Def.inputTask {
+        val log = streams.value.log
+        val is = interactionService.value
+        val keystoreDirs = ethKeystoresV3.value
+        val s = state.value
+	val extract = Project.extract(s)
+        val inputAddress = parser.parsed
+	val (_, mbWallet) = extract.runInputTask(ethLoadWalletV3For, inputAddress.hex, s)
+        val w = mbWallet.getOrElse( unknownWallet( keystoreDirs ) )
+        val credential = readCredential( is, inputAddress )
+        val privateKey = wallet.V3.decodePrivateKey( w, credential )
+        val derivedAddress = privateKey.toPublicKey.toAddress
+        if ( derivedAddress != inputAddress ) {
+          throw new Exception(
+            s"The wallet loaded for '0x${inputAddress.hex}' decodes with the credential given, but to a private key associated with a different address, 0x${derivedAddress}! Keystore files may be mislabeled or corrupted."
+          )
+        }
+        log.info( s"A wallet for address '0x${derivedAddress.hex}' is valid and decodable with the credential supplied." )
       }
     }
 
