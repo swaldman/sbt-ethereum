@@ -94,19 +94,18 @@ object Parsers {
     baseParser.map( processedNamesToFunctions )
   }
 
-  private def inputParser( input : Abi.Function.Parameter, unique : Boolean, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[String] = {
+  private def inputParser( input : Abi.Parameter, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[String] = {
     val displayName = if ( input.name.length == 0 ) "mapping key" else input.name
     val sample = s"<${displayName}, of type ${input.`type`}>"
     if ( input.`type` == "address" && !mbAliases.isEmpty ) { // special case
       createAddressParser( sample, mbAliases.get ).map( _.hex )
     } else {
-      (StringEscapable.map( str => s""""${str}"""") | NotQuoted).examples( FixedSetExamples( immutable.Set( sample, ZWSP ) ) )
+      token( (StringEscapable.map( str => s""""${str}"""") | NotQuoted).examples( FixedSetExamples( immutable.Set( sample, ZWSP ) ) ) )
     }
   }
 
-  private def inputsParser( inputs : immutable.Seq[Abi.Function.Parameter], mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[immutable.Seq[String]] = {
-    val unique = inputs.size <= 1
-    val parserMaker : Abi.Function.Parameter => Parser[String] = param => inputParser( param, unique, mbAliases )
+  private def inputsParser( inputs : immutable.Seq[Abi.Parameter], mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[immutable.Seq[String]] = {
+    val parserMaker : Abi.Parameter => Parser[String] = param => inputParser( param, mbAliases )
     inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space.* ~> next.map( str => partial :+ str ) ) )
   }
 
@@ -117,11 +116,31 @@ object Parsers {
   private [sbtethereum] val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
 
   // delayed parsers
-  private [sbtethereum] def genContractNamesParser( state : State, mbContracts : Option[immutable.Map[String,jsonrpc20.Compilation.Contract]]) : Parser[String] = {
+  private def constructorFromAbi( abi : Abi.Definition ) : Abi.Constructor = {
+    abi.constructors.length match {
+      case 0 => Abi.Constructor.noArg
+      case 1 => abi.constructors.head
+      case _ => throw new Exception( s"""Constructor overloading not supprted (or legal in solidity). Found multiple constructors: ${abi.constructors.mkString(", ")}""" )
+    }
+  }
+  private def resultFromCompilation( contractName : String, compilation : jsonrpc20.Compilation.Contract ) : Parser[ ( String, Option[ ( immutable.Seq[String], Abi.Definition, jsonrpc20.Compilation.Contract ) ] ) ] = {
+    val abi = compilation.info.abiDefinition
+    val ctor = constructorFromAbi( abi )
+    inputsParser( ctor.inputs, None ).map( seq => ( contractName, Some( seq, abi, compilation ) ) )
+  }
+  private [sbtethereum] def genContractNamesConstructorInputsParser(
+    state : State,
+    mbContracts : Option[immutable.Map[String,jsonrpc20.Compilation.Contract]]
+  ) : Parser[(String, Option[(immutable.Seq[String], Abi.Definition, jsonrpc20.Compilation.Contract)])] = {
     val contracts = mbContracts.getOrElse( immutable.Map.empty )
     val contractNames = immutable.TreeSet( contracts.keys.toSeq : _* )( Ordering.comparatorToOrdering( String.CASE_INSENSITIVE_ORDER ) )
     val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", ZWSP) else contractNames // non-breaking space to prevent autocompletion to dummy example
-    Space.* ~> token( NotSpace examples exSet )
+    Space.* ~> token( NotSpace examples exSet ).flatMap { name =>
+      contracts.get( name ) match {
+        case None                => success( Tuple2( name, None ) )
+        case Some( compilation ) => resultFromCompilation( name, compilation )
+      }
+    }
   }
 
   // this is terrible. the nested option is because SBT's loadForParser function returns an Option, in case the task it loads from somehow fails
@@ -131,7 +150,8 @@ object Parsers {
   }
 
   private def _genGenericAddressParser( state : State, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[EthAddress] = {
-    createAddressParser( "<address-hex or alias>", mbAliases.getOrElse( immutable.SortedMap.empty[String,EthAddress] ) )
+    val sample = mbAliases.fold( "<address-hex>" )( map => if ( map.isEmpty ) "<address-hex>" else "<address-hex or alias>" )
+    createAddressParser( sample, mbAliases.getOrElse( immutable.SortedMap.empty[String,EthAddress] ) )
   }
 
   private [sbtethereum] def genGenericAddressParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[EthAddress] = {

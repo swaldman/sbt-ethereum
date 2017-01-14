@@ -614,7 +614,23 @@ object SbtEthereumPlugin extends AutoPlugin {
         Repository.Database.updateContractDatabase( compilations, stubNameToAddressCodes, policy ).get
       },
 
-      ethValidateWalletV3For <<= ethValidateWalletV3ForTask, 
+      ethValidateWalletV3For <<= ethValidateWalletV3ForTask,
+
+      onLoad := {
+        val origF : State => State = onLoad.value
+        val newF  : State => State = ( state : State ) => {
+          val lastState = origF( state )
+          Project.runTask( ethTriggerDirtyAliasCache, lastState ) match {
+            case None                       => lastState
+            case Some((newState, Inc(inc))) => {
+              println("Failed to run ethTriggerDirtyAliasCache on initialization: " + Incomplete.show(inc.tpe))
+              lastState
+            }
+            case Some((newState, Value(_))) => newState
+          }
+        }
+        newF
+      },
 
       watchSources ++= {
         val dir = (ethSoliditySource in Compile).value
@@ -754,32 +770,45 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def ethDeployOnlyTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser(ethFindCacheCompilations)( genContractNamesParser )
+      val parser = Defaults.loadForParser(ethFindCacheCompilations)( genContractNamesConstructorInputsParser )
 
       Def.inputTask {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
-        val contractName = parser.parsed
-        val contractsMap = ethLoadCompilations.value
-        val compilation = contractsMap( contractName )
-        val hex = compilation.code
+        val ( contractName, extraData ) = parser.parsed
+        val ( compilation, inputsHex ) = {
+          extraData match {
+            case None => { 
+              // at the time of parsing, a compiled contract is not available. we'll force compilation now, but can't accept contructor arguments
+              val contractsMap = ethLoadCompilations.value
+              val compilation = contractsMap( contractName )
+              ( compilation, "" )
+            }
+            case Some( ( inputs, abi, compilation ) ) => {
+              // at the time of parsing, a compiled contract is available, so we've decoded constructor inputs( if any )
+              ( compilation, ethabi.constructorCallData( inputs, abi ).get.hex ) // asserts successful encoding of params
+            }
+          }
+        }
+        val codeHex = compilation.code
+        val dataHex = codeHex ++ inputsHex
         val address = EthAddress( ethAddress.value )
         val nextNonce = ethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = ethGasPrice.value
-        val gas = ethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, Some(address), None, hex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
-        val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, hex.decodeHex.toImmutableSeq )
+        val gas = ethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, Some(address), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
+        val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey.value
         val updateChangedDb = ethUpdateContractDatabase.value
-        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
-        log.info( s"Contract '${contractName}' deployed in transaction '0x${hash.hex}'." )
-        val out = awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+        val txnHash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
+        val out = awaitTransactionReceipt( log, jsonRpcUrl, txnHash, PollSeconds, PollAttempts )
         out.foreach { receipt =>
           receipt.contractAddress.foreach { ca =>
             log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
             val dbCheck = {
               import compilation.info._
-              Repository.Database.insertNewDeployment( ca, hex, address, hash )
+              Repository.Database.insertNewDeployment( ca, codeHex, address, txnHash )
             }
             dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
           }
