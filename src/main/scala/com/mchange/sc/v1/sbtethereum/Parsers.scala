@@ -52,7 +52,7 @@ object Parsers {
 
   private [sbtethereum] val NewAliasParser = token(Space.* ~> ID, "<alias>") ~ createSimpleAddressParser("<hex-address>")
 
-  private [sbtethereum] val AmountParser = token(Space.* ~> (Digit|literal('.')).+, "<amount>").map( chars => BigDecimal( chars.mkString ) )
+  private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )
 
   private [sbtethereum] val UnitParser = {
     val ( w, s, f, e ) = ( "wei", "szabo", "finney", "ether" );
@@ -60,12 +60,12 @@ object Parsers {
     Space.* ~> token(literal(w) | literal(s) | literal(f) | literal(e))
   }
 
-  private [sbtethereum] val ValueInWeiParser = {
-    (AmountParser ~ UnitParser).map { case ( amount, unit ) => rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt }
+  private [sbtethereum] def valueInWeiParser( tabHelp : String ) = {
+    (amountParser( tabHelp ) ~ UnitParser).map { case ( amount, unit ) => rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt }
   }
 
   private [sbtethereum] def ethSendEtherParser : Parser[( EthAddress, BigInt )] = { // def not val so that ideally they'd pick up new aliases, but doesn't work
-    recipientAddressParser ~ ValueInWeiParser
+    recipientAddressParser ~ valueInWeiParser("<amount>")
   }
 
   private [sbtethereum] def functionParser( abi : Abi.Definition, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
@@ -178,6 +178,6 @@ object Parsers {
     state : State,
     mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]]
   ) : Parser[((EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition), Option[BigInt])] = {
-    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbmbAliases ) ~ ValueInWeiParser.?
+    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbmbAliases ) ~ valueInWeiParser("[<optional, amount of ETH to send with function call, default is 0>]").?
   }
 }
