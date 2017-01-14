@@ -1,6 +1,5 @@
 # TODO
 
-* Deployment of contracts with constructor arguments
 * Careful support of imports in solidity, with incremental compilation
 * defaultSender alias
 * Import raw private key as wallet

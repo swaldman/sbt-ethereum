@@ -123,10 +123,12 @@ If your contracts are already compiled, tab completion will help you select a de
 
 Unless you have already provided it, you'll be asked for a credential of the `ethAddress` that you supplied (see above). If your contracts have not yet been compiled, they will be compiled automatically first.
 
-If your contract deploys successfully, you'll see no failure, and information about the deployment will be logged in sbt-ethereum's repository. For the moment, ABI metadata is not yet stored in
-the repository, but an entry is added to the file `transaction-log` in your repository directory, showing the deployment
-transaction and the transaction's hash. The ABI can be found, embedded in the JSON files that result from your compilation under the directory `${project-root}/target/ethereum/solidity`
-(which will be automatically created by the build).
+Some contracts require constructor arguments in order to be deployed. Supply those after your contract's name. Hit tab for information about the arguments required.
+
+    > ethDeployOnly my_contract 234 567 "Hello"
+
+If your contract deploys successfully, you'll see no failure, and information about the deployment will be logged in sbt-ethereum's repository. ABI metadata will be stored in
+the sbt-ethereum repository, making it easy to interact with your contract on the sbt-ethereum command line.
 
 A message indicating the address of your newly deployed contract will usually be emitted. (If for some reason sbt-ethereum cannot get a transaction receipt with the address,
 try an ethereum blockchain browser ([ether.camp](https://live.ether.camp), [etherchain](https://www.etherchain.org), [etherscan](http://etherscan.io)) to lookup the address of your deployed contract.
@@ -150,8 +152,6 @@ the `ethInvoke` task. [_Note: The call below is restricted to the contract's iss
     [info] Called function 'issue', with args '0xfbace661786d580ed4373c79689e7e8eb6ba05df, 888, "Good luck!"', sending 0 wei to address '0xde895c2c73e9f5332c90e3e7ffa705f751f747b0' in transaction '0x6065dc98620f5f3e9683b1dd4941ed1e865eee3efd0d71a1868c9b302b2fbe90'.
     [info] Receipt for transaction '0x6065dc98620f5f3e9683b1dd4941ed1e865eee3efd0d71a1868c9b302b2fbe90' not yet available, will try again in 15 seconds. Attempt 1/9.
     [info] Receipt for transaction '0x6065dc98620f5f3e9683b1dd4941ed1e865eee3efd0d71a1868c9b302b2fbe90' not yet available, will try again in 15 seconds. Attempt 2/9.
-    [info] Receipt for transaction '0x6065dc98620f5f3e9683b1dd4941ed1e865eee3efd0d71a1868c9b302b2fbe90' not yet available, will try again in 15 seconds. Attempt 3/9.
-    [info] Receipt for transaction '0x6065dc98620f5f3e9683b1dd4941ed1e865eee3efd0d71a1868c9b302b2fbe90' not yet available, will try again in 15 seconds. Attempt 4/9.
     [info] Receipt received for transaction '0x6065dc98620f5f3e9683b1dd4941ed1e865eee3efd0d71a1868c9b302b2fbe90':
     [info] ClientTransactionReceipt(Keccak256[6065dc98620f5f3e9683b1dd4941ed1e865eee3efd0d71a1868c9b302b2fbe90],Unsigned256(6),Keccak256[574bb5fe35bdd82fa6a5f02ae2e74899665ffb76965e7dacc36d5e4d0fa14260],Unsigned256(2833845),Unsigned256(196033),Unsigned256(53739),None,List(EthLogEntry(EthAddress(ByteSeqExact20(0xde895c2c73e9f5332c90e3e7ffa705f751f747b0)),Vector(ByteSeqExact32(0x56efce5854bf1d184d330cc0c05667850247efb9dd786f6efac4c3cf93e7e60f), ByteSeqExact32(0x000000000000000000000000fbace661786d580ed4373c79689e7e8eb6ba05df)),ImmutableArraySeq.Byte(0x00000000000000000000000000000000000000000000000000000000000003780000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000a476f6f64206c75636b2100000000000000000000000000000000000000000000))))
     [success] Total time: 61 s, completed Dec 18, 2016 3:41:29 PM
@@ -219,6 +219,50 @@ You'll need to send a small amount of ether to your new account, so that the pin
     ...
     [info] Ping succeeded! Sent 0 ether from '0x47cd9e257d144a2d54d20b1b3695f939f5208b10' to itself in transaction '0xc4ed21cfe6c2a2dd3e2a7c2deec7e436451ba3461ea9b8890be72893fc901546'
 
+### Using aliases instead of addresses
+
+It can be annoying to copy and paste long hexadecimal Ethereum addresses. sbt-ethereum permits you to define aliases for addresses and use
+those in most places in place of a hexadecimal address. To define a alias
+
+    > ethAliasSet youtoken 0x5ee998b44d008adb2e00de2ef1b94bee34dfc9e0
+   [info] Alias 'youtoken' now points to address '5ee998b44d008adb2e00de2ef1b94bee34dfc9e0'.
+   [success] Total time: 0 s, completed Jan 14, 2017 12:44:18 AM
+
+Once an alias is set, you can use it in place of an address in `ethInvoke`, `ethCallEphemeral` and in arguments to functions.
+
+    > ethInvoke youtoken transfer testing2 testing0 20
+    [info] V3 wallet found for '0x465e79b940bc2157e4259ff6b2d92f454497f1e4'
+    [info] Outputs of function are ( Parameter(ok,bool) )
+    [info] Call data for function call: beabacc8000000000000000000000000fbace661786d580ed4373c79689e7e8eb6ba05df000000000000000000000000465e79b940bc2157e4259ff6b2d92f454497f1e40000000000000000000000000000000000000000000000000000000000000014
+    [info] Gas estimated for function call: 32851
+    [info] Called function 'transfer', with args 'fbace661786d580ed4373c79689e7e8eb6ba05df, 465e79b940bc2157e4259ff6b2d92f454497f1e4, 20', sending 0 wei to address '0x5ee998b44d008adb2e00de2ef1b94bee34dfc9e0' in transaction '0x8feed9691bc503a60e3b430104d499f16ac0a0227f3a64e928349a503ebac098'.
+    [info] Receipt for transaction '0x8feed9691bc503a60e3b430104d499f16ac0a0227f3a64e928349a503ebac098' not yet available, will try again in 15 seconds. Attempt 1/9.
+    [info] Receipt for transaction '0x8feed9691bc503a60e3b430104d499f16ac0a0227f3a64e928349a503ebac098' not yet available, will try again in 15 seconds. Attempt 2/9.
+    [info] Receipt for transaction '0x8feed9691bc503a60e3b430104d499f16ac0a0227f3a64e928349a503ebac098' not yet available, will try again in 15 seconds. Attempt 3/9.
+    [info] Receipt received for transaction '0x8feed9691bc503a60e3b430104d499f16ac0a0227f3a64e928349a503ebac098':
+    [info] ClientTransactionReceipt(Keccak256[8feed9691bc503a60e3b430104d499f16ac0a0227f3a64e928349a503ebac098],Unsigned256(1),Keccak256[728b93e39237c52c6a80b86ccf2e747f372bc9e55730e878fb02ceacd74aa098],Unsigned256(2993562),Unsigned256(48376),Unsigned256(27376),None,List(EthLogEntry(EthAddress(ByteSeqExact20(0x5ee998b44d008adb2e00de2ef1b94bee34dfc9e0)),Vector(ByteSeqExact32(0x861da4bdcc034e5b93a243ce140b0af4beebb1b979b0ffe7e141866659c2cfb4), ByteSeqExact32(0x000000000000000000000000465e79b940bc2157e4259ff6b2d92f454497f1e4), ByteSeqExact32(0x000000000000000000000000fbace661786d580ed4373c79689e7e8eb6ba05df)),ImmutableArraySeq.Byte(0x00000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000000))))
+
+In this call, `youtoken`, `testing2`, and `testing0` are all aliased addresses. (Note hex address arguments output in the like beginning `Called function 'transfer', with args...`. Those are
+derefenced aliases.)
+
+To see a list of aliases defined in your sbt-ethereum repository, try
+
+    > ethAliasList 
+    rouleth -> 0x18a672e11d637fffadccc99b152f4895da069601
+    testing0 -> 0x465e79b940bc2157e4259ff6b2d92f454497f1e4
+    testing1 -> 0xae79b77e31387a3b2409b70c27cebc7220101026
+    testing2 -> 0xfbace661786d580ed4373c79689e7e8eb6ba05df
+    testing3 -> 0xc33071ead8753b04e0ee108cc168f2b22f93525d
+    youtoken -> 0x5ee998b44d008adb2e00de2ef1b94bee34dfc9e0
+    [success] Total time: 0 s, completed Jan 14, 2017 1:00:07 AM
+
+You can use aliases anywhere that a hex address is called for **except** in the definition of `ethAddress` and constructor arguments when calling `ethDeployOnly`. Hex
+addresses must still be used in these two cases.
+
+**Note:** Using aliases introduces a potential security issue. If an unauthorized party modifies the address to which an alias points, you may send
+ether to or invoke contract methods on a malicious, unintended recipient. Before doing anything high-stakes, verify that your alias points to where
+you think it points with `ethAliasList`.
+
 ## The sbt-ethereum repository
 
 ### Repository location and structure
@@ -239,16 +283,6 @@ If you have generated new account wallets, those will be found under `keystore/V
 The database constains metainformation about contracts that you have deployed or interacted with using sbt-ethereum. *It is shared by all projects.*
 
 ### Aliasing accounts
-
-It can be annoying to type (really, to copy and paste) full Ethereum addresses all the time when sending Ether or invoking contract methods.
-
-sbt-ethereum permits you to define aliases for addresses in the repository, which you can use in place of hex addresses in almost every sbt-ethereum command.
-
-Try `ethAlias<tab>` to see the three alias-related tasks, `ethAliasSet`, `ethAliasList`, and `ethAliasDrop`.
-
-**Note:** Using aliases introduces a potential security issue. If an unauthorized party modifies the address to which an alias points, you may send
-ether to or invoke contract methods on a malicious, unintended recipient. Before doing anything high-stakes, verify that your alias points to where
-you think it points with `ethAliasList`.
 
 ### Examining sbt-ethetherum repository data
 
