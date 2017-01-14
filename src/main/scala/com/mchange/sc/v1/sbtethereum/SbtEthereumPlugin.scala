@@ -125,7 +125,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethFindCacheAliasesIfAvailable = taskKey[Option[immutable.SortedMap[String,EthAddress]]]("Finds and caches address aliases, if they are available. Triggered by ethAliasSet and ethAliasDrop.")
 
-    val ethFindCacheCompiledContractNames = taskKey[immutable.Set[String]]("Finds and caches compiled contract names, triggered by ethCompileSolidity")
+    val ethFindCacheCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Finds and caches compiled contract names, triggered by ethCompileSolidity")
 
     val ethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
@@ -327,7 +327,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethFindCacheAliasesIfAvailable <<= ethFindCacheAliasesIfAvailableTask.storeAs( ethFindCacheAliasesIfAvailable ).triggeredBy( ethTriggerDirtyAliasCache ),
 
-      ethFindCacheCompiledContractNames <<= ethFindCacheCompiledContractNamesTask storeAs ethFindCacheCompiledContractNames triggeredBy (ethCompileSolidity in Compile ),
+      ethFindCacheCompilations <<= ethFindCacheCompilationsTask storeAs ethFindCacheCompilations triggeredBy (ethCompileSolidity in Compile ),
 
       ethCallConstant <<= ethCallConstantTask,
 
@@ -754,7 +754,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def ethDeployOnlyTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser(ethFindCacheCompiledContractNames)( genContractNamesParser )
+      val parser = Defaults.loadForParser(ethFindCacheCompilations)( genContractNamesParser )
 
       Def.inputTask {
         val log = streams.value.log
@@ -964,12 +964,9 @@ object SbtEthereumPlugin extends AutoPlugin {
      * Things that need to be defined as tasks so that parsers can load them dynamically...
      */ 
 
-    // the caching here is managed by sbt using storedBy and triggeredBy (see above)
-    def ethFindCacheCompiledContractNamesTask : Initialize[Task[immutable.Set[String]]] = Def.task {
-      val map = ethLoadCompilations.value
-      immutable.TreeSet( map.keys.toSeq : _* )( Ordering.comparatorToOrdering( String.CASE_INSENSITIVE_ORDER ) )
+    def ethFindCacheCompilationsTask : Initialize[Task[immutable.Map[String,jsonrpc20.Compilation.Contract]]] = Def.task {
+      ethLoadCompilations.value
     }
-
     
     def ethFindCacheAliasesIfAvailableTask : Initialize[Task[Option[immutable.SortedMap[String,EthAddress]]]] = Def.task {
       Repository.Database.findAllAliases.toOption

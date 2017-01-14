@@ -117,8 +117,9 @@ object Parsers {
   private [sbtethereum] val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
 
   // delayed parsers
-  private [sbtethereum] def genContractNamesParser( state : State, mbContractNames : Option[immutable.Set[String]]) : Parser[String] = {
-    val contractNames = mbContractNames.getOrElse( immutable.Set.empty )
+  private [sbtethereum] def genContractNamesParser( state : State, mbContracts : Option[immutable.Map[String,jsonrpc20.Compilation.Contract]]) : Parser[String] = {
+    val contracts = mbContracts.getOrElse( immutable.Map.empty )
+    val contractNames = immutable.TreeSet( contracts.keys.toSeq : _* )( Ordering.comparatorToOrdering( String.CASE_INSENSITIVE_ORDER ) )
     val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", ZWSP) else contractNames // non-breaking space to prevent autocompletion to dummy example
     Space.* ~> token( NotSpace examples exSet )
   }
