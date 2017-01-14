@@ -156,7 +156,7 @@ the `ethInvoke` task. [_Note: The call below is restricted to the contract's iss
     [info] ClientTransactionReceipt(Keccak256[6065dc98620f5f3e9683b1dd4941ed1e865eee3efd0d71a1868c9b302b2fbe90],Unsigned256(6),Keccak256[574bb5fe35bdd82fa6a5f02ae2e74899665ffb76965e7dacc36d5e4d0fa14260],Unsigned256(2833845),Unsigned256(196033),Unsigned256(53739),None,List(EthLogEntry(EthAddress(ByteSeqExact20(0xde895c2c73e9f5332c90e3e7ffa705f751f747b0)),Vector(ByteSeqExact32(0x56efce5854bf1d184d330cc0c05667850247efb9dd786f6efac4c3cf93e7e60f), ByteSeqExact32(0x000000000000000000000000fbace661786d580ed4373c79689e7e8eb6ba05df)),ImmutableArraySeq.Byte(0x00000000000000000000000000000000000000000000000000000000000003780000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000a476f6f64206c75636b2100000000000000000000000000000000000000000000))))
     [success] Total time: 61 s, completed Dec 18, 2016 3:41:29 PM
 
-You get a lot of ugly noise when invoking a smart constract method. But one piece of information you do not get is a return value. When you want to look up
+You get a lot of ugly noise when invoking a smart contract method. But one piece of information you do not get is a return value. When you want to look up
 information about a smart contract, do so by calling `constant` functions using the task `ethCallConstant`:
 
     > ethCallConstant 0xde895c2c73e9f5332c90e3e7ffa705f751f747b0 balances 0xfbace661786d580ed4373c79689e7e8eb6ba05df
@@ -225,8 +225,8 @@ It can be annoying to copy and paste long hexadecimal Ethereum addresses. sbt-et
 those in most places in place of a hexadecimal address. To define a alias
 
     > ethAliasSet youtoken 0x5ee998b44d008adb2e00de2ef1b94bee34dfc9e0
-   [info] Alias 'youtoken' now points to address '5ee998b44d008adb2e00de2ef1b94bee34dfc9e0'.
-   [success] Total time: 0 s, completed Jan 14, 2017 12:44:18 AM
+    [info] Alias 'youtoken' now points to address '5ee998b44d008adb2e00de2ef1b94bee34dfc9e0'.
+    [success] Total time: 0 s, completed Jan 14, 2017 12:44:18 AM
 
 Once an alias is set, you can use it in place of an address in `ethInvoke`, `ethCallEphemeral` and in arguments to functions.
 
