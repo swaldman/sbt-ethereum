@@ -75,6 +75,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethGasPriceMarkup = settingKey[Double]("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
 
+    val ethIncludeDirs = settingKey[Seq[File]]("Directories that should be searched to resolve include directives in solidity files.")
+
     val ethKeystoresV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
 
     val ethKnownStubAddresses = settingKey[immutable.Map[String,immutable.Set[String]]]("Names of stubs that might be generated in compilation mapped to addresses known to conform to their ABIs.")
@@ -245,6 +247,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethGasPriceMarkup := 0.0, // by default, use conventional gas price
 
+      ethIncludeDirs := Nil,
+
       ethKeystoresV3 := {
         def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
         def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
@@ -332,13 +336,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethCallConstant <<= ethCallConstantTask,
 
       ethCompileSolidity in Compile := {
-        val log            = streams.value.log
-        val jsonRpcUrl     = ethJsonRpcUrl.value
+        val log        = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+
+        val includeDirs = ethIncludeDirs.value    
 
         val solSource      = (ethSoliditySource in Compile).value
         val solDestination = (ethSolidityDestination in Compile).value
 
-        doCompileSolidity( log, jsonRpcUrl, solSource, solDestination )
+        doCompileSolidity( log, jsonRpcUrl, includeDirs, solSource, solDestination )
       },
 
       ethDumpContractInfo <<= ethDumpContractInfoTask, 

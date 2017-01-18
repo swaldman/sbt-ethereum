@@ -4,18 +4,23 @@ import sbt._
 import sbt.Keys._
 
 import scala.io.{Codec,Source}
+import scala.collection._
 import scala.concurrent.{Await,ExecutionContext,Future}
 import scala.concurrent.duration.Duration
+import scala.math.max
 import scala.util.Failure
+import scala.util.matching.Regex.Match
 import scala.annotation.tailrec
 
 import java.io._
-import scala.collection._
 
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v2.concurrent._
 
 import com.mchange.sc.v2.lang.borrow
+import com.mchange.sc.v2.failable._
+import com.mchange.sc.v2.failable.fail
+import com.mchange.sc.v2.literal._
 
 import com.mchange.sc.v1.consuela._
 
@@ -24,8 +29,8 @@ import com.mchange.sc.v1.consuela.ethereum.jsonrpc20.{Abi,ClientTransactionRecei
 import com.mchange.sc.v1.consuela.ethereum.encoding.RLP
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 
-
 import play.api.libs.json._
+
 
 package object sbtethereum {
   private implicit lazy val logger = mlogger( "com.mchange.sc.v1.sbtethereum.package" ) 
@@ -71,17 +76,137 @@ package object sbtethereum {
   def blankNull( str : String ) = if (str == null) "" else str
   def span( len : Int ) = (0 until len).map(_ => "-").mkString
 
-  private val SolidityBadFirstChars = ".#~"
+  def fileToString( srcFile : File ) : String = {
+    borrow( Source.fromFile( srcFile )(Codec.UTF8) )( _.close() ){ source =>
+      source.foldLeft("")( _ + _ )
+    }
+  }
 
-  def goodSolidityFileName( simpleName : String ) : Boolean =  simpleName.endsWith(".sol") && SolidityBadFirstChars.indexOf( simpleName.head ) < 0
+  private def urlToSourceFile( url : URL ) : SourceFile = {
+    val urlConn = url.openConnection()
+    val lastMod = urlConn.getLastModified
+    val contents = borrow( Source.fromInputStream( new BufferedInputStream( urlConn.getInputStream() ) )(Codec.UTF8) )( _.close ){ source =>
+      source.foldLeft("")( _ + _ )
+    }
+    SourceFile( contents, lastMod )
+  }
 
-  private [sbtethereum] def doCompileSolidity( log : sbt.Logger, jsonRpcUrl : String, solSource : File, solDestination : File )( implicit ec : ExecutionContext ) : Unit = {
+
+
+  // for eventual resolution of github URL imports
+  private val GithubUrlRegex = """^(?:https?\/\/)?(\S*github\S*.com)(\/\S*)$""".r
+  private val BlobRegex      = """\/blob""".r
+
+  def resolveToRawGithubUrl( mbRegularGithubUrl : String ) : Option[String] = {
+    mbRegularGithubUrl match {
+      case GithubUrlRegex( host, path ) => Some( s"""https://raw.githubusercontent.com${BlobRegex.replaceAllIn(path,"")}""" )
+      case _                            => None
+    }
+  }
+
+
+  /*
+  def resolveImport( sourceDirs : Seq[File], importBody : String ) : Failable[( String, Long )] = importBody match {
+    case GoodImportBodyRegex( imported ) => {
+      val key = StringLiteral.parsePermissiveStringLiteral( imported ).parsed
+      sourceFileForKey( sourceDirs, key )
+    }
+    case unkey => fail( s"""Unsupported import format: '${unkey}' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
+  }
+   */ 
+
+  private object SourceFile {
+    def apply( parentDir : File, filePath : String ) : SourceFile = {
+      val f = new File( parentDir, filePath )
+      val contents = fileToString(f)
+      val lastMod = f.lastModified
+      SourceFile( contents, lastMod )
+    }
+    def apply( url : URL ) : SourceFile = urlToSourceFile( url )
+
+    val oldAndEmpty = SourceFile("", Long.MinValue)
+  }
+  private case class SourceFile( text : String, lastModified : Long )
+
+  private def sourceFileForKey( sourceDirs : Seq[File], key : String ) : Failable[SourceFile] = {
+    def resolveFile( parentDir : File, filePath : String ) = fileToString( new File( parentDir, filePath ) )
+    def handleNext( cur : Failable[SourceFile], nextSourceDir : File ) : Failable[SourceFile] = {
+      cur orElse Failable( SourceFile( nextSourceDir, key ) )
+    }
+    val defaultFail : Failable[SourceFile] = fail( s"""Could not resolve file for '${key}' in any of source dirs '${sourceDirs.mkString(":")}'""" )
+    sourceDirs.foldLeft( defaultFail )( handleNext )
+  }
+
+  @tailrec
+  private def loadResolveSourceFile( allSourceDirs : Seq[File], key : String, remainingSourceDirs : Seq[File] ) : Failable[SourceFile] = {
+    if ( remainingSourceDirs.isEmpty ){
+      fail( s"""Could not resolve file for '${key}', checked source dirs: '${allSourceDirs.mkString(", ")}'""" )
+    } else {
+      val nextSrcDir = remainingSourceDirs.head
+      def premessage( from : String = nextSrcDir.toString ) = s"Failed to load '${key}' from '${from}': "
+      val mbGithubUrl = resolveToRawGithubUrl( key )
+      val fsource = mbGithubUrl.fold( Failable( SourceFile( nextSrcDir, key ) ).xdebug( premessage() ) ) { url =>
+        Failable( SourceFile( new URL( url ) ) ).xdebug( premessage( "github" ) ) orElse
+        Failable( SourceFile( nextSrcDir, key ) ).xdebug( premessage() )
+      }
+      // we're going to need a more robust way of parsing out uncommented, unquoted imports
+      //val fsource = fsourceRaw.map( sf => sf.copy( text = removeComments( sf.text ) ) )
+      if ( fsource.isFailed ) {
+        loadResolveSourceFile( allSourceDirs, key, remainingSourceDirs.tail )
+      } else {
+        substituteImports( allSourceDirs, fsource.get )
+      }
+    }
+  }
+
+  private val AnyCommentRegex = {
+    val DoubleSlashComments = """\/\/.*?(?=[\r\n])"""
+    val CStyleComment       = """\/\*.*?\*\/"""
+    s"""(?:${DoubleSlashComments}|${CStyleComment})""".r
+  }
+
+  private def removeComments( src : String ) : String = AnyCommentRegex.replaceAllIn(src,"")
+
+  private def loadResolveSourceFile( allSourceDirs : Seq[File], key : String ) : Failable[SourceFile] = loadResolveSourceFile( allSourceDirs, key, allSourceDirs )
+
+  private def loadResolveSourceFile( file : File ) : Failable[SourceFile] = loadResolveSourceFile( file.getParentFile :: Nil, file.getName )
+
+
+  private val ImportRegex = """(?<=(?:^|\;))\s*import\s+(.*)\;""".r
+  private val GoodImportBodyRegex = """\s*(\042.*\042)\s*""".r
+
+  private def substituteImports( allSourceDirs : Seq[File], input : SourceFile ) : Failable[SourceFile] = {
+
+    var lastModified : Long = input.lastModified
+
+    def replaceMatch( m : Match ) : String = {
+      m.group(1) match {
+        case GoodImportBodyRegex( imported ) => {
+          val key = StringLiteral.parsePermissiveStringLiteral( imported ).parsed
+          val fimport = loadResolveSourceFile( allSourceDirs, key )
+          val sourceFile = fimport.get // throw the Exception if resolution failed
+          lastModified = max( lastModified, sourceFile.lastModified )
+          sourceFile.text
+        }
+        case unkey => throw new Exception( s"""Unsupported import format: '${unkey}' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
+      }
+    }
+
+    val resolved = ImportRegex.replaceAllIn( input.text, replaceMatch _ )
+    succeed( SourceFile( resolved, lastModified ) )
+  }
+
+  private val SolidityFileBadFirstChars = ".#~"
+
+  def goodSolidityFileName( simpleName : String ) : Boolean =  simpleName.endsWith(".sol") && SolidityFileBadFirstChars.indexOf( simpleName.head ) < 0
+
+  private [sbtethereum] def doCompileSolidity( log : sbt.Logger, jsonRpcUrl : String, includeSourceDirs : Seq[File], solSourceDir : File, solDestDir : File )( implicit ec : ExecutionContext ) : Unit = {
     def solToJson( filename : String ) : String = filename match {
       case SolFileRegex( base ) => base + ".json"
     }
 
     // TODO XXX: check imported files as well!
-    def changed( destinationFile : File, sourceFile : File ) : Boolean = (! destinationFile.exists) || (sourceFile.lastModified() > destinationFile.lastModified() )
+    def changed( destinationFile : File, sourceFile : SourceFile ) : Boolean = (! destinationFile.exists) || (sourceFile.lastModified > destinationFile.lastModified() )
 
     def waitForSeq[T]( futs : Seq[Future[T]], errorMessage : Int => String ) : Unit = {
       val failures = awaitAndGatherFailures( futs )
@@ -96,25 +221,24 @@ package object sbtethereum {
       }
     }
 
-    doWithJsonClient( log, jsonRpcUrl ){ client =>
-      solDestination.mkdirs()
-      val files = (solSource ** "*.sol").get.filter( file => goodSolidityFileName( file.getName ) )
+    val allSourceDirs = solSourceDir +: includeSourceDirs
 
-      val filePairs = files.map( file => ( file, new File( solDestination, solToJson( file.getName() ) ) ) ) // (sourceFile, destinationFile)
+    doWithJsonClient( log, jsonRpcUrl ){ client =>
+      solDestDir.mkdirs()
+      val files = (solSourceDir ** "*.sol").get.filter( file => goodSolidityFileName( file.getName ) )
+
+      val filePairs = files.map( file => ( loadResolveSourceFile( file ).get, new File( solDestDir, solToJson( file.getName() ) ) ) ) // (sourceFile, destinationFile), exception if file can't load
       val compileFiles = filePairs.filter( tup => changed( tup._2, tup._1 ) )
 
       val cfl = compileFiles.length
       if ( cfl > 0 ) {
         val mbS = if ( cfl > 1 ) "s" else ""
-        log.info( s"Compiling ${compileFiles.length} Solidity source${mbS} to ${solDestination}..." )
+        log.info( s"Compiling ${compileFiles.length} Solidity source${mbS} to ${solDestDir}..." )
 
-        val compileFuts = compileFiles.map { tup =>
-          val srcFile  = tup._1
-          val destFile = tup._2
-          borrow( Source.fromFile( srcFile )(Codec.UTF8) )( _.close() ){ source =>
-            val code = source.foldLeft("")( _ + _ )
-            client.eth.compileSolidity( code ).map( result => ( destFile, result ) )
-          }
+        val compileFuts = compileFiles.map { case ( sourceFile, destFile ) =>
+          val code = sourceFile.text
+          // println( code )
+          client.eth.compileSolidity( code ).map( result => ( destFile, result ) )
         }
         waitForSeq( compileFuts, count => s"compileSolidity failed. [${count} failures]" )
 
