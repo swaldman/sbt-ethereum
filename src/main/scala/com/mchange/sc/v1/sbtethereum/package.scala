@@ -33,12 +33,16 @@ import play.api.libs.json._
 
 
 package object sbtethereum {
-  private implicit lazy val logger = mlogger( "com.mchange.sc.v1.sbtethereum.package" ) 
+  private implicit lazy val logger = mlogger( "com.mchange.sc.v1.sbtethereum.package" )
+
+  private val SEP = Option( System.getProperty("line.separator") ).getOrElse( "\n" )
 
   abstract class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
+
   final class NoSolidityCompilerException( msg : String ) extends SbtEthereumException( msg )
   final class DatabaseVersionException( msg : String ) extends SbtEthereumException( msg )
   final class ContractUnknownException( msg : String ) extends SbtEthereumException( msg )
+  final class UnparsableFileException( msg : String, line : Int, col : Int ) extends Exception( msg + s" [${line}:${col}]" )
 
   private val SolFileRegex = """(.+)\.sol""".r
 
@@ -172,27 +176,36 @@ package object sbtethereum {
   private def loadResolveSourceFile( file : File ) : Failable[SourceFile] = loadResolveSourceFile( file.getParentFile :: Nil, file.getName )
 
 
-  private val ImportRegex = """(?<=(?:^|\;))\s*import\s+(.*)\;""".r
-  private val GoodImportBodyRegex = """\s*(\042.*\042)\s*""".r
+  private val ImportRegex = """import\s+(.*)\;""".r
+  private val GoodImportBodyRegex = """\s*(\042.*?\042)\s*""".r
 
   private def substituteImports( allSourceDirs : Seq[File], input : SourceFile ) : Failable[SourceFile] = {
 
     var lastModified : Long = input.lastModified
 
+    val ( normalized, tcq ) = TextCommentQuote.parse( input.text )
+     
     def replaceMatch( m : Match ) : String = {
-      m.group(1) match {
-        case GoodImportBodyRegex( imported ) => {
-          val key = StringLiteral.parsePermissiveStringLiteral( imported ).parsed
-          val fimport = loadResolveSourceFile( allSourceDirs, key )
-          val sourceFile = fimport.get // throw the Exception if resolution failed
-          lastModified = max( lastModified, sourceFile.lastModified )
-          sourceFile.text
+      if ( tcq.quote.containsPoint( m.start ) ) {          // if the word import is in a quote
+        m.group(0)                                         //   replace the match with itself
+      } else if ( tcq.comment.containsPoint( m.start ) ) { // if the word import is in a comment
+        m.group(0)                                         //   replace the match with itself
+      } else {                                             // otherwise, do the replacement
+        m.group(1) match {
+          case GoodImportBodyRegex( imported ) => {
+            val key = StringLiteral.parsePermissiveStringLiteral( imported ).parsed
+            val fimport = loadResolveSourceFile( allSourceDirs, key )
+            val sourceFile = fimport.get // throw the Exception if resolution failed
+            lastModified = max( lastModified, sourceFile.lastModified )
+            sourceFile.text
+          }
+          case unkey => throw new Exception( s"""Unsupported import format: '${unkey}' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
         }
-        case unkey => throw new Exception( s"""Unsupported import format: '${unkey}' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
       }
     }
 
-    val resolved = ImportRegex.replaceAllIn( input.text, replaceMatch _ )
+    val resolved = ImportRegex.replaceAllIn( normalized, replaceMatch _ )
+
     succeed( SourceFile( resolved, lastModified ) )
   }
 
@@ -208,16 +221,16 @@ package object sbtethereum {
     // TODO XXX: check imported files as well!
     def changed( destinationFile : File, sourceFile : SourceFile ) : Boolean = (! destinationFile.exists) || (sourceFile.lastModified > destinationFile.lastModified() )
 
-    def waitForSeq[T]( futs : Seq[Future[T]], errorMessage : Int => String ) : Unit = {
-      val failures = awaitAndGatherFailures( futs )
-      val failureCount = failures.size
+    def waitForFiles[T]( files : Iterable[(File,Future[T])], errorMessage : Int => String ) : Unit = {
+      val labeledFailures = awaitAndGatherLabeledFailures( files )
+      val failureCount = labeledFailures.size
       if ( failureCount > 0 ) {
         log.error( errorMessage( failureCount ) )
-        failures.foreach {
-          case jf : jsonrpc20.Exception => log.error( jf.message )
-          case other                    => log.error( other.toString )
+        labeledFailures.foreach { 
+          case ( file, jf : jsonrpc20.Exception ) => log.error( s"File: ${file.getAbsolutePath}${SEP}${jf.message}" )
+          case ( file, other                    ) => log.error( s"File: ${file.getAbsolutePath}${SEP}${other.toString}" )
         }
-        throw failures.head
+        throw labeledFailures.head._2
       }
     }
 
@@ -227,30 +240,36 @@ package object sbtethereum {
       solDestDir.mkdirs()
       val files = (solSourceDir ** "*.sol").get.filter( file => goodSolidityFileName( file.getName ) )
 
-      val filePairs = files.map( file => ( loadResolveSourceFile( file ).get, new File( solDestDir, solToJson( file.getName() ) ) ) ) // (sourceFile, destinationFile), exception if file can't load
-      val compileFiles = filePairs.filter( tup => changed( tup._2, tup._1 ) )
+      val filePairs = files.map( file => ( file, loadResolveSourceFile( file ).get, new File( solDestDir, solToJson( file.getName() ) ) ) ) // (sourceFile, destinationFile), exception if file can't load
+      val compileFiles = filePairs.filter{ case ( file, sourceFile, destFile ) => changed( destFile, sourceFile ) }
 
       val cfl = compileFiles.length
       if ( cfl > 0 ) {
         val mbS = if ( cfl > 1 ) "s" else ""
         log.info( s"Compiling ${compileFiles.length} Solidity source${mbS} to ${solDestDir}..." )
 
-        val compileFuts = compileFiles.map { case ( sourceFile, destFile ) =>
+        val compileLabeledFuts = compileFiles.map { case ( file, sourceFile, destFile ) =>
           val code = sourceFile.text
           // println( code )
-          client.eth.compileSolidity( code ).map( result => ( destFile, result ) )
+          file -> client.eth.compileSolidity( code ).map( result => ( destFile, result ) )
         }
-        waitForSeq( compileFuts, count => s"compileSolidity failed. [${count} failures]" )
+        waitForFiles( compileLabeledFuts, count => s"compileSolidity failed. [${count} failures]" )
 
-        val writerFuts = compileFuts.map { fut =>
-          import Json._
-          fut.map {
-            case ( destFile, result ) => {
-              borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) )( _.write( stringify( toJson ( result ) ) ) )
+        // if we're here, all compilations succeeded
+        val destFileResultPairs = compileLabeledFuts.map {
+          case ( _, fut ) => fut.value.get.get
+        }
+
+        val writerLabeledFuts = destFileResultPairs.map {
+          case ( destFile, result ) => {
+            destFile -> Future {
+              borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) ){ writer =>
+                writer.write( Json.stringify( Json.toJson ( result ) ) )
+              }
             }
           }
         }
-        waitForSeq( writerFuts, count => s"Failed to write the output of some compilations. [${count} failures]" )
+        waitForFiles( writerLabeledFuts, count => s"Failed to write the output of some compilations. [${count} failures]" )
       }
     }
   }

@@ -1,10 +1,10 @@
 # TODO
 
-* Careful support of imports in solidity, with incremental compilation
+* ensure relative links always work for imports by making the parent dir/url of the loaded/imported file always the first element of the load path for its children
 * defaultSender alias
 * Import raw private key as wallet
 * Backup / restore of repository (especially db)
 * Import/Export of contract metadata between repositories
-* Tags for contracts and addresses
 * A flag so that logging of transactions and deployments is disabled when working with testnets
-
+* Hide all Repostory stuff behind a facade in preparation for supporting multiple repositories
+* Careful collapsing of compilations into map, don't permit different contracts with the same name
