@@ -69,13 +69,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethEntropySource = settingKey[SecureRandom]("The source of randomness that will be used for key generation")
 
+    val ethIncludeLocations = settingKey[Seq[String]]("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
+
     val ethGasOverrides = settingKey[Map[String,BigInt]]("Map of contract names to gas limits for contract creation transactions, overriding automatic estimates")
 
     val ethGasMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
 
     val ethGasPriceMarkup = settingKey[Double]("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
-
-    val ethIncludeDirs = settingKey[Seq[File]]("Directories that should be searched to resolve include directives in solidity files.")
 
     val ethKeystoresV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
 
@@ -241,13 +241,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethEntropySource := new java.security.SecureRandom,
 
+      ethIncludeLocations := Nil,
+
       ethGasMarkup := 0.2,
 
       ethGasOverrides := Map.empty[String,BigInt],
 
       ethGasPriceMarkup := 0.0, // by default, use conventional gas price
-
-      ethIncludeDirs := Nil,
 
       ethKeystoresV3 := {
         def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
@@ -339,12 +339,14 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log        = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
 
-        val includeDirs = ethIncludeDirs.value    
+        val includeStrings = ethIncludeLocations.value    
 
         val solSource      = (ethSoliditySource in Compile).value
         val solDestination = (ethSolidityDestination in Compile).value
 
-        doCompileSolidity( log, jsonRpcUrl, includeDirs, solSource, solDestination )
+        val includeLocations = includeStrings.map( SourceFile.Location.apply )
+
+        doCompileSolidity( log, jsonRpcUrl, includeLocations, solSource, solDestination )
       },
 
       ethDumpContractInfo <<= ethDumpContractInfoTask, 
