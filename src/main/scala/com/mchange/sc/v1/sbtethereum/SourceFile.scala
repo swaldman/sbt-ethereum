@@ -35,6 +35,8 @@ object SourceFile {
       }
     }
 
+    def apply( file : java.io.File, spec : String ) : Location = apply( Location( file ), spec )
+
     def apply( spec : String ) : Location = this.apply( Empty, spec )
 
     def apply( file : java.io.File ) : Location = Location.File( file.getCanonicalFile )

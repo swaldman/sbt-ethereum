@@ -344,7 +344,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val solSource      = (ethSoliditySource in Compile).value
         val solDestination = (ethSolidityDestination in Compile).value
 
-        val includeLocations = includeStrings.map( SourceFile.Location.apply )
+        val baseDir = baseDirectory.value
+
+        val includeLocations = includeStrings.map( SourceFile.Location.apply( baseDir, _ ) )
 
         doCompileSolidity( log, jsonRpcUrl, includeLocations, solSource, solDestination )
       },
