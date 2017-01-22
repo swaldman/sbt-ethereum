@@ -134,9 +134,9 @@ A message indicating the address of your newly deployed contract will usually be
 try an ethereum blockchain browser ([ether.camp](https://live.ether.camp), [etherchain](https://www.etherchain.org), [etherscan](http://etherscan.io)) to lookup the address of your deployed contract.
 You can search on the transaction hash, or on the address from which you are deploying.)
 
-#### Import handling when compiling projects
+### Import handling when compiling projects
 
-sbt-ethereum supports only the simple import syntax, of the form
+sbt-ethereum supports only Solidity's simple import syntax, of the form
 ```
 import "somefile.sol"; //looks for somefile.sol in the directory local to the file and anywhere else you may have specified as include locations
 ```
