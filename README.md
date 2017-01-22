@@ -134,6 +134,31 @@ A message indicating the address of your newly deployed contract will usually be
 try an ethereum blockchain browser ([ether.camp](https://live.ether.camp), [etherchain](https://www.etherchain.org), [etherscan](http://etherscan.io)) to lookup the address of your deployed contract.
 You can search on the transaction hash, or on the address from which you are deploying.)
 
+#### Import handling when compiling projects
+
+sbt-ethereum supports only the simple import syntax, of the form
+```
+import "somefile.sol"; //looks for somefile.sol in the directory local to the file and anywhere else you may have specified as include locations
+```
+However, sbt-ethereum can import from URLs as well as files. For example
+```
+import "http://solidity.mchange.com/somefile.sol";
+```
+should work as well.
+
+GitHub URLs are handled specially. You can browse to a solidity source file on GitHub and copy its URL. (You needn't find the URL for the raw source -- sbt-ethereum handles that for you.)
+Both of these are fine:
+```
+// this is the URL to the current version of the file
+import "https://github.com/swaldman/redeemable/blob/master/src/main/solidity/RedeemableToken.sol";
+```
+or
+```
+// this is the URL to a specific commit of the file
+import "https://github.com/swaldman/redeemable/blob/6722de57199284649fdb688d886a7ccda2f14f20/src/main/solidity/RedeemableToken.sol";
+```
+To specify include locations, which should be file paths or URLs, use the setting `ethIncludeLocations`. Relative paths will be interpreted relative to the project root directory.
+
 ### Interacting with deployed smart contracts
 
 **_Please bear in mind that sbt-ethereum is young, largely untested code, offered without warranties. Don't try high-stakes stuff, or work from high-stakes addresses!_**

@@ -1,6 +1,5 @@
 # TODO
 
-* ensure relative links always work for imports by making the parent dir/url of the loaded/imported file always the first element of the load path for its children
 * defaultSender alias
 * Import raw private key as wallet
 * Backup / restore of repository (especially db)
