@@ -109,16 +109,6 @@ package object sbtethereum {
   }
 
 
-  /*
-  def resolveImport( sourceDirs : Seq[File], importBody : String ) : Failable[( String, Long )] = importBody match {
-    case GoodImportBodyRegex( imported ) => {
-      val key = StringLiteral.parsePermissiveStringLiteral( imported ).parsed
-      sourceFileForKey( sourceDirs, key )
-    }
-    case unkey => fail( s"""Unsupported import format: '${unkey}' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
-  }
-   */ 
-
   private object SourceFile {
     def apply( parentDir : File, filePath : String ) : SourceFile = {
       val f = new File( parentDir, filePath )
@@ -132,15 +122,6 @@ package object sbtethereum {
   }
   private case class SourceFile( text : String, lastModified : Long )
 
-  private def sourceFileForKey( sourceDirs : Seq[File], key : String ) : Failable[SourceFile] = {
-    def resolveFile( parentDir : File, filePath : String ) = fileToString( new File( parentDir, filePath ) )
-    def handleNext( cur : Failable[SourceFile], nextSourceDir : File ) : Failable[SourceFile] = {
-      cur orElse Failable( SourceFile( nextSourceDir, key ) )
-    }
-    val defaultFail : Failable[SourceFile] = fail( s"""Could not resolve file for '${key}' in any of source dirs '${sourceDirs.mkString(":")}'""" )
-    sourceDirs.foldLeft( defaultFail )( handleNext )
-  }
-
   @tailrec
   private def loadResolveSourceFile( allSourceDirs : Seq[File], key : String, remainingSourceDirs : Seq[File] ) : Failable[SourceFile] = {
     if ( remainingSourceDirs.isEmpty ){
@@ -153,8 +134,6 @@ package object sbtethereum {
         Failable( SourceFile( new URL( url ) ) ).xdebug( premessage( "github" ) ) orElse
         Failable( SourceFile( nextSrcDir, key ) ).xdebug( premessage() )
       }
-      // we're going to need a more robust way of parsing out uncommented, unquoted imports
-      //val fsource = fsourceRaw.map( sf => sf.copy( text = removeComments( sf.text ) ) )
       if ( fsource.isFailed ) {
         loadResolveSourceFile( allSourceDirs, key, remainingSourceDirs.tail )
       } else {
@@ -162,14 +141,6 @@ package object sbtethereum {
       }
     }
   }
-
-  private val AnyCommentRegex = {
-    val DoubleSlashComments = """\/\/.*?(?=[\r\n])"""
-    val CStyleComment       = """\/\*.*?\*\/"""
-    s"""(?:${DoubleSlashComments}|${CStyleComment})""".r
-  }
-
-  private def removeComments( src : String ) : String = AnyCommentRegex.replaceAllIn(src,"")
 
   private def loadResolveSourceFile( allSourceDirs : Seq[File], key : String ) : Failable[SourceFile] = loadResolveSourceFile( allSourceDirs, key, allSourceDirs )
 
