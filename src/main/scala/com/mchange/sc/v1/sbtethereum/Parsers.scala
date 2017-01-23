@@ -52,7 +52,10 @@ object Parsers {
 
   private [sbtethereum] val NewAliasParser = token(Space.* ~> ID, "<alias>") ~ createSimpleAddressParser("<hex-address>")
 
-  private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )
+  private [sbtethereum] val RawAmountParser = ((Digit|literal('.')).+).map( chars => BigDecimal( chars.mkString ) )
+
+  //private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )
+  private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> RawAmountParser, tabHelp)
 
   private [sbtethereum] val UnitParser = {
     val ( w, s, f, e ) = ( "wei", "szabo", "finney", "ether" );
@@ -60,8 +63,10 @@ object Parsers {
     Space.* ~> token(literal(w) | literal(s) | literal(f) | literal(e))
   }
 
+  private [sbtethereum] def toValueInWei( amount : BigDecimal, unit : String ) = rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt
+
   private [sbtethereum] def valueInWeiParser( tabHelp : String ) = {
-    (amountParser( tabHelp ) ~ UnitParser).map { case ( amount, unit ) => rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt }
+    (amountParser( tabHelp ) ~ UnitParser).map { case ( amount, unit ) => toValueInWei( amount, unit ) }
   }
 
   private [sbtethereum] def ethSendEtherParser : Parser[( EthAddress, BigInt )] = { // def not val so that ideally they'd pick up new aliases, but doesn't work
@@ -178,6 +183,12 @@ object Parsers {
     state : State,
     mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]]
   ) : Parser[((EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition), Option[BigInt])] = {
-    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbmbAliases ) ~ valueInWeiParser("[<optional, amount of ETH to send with function call, default is 0>]").?
+    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbmbAliases ).flatMap { afia =>
+      if ( afia._2.payable ) {
+        valueInWeiParser("[ETH to pay, optional]").?.flatMap( mbv => success(  ( afia, mbv ) ) ) // useless flatmap rather than map
+      } else {
+        success( ( afia, None ) )
+      }
+    }
   }
 }

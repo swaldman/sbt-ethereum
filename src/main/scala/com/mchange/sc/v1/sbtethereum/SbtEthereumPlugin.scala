@@ -593,7 +593,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethSendEther := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
-        val args = { WARNING.log("ETHSENDETHERPARSER"); ethSendEtherParser.parsed }
+        val args = ethSendEtherParser.parsed
         val to = args._1
         val amount = args._2
         val nextNonce = ethNextNonce.value
