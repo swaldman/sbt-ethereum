@@ -475,17 +475,41 @@ object SbtEthereumPlugin extends AutoPlugin {
         println( cap )
       },
 
-      ethLoadCompilations := { 
+      ethLoadCompilations := {
+        val log = streams.value.log
+
         val dummy = (ethCompileSolidity in Compile).value // ensure compilation has completed
 
         val dir = (ethSolidityDestination in Compile).value
 
-        def addContracts( addTo : immutable.Map[String,jsonrpc20.Compilation.Contract], name : String ) = {
-          val next = borrow( new BufferedInputStream( new FileInputStream( new File( dir, name ) ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]] )
-          addTo ++ next
+        def addContracts( tup : ( immutable.Map[String,jsonrpc20.Compilation.Contract], immutable.Set[String] ), name : String ) = {
+          val ( addTo, overlaps ) = tup
+          val next = {
+            val file = new File( dir, name )
+            try {
+              borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]] )
+            } catch {
+              case e : Exception => {
+                log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
+                log.warn( s"  --> cause: ${e.toString}" )
+                Map.empty[String,jsonrpc20.Compilation.Contract]
+              }
+            }
+          }
+          val rawNewOverlaps = next.keySet.intersect( addTo.keySet )
+          val realNewOverlaps = rawNewOverlaps.foldLeft( immutable.Set.empty[String] )( ( cur, key ) => if ( addTo( key ).code != next( key ).code ) cur + key else cur )
+          ( addTo ++ next, overlaps ++ realNewOverlaps )
         }
 
-        dir.list.foldLeft( immutable.Map.empty[String,jsonrpc20.Compilation.Contract] )( addContracts )
+        val ( rawCompilations, duplicates ) = dir.list.foldLeft( ( immutable.Map.empty[String,jsonrpc20.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
+        if ( !duplicates.isEmpty ) {
+          val dupsStr = duplicates.mkString(", ")
+          log.warn( s"The project contains mutiple contracts and/or libraries that have identical names but compile to distinct code: $dupsStr" )
+          log.warn( s"Units $dupsStr have been droppped from the deployable compilations list as references would be ambiguous." )
+          rawCompilations -- duplicates
+        } else {
+          rawCompilations
+        }
       },
 
       ethLoadWalletV3For <<= ethLoadWalletV3ForTask,
@@ -607,7 +631,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
       },
 
-      ethTriggerDirtyAliasCache := {
+      ethTriggerDirtyAliasCache := { // this is intentionally empty, it's execution just triggers a re-caching of aliases
       },
 
       ethUpdateContractDatabase := {
