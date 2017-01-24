@@ -2,7 +2,7 @@
 
 * defaultSender alias
 * Repostory support for use of testnets
-* Support for compiling and deploying libraries and contracts that reference them
+* Support for compiling and deploying libraries and linking contracts that reference them
 * Import raw private key as wallet
 * Backup / restore of repository (especially db)
 * Import/Export of contract metadata between repositories
