@@ -127,7 +127,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethFindCacheAliasesIfAvailable = taskKey[Option[immutable.SortedMap[String,EthAddress]]]("Finds and caches address aliases, if they are available. Triggered by ethAliasSet and ethAliasDrop.")
 
-    val ethFindCacheCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Finds and caches compiled contract names, triggered by ethCompileSolidity")
+    val ethFindCacheOmitDupsCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethCompileSolidity")
 
     val ethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
@@ -153,7 +153,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethListKnownContracts = taskKey[Unit]("Lists summary information about contracts known in the repository")
 
-    val ethLoadCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts")
+    val ethLoadCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
+
+    val ethLoadCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc20.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
 
     val ethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
@@ -203,6 +205,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       val mbWallet = ethLoadWalletV3.value
 
       def updateCached : EthPrivateKey = {
+        // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
+        // it also slows down automated attempts to guess passwords, i guess...
+        Thread.sleep(1000)
+
         val credential = readCredential( is, CurAddress )
 
         val privateKey = findPrivateKey( log, mbWallet, credential )
@@ -331,7 +337,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethFindCacheAliasesIfAvailable <<= ethFindCacheAliasesIfAvailableTask.storeAs( ethFindCacheAliasesIfAvailable ).triggeredBy( ethTriggerDirtyAliasCache ),
 
-      ethFindCacheCompilations <<= ethFindCacheCompilationsTask storeAs ethFindCacheCompilations triggeredBy (ethCompileSolidity in Compile ),
+      ethFindCacheOmitDupsCompilations <<= ethFindCacheOmitDupsCompilationsTask storeAs ethFindCacheOmitDupsCompilations triggeredBy (ethCompileSolidity in Compile ),
 
       ethCallConstant <<= ethCallConstantTask,
 
@@ -475,7 +481,33 @@ object SbtEthereumPlugin extends AutoPlugin {
         println( cap )
       },
 
-      ethLoadCompilations := {
+      ethLoadCompilationsKeepDups := {
+        val log = streams.value.log
+
+        val dummy = (ethCompileSolidity in Compile).value // ensure compilation has completed
+
+        val dir = (ethSolidityDestination in Compile).value
+
+        def addContracts( vec : immutable.Vector[(String,jsonrpc20.Compilation.Contract)], name : String ) = {
+          val next = {
+            val file = new File( dir, name )
+            try {
+              borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]] )
+            } catch {
+              case e : Exception => {
+                log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
+                log.warn( s"  --> cause: ${e.toString}" )
+                Map.empty[String,jsonrpc20.Compilation.Contract]
+              }
+            }
+          }
+          vec ++ next
+        }
+
+        dir.list.foldLeft( immutable.Vector.empty[(String,jsonrpc20.Compilation.Contract)] )( addContracts )
+      },
+
+      ethLoadCompilationsOmitDups := {
         val log = streams.value.log
 
         val dummy = (ethCompileSolidity in Compile).value // ensure compilation has completed
@@ -505,7 +537,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         if ( !duplicates.isEmpty ) {
           val dupsStr = duplicates.mkString(", ")
           log.warn( s"The project contains mutiple contracts and/or libraries that have identical names but compile to distinct code: $dupsStr" )
-          log.warn( s"Units $dupsStr have been droppped from the deployable compilations list as references would be ambiguous." )
+          if ( duplicates.size > 1 ) {
+            log.warn( s"Units '$dupsStr' have been dropped from the deployable compilations list as references would be ambiguous." )
+          } else {
+            log.warn( s"Unit '$dupsStr' has been dropped from the deployable compilations list as references would be ambiguous." )
+          }
           rawCompilations -- duplicates
         } else {
           rawCompilations
@@ -638,7 +674,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
         val policy                 = ethContractDatabaseUpdatePolicy.value
-        val compilations           = ethLoadCompilations.value
+        val compilations           = ethLoadCompilationsKeepDups.value // we want to "know" every contract we've seen, which might include contracts with multiple names
         val stubNameToAddresses    = ethKnownStubAddresses.value.mapValues( stringSet => stringSet.map( EthAddress.apply ) )
         val stubNameToAddressCodes  = {
           stubNameToAddresses.map { case ( name, addresses ) =>
@@ -804,7 +840,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def ethDeployOnlyTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser(ethFindCacheCompilations)( genContractNamesConstructorInputsParser )
+      val parser = Defaults.loadForParser(ethFindCacheOmitDupsCompilations)( genContractNamesConstructorInputsParser )
 
       Def.inputTask {
         val log = streams.value.log
@@ -814,7 +850,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           extraData match {
             case None => { 
               // at the time of parsing, a compiled contract is not available. we'll force compilation now, but can't accept contructor arguments
-              val contractsMap = ethLoadCompilations.value
+              val contractsMap = ethLoadCompilationsOmitDups.value
               val compilation = contractsMap( contractName )
               ( compilation, "" )
             }
@@ -1027,8 +1063,8 @@ object SbtEthereumPlugin extends AutoPlugin {
      * Things that need to be defined as tasks so that parsers can load them dynamically...
      */ 
 
-    def ethFindCacheCompilationsTask : Initialize[Task[immutable.Map[String,jsonrpc20.Compilation.Contract]]] = Def.task {
-      ethLoadCompilations.value
+    def ethFindCacheOmitDupsCompilationsTask : Initialize[Task[immutable.Map[String,jsonrpc20.Compilation.Contract]]] = Def.task {
+      ethLoadCompilationsOmitDups.value
     }
     
     def ethFindCacheAliasesIfAvailableTask : Initialize[Task[Option[immutable.SortedMap[String,EthAddress]]]] = Def.task {

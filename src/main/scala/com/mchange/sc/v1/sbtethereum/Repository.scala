@@ -129,8 +129,8 @@ object Repository {
      * 
      *  okay. it could be a lot less convoluted.
      */ 
-    def updateContractDatabase( compilations : Map[String,jsonrpc20.Compilation.Contract], stubNameToAddressCodes : Map[String,Map[EthAddress,String]], policy : IrreconcilableUpdatePolicy ) : Failable[Boolean] = {
-      val ( compiledContracts, stubs ) = compilations.partition { case ( name, compilation ) => compilation.code.decodeHex.length > 0 }
+    def updateContractDatabase( compilations : Iterable[(String,jsonrpc20.Compilation.Contract)], stubNameToAddressCodes : Map[String,Map[EthAddress,String]], policy : IrreconcilableUpdatePolicy ) : Failable[Boolean] = {
+      val ( compiledContracts, stubsWithDups ) = compilations.partition { case ( name, compilation ) => compilation.code.decodeHex.length > 0 }
 
       def updateKnownContracts( conn : Connection ) : Failable[Boolean] = {
         def doUpdate( conn : Connection, contractTuple : Tuple2[String,jsonrpc20.Compilation.Contract] ) : Failable[Boolean] = Failable {
@@ -153,22 +153,34 @@ object Repository {
             check0
           }
         }
-        stubNameToAddressCodes.toSeq.foldLeft( succeed( false ) ) { case ( last, ( name, addressToCode ) ) =>
-          last.flatMap { l =>
-            val fabi = {
-              (for {
-                compilation <- stubs.get( name )
-                out         <- compilation.info.mbAbiDefinition
-              } yield {
-                out
-              }).toFailable( s"Could not find abi definition for '${name}' in stub compilations. [ present in compilations? ${compilations.contains(name)}; zero-code stub? ${stubs.contains(name)} ]" )
-            }
-            val fb = fabi.flatMap { abi =>
-              addressToCode.toSeq.foldLeft( succeed( false ) ){ ( failable, tup ) =>
-                failable.flatMap( last => doUpdate( tup._1, tup._2, name, abi ).map( next => last || next ) )
+
+        // we fail if there are duplicate stubs, which we cannot support, succeed otherwise
+        val fstubs : Failable[Map[String,jsonrpc20.Compilation.Contract]] = Failable.sequence {
+          stubsWithDups
+            .groupBy( _._1 )                                     // key -> Iterable( key -> v0, key -> v1, ... )
+            .map( tup => ( tup._1, tup._2.map( _._2 ).toSet ) )  // key -> Set( v0, v1, ... )
+            .map( tup => if ( tup._2.size > 1 ) fail( s"Unsupported: '${tup._1}' is associated with multiple stubs with different ABIs." ) else succeed( ( tup._1, tup._2.head ) ) )
+            .toSeq
+        }.map( _.toMap )
+
+        fstubs.flatMap { stubs =>
+          stubNameToAddressCodes.toSeq.foldLeft( succeed( false ) ) { case ( last, ( name, addressToCode ) ) =>
+            last.flatMap { l =>
+              val fabi = {
+                (for {
+                  compilation <- stubs.get( name )
+                  out         <- compilation.info.mbAbiDefinition
+                } yield {
+                  out
+                }).toFailable( s"Could not find abi definition for '${name}' in stub compilations. [ present in compilations? ${compilations.toMap.contains(name)}; zero-code stub? ${stubs.contains(name)} ]" )
               }
+              val fb = fabi.flatMap { abi =>
+                addressToCode.toSeq.foldLeft( succeed( false ) ){ ( failable, tup ) =>
+                  failable.flatMap( last => doUpdate( tup._1, tup._2, name, abi ).map( next => last || next ) )
+                }
+              }
+              fb.map( b => l || b )
             }
-            fb.map( b => l || b )
           }
         }
       }
