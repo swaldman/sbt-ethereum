@@ -40,10 +40,12 @@ package object sbtethereum {
 
   abstract class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
 
-  final class NoSolidityCompilerException( msg : String ) extends SbtEthereumException( msg )
-  final class DatabaseVersionException( msg : String ) extends SbtEthereumException( msg )
-  final class ContractUnknownException( msg : String ) extends SbtEthereumException( msg )
-  final class UnparsableFileException( msg : String, line : Int, col : Int ) extends Exception( msg + s" [${line}:${col}]" )
+  final class NoSolidityCompilerException( msg : String )                    extends SbtEthereumException( msg )
+  final class DatabaseVersionException( msg : String )                       extends SbtEthereumException( msg )
+  final class ContractUnknownException( msg : String )                       extends SbtEthereumException( msg )
+  final class BadCodeFormatException( msg : String )                         extends SbtEthereumException( msg )
+  final class UnparsableFileException( msg : String, line : Int, col : Int ) extends SbtEthereumException( msg + s" [${line}:${col}]" )
+  final class RepositoryException( msg : String )                            extends SbtEthereumException( msg )
 
   private val SolFileRegex = """(.+)\.sol""".r
 
@@ -66,15 +68,6 @@ package object sbtethereum {
       }
     }
   }
-
-  sealed trait IrreconcilableUpdatePolicy;
-  final case object UseOriginal        extends IrreconcilableUpdatePolicy
-  final case object UseNewer           extends IrreconcilableUpdatePolicy
-  final case object PrioritizeOriginal extends IrreconcilableUpdatePolicy
-  final case object PrioritizeNewer    extends IrreconcilableUpdatePolicy
-  final case object Throw              extends IrreconcilableUpdatePolicy
-
-  final class ContractMergeException( message : String, cause : Throwable = null ) extends Exception( message, cause )
 
   // some formatting functions for ascii tables
   def emptyOrHex( str : String ) = if (str == null) "" else s"0x$str"
@@ -356,7 +349,7 @@ package object sbtethereum {
   private [sbtethereum] def abiForAddress( address : EthAddress, defaultNotInDatabase : => Abi.Definition, defaultNoAbi : => Abi.Definition ) : Abi.Definition = {
     val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if there's a database problem
     mbDeployedContractInfo.fold( defaultNotInDatabase ) { deployedContractInfo =>
-      deployedContractInfo.abiDefinition.fold( defaultNoAbi )( parseAbi )
+      deployedContractInfo.mbAbiDefinition.getOrElse( defaultNoAbi )
     }
   }
 
@@ -370,10 +363,26 @@ package object sbtethereum {
     abiForAddress( address, EmptyAbi, EmptyAbi )
   }
 
-
   private [sbtethereum] def unknownWallet( loadDirs : Seq[File] ) : Nothing = {
     val dirs = loadDirs.map( _.getAbsolutePath() ).mkString(", ")
     throw new Exception( s"Could not find V3 wallet for the specified address in the specified keystore directories: ${dirs}}" )
+  }
+
+  // solc now generates code that includes a suffix of non-EVM-code metadata (currently a swarm hash of a metadata file)
+  final object BaseCodeAndSuffix {
+    private final val Regex = """(?i)^(\p{XDigit}*)(a165627a7a72305820\p{XDigit}*0029)?$""".r
+
+    def apply( fullHex : String ) : BaseCodeAndSuffix= {
+      fullHex match {
+        case Regex( baseCodeHex, null )      => BaseCodeAndSuffix( baseCodeHex, "" )
+        case Regex( baseCodeHex, suffixHex ) => BaseCodeAndSuffix( baseCodeHex, suffixHex )
+        case _                           => throw new BadCodeFormatException( s"Unexpected code format: ${fullHex}" )
+      }
+    }
+  }
+  final case class BaseCodeAndSuffix( baseCodeHex : String, codeSuffixHex : String ) {
+    lazy val baseCodeHash   = EthHash.hash( baseCodeHex.decodeHex )
+    lazy val fullCodeHash = EthHash.hash( (baseCodeHex + codeSuffixHex).decodeHex )
   }
 }
 

@@ -16,6 +16,8 @@ import com.mchange.sc.v1.log.MLevel._
 
 import scala.collection._
 
+import play.api.libs.json._
+
 object Parsers {
   private implicit lazy val logger = mlogger( this )
 
@@ -129,9 +131,15 @@ object Parsers {
     }
   }
   private def resultFromCompilation( contractName : String, compilation : jsonrpc20.Compilation.Contract ) : Parser[ ( String, Option[ ( immutable.Seq[String], Abi.Definition, jsonrpc20.Compilation.Contract ) ] ) ] = {
-    val abi = compilation.info.abiDefinition
-    val ctor = constructorFromAbi( abi )
-    inputsParser( ctor.inputs, None ).map( seq => ( contractName, Some( seq, abi, compilation ) ) )
+    val mbAbi = compilation.info.mbAbiDefinition
+    mbAbi match {
+      case Some( abiString ) => {
+        val abi = Json.parse( abiString ).as[Abi.Definition]
+        val ctor = constructorFromAbi( abi )
+        inputsParser( ctor.inputs, None ).map( seq => ( contractName, Some( ( seq, abi, compilation ) ) ) )
+      }
+      case None => failure( s"ABI not available for compilation of contract '$contractName'" )
+    }
   }
   private [sbtethereum] def genContractNamesConstructorInputsParser(
     state : State,

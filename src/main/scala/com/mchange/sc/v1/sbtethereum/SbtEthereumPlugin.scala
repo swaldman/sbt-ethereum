@@ -83,8 +83,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethJsonRpcUrl = settingKey[String]("URL of the Ethereum JSON-RPC service build should work with")
 
-    val ethContractDatabaseUpdatePolicy = settingKey[IrreconcilableUpdatePolicy]("Defines how inconsistencies between newly compiled artifacts and items already in the contract database are resolved")
-
     val ethTargetDir = settingKey[File]("Location in target directory where ethereum artifacts will be placed")
 
     val ethSoliditySource = settingKey[File]("Solidity source code directory")
@@ -272,8 +270,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
-
-      ethContractDatabaseUpdatePolicy := PrioritizeNewer,
 
       ethSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
 
@@ -571,7 +567,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.info( s"The contract code at address '$address' was already associated with an ABI, which has not been overwritten." )
           log.info( s"Associating address with the known ABI.")
         }
-        Repository.Database.insertExistingDeployment( address, code.hex ).get // thrown an Exception if there's a database issue
+        Repository.Database.insertExistingDeployment( address, code.hex ).get // throw an Exception if there's a database issue
 
         log.info( s"ABI is now known for the contract at address ${address.hex}" )
       },
@@ -673,7 +669,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethUpdateContractDatabase := {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
-        val policy                 = ethContractDatabaseUpdatePolicy.value
         val compilations           = ethLoadCompilationsKeepDups.value // we want to "know" every contract we've seen, which might include contracts with multiple names
         val stubNameToAddresses    = ethKnownStubAddresses.value.mapValues( stringSet => stringSet.map( EthAddress.apply ) )
         val stubNameToAddressCodes  = {
@@ -681,7 +676,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             ( name, immutable.Map( addresses.map( address => ( address, doCodeForAddress( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Pending ).hex ) ).toSeq : _* ) )
           }
         }
-        Repository.Database.updateContractDatabase( compilations, stubNameToAddressCodes, policy ).get
+        Repository.Database.updateContractDatabase( compilations, stubNameToAddressCodes ).get
       },
 
       ethValidateWalletV3For <<= ethValidateWalletV3ForTask,
@@ -898,48 +893,60 @@ object SbtEthereumPlugin extends AutoPlugin {
         println("                       CONTRACT INFO DUMP")
         println( cap )
 
-        def section( title : String, body : Option[String], hex : Boolean = false ) = body.foreach { b =>
+        def section( title : String, body : Option[String], hex : Boolean = false ) : Unit = body.foreach { b =>
           println( minicap )
           println( s"${title}:")
           println();
           println( (if ( hex ) "0x" else "") + b )
         }
+        def addressSection( title : String, body : Set[EthAddress] ) : Unit = {
+          val ordered = immutable.SortedSet.empty[String] ++ body.map( a => s"0x${a.hex}" )
+          val bodyOpt = if ( ordered.size == 0 ) None else Some( ordered.mkString(", ") )
+          section( title, bodyOpt, false )
+        }
+        def jsonSection[T : play.api.libs.json.Writes]( title : String, body : Option[T] ) : Unit = {
+          section( title, body.map( t => Json.stringify( Json.toJson( t ) ) ), false )
+        }
+
         val source = parser.parsed
         source match {
           case Left( address ) => {
             val mbinfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw any db problem
             mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
-              section( "Contract Address", Some( info.address.hex ), true )
-              section( "Deployer Address", info.deployerAddress.map( _.hex ), true )
-              section( "Transaction Hash", info.transactionHash.map( _.hex ), true )
-              section( "Deployment Timestamp", info.deployedWhen.map( l => (new Date(l)).toString ) )
-              section( "Code Hash", Some( EthHash.hash( info.code.decodeHex ).hex ), true )
+              section( "Contract Address", Some( info.contractAddress.hex ), true )
+              section( "Deployer Address", info.mbDeployerAddress.map( _.hex ), true )
+              section( "Transaction Hash", info.mbTransactionHash.map( _.hex ), true )
+              section( "Deployment Timestamp", info.mbDeployedWhen.map( l => (new Date(l)).toString ) )
+              section( "Code Hash", Some( info.codeHash.hex ), true )
               section( "Code", Some( info.code ), true )
-              section( "Contract Name", info.name )
-              section( "Contract Source", info.source )
-              section( "Contract Language", info.language )
-              section( "Language Version", info.languageVersion )
-              section( "Compiler Version", info.compilerVersion )
-              section( "Compiler Options", info.compilerOptions )
-              section( "ABI Definition", info.abiDefinition )
-              section( "User Documentation", info.userDoc )
-              section( "Developer Documentation", info.developerDoc )
+              section( "Contract Name", info.mbName )
+              section( "Contract Source", info.mbSource )
+              section( "Contract Language", info.mbLanguage )
+              section( "Language Version", info.mbLanguageVersion )
+              section( "Compiler Version", info.mbCompilerVersion )
+              section( "Compiler Options", info.mbCompilerOptions )
+              jsonSection( "ABI Definition", info.mbAbiDefinition )
+              jsonSection( "User Documentation", info.mbUserDoc )
+              jsonSection( "Developer Documentation", info.mbDeveloperDoc )
+              section( "Metadata", info.mbMetadata )
             }
           }
           case Right( hash ) => {
-            val mbinfo = Repository.Database.deployedContractInfoForCodeHash( hash ).get // throw any db problem
+            val mbinfo = Repository.Database.compilationInfoForCodeHash( hash ).get // throw any db problem
             mbinfo.fold( println( s"Contract with code hash '$hash' not found." ) ) { info =>
               section( "Code Hash", Some( hash.hex ), true )
               section( "Code", Some( info.code ), true )
-              section( "Contract Name", info.name )
-              section( "Contract Source", info.source )
-              section( "Contract Language", info.language )
-              section( "Language Version", info.languageVersion )
-              section( "Compiler Version", info.compilerVersion )
-              section( "Compiler Options", info.compilerOptions )
-              section( "ABI Definition", info.abiDefinition )
-              section( "User Documentation", info.userDoc )
-              section( "Developer Documentation", info.developerDoc )
+              section( "Contract Name", info.mbName )
+              section( "Contract Source", info.mbSource )
+              section( "Contract Language", info.mbLanguage )
+              section( "Language Version", info.mbLanguageVersion )
+              section( "Compiler Version", info.mbCompilerVersion )
+              section( "Compiler Options", info.mbCompilerOptions )
+              jsonSection( "ABI Definition", info.mbAbiDefinition )
+              jsonSection( "User Documentation", info.mbUserDoc )
+              jsonSection( "Developer Documentation", info.mbDeveloperDoc )
+              section( "Metadata", info.mbMetadata )
+              addressSection( "Deployments", Repository.Database.contractAddressesForCodeHash( hash ).get )
             }
           }
         }

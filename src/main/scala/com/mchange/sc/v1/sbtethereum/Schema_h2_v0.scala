@@ -2,11 +2,13 @@ package com.mchange.sc.v1.sbtethereum
 
 import com.mchange.sc.v1.consuela._
 
-import com.mchange.sc.v1.reconcile.{Reconcilable,CantReconcileException}
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress,EthHash}
-import com.mchange.sc.v2.sql.{getMaybeSingleString,getMaybeSingleValue}
+import com.mchange.sc.v1.consuela.ethereum.jsonrpc20._
+import com.mchange.sc.v2.sql.{getMaybeSingleString,getMaybeSingleValue,setMaybeString}
 import com.mchange.sc.v1.log.MLevel._
+
+import com.mchange.sc.v1.reconcile.{Reconcilable,CantReconcileException}
 
 import java.io.StringReader
 import java.sql.{Connection,PreparedStatement,ResultSet,Types,Timestamp}
@@ -14,6 +16,8 @@ import java.sql.{Connection,PreparedStatement,ResultSet,Types,Timestamp}
 import javax.sql.DataSource
 
 import scala.collection._
+
+import play.api.libs.json._
 
 object Schema_h2_v0 {
 
@@ -30,8 +34,9 @@ object Schema_h2_v0 {
     borrow( dataSource.getConnection() ){ conn =>
       borrow( conn.createStatement() ){ stmt =>
         stmt.executeUpdate( Table.Metadata.CreateSql )
-        stmt.executeUpdate( Table.KnownContracts.CreateSql )
-        stmt.executeUpdate( Table.DeployedContracts.CreateSql )
+        stmt.executeUpdate( Table.KnownCode.CreateSql )
+        stmt.executeUpdate( Table.KnownCompilations.CreateSql )
+        stmt.executeUpdate( Table.DeployedCompilations.CreateSql )
         stmt.executeUpdate( Table.AddressAliases.CreateSql )
         stmt.executeUpdate( Table.AddressAliases.CreateIndex )
       }
@@ -44,8 +49,6 @@ object Schema_h2_v0 {
        |FROM deployed_contracts RIGHT JOIN known_contracts ON deployed_contracts.code_hash = known_contracts.code_hash
        |ORDER BY deployed_when ASC""".stripMargin
   }
-
-  private def codeHash( codeHex : String ) : EthHash = EthHash.hash(codeHex.decodeHex)
 
   final object Table {
     final object Metadata {
@@ -79,155 +82,38 @@ object Schema_h2_v0 {
       }
     }
 
-    final object KnownContracts {
-      private def delete( conn : Connection, codeHash : EthHash ) : Int = {
-        borrow( conn.prepareStatement( DeleteSql ) ) { ps =>
-          ps.setString(1, codeHash.hex)
-          ps.executeUpdate()
-        }
-      }
-
-      private def _select( conn : Connection, codeHash : EthHash ) : Option[KnownContracts.CachedContract] = {
-        borrow( conn.prepareStatement( SelectSql ) ) { ps =>
-          ps.setString(1, codeHash.hex)
-          borrow( ps.executeQuery ) { rs =>
-            if ( rs.next() ) {
-              val ok = CachedContract(
-                rs.getString(1),
-                Option( rs.getString( 2) ),
-                Option( rs.getString( 3) ),
-                Option( rs.getString( 4) ),
-                Option( rs.getString( 5) ),
-                Option( rs.getString( 6) ),
-                Option( rs.getString( 7) ),
-                Option( rs.getString( 8) ),
-                Option( rs.getString( 9) ),
-                Option( rs.getString(10) )
-              )
-              assert(!rs.next(), s"Huh? More than one row with the same codeHash in known_contracts? [codeHash=${codeHash.hex}]" )
-              Some( ok )
-            } else {
-              None
-            }
-          }
-        }
-      }
-
-      def getByCodeHash( conn : Connection, codeHash : EthHash ) : Option[KnownContracts.CachedContract] = _select( conn, codeHash )
-
-      def createUpdateKnownContract( 
-        conn             : Connection,
-        code             : String,
-        name             : Option[String],
-        source           : Option[String],
-        language         : Option[String],
-        languageVersion  : Option[String],
-        compilerVersion  : Option[String],
-        compilerOptions  : Option[String],
-        abiDefinition    : Option[String],
-        userDoc          : Option[String],
-        developerDoc     : Option[String],
-        policy           : IrreconcilableUpdatePolicy = Throw
-      ) : Boolean = {
-        val ch = codeHash(code)
-        val mbAlreadyKnownContract = _select( conn, ch )
-        mbAlreadyKnownContract.fold( merge( conn, code, name, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc ) ) { akc =>
-          val newc = CachedContract( code, name, source, language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc )
-          try {
-            val next = newc reconcile akc
-            akc != next
-          } catch { 
-            case cre : CantReconcileException => { // we know newc and akc are different, or the reconciliztion would have succeeded
-              DEBUG.log( s"Attempt to reconcile ${newc} with ${akc} failed.", cre )
-              policy match {
-                case UseOriginal => {
-                  /* nothing to do */
-                  false
-                }
-                case UseNewer => {
-                  merge( conn, newc )
-                  true
-                }
-                case PrioritizeOriginal => {
-                  val next = akc reconcileOver newc
-                  merge( conn, next )
-                  akc != next
-                }
-                case PrioritizeNewer => {
-                  merge( conn, newc reconcileOver akc )
-                  true
-                } 
-                case Throw => {
-                  throw new ContractMergeException("Could not merge old and new versions of contract metadata for contracts with identical code", cre )
-                }
-              }
-            }
-          }
-        }
-      }
-
-      private def merge( conn : Connection, cc : CachedContract ) : Boolean = {
-        merge( conn, cc.code, cc.name, cc.source, cc.language, cc.languageVersion, cc.compilerVersion, cc.compilerOptions, cc.abiDefinition, cc.userDoc, cc.developerDoc )
-      }
-
-      private def merge(
-        conn             : Connection,
-        code             : String,
-        name             : Option[String],
-        source           : Option[String],
-        language         : Option[String],
-        languageVersion  : Option[String],
-        compilerVersion  : Option[String],
-        compilerOptions  : Option[String],
-        abiDefinition    : Option[String],
-        userDoc          : Option[String],
-        developerDoc     : Option[String]
-      ) : Boolean = {
-        borrow( conn.prepareStatement( MergeSql ) ){ ps =>
-
-          ps.setString(          1, codeHash(code).hex )
-          setClob(          ps,  2, code )
-          setVarcharOption( ps,  3, name )
-          setClobOption(    ps,  4, source )
-          setVarcharOption( ps,  5, language )
-          setVarcharOption( ps,  6, languageVersion )
-          setVarcharOption( ps,  7, compilerVersion )
-          setVarcharOption( ps,  8, compilerOptions )
-          setClobOption(    ps,  9, abiDefinition )
-          setClobOption(    ps, 10, userDoc )
-          setClobOption(    ps, 11, developerDoc )
-
-          ps.executeUpdate()
-
-          true
-        }
-      }
-
-      def forgetAbi( conn : Connection, code : String ) : Unit = {
-        borrow( conn.prepareStatement( ForgetAbiSql ) ) { ps =>
-          ps.setString( 1, codeHash( code ).hex )
-          ps.executeUpdate()
-        }
-      }
-
-      private val ForgetAbiSql = "UPDATE known_contracts SET abi_definition = NULL WHERE codeHash = ?"
-
-      private val MergeSql = {
-        """|MERGE INTO known_contracts ( code_hash, code, name, source, language, language_version, compiler_version, compiler_options, abi_definition, user_doc, developer_doc )
-           |VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
-      }
-
-      private val SelectSql = {
-        """|SELECT code, name, source, language, language_version, compiler_version, compiler_options, abi_definition, user_doc, developer_doc
-           |FROM known_contracts WHERE code_hash = ?""".stripMargin
-      }
-
-      private val DeleteSql = "DELETE FROM known_contracts WHERE code_hash = ?"
-
+    final object KnownCode {
       val CreateSql = {
-        """|CREATE TABLE IF NOT EXISTS known_contracts (
-           |   code_hash         CHAR(128) PRIMARY KEY,
-           |   code              CLOB NOT NULL,
+        """|CREATE TABLE IF NOT EXISTS known_code (
+           |   base_code_hash  CHAR(128) PRIMARY KEY,
+           |   base_code       CLOB NOT NULL
+           |)""".stripMargin
+      }
+      val SelectSql = "SELECT baseCode FROM known_code WHERE base_code_hash = ?"
+
+      val UpsertSql = "MERGE INTO known_code ( base_code_hash, base_code ) VALUES ( ?, ? )"
+
+      def select( conn : Connection, baseCodeHash : EthHash ) : Option[String] = {
+        borrow( conn.prepareStatement( SelectSql ) ) { ps =>
+          ps.setString(1, baseCodeHash.hex)
+          borrow( ps.executeQuery() )( getMaybeSingleString )
+        }
+      }
+      def upsert( conn : Connection, baseCode : String ) : Unit = {
+        borrow( conn.prepareStatement( UpsertSql ) ) { ps =>
+          ps.setString( 1, EthHash.hash( baseCode.decodeHex ).hex )
+          ps.setString( 2, baseCode )
+          ps.executeUpdate()
+        }
+      }
+    }
+
+    final object KnownCompilations {
+      val CreateSql = {
+        """|CREATE TABLE IF NOT EXISTS known_compilations (
+           |   full_code_hash    CHAR(128),
+           |   base_code_hash    CHAR(128),
+           |   code_suffix       CLOB NOT NULL,
            |   name              VARCHAR(128),
            |   source            CLOB,
            |   language          VARCHAR(64),
@@ -236,131 +122,285 @@ object Schema_h2_v0 {
            |   compiler_options  VARCHAR(256),
            |   abi_definition    CLOB,
            |   user_doc          CLOB,
-           |   developer_doc     CLOB
+           |   developer_doc     CLOB,
+           |   metadata          CLOB,
+           |   PRIMARY KEY ( full_code_hash ),
+           |   FOREIGN KEY ( base_code_hash ) REFERENCES known_contracts ( base_code_hash )
            |)""".stripMargin
       }
+      val SelectSql = {
+        """|SELECT
+           |   base_code_hash,
+           |   code_suffix,
+           |   name,
+           |   source,
+           |   language,
+           |   language_version,
+           |   compiler_version,
+           |   compiler_options,
+           |   abi_definition,
+           |   user_doc,
+           |   developer_doc,
+           |   metadata
+           |FROM known_compilations
+           |WHERE full_code_hash = ?""".stripMargin
+      }
+      val UpsertSql = {
+        """|MERGE INTO known_compilations (
+           |   full_code_hash,
+           |   base_code_hash,
+           |   code_suffix,
+           |   name,
+           |   source,
+           |   language,
+           |   language_version,
+           |   compiler_version,
+           |   compiler_options,
+           |   abi_definition,
+           |   user_doc,
+           |   developer_doc,
+           |   metadata
+           |) VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
+      }
+      val UpdateAbiSql = {
+        """|UPDATE known_compilations
+           |SET abi_definition = ?
+           |WHERE full_code_hash = ?""".stripMargin
+      }
+      case class KnownCompilation (
+        fullCodeHash      : EthHash,
+        baseCodeHash      : EthHash,
+        codeSuffix        : String,
+        mbName            : Option[String],
+        mbSource          : Option[String],
+        mbLanguage        : Option[String],
+        mbLanguageVersion : Option[String],
+        mbCompilerVersion : Option[String],
+        mbCompilerOptions : Option[String],
+        mbAbiDefinition   : Option[Abi.Definition],
+        mbUserDoc         : Option[Doc.User],
+        mbDeveloperDoc    : Option[Doc.Developer],
+        mbMetadata        : Option[String]
+      ) extends Reconcilable[KnownCompilation] {
+        import Reconcilable._
 
-      final case class CachedContract(
-        code            : String,
-        name            : Option[String],
-        source          : Option[String],
-        language        : Option[String],
-        languageVersion : Option[String],
-        compilerVersion : Option[String],
-        compilerOptions : Option[String],
-        abiDefinition   : Option[String],
-        userDoc         : Option[String],
-        developerDoc    : Option[String]
-      ) extends Reconcilable[CachedContract] {
-
-        lazy val signable = {
-          def n( str : String ) = s"${str.length}.${str}"
-          def xo( mbstr : Option[String] ) = mbstr.fold( "-1" )( str => n(str) )
-
-          n( code) +
-          xo( name ) +
-          xo(source) +
-          xo(language) +
-          xo(languageVersion) +
-          xo(compilerVersion) +
-          xo(compilerOptions) +
-          xo(abiDefinition) +
-          xo(userDoc) +
-          xo(developerDoc)
-        }
-
-        def reconcile(other : CachedContract) : CachedContract = {
-          CachedContract(
-            Reconcilable.reconcileLeaf( this.code, other.code ),
-            Reconcilable.reconcileLeaf( this.name, other.name ),
-            Reconcilable.reconcileLeaf( this.source, other.source ),
-            Reconcilable.reconcileLeaf( this.language, other.language ),
-            Reconcilable.reconcileLeaf( this.languageVersion, other.languageVersion ),
-            Reconcilable.reconcileLeaf( this.compilerVersion, other.compilerVersion ),
-            Reconcilable.reconcileLeaf( this.compilerOptions, other.compilerOptions ),
-            Reconcilable.reconcileLeaf( this.abiDefinition, other.abiDefinition ),
-            Reconcilable.reconcileLeaf( this.userDoc, other.userDoc ),
-            Reconcilable.reconcileLeaf( this.developerDoc, other.developerDoc )
+        def reconcile(other : KnownCompilation) : KnownCompilation = {
+          KnownCompilation(
+            fullCodeHash      = reconcileLeaf( this.fullCodeHash, other.fullCodeHash ),
+            baseCodeHash      = reconcileLeaf( this.baseCodeHash, other.baseCodeHash ),
+            codeSuffix        = reconcileLeaf( this.codeSuffix, other.codeSuffix ),
+            mbName            = reconcileLeaf( this.mbName, other.mbName ),
+            mbSource          = reconcileLeaf( this.mbSource, other.mbSource ),
+            mbLanguage        = reconcileLeaf( this.mbLanguage, other.mbLanguage ),
+            mbLanguageVersion = reconcileLeaf( this.mbLanguageVersion, other.mbLanguageVersion ),
+            mbCompilerVersion = reconcileLeaf( this.mbCompilerVersion, other.mbCompilerVersion ),
+            mbCompilerOptions = reconcileLeaf( this.mbCompilerOptions, other.mbCompilerOptions ),
+            mbAbiDefinition   = reconcileLeaf( this.mbAbiDefinition, other.mbAbiDefinition ),
+            mbUserDoc         = reconcileLeaf( this.mbUserDoc, other.mbUserDoc ),
+            mbDeveloperDoc    = reconcileLeaf( this.mbDeveloperDoc, other.mbDeveloperDoc ),
+            mbMetadata        = reconcileLeaf( this.mbMetadata, other.mbMetadata )
           )
         }
 
-        def reconcileOver(other : CachedContract) : CachedContract = {
-          CachedContract(
-            Reconcilable.reconcileOverLeaf( this.code, other.code ),
-            Reconcilable.reconcileOverLeaf( this.name, other.name ),
-            Reconcilable.reconcileOverLeaf( this.source, other.source ),
-            Reconcilable.reconcileOverLeaf( this.language, other.language ),
-            Reconcilable.reconcileOverLeaf( this.languageVersion, other.languageVersion ),
-            Reconcilable.reconcileOverLeaf( this.compilerVersion, other.compilerVersion ),
-            Reconcilable.reconcileOverLeaf( this.compilerOptions, other.compilerOptions ),
-            Reconcilable.reconcileOverLeaf( this.abiDefinition, other.abiDefinition ),
-            Reconcilable.reconcileOverLeaf( this.userDoc, other.userDoc ),
-            Reconcilable.reconcileOverLeaf( this.developerDoc, other.developerDoc )
+        def reconcileOver(other : KnownCompilation) : KnownCompilation = {
+          KnownCompilation(
+            fullCodeHash      = reconcileOverLeaf( this.fullCodeHash, other.fullCodeHash ),
+            baseCodeHash      = reconcileOverLeaf( this.baseCodeHash, other.baseCodeHash ),
+            codeSuffix        = reconcileOverLeaf( this.codeSuffix, other.codeSuffix ),
+            mbName            = reconcileOverLeaf( this.mbName, other.mbName ),
+            mbSource          = reconcileOverLeaf( this.mbSource, other.mbSource ),
+            mbLanguage        = reconcileOverLeaf( this.mbLanguage, other.mbLanguage ),
+            mbLanguageVersion = reconcileOverLeaf( this.mbLanguageVersion, other.mbLanguageVersion ),
+            mbCompilerVersion = reconcileOverLeaf( this.mbCompilerVersion, other.mbCompilerVersion ),
+            mbCompilerOptions = reconcileOverLeaf( this.mbCompilerOptions, other.mbCompilerOptions ),
+            mbAbiDefinition   = reconcileOverLeaf( this.mbAbiDefinition, other.mbAbiDefinition ),
+            mbUserDoc         = reconcileOverLeaf( this.mbUserDoc, other.mbUserDoc ),
+            mbDeveloperDoc    = reconcileOverLeaf( this.mbDeveloperDoc, other.mbDeveloperDoc ),
+            mbMetadata        = reconcileOverLeaf( this.mbMetadata, other.mbMetadata )
           )
+        }
+      }
+      def select( conn : Connection, fullCodeHash : EthHash ) : Option[KnownCompilation] = {
+        import Json.parse
+        val extract : ResultSet => KnownCompilation = { rs =>
+          KnownCompilation (
+            fullCodeHash      = fullCodeHash,
+            baseCodeHash      = EthHash.withBytes( rs.getString( "base_code_hash" ).decodeHex ),
+            codeSuffix        = rs.getString( "code_suffix" ),
+            mbName            = Option( rs.getString("name") ),
+            mbSource          = Option( rs.getString("source") ),
+            mbLanguage        = Option( rs.getString("language") ),
+            mbLanguageVersion = Option( rs.getString("language_version") ),
+            mbCompilerVersion = Option( rs.getString("compiler_version") ),
+            mbCompilerOptions = Option( rs.getString("compiler_options") ),
+            mbAbiDefinition   = Option( rs.getString("abi_definition") ).map( parse ).map( _.as[Abi.Definition] ),
+            mbUserDoc         = Option( rs.getString("user_doc") ).map( parse ).map( _.as[Doc.User] ),
+            mbDeveloperDoc    = Option( rs.getString("developer_doc") ).map( parse ).map( _.as[Doc.Developer] ),
+            mbMetadata        = Option( rs.getString("metadata") )
+          )
+        }
+        borrow( conn.prepareStatement( SelectSql ) ) { ps =>
+          ps.setString(1, fullCodeHash.hex)
+          borrow( ps.executeQuery() )( getMaybeSingleValue( extract ) )
+        }
+      }
+      def upsert(
+        conn              : Connection,
+        fullCodeHash      : EthHash,
+        baseCodeHash      : EthHash,
+        codeSuffix        : String,
+        mbName            : Option[String],
+        mbSource          : Option[String],
+        mbLanguage        : Option[String],
+        mbLanguageVersion : Option[String],
+        mbCompilerVersion : Option[String],
+        mbCompilerOptions : Option[String],
+        mbAbiDefinition   : Option[Abi.Definition],
+        mbUserDoc         : Option[Doc.User],
+        mbDeveloperDoc    : Option[Doc.Developer],
+        mbMetadata        : Option[String]
+      ) : Unit = {
+        import Json.{toJson,stringify}
+        borrow( conn.prepareStatement( UpsertSql ) ) { ps =>
+          ps.setString( 1, fullCodeHash.hex )
+          ps.setString( 2, baseCodeHash.hex )
+          ps.setString( 3, codeSuffix )
+          setMaybeString( Types.VARCHAR )( ps,  4, mbName )
+          setMaybeString( Types.CLOB )   ( ps,  5, mbSource )
+          setMaybeString( Types.VARCHAR )( ps,  6, mbLanguage )
+          setMaybeString( Types.VARCHAR )( ps,  7, mbLanguageVersion )
+          setMaybeString( Types.VARCHAR )( ps,  8, mbCompilerVersion )
+          setMaybeString( Types.VARCHAR )( ps,  9, mbCompilerOptions )
+          setMaybeString( Types.CLOB )   ( ps, 10, mbAbiDefinition.map( ad => stringify( toJson( ad ) ) ) )
+          setMaybeString( Types.CLOB )   ( ps, 11, mbUserDoc.map( ud => stringify( toJson( ud ) ) ) )
+          setMaybeString( Types.CLOB )   ( ps, 12, mbDeveloperDoc.map( dd => stringify( toJson( dd ) ) ) )
+          setMaybeString( Types.CLOB )   ( ps, 13, mbMetadata )
+          ps.executeUpdate()
+        }
+      }
+      def upsert(
+        conn : Connection,
+        kc   : KnownCompilation
+      ) : Unit = {
+        upsert(
+          conn,
+          kc.fullCodeHash,
+          kc.baseCodeHash,
+          kc.codeSuffix,
+          kc.mbName,
+          kc.mbSource,
+          kc.mbLanguage,
+          kc.mbLanguageVersion,
+          kc.mbCompilerVersion,
+          kc.mbCompilerOptions,
+          kc.mbAbiDefinition,
+          kc.mbUserDoc,
+          kc.mbDeveloperDoc,
+          kc.mbMetadata
+        )
+      }
+      def updateAbiDefinition( conn : Connection, baseCodeHash : EthHash, fullCodeHash : EthHash, mbAbiDefinition : Option[String] ) : Boolean = {
+        borrow( conn.prepareStatement( UpdateAbiSql ) ){ ps =>
+          mbAbiDefinition match {
+            case Some( abiDefinition ) => ps.setString( 1, abiDefinition )
+            case None                  => ps.setNull( 1, Types.CLOB )
+          }
+          ps.setString( 2, fullCodeHash.hex )
+          ps.executeUpdate() match {
+            case 0 => false
+            case 1 => true
+            case n => throw new RepositoryException( s"ABI update should affect no more than one row, affected ${n} rows." )
+          }
         }
       }
     }
 
-    final object DeployedContracts {
+    final object DeployedCompilations {
       val CreateSql = {
-        """|CREATE TABLE IF NOT EXISTS deployed_contracts (
-           |   address          CHAR(40) PRIMARY KEY,
-           |   code_hash        VARCHAR(128) NOT NULL,
+        """|CREATE TABLE IF NOT EXISTS deployed_compilations (
+           |   contract_address CHAR(40) PRIMARY KEY,
+           |   base_code_hash   CHAR(128) NOT NULL,
+           |   full_code_hash   CHAR(128) NOT NULL,
            |   deployer_address CHAR(40),
            |   txn_hash         CHAR(128),
            |   deployed_when    TIMESTAMP,
-           |   FOREIGN KEY ( code_hash ) REFERENCES known_contracts( code_hash )
+           |   FOREIGN KEY ( base_code_hash, full_code_hash ) REFERENCES known_compilations( base_code_hash, full_code_hash )
            |)""".stripMargin
       }
-
-      private val InsertSql = {
-        """|MERGE INTO deployed_contracts ( address, code_hash, deployer_address, txn_hash, deployed_when )
-           |VALUES( ?, ?, ?, ?, ? )""".stripMargin
+      val SelectSql = {
+        """|SELECT base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
+           |FROM deployed_compilations
+           |WHERE contract_address = ?""".stripMargin
       }
-
-      private val SelectSql = "SELECT code_hash, deployer_address, txn_hash, deployed_when FROM deployed_contracts WHERE address = ?"
-
-      final case class Contract( address : EthAddress, codeHash : EthHash, deployerAddress : Option[EthAddress], transactionHash : Option[EthHash], deployedWhen : Option[Long] )
-
-      private def _select( conn : Connection, address : EthAddress ) : Option[Contract] = {
-        val extractor : ResultSet => Contract = { rs =>
-          val codeHash = EthHash.withBytes(rs.getString(1).decodeHexAsSeq)
-          val deployerAddress = Option( rs.getString(2) ).map( EthAddress.apply )
-          val transactionHash = Option( rs.getString(3) ).map( _.decodeHexAsSeq ).map( EthHash.withBytes )
-          val deployedWhen = Option( rs.getTimestamp(4) ).map( _.getTime )
-          Contract( address, codeHash, deployerAddress, transactionHash, deployedWhen )
-        }
+      val InsertSql = {
+        "INSERT INTO deployed_compilations ( address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when ) VALUES ( ?, ?, ?, ?, ?, ? )"
+      }
+      val AllForFullCodeHashSql = {
+        """|SELECT base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
+           |FROM deployed_compilations
+           |WHERE full_code_hash = ?""".stripMargin
+      }
+      final case class DeployedCompilation (
+        contractAddress : EthAddress,
+        baseCodeHash    : EthHash,
+        fullCodeHash    : EthHash,
+        mbDeployerAddress : Option[EthAddress],
+        mbTransactionHash : Option[EthHash],
+        mbDeployedWhen    : Option[Long]
+      )
+      val extract : ResultSet => DeployedCompilation = { rs =>
+        DeployedCompilation (
+          contractAddress = EthAddress( rs.getString( "contract_address" ) ),
+          baseCodeHash    = EthHash.withBytes( rs.getString( "base_code_hash" ).decodeHex ),
+          fullCodeHash    = EthHash.withBytes( rs.getString( "full_code_hash" ).decodeHex ),
+          mbDeployerAddress = Option( rs.getString( "deployer_address" ) ).map( EthAddress.apply ),
+          mbTransactionHash = Option( rs.getString( "txn_hash" ) ).map( _.decodeHex ).map( EthHash.withBytes ),
+          mbDeployedWhen    = Option( rs.getTimestamp( "deployed_when" ) ).map( _.getTime )
+        )
+      }
+      def select( conn : Connection, contractAddress : EthAddress ) : Option[DeployedCompilation] = {
         borrow( conn.prepareStatement( SelectSql ) ) { ps =>
-          ps.setString( 1, address.hex )
-          borrow( ps.executeQuery() )( rs => getMaybeSingleValue( extractor )( rs ) )
+          ps.setString(1, contractAddress.hex)
+          borrow( ps.executeQuery() )( getMaybeSingleValue( extract ) )
         }
       }
-
-      def getByAddress( conn : Connection, address : EthAddress ) : Option[Contract] = _select( conn, address )
-
-      def insertExistingDeployment( conn : Connection, contractAddress : EthAddress, code : String ) : Unit = {
+      def allForFullCodeHash( conn : Connection, fullCodeHash : EthHash ) : immutable.Set[DeployedCompilation] = {
+        borrow( conn.prepareStatement( AllForFullCodeHashSql ) ) { ps =>
+          ps.setString(1, fullCodeHash.hex)
+          borrow( ps.executeQuery() ) { rs =>
+            var out = immutable.Set.empty[DeployedCompilation]
+            while ( rs.next() ) out = out + extract( rs )
+            out
+          }
+        }
+      }
+      def insertNewDeployment( conn : Connection, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Unit = {
+        val bcas = BaseCodeAndSuffix( code )
+        val timestamp = new Timestamp( System.currentTimeMillis )
         borrow( conn.prepareStatement( InsertSql ) ) { ps =>
-          ps.setString( 1, contractAddress.hex )
-          ps.setString( 2, codeHash( code ).hex )
-          ps.setNull( 3, Types.CHAR )
-          ps.setNull( 4, Types.CHAR )
-          ps.setNull( 5, Types.TIMESTAMP )
+          ps.setString   ( 1, contractAddress.hex )
+          ps.setString   ( 2, bcas.baseCodeHash.hex )
+          ps.setString   ( 3, bcas.fullCodeHash.hex )
+          ps.setString   ( 4, deployerAddress.hex )
+          ps.setString   ( 5, transactionHash.hex )
+          ps.setTimestamp( 6, timestamp )
           ps.executeUpdate()
         }
       }
-
-      def insertNewDeployment( conn : Connection, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Unit = {
-        val timestamp = new Timestamp( System.currentTimeMillis )
+      def insertExistingDeployment( conn : Connection, contractAddress : EthAddress, code : String ) : Unit = {
+        val bcas = BaseCodeAndSuffix( code )
         borrow( conn.prepareStatement( InsertSql ) ) { ps =>
           ps.setString( 1, contractAddress.hex )
-          ps.setString( 2, codeHash( code ).hex )
-          ps.setString( 3, deployerAddress.hex )
-          ps.setString( 4, transactionHash.hex )
-          ps.setTimestamp( 5, timestamp )
+          ps.setString( 2, bcas.baseCodeHash.hex )
+          ps.setString( 3, bcas.fullCodeHash.hex )
+          ps.setNull  ( 4, Types.CHAR )
+          ps.setNull  ( 5, Types.CHAR )
+          ps.setNull  ( 6, Types.TIMESTAMP )
           ps.executeUpdate()
         }
       }
     }
+
     final object AddressAliases {
       val CreateSql = {
         """|CREATE TABLE IF NOT EXISTS address_aliases (
