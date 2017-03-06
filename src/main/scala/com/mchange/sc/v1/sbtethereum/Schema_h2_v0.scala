@@ -89,7 +89,7 @@ object Schema_h2_v0 {
            |   base_code       CLOB NOT NULL
            |)""".stripMargin
       }
-      val SelectSql = "SELECT baseCode FROM known_code WHERE base_code_hash = ?"
+      val SelectSql = "SELECT base_code FROM known_code WHERE base_code_hash = ?"
 
       val UpsertSql = "MERGE INTO known_code ( base_code_hash, base_code ) VALUES ( ?, ? )"
 

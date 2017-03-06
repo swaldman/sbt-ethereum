@@ -121,6 +121,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethCallConstant = inputKey[(Abi.Function,immutable.Seq[DecodedReturnValue])]("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
+    val ethCompilationDump = inputKey[Unit]("Dumps to the console full information about a compilation, based on either a code hash or contract address")
+
+    val ethCompilationListAll = taskKey[Unit]("Lists summary information about compilations known in the repository")
+
     val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
 
     val ethFindCacheAliasesIfAvailable = taskKey[Option[immutable.SortedMap[String,EthAddress]]]("Finds and caches address aliases, if they are available. Triggered by ethAliasSet and ethAliasDrop.")
@@ -130,8 +134,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
     val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
-
-    val ethDumpContractInfo = inputKey[Unit]("Dumps to the console full information about a contract, based on either a code hash or contract address")
 
     val ethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
 
@@ -147,9 +149,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethInvokeData = inputKey[immutable.Seq[Byte]]("Reveals the data portion that would be sent in a message invoking a function and its arguments on a deployed smart contract")
 
-    val ethListKeystoreAddresses = taskKey[immutable.Map[EthAddress,immutable.Set[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
-
-    val ethCompilationsList = taskKey[Unit]("Lists summary information about compilations known in the repository")
+    val ethKeystoreListAddresses = taskKey[immutable.Map[EthAddress,immutable.Set[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
 
     val ethLoadCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
 
@@ -339,7 +339,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethCallConstant <<= ethCallConstantTask,
 
-      ethCompilationsList := {
+      ethCompilationDump <<= ethCompilationDumpTask, 
+
+      ethCompilationListAll := {
         val contractsSummary = Repository.Database.contractsSummary.get // throw for any db problem
 
         val Address   = "Deployer Address"
@@ -378,8 +380,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         doCompileSolidity( log, jsonRpcUrl, includeLocations, solSource, solDestination )
       },
-
-      ethDumpContractInfo <<= ethDumpContractInfoTask, 
 
       ethDefaultGasPrice := {
         val log        = streams.value.log
@@ -456,7 +456,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         doGetTransactionCount( log, jsonRpcUrl, EthAddress( ethAddress.value ), jsonrpc20.Client.BlockNumber.Pending )
       },
 
-      ethListKeystoreAddresses := {
+      ethKeystoreListAddresses := {
         val keystoresV3 = ethKeystoresV3.value
         val log         = streams.value.log
         val combined = {
@@ -903,7 +903,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethDumpContractInfoTask : Initialize[InputTask[Unit]] = {
+    def ethCompilationDumpTask : Initialize[InputTask[Unit]] = {
       val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genContractAddressOrCodeHashParser )
 
       Def.inputTask {

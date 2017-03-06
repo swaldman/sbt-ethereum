@@ -313,7 +313,7 @@ The database constains metainformation about contracts that you have deployed or
 
 You can list addresses available in the sbt-ethereum keystore.
 
-    > ethListKeystoreAddresses
+    > ethKeystoreListAddresses
     +--------------------------------------------+
     | Keystore Address                           |
     +--------------------------------------------+
@@ -332,11 +332,11 @@ You can list addresses available in the sbt-ethereum keystore.
     +--------------------------------------------+
     [success] Total time: 1 s, completed Dec 18, 2016 3:58:31 PM
 
-You can also list contracts known by the repository.
+You can also list all compilations and deployed contracts known by the repository.
 
-    > ethListKnownContracts
+    > ethCompilationListAll
     +--------------------------------------------+----------------------+--------------------------------------------------------------------+------------------------------+
-    | Address                                    | Name                 | Code Hash                                                          | Timestamp                    |
+    | Deployer Address                           | Name                 | Code Hash                                                          | Deployment Timestamp         |
     +--------------------------------------------+----------------------+--------------------------------------------------------------------+------------------------------+
     |                                            | owned                | 0x6d1df5389a869c855e4a39665953bf1e6c368d860de3272cec4338545af34269 |                              |
     | 0xbf4ed7b27f1d666546e30d74d50d173d20bca754 |                      | 0x39f24e90b84ff5c8807616c813dbbe511e0a884d6b292f5b61bcca4faff52578 |                              |
@@ -353,7 +353,7 @@ You can also list contracts known by the repository.
 
 For complete information known by the repository about a contract, try
 
-    > ethDumpContractInfo <tab>
+    > ethCompilationDump <tab>
     <address-hex>          <contract-code-hash>   
 
 Supply a contract's address or the hash of its code (see the table just above), and you'll get a detailed dump of information,
