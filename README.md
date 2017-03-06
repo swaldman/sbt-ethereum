@@ -334,7 +334,7 @@ You can list addresses available in the sbt-ethereum keystore.
 
 You can also list all compilations and deployed contracts known by the repository.
 
-    > ethCompilationListAll
+    > ethCompilationsListAll
     +--------------------------------------------+----------------------+--------------------------------------------------------------------+------------------------------+
     | Deployer Address                           | Name                 | Code Hash                                                          | Deployment Timestamp         |
     +--------------------------------------------+----------------------+--------------------------------------------------------------------+------------------------------+
@@ -353,7 +353,7 @@ You can also list all compilations and deployed contracts known by the repositor
 
 For complete information known by the repository about a contract, try
 
-    > ethCompilationDump <tab>
+    > ethCompilationsDumpOnly <tab>
     <address-hex>          <contract-code-hash>   
 
 Supply a contract's address or the hash of its code (see the table just above), and you'll get a detailed dump of information,

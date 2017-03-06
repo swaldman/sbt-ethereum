@@ -437,6 +437,17 @@ object Repository {
         }
       }
     }
+    def cullUndeployedCompilations() : Failable[Int] = {
+      DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection() ) { conn =>
+            borrow( conn.createStatement() ) { stmt =>
+              stmt.executeUpdate( CullUndeployedCompilationsSql ) 
+            }
+          }
+        }
+      }
+    }
     def createUpdateAlias( alias : String, address : EthAddress ) : Failable[Unit] = {
       DataSource.flatMap { ds =>
         Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, alias, address ) ) )

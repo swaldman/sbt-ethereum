@@ -121,19 +121,19 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethCallConstant = inputKey[(Abi.Function,immutable.Seq[DecodedReturnValue])]("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
-    val ethCompilationDump = inputKey[Unit]("Dumps to the console full information about a compilation, based on either a code hash or contract address")
+    val ethCompilationsCullUndeployed = taskKey[Unit]("Removes never-deployed compilations from the repository database.")
 
-    val ethCompilationListAll = taskKey[Unit]("Lists summary information about compilations known in the repository")
+    val ethCompilationsDumpOnly = inputKey[Unit]("Dumps to the console full information about a compilation, based on either a code hash or contract address")
 
-    val ethCompileSolidity = taskKey[Unit]("Compiles solidity files")
-
-    val ethFindCacheAliasesIfAvailable = taskKey[Option[immutable.SortedMap[String,EthAddress]]]("Finds and caches address aliases, if they are available. Triggered by ethAliasSet and ethAliasDrop.")
-
-    val ethFindCacheOmitDupsCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethCompileSolidity")
+    val ethCompilationsListAll = taskKey[Unit]("Lists summary information about compilations known in the repository")
 
     val ethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
     val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
+
+    val ethFindCacheAliasesIfAvailable = taskKey[Option[immutable.SortedMap[String,EthAddress]]]("Finds and caches address aliases, if they are available. Triggered by ethAliasSet and ethAliasDrop.")
+
+    val ethFindCacheOmitDupsCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethSolidityCompile")
 
     val ethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
 
@@ -166,6 +166,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
     val ethRevealPrivateKeyFor = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
+
+    val ethSolidityCompile = taskKey[Unit]("Compiles solidity files")
 
     val ethQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
 
@@ -292,7 +294,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       // tasks
 
       compile in Compile := {
-        val dummy = (ethCompileSolidity in Compile).value
+        val dummy = (ethSolidityCompile in Compile).value
         (compile in Compile).value
       },
 
@@ -333,15 +335,18 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethBalanceInWeiFor <<= ethBalanceInWeiForTask,
 
-      ethFindCacheAliasesIfAvailable <<= ethFindCacheAliasesIfAvailableTask.storeAs( ethFindCacheAliasesIfAvailable ).triggeredBy( ethTriggerDirtyAliasCache ),
-
-      ethFindCacheOmitDupsCompilations <<= ethFindCacheOmitDupsCompilationsTask storeAs ethFindCacheOmitDupsCompilations triggeredBy (ethCompileSolidity in Compile ),
-
       ethCallConstant <<= ethCallConstantTask,
 
-      ethCompilationDump <<= ethCompilationDumpTask, 
+      ethCompilationsCullUndeployed := {
+        val log = streams.value.log
+        val fcount = Repository.Database.cullUndeployedCompilations()
+        val count = fcount.get
+        log.info( s"Removed $count undeployed compilations from the repository database." )
+      },
 
-      ethCompilationListAll := {
+      ethCompilationsDumpOnly <<= ethCompilationsDumpOnlyTask,
+
+      ethCompilationsListAll := {
         val contractsSummary = Repository.Database.contractsSummary.get // throw for any db problem
 
         val Address   = "Deployer Address"
@@ -365,7 +370,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         println( cap )
       },
 
-      ethCompileSolidity in Compile := {
+      ethSolidityCompile in Compile := {
         val log        = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
 
@@ -386,6 +391,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         val jsonRpcUrl = ethJsonRpcUrl.value
         doGetDefaultGasPrice( log, jsonRpcUrl )
       },
+
+      ethFindCacheAliasesIfAvailable <<= ethFindCacheAliasesIfAvailableTask.storeAs( ethFindCacheAliasesIfAvailable ).triggeredBy( ethTriggerDirtyAliasCache ),
+
+      ethFindCacheOmitDupsCompilations <<= ethFindCacheOmitDupsCompilationsTask storeAs ethFindCacheOmitDupsCompilations triggeredBy (ethSolidityCompile in Compile ),
 
       ethGasPrice := {
         val log        = streams.value.log
@@ -482,7 +491,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethLoadCompilationsKeepDups := {
         val log = streams.value.log
 
-        val dummy = (ethCompileSolidity in Compile).value // ensure compilation has completed
+        val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
 
         val dir = (ethSolidityDestination in Compile).value
 
@@ -508,7 +517,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethLoadCompilationsOmitDups := {
         val log = streams.value.log
 
-        val dummy = (ethCompileSolidity in Compile).value // ensure compilation has completed
+        val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
 
         val dir = (ethSolidityDestination in Compile).value
 
@@ -903,7 +912,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethCompilationDumpTask : Initialize[InputTask[Unit]] = {
+    def ethCompilationsDumpOnlyTask : Initialize[InputTask[Unit]] = {
       val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genContractAddressOrCodeHashParser )
 
       Def.inputTask {

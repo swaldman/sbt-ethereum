@@ -46,10 +46,16 @@ object Schema_h2_v0 {
 
   val ContractsSummarySql = {
     """|SELECT DISTINCT contract_address, name, deployer_address, known_compilations.full_code_hash, txn_hash, deployed_when
-       |FROM deployed_compilations RIGHT JOIN known_compilations ON deployed_compilations.base_code_hash = known_compilations.base_code_hash
+       |FROM deployed_compilations RIGHT JOIN known_compilations ON deployed_compilations.full_code_hash = known_compilations.full_code_hash
        |ORDER BY deployed_when ASC""".stripMargin
   }
-
+  val CullUndeployedCompilationsSql = {
+    """|DELETE FROM known_compilations 
+       |WHERE full_code_hash NOT IN (
+       |  SELECT full_code_hash
+       |  FROM deployed_compilations
+       |)""".stripMargin
+  }
   final object Table {
     final object Metadata {
       val CreateSql = "CREATE TABLE IF NOT EXISTS metadata ( key VARCHAR(64) PRIMARY KEY, value VARCHAR(64) NOT NULL )"
@@ -125,8 +131,8 @@ object Schema_h2_v0 {
            |   developer_doc     CLOB,
            |   metadata          CLOB,
            |   PRIMARY KEY ( full_code_hash ),
-           |   FOREIGN KEY ( base_code_hash ) REFERENCES known_code ( base_code_hash )
-           |)""".stripMargin
+           |   FOREIGN KEY ( base_code_hash ) REFERENCES known_code ( base_code_hash ) ON DELETE CASCADE
+           |)""".stripMargin // we delete known_compilations when culling undeployed compilations
       }
       val SelectSql = {
         """|SELECT
