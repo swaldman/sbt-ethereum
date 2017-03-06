@@ -149,7 +149,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethListKeystoreAddresses = taskKey[immutable.Map[EthAddress,immutable.Set[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
 
-    val ethListKnownContracts = taskKey[Unit]("Lists summary information about contracts known in the repository")
+    val ethCompilationsList = taskKey[Unit]("Lists summary information about compilations known in the repository")
 
     val ethLoadCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
 
@@ -192,6 +192,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       true
     }
+
+    val xethUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
 
     val findCachePrivateKey = Def.task {
       val checked = warnOnZeroAddress.value
@@ -337,6 +339,30 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethCallConstant <<= ethCallConstantTask,
 
+      ethCompilationsList := {
+        val contractsSummary = Repository.Database.contractsSummary.get // throw for any db problem
+
+        val Address   = "Deployer Address"
+        val Name      = "Name"
+        val CodeHash  = "Code Hash"
+        val Timestamp = "Deployment Timestamp"
+
+        val cap = "+" + span(44) + "+" + span(22) + "+" + span(68) + "+" + span(30) + "+"
+        println( cap )
+        println( f"| $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
+        println( cap )
+
+        contractsSummary.foreach { row =>
+          import row._
+          val ca = emptyOrHex( contract_address )
+          val nm = blankNull( name )
+          val ch = emptyOrHex( code_hash )
+          val ts = blankNull( timestamp )
+          println( f"| $ca%-42s | $nm%-20s | $ch%-66s | $ts%-28s |" )
+        }
+        println( cap )
+      },
+
       ethCompileSolidity in Compile := {
         val log        = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
@@ -453,30 +479,6 @@ object SbtEthereumPlugin extends AutoPlugin {
         out
       },
 
-      ethListKnownContracts := {
-        val contractsSummary = Repository.Database.contractsSummary.get // throw for any db problem
-
-        val Address   = "Address"
-        val Name      = "Name"
-        val CodeHash  = "Code Hash"
-        val Timestamp = "Timestamp"
-
-        val cap = "+" + span(44) + "+" + span(22) + "+" + span(68) + "+" + span(30) + "+"
-        println( cap )
-        println( f"| $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
-        println( cap )
-
-        contractsSummary.foreach { row =>
-          import row._
-          val ca = emptyOrHex( contract_address )
-          val nm = blankNull( name )
-          val ch = emptyOrHex( code_hash )
-          val ts = blankNull( timestamp )
-          println( f"| $ca%-42s | $nm%-20s | $ch%-66s | $ts%-28s |" )
-        }
-        println( cap )
-      },
-
       ethLoadCompilationsKeepDups := {
         val log = streams.value.log
 
@@ -588,13 +590,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log   = streams.value.log
         val query = DbQueryParser.parsed
 
-        // XXX: should this be modified to be careful about DDL / inserts / updates / deletes etc?
-        //      for now lets be conservative and restrict to SELECT
-        if (! query.toLowerCase.startsWith("select")) {
-          throw new Exception("For now, ethQueryRepositoryDatabase supports only SELECT statements. Sorry!")
-        }
+        // removed guard of query (restriction to select),
+        // since updating SQL issued via executeQuery(...)
+        // usefully fails in h3
 
-        val foundDataSource = {
+        val checkDataSource = {
           Repository.Database.DataSource.map { ds =>
             borrow( ds.getConnection() ) { conn =>
               borrow( conn.createStatement() ) { stmt =>
@@ -615,9 +615,9 @@ object SbtEthereumPlugin extends AutoPlugin {
             }
           }
         }
-        if ( foundDataSource.isFailed ) {
+        if ( checkDataSource.isFailed ) {
           log.warn("Failed to find DataSource!")
-          log.warn( foundDataSource.fail.toString )
+          log.warn( checkDataSource.fail.toString )
         }
       },
 
@@ -680,6 +680,27 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethValidateWalletV3For <<= ethValidateWalletV3ForTask,
+
+      xethUpdateRepositoryDatabase := {
+        val log   = streams.value.log
+        val query = DbQueryParser.parsed
+
+        val checkDataSource = {
+          Repository.Database.DataSource.map { ds =>
+            borrow( ds.getConnection() ) { conn =>
+              borrow( conn.createStatement() ) { stmt =>
+                val rows = stmt.executeUpdate( query )
+                log.info( s"Query succeeded: $query" )
+                log.info( s"$rows rows affected." )
+              }
+            }
+          }
+        }
+        if ( checkDataSource.isFailed ) {
+          log.warn("Failed to find DataSource!")
+          log.warn( checkDataSource.fail.toString )
+        }
+      },
 
       onLoad := {
         val origF : State => State = onLoad.value

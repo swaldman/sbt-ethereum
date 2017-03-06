@@ -45,8 +45,8 @@ object Schema_h2_v0 {
   }
 
   val ContractsSummarySql = {
-    """|SELECT DISTINCT address, name, deployer_address, known_contracts.code_hash, txn_hash, deployed_when
-       |FROM deployed_contracts RIGHT JOIN known_contracts ON deployed_contracts.code_hash = known_contracts.code_hash
+    """|SELECT DISTINCT contract_address, name, deployer_address, known_compilations.full_code_hash, txn_hash, deployed_when
+       |FROM deployed_compilations RIGHT JOIN known_compilations ON deployed_compilations.base_code_hash = known_compilations.base_code_hash
        |ORDER BY deployed_when ASC""".stripMargin
   }
 
@@ -125,7 +125,7 @@ object Schema_h2_v0 {
            |   developer_doc     CLOB,
            |   metadata          CLOB,
            |   PRIMARY KEY ( full_code_hash ),
-           |   FOREIGN KEY ( base_code_hash ) REFERENCES known_contracts ( base_code_hash )
+           |   FOREIGN KEY ( base_code_hash ) REFERENCES known_code ( base_code_hash )
            |)""".stripMargin
       }
       val SelectSql = {
@@ -328,15 +328,15 @@ object Schema_h2_v0 {
            |)""".stripMargin
       }
       val SelectSql = {
-        """|SELECT base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
+        """|SELECT contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
            |FROM deployed_compilations
            |WHERE contract_address = ?""".stripMargin
       }
       val InsertSql = {
-        "INSERT INTO deployed_compilations ( address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when ) VALUES ( ?, ?, ?, ?, ?, ? )"
+        "INSERT INTO deployed_compilations ( contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when ) VALUES ( ?, ?, ?, ?, ?, ? )"
       }
       val AllForFullCodeHashSql = {
-        """|SELECT base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
+        """|SELECT contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
            |FROM deployed_compilations
            |WHERE full_code_hash = ?""".stripMargin
       }
