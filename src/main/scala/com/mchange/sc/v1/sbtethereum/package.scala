@@ -383,6 +383,7 @@ package object sbtethereum {
   final case class BaseCodeAndSuffix( baseCodeHex : String, codeSuffixHex : String ) {
     lazy val baseCodeHash = EthHash.hash( baseCodeHex.decodeHex )
     lazy val fullCodeHash = EthHash.hash( (baseCodeHex + codeSuffixHex).decodeHex )
+    lazy val fullCodeHex  = baseCodeHex + codeSuffixHex
   }
 }
 

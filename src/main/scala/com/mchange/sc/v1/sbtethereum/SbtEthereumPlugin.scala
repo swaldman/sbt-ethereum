@@ -521,6 +521,25 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val dir = (ethSolidityDestination in Compile).value
 
+        def addBindingKeepShorterSource( addTo : immutable.Map[String,jsonrpc20.Compilation.Contract], binding : (String,jsonrpc20.Compilation.Contract) ) = {
+          val ( name, compilation ) = binding
+          addTo.get( name ) match {
+            case Some( existingCompilation ) => { // this is a duplicate name, we have to think about whether to add and override or keep the old version
+              (existingCompilation.info.mbSource, compilation.info.mbSource) match {
+                case ( Some( existingSource ), Some( newSource ) ) => {
+                  if ( existingSource.length > newSource.length ) addTo + binding else addTo // use the shorter-sourced duplicate
+                }
+                case ( None, Some( newSource ) )                   => addTo + binding // but prioritize compilations for which source is known
+                case ( Some( existingSource ), None )              => addTo
+                case ( None, None )                                => addTo
+              }
+            }
+            case None => addTo + binding // not a duplicate name, so just add the binding
+          }
+        }
+        def addAllKeepShorterSource( addTo : immutable.Map[String,jsonrpc20.Compilation.Contract], nextBindings : Iterable[(String,jsonrpc20.Compilation.Contract)] ) = {
+          nextBindings.foldLeft( addTo )( ( accum, next ) => addBindingKeepShorterSource( accum, next ) )
+        }
         def addContracts( tup : ( immutable.Map[String,jsonrpc20.Compilation.Contract], immutable.Set[String] ), name : String ) = {
           val ( addTo, overlaps ) = tup
           val next = {
@@ -536,8 +555,13 @@ object SbtEthereumPlugin extends AutoPlugin {
             }
           }
           val rawNewOverlaps = next.keySet.intersect( addTo.keySet )
-          val realNewOverlaps = rawNewOverlaps.foldLeft( immutable.Set.empty[String] )( ( cur, key ) => if ( addTo( key ).code != next( key ).code ) cur + key else cur )
-          ( addTo ++ next, overlaps ++ realNewOverlaps )
+          val realNewOverlaps = rawNewOverlaps.foldLeft( immutable.Set.empty[String] ){ ( cur, key ) =>
+            val origCodeBcas = BaseCodeAndSuffix( addTo( key ).code )
+            val nextCodeBcas = BaseCodeAndSuffix( next( key ).code )
+
+            if ( origCodeBcas.baseCodeHex != nextCodeBcas.baseCodeHex ) cur + key else cur
+          }
+          ( addAllKeepShorterSource( addTo, next ), overlaps ++ realNewOverlaps )
         }
 
         val ( rawCompilations, duplicates ) = dir.list.foldLeft( ( immutable.Map.empty[String,jsonrpc20.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
