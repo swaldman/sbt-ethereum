@@ -2,7 +2,6 @@
 
 * defaultSender alias
 * Repostory support for use of testnets (testnet identifier column)
-* Extract Swarm hash from base contract code, create and store metadatfile and add has upon deployment
 * Support for compiling and deploying libraries and linking contracts that reference them
 * Import raw private key as wallet
 * Backup / restore of repository (especially db)
