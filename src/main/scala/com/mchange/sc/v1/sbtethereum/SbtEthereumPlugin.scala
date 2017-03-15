@@ -67,6 +67,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethAddress = settingKey[String]("The address from which transactions will be sent")
 
+    val ethBlockchainId = settingKey[String]("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
+
     val ethEntropySource = settingKey[SecureRandom]("The source of randomness that will be used for key generation")
 
     val ethIncludeLocations = settingKey[Seq[String]]("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
@@ -165,6 +167,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
+    val ethPrepareFunctionInputsAbiParsers = taskKey[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]("Internal use only -- loads information required by some parsers")
+
     val ethRevealPrivateKeyFor = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
 
     val ethSolidityCompile = taskKey[Unit]("Compiles solidity files")
@@ -244,6 +248,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
 
       // Settings
+
+      ethBlockchainId   := MainnetIdentifier,
 
       ethJsonRpcUrl     := "http://localhost:8545",
 
@@ -591,6 +597,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethMemorizeAbi := {
+        val blockchainId = ethBlockchainId.value
         val jsonRpcUrl = ethJsonRpcUrl.value
         val log = streams.value.log
         val is = interactionService.value
@@ -602,7 +609,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.info( s"The contract code at address '$address' was already associated with an ABI, which has not been overwritten." )
           log.info( s"Associating address with the known ABI.")
         }
-        Repository.Database.insertExistingDeployment( address, code.hex ).get // throw an Exception if there's a database issue
+        Repository.Database.insertExistingDeployment( blockchainId, address, code.hex ).get // throw an Exception if there's a database issue
 
         log.info( s"ABI is now known for the contract at address ${address.hex}" )
       },
@@ -618,6 +625,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethDeployOnly <<= ethDeployOnlyTask,
+
+      ethPrepareFunctionInputsAbiParsers := {
+        val blockchainId = ethBlockchainId.value
+        val mbAliases    = ethFindCacheAliasesIfAvailable.value
+        ( blockchainId, mbAliases )
+      },
 
       ethQueryRepositoryDatabase := {
         val log   = streams.value.log
@@ -805,7 +818,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genGenericAddressParser )
 
       Def.inputTask {
-        abiForAddress( parser.parsed )
+        val blockchainId = ethBlockchainId.value
+        abiForAddress( blockchainId, parser.parsed )
       }
     }
 
@@ -834,7 +848,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def ethCallConstantTask : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedReturnValue])]] = {
-      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
+      val parser = Defaults.loadForParser(ethPrepareFunctionInputsAbiParsers)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
 
       Def.inputTask {
         val log = streams.value.log
@@ -893,6 +907,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       Def.inputTask {
         val log = streams.value.log
+        val blockchainId = ethBlockchainId.value
         val jsonRpcUrl = ethJsonRpcUrl.value
         val ( contractName, extraData ) = parser.parsed
         val ( compilation, inputsHex ) = {
@@ -927,7 +942,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
             val dbCheck = {
               import compilation.info._
-              Repository.Database.insertNewDeployment( ca, codeHex, address, txnHash )
+              Repository.Database.insertNewDeployment( blockchainId, ca, codeHex, address, txnHash )
             }
             dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
           }
@@ -940,6 +955,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genContractAddressOrCodeHashParser )
 
       Def.inputTask {
+        val blockchainId = ethBlockchainId.value
+
         println()
         val cap =     "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
         val minicap = "------------------------------------------------------------------------"
@@ -965,7 +982,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val source = parser.parsed
         source match {
           case Left( address ) => {
-            val mbinfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw any db problem
+            val mbinfo = Repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw any db problem
             mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
               section( "Contract Address", Some( info.contractAddress.hex ), true )
               section( "Deployer Address", info.mbDeployerAddress.map( _.hex ), true )
@@ -1000,7 +1017,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               jsonSection( "User Documentation", info.mbUserDoc )
               jsonSection( "Developer Documentation", info.mbDeveloperDoc )
               section( "Metadata", info.mbMetadata )
-              addressSection( "Deployments", Repository.Database.contractAddressesForCodeHash( hash ).get )
+              addressSection( "Deployments", Repository.Database.contractAddressesForCodeHash( blockchainId, hash ).get )
             }
           }
         }
@@ -1010,7 +1027,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def ethInvokeDataTask : Initialize[InputTask[immutable.Seq[Byte]]] = {
-      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
+      val parser = Defaults.loadForParser(ethPrepareFunctionInputsAbiParsers)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
 
       Def.inputTask {
         val ( contractAddress, function, args, abi ) = parser.parsed
@@ -1023,7 +1040,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def ethInvokeTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser(ethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
+      val parser = Defaults.loadForParser(ethPrepareFunctionInputsAbiParsers)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
 
       Def.inputTask {
         val log = streams.value.log

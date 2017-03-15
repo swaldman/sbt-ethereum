@@ -58,6 +58,8 @@ package object sbtethereum {
 
   val EmptyAbi = Abi.Definition.empty
 
+  val MainnetIdentifier = "mainnet"
+
   private def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String )( operation : jsonrpc20.Client => T )( implicit ec : ExecutionContext ) : T = {
     try {
       borrow( new jsonrpc20.Client.Simple( new URL( jsonRpcUrl ) ) )( operation )
@@ -346,21 +348,21 @@ package object sbtethereum {
     is.readLine(s"Enter passphrase or hex private key for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
   }
 
-  private [sbtethereum] def abiForAddress( address : EthAddress, defaultNotInDatabase : => Abi.Definition, defaultNoAbi : => Abi.Definition ) : Abi.Definition = {
-    val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( address ).get // throw an Exception if there's a database problem
+  private [sbtethereum] def abiForAddress( blockchainId : String, address : EthAddress, defaultNotInDatabase : => Abi.Definition, defaultNoAbi : => Abi.Definition ) : Abi.Definition = {
+    val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw an Exception if there's a database problem
     mbDeployedContractInfo.fold( defaultNotInDatabase ) { deployedContractInfo =>
       deployedContractInfo.mbAbiDefinition.getOrElse( defaultNoAbi )
     }
   }
 
-  private [sbtethereum] def abiForAddress( address : EthAddress ) : Abi.Definition = {
+  private [sbtethereum] def abiForAddress( blockchainId : String, address : EthAddress ) : Abi.Definition = {
     def defaultNotInDatabase = throw new ContractUnknownException( s"A contract at address ${address.hex} is not known in the sbt-ethereum repository." )
     def defaultNoAbi = throw new ContractUnknownException( s"The contract at address ${address.hex} does not have an ABI associated with it in the sbt-ethereum repository." )
-    abiForAddress( address, defaultNotInDatabase, defaultNoAbi )
+    abiForAddress( blockchainId, address, defaultNotInDatabase, defaultNoAbi )
   }
 
-  private [sbtethereum] def abiForAddressOrEmpty( address : EthAddress ) : Abi.Definition = {
-    abiForAddress( address, EmptyAbi, EmptyAbi )
+  private [sbtethereum] def abiForAddressOrEmpty( blockchainId : String, address : EthAddress ) : Abi.Definition = {
+    abiForAddress( blockchainId, address, EmptyAbi, EmptyAbi )
   }
 
   private [sbtethereum] def unknownWallet( loadDirs : Seq[File] ) : Nothing = {

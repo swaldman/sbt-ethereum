@@ -15,11 +15,13 @@ import java.sql.{Connection,PreparedStatement,ResultSet,Types,Timestamp}
 
 import javax.sql.DataSource
 
+import scala.annotation.tailrec
+
 import scala.collection._
 
 import play.api.libs.json._
 
-object Schema_h2_v0 {
+object Schema_h2 {
 
   private implicit lazy val logger = mlogger( this )
 
@@ -28,7 +30,7 @@ object Schema_h2_v0 {
   def setVarcharOption( ps : PreparedStatement, i : Int, mbs : Option[String] ) = mbs.fold( ps.setNull( i, Types.VARCHAR ) ){ str =>  ps.setString( i, str ) }
   def setTimestampOption( ps : PreparedStatement, i : Int, mbl : Option[Long] ) = mbl.fold( ps.setNull( i, Types.TIMESTAMP ) ){ l =>  ps.setTimestamp( i, new Timestamp(l) ) }
 
-  val SchemaVersion = 0
+  val SchemaVersion = 1
 
   def ensureSchema( dataSource : DataSource ) = {
     borrow( dataSource.getConnection() ){ conn =>
@@ -44,11 +46,67 @@ object Schema_h2_v0 {
     }
   }
 
-  val ContractsSummarySql = {
-    """|SELECT DISTINCT contract_address, name, deployer_address, known_compilations.full_code_hash, txn_hash, deployed_when
-       |FROM deployed_compilations RIGHT JOIN known_compilations ON deployed_compilations.full_code_hash = known_compilations.full_code_hash
-       |ORDER BY deployed_when ASC""".stripMargin
+  private def migrateUpOne( conn : Connection, versionFrom : Int ) : Int = {
+    versionFrom match {
+      case 0 => {
+        /* 
+         *  Schema version 0 was identical to schema version 1, except deployed_compilations lacked a blockchain_id
+         *  We have to completely reconstruct deployed_compilations because blockchain_id becomes part of a compound public key
+         */
+        borrow( conn.createStatement() ) { stmt =>
+          stmt.executeUpdate("ALTER TABLE deployed_compilations RENAME TO deployed_compilations_v0")
+          stmt.executeUpdate( Table.DeployedCompilations.V1.CreateSql )
+          stmt.executeUpdate(
+            s"""|INSERT INTO deployed_compilations ( blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when )
+                |SELECT '${MainnetIdentifier}', contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
+                |FROM deployed_compilations_v0"""
+          )
+          stmt.executeUpdate("DROP TABLE deployed_compiltions_v0")
+        }
+        1
+      }
+      case unknown => throw new DatabaseVersionException( s"Cannot migrate from unknown database version ${unknown}." )
+    }
   }
+
+  @tailrec
+  private def migrateUpTo( conn : Connection, versionFrom : Int, versionTo : Int ) : Unit = {
+    val next = migrateUpOne( conn, versionFrom )
+    if ( next != versionTo ) migrateUpTo( conn, next, versionFrom )
+  }
+
+  // should be executed in a transaction, although it looks like in h2 DDL commands autocommit anyway :(
+  def migrateSchema( conn : Connection, versionFrom : Int, versionTo : Int ) : Unit = {
+    require( versionFrom >= 0, s"Valid schema versions begin are non-negative, version $versionFrom is invalid." )
+    require( versionFrom < versionTo, s"We can only upmigrate schemas, can't transition from $versionFrom to $versionTo" )
+
+    DEBUG.log( s"Migrating sbt-ethereum database schema from version $versionFrom to version $versionTo." )
+    Table.Metadata.insert( conn, Table.Metadata.Key.SchemaVersion, -1.toString )
+    migrateUpTo( conn, versionFrom, versionTo )
+    Table.Metadata.insert( conn, Table.Metadata.Key.SchemaVersion, versionFrom.toString )
+    DEBUG.log( s"Migration complete." )
+  }
+
+  final object ContractsSummary {
+    final object Column {
+      val blockchain_id      = "blockchain_id"
+      val contract_address   = "contract_address"
+      val name               = "name"
+      val deployer_address   = "deployer_address"
+      val full_code_hash     = "full_code_hash"
+      val txn_hash           = "txn_hash"
+      val deployed_when      = "deployed_when"
+    }
+    val Sql = {
+      import Column._
+      s"""|SELECT DISTINCT $blockchain_id, $contract_address, $name, $deployer_address, known_compilations.$full_code_hash, $txn_hash, $deployed_when
+          |FROM deployed_compilations RIGHT JOIN known_compilations ON deployed_compilations.full_code_hash = known_compilations.full_code_hash
+          |ORDER BY deployed_when ASC""".stripMargin
+    }
+  }
+
+  // no reference to blockchain_id here, because a deployment 
+  // on any blockchain is sufficient to prevent a cull
   val CullUndeployedCompilationsSql = {
     """|DELETE FROM known_compilations 
        |WHERE full_code_hash NOT IN (
@@ -56,6 +114,7 @@ object Schema_h2_v0 {
        |  FROM deployed_compilations
        |)""".stripMargin
   }
+
   final object Table {
     final object Metadata {
       val CreateSql = "CREATE TABLE IF NOT EXISTS metadata ( key VARCHAR(64) PRIMARY KEY, value VARCHAR(64) NOT NULL )"
@@ -64,7 +123,7 @@ object Schema_h2_v0 {
         val currentVersion = select( conn, Key.SchemaVersion )
         currentVersion.fold( insert( conn, Key.SchemaVersion, SchemaVersion.toString ) ){ versionStr =>
           val v = versionStr.toInt
-          if ( v != 0 ) throw new DatabaseVersionException( s"Expected version 0, found version ${v}, cannot migrate." )
+          if ( v != SchemaVersion ) migrateSchema( conn, v, SchemaVersion )
         }
       }
 
@@ -322,57 +381,80 @@ object Schema_h2_v0 {
     }
 
     final object DeployedCompilations {
-      val CreateSql = {
-        """|CREATE TABLE IF NOT EXISTS deployed_compilations (
-           |   contract_address CHAR(40) PRIMARY KEY,
-           |   base_code_hash   CHAR(128) NOT NULL,
-           |   full_code_hash   CHAR(128) NOT NULL,
-           |   deployer_address CHAR(40),
-           |   txn_hash         CHAR(128),
-           |   deployed_when    TIMESTAMP,
-           |   FOREIGN KEY ( base_code_hash, full_code_hash ) REFERENCES known_compilations( base_code_hash, full_code_hash )
-           |)""".stripMargin
+      final object V0 {
+        val CreateSql = {
+          """|CREATE TABLE IF NOT EXISTS deployed_compilations (
+             |   contract_address CHAR(40) PRIMARY KEY,
+             |   base_code_hash   CHAR(128) NOT NULL,
+             |   full_code_hash   CHAR(128) NOT NULL,
+             |   deployer_address CHAR(40),
+             |   txn_hash         CHAR(128),
+             |   deployed_when    TIMESTAMP,
+             |   FOREIGN KEY ( base_code_hash, full_code_hash ) REFERENCES known_compilations( base_code_hash, full_code_hash )
+             |)""".stripMargin
+        }
       }
+      final object V1 {
+        val CreateSql = {
+          """|CREATE TABLE IF NOT EXISTS deployed_compilations (
+             |   blockchain_id    VARCHAR(64)
+             |   contract_address CHAR(40),
+             |   base_code_hash   CHAR(128) NOT NULL,
+             |   full_code_hash   CHAR(128) NOT NULL,
+             |   deployer_address CHAR(40),
+             |   txn_hash         CHAR(128),
+             |   deployed_when    TIMESTAMP,
+             |   PRIMARY KEY ( blockchain_id, contract_address ),
+             |   FOREIGN KEY ( base_code_hash, full_code_hash ) REFERENCES known_compilations( base_code_hash, full_code_hash )
+             |)""".stripMargin
+        }
+      }
+      val CreateSql = DeployedCompilations.V1.CreateSql
+
       val SelectSql = {
-        """|SELECT contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
+        """|SELECT blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
            |FROM deployed_compilations
-           |WHERE contract_address = ?""".stripMargin
+           |WHERE blockchain_id = ? AND contract_address = ?""".stripMargin
       }
       val InsertSql = {
-        "INSERT INTO deployed_compilations ( contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when ) VALUES ( ?, ?, ?, ?, ?, ? )"
+        "INSERT INTO deployed_compilations ( blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when ) VALUES ( ?, ?, ?, ?, ?, ?, ? )"
       }
       val AllForFullCodeHashSql = {
-        """|SELECT contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
+        """|SELECT blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
            |FROM deployed_compilations
-           |WHERE full_code_hash = ?""".stripMargin
+           |WHERE blockchain_id = ? AND full_code_hash = ?""".stripMargin
       }
       final case class DeployedCompilation (
-        contractAddress : EthAddress,
-        baseCodeHash    : EthHash,
-        fullCodeHash    : EthHash,
+        blockchainId      : String,
+        contractAddress   : EthAddress,
+        baseCodeHash      : EthHash,
+        fullCodeHash      : EthHash,
         mbDeployerAddress : Option[EthAddress],
         mbTransactionHash : Option[EthHash],
         mbDeployedWhen    : Option[Long]
       )
       val extract : ResultSet => DeployedCompilation = { rs =>
         DeployedCompilation (
-          contractAddress = EthAddress( rs.getString( "contract_address" ) ),
-          baseCodeHash    = EthHash.withBytes( rs.getString( "base_code_hash" ).decodeHex ),
-          fullCodeHash    = EthHash.withBytes( rs.getString( "full_code_hash" ).decodeHex ),
+          blockchainId      = rs.getString( "blockchain_id" ),
+          contractAddress   = EthAddress( rs.getString( "contract_address" ) ),
+          baseCodeHash      = EthHash.withBytes( rs.getString( "base_code_hash" ).decodeHex ),
+          fullCodeHash      = EthHash.withBytes( rs.getString( "full_code_hash" ).decodeHex ),
           mbDeployerAddress = Option( rs.getString( "deployer_address" ) ).map( EthAddress.apply ),
           mbTransactionHash = Option( rs.getString( "txn_hash" ) ).map( _.decodeHex ).map( EthHash.withBytes ),
           mbDeployedWhen    = Option( rs.getTimestamp( "deployed_when" ) ).map( _.getTime )
         )
       }
-      def select( conn : Connection, contractAddress : EthAddress ) : Option[DeployedCompilation] = {
+      def select( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Option[DeployedCompilation] = {
         borrow( conn.prepareStatement( SelectSql ) ) { ps =>
-          ps.setString(1, contractAddress.hex)
+          ps.setString(1, blockchainId)
+          ps.setString(2, contractAddress.hex)
           borrow( ps.executeQuery() )( getMaybeSingleValue( extract ) )
         }
       }
-      def allForFullCodeHash( conn : Connection, fullCodeHash : EthHash ) : immutable.Set[DeployedCompilation] = {
+      def allForFullCodeHash( conn : Connection, blockchainId : String, fullCodeHash : EthHash ) : immutable.Set[DeployedCompilation] = {
         borrow( conn.prepareStatement( AllForFullCodeHashSql ) ) { ps =>
-          ps.setString(1, fullCodeHash.hex)
+          ps.setString(1, blockchainId)
+          ps.setString(2, fullCodeHash.hex)
           borrow( ps.executeQuery() ) { rs =>
             var out = immutable.Set.empty[DeployedCompilation]
             while ( rs.next() ) out = out + extract( rs )
@@ -380,28 +462,30 @@ object Schema_h2_v0 {
           }
         }
       }
-      def insertNewDeployment( conn : Connection, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Unit = {
+      def insertNewDeployment( conn : Connection, blockchainId : String, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Unit = {
         val bcas = BaseCodeAndSuffix( code )
         val timestamp = new Timestamp( System.currentTimeMillis )
         borrow( conn.prepareStatement( InsertSql ) ) { ps =>
-          ps.setString   ( 1, contractAddress.hex )
-          ps.setString   ( 2, bcas.baseCodeHash.hex )
-          ps.setString   ( 3, bcas.fullCodeHash.hex )
-          ps.setString   ( 4, deployerAddress.hex )
-          ps.setString   ( 5, transactionHash.hex )
-          ps.setTimestamp( 6, timestamp )
+          ps.setString   ( 1, blockchainId )
+          ps.setString   ( 2, contractAddress.hex )
+          ps.setString   ( 3, bcas.baseCodeHash.hex )
+          ps.setString   ( 4, bcas.fullCodeHash.hex )
+          ps.setString   ( 5, deployerAddress.hex )
+          ps.setString   ( 6, transactionHash.hex )
+          ps.setTimestamp( 7, timestamp )
           ps.executeUpdate()
         }
       }
-      def insertExistingDeployment( conn : Connection, contractAddress : EthAddress, code : String ) : Unit = {
+      def insertExistingDeployment( conn : Connection, blockchainId : String, contractAddress : EthAddress, code : String ) : Unit = {
         val bcas = BaseCodeAndSuffix( code )
         borrow( conn.prepareStatement( InsertSql ) ) { ps =>
-          ps.setString( 1, contractAddress.hex )
-          ps.setString( 2, bcas.baseCodeHash.hex )
-          ps.setString( 3, bcas.fullCodeHash.hex )
-          ps.setNull  ( 4, Types.CHAR )
+          ps.setString( 1, blockchainId )
+          ps.setString( 2, contractAddress.hex )
+          ps.setString( 3, bcas.baseCodeHash.hex )
+          ps.setString( 4, bcas.fullCodeHash.hex )
           ps.setNull  ( 5, Types.CHAR )
-          ps.setNull  ( 6, Types.TIMESTAMP )
+          ps.setNull  ( 6, Types.CHAR )
+          ps.setNull  ( 7, Types.TIMESTAMP )
           ps.executeUpdate()
         }
       }

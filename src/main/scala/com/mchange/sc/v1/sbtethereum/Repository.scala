@@ -71,7 +71,7 @@ object Repository {
   }
 
   final object Database {
-    import Schema_h2_v0._
+    import Schema_h2._
 
     val DirName = "database"
     lazy val Directory : Failable[File] = Repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
@@ -115,21 +115,21 @@ object Repository {
       }
     }
 
-    def insertNewDeployment( contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Failable[Unit] = {
+    def insertNewDeployment( blockchainId : String, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Failable[Unit] = {
       DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ){ conn =>
-            Table.DeployedCompilations.insertNewDeployment( conn, contractAddress, code, deployerAddress, transactionHash )
+            Table.DeployedCompilations.insertNewDeployment( conn, blockchainId, contractAddress, code, deployerAddress, transactionHash )
           }
         }
       }
     }
 
-    def insertExistingDeployment( contractAddress : EthAddress, code : String ) : Failable[Unit] = {
+    def insertExistingDeployment( blockchainId : String, contractAddress : EthAddress, code : String ) : Failable[Unit] = {
       DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ){ conn =>
-            Table.DeployedCompilations.insertExistingDeployment( conn, contractAddress, code )
+            Table.DeployedCompilations.insertExistingDeployment( conn, blockchainId, contractAddress, code )
           }
         }
       }
@@ -312,6 +312,7 @@ object Repository {
     }
 
     case class DeployedContractInfo (
+      blockchainId      : String,
       contractAddress   : EthAddress,
       codeHash          : EthHash,
       code              : String,
@@ -330,16 +331,17 @@ object Repository {
       mbMetadata        : Option[String]
     )
 
-    def deployedContractInfoForAddress( address : EthAddress ) : Failable[Option[DeployedContractInfo]] =  {
+    def deployedContractInfoForAddress( blockchainId : String, address : EthAddress ) : Failable[Option[DeployedContractInfo]] =  {
       DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection ) { conn =>
             for {
-              deployedCompilation <- Table.DeployedCompilations.select( conn, address )
+              deployedCompilation <- Table.DeployedCompilations.select( conn, blockchainId, address )
               knownCode           <- Table.KnownCode.select( conn, deployedCompilation.baseCodeHash )
               knownCompilation    <- Table.KnownCompilations.select( conn, deployedCompilation.fullCodeHash )
             } yield {
               DeployedContractInfo (
+                blockchainId       = deployedCompilation.blockchainId,
                 contractAddress    = deployedCompilation.contractAddress,
                 codeHash           = deployedCompilation.fullCodeHash,
                 code               = knownCode ++ knownCompilation.codeSuffix,
@@ -406,29 +408,39 @@ object Repository {
       }
     }
 
-    def contractAddressesForCodeHash( codeHash : EthHash ) : Failable[immutable.Set[EthAddress]] = {
+    def contractAddressesForCodeHash( blockchainId : String, codeHash : EthHash ) : Failable[immutable.Set[EthAddress]] = {
       DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ) { conn =>
-            Table.DeployedCompilations.allForFullCodeHash( conn, codeHash ).map( _.contractAddress )
+            Table.DeployedCompilations.allForFullCodeHash( conn, blockchainId, codeHash ).map( _.contractAddress )
           }
         }
       }
     }
 
-    case class ContractsSummaryRow( contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
+    case class ContractsSummaryRow( blockchain_id : String, contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
 
     def contractsSummary : Failable[immutable.Seq[ContractsSummaryRow]] = {
+      import ContractsSummary._
+
       DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ) { conn =>
             borrow( conn.createStatement() ) { stmt =>
-              borrow( stmt.executeQuery( ContractsSummarySql ) ) { rs =>
+              borrow( stmt.executeQuery( ContractsSummary.Sql ) ) { rs =>
                 val buffer = new mutable.ArrayBuffer[ContractsSummaryRow]
                 val df = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSSZ" )
                 def mbformat( ts : Timestamp ) : String = if ( ts == null ) null else df.format( ts )
                 while( rs.next() ) {
-                  buffer += ContractsSummaryRow( rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), mbformat( rs.getTimestamp(6) ) )
+                  buffer += ContractsSummaryRow(
+                    rs.getString(Column.blockchain_id),
+                    rs.getString(Column.contract_address),
+                    rs.getString(Column.name),
+                    rs.getString(Column.deployer_address),
+                    rs.getString(Column.full_code_hash),
+                    rs.getString(Column.txn_hash),
+                    mbformat( rs.getTimestamp( Column.deployed_when ) )
+                  )
                 }
                 buffer.toVector
               }
@@ -469,13 +481,13 @@ object Repository {
       }
     }
 
-    lazy val DataSource = h2_v0.DataSource
+    lazy val DataSource = h2.DataSource
 
-    final object h2_v0 {
-      val DirName = "h2_v0"
+    final object h2 {
+      val DirName = "h2"
       lazy val Directory : Failable[File] = Database.Directory.flatMap( dbDir => ensureUserOnlyDirectory( new File( dbDir, DirName ) ) )
 
-      lazy val JdbcUrl : Failable[String] = h2_v0.Directory.map( d => s"jdbc:h2:${d.getAbsolutePath};AUTO_SERVER=TRUE" )
+      lazy val JdbcUrl : Failable[String] = h2.Directory.map( d => s"jdbc:h2:${d.getAbsolutePath};AUTO_SERVER=TRUE" )
 
       lazy val DataSource : Failable[javax.sql.DataSource] = {
         for {
@@ -486,7 +498,7 @@ object Repository {
           ds.setDriverClass( "org.h2.Driver" )
           ds.setJdbcUrl( jdbcUrl )
           ds.setTestConnectionOnCheckout( true )
-          Schema_h2_v0.ensureSchema( ds )
+          Schema_h2.ensureSchema( ds )
           ds
         }
       }

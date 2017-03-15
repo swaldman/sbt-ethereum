@@ -180,18 +180,18 @@ object Parsers {
 
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
     state : State,
-    mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]]
+    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
   ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
-    val mbAliases = mbmbAliases.flatten
-    _genGenericAddressParser( state, mbAliases ).map( a => ( a, abiForAddressOrEmpty(a) ) ).flatMap { case ( address, abi ) =>
+    val Some( Tuple2(blockchainId, mbAliases) ) = mbIdAndMbAliases
+    _genGenericAddressParser( state, mbAliases ).map( a => ( a, abiForAddressOrEmpty(blockchainId,a) ) ).flatMap { case ( address, abi ) =>
       ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbAliases ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
     }
   }
   private [sbtethereum] def genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants : Boolean  )(
     state : State,
-    mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]]
+    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
   ) : Parser[((EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition), Option[BigInt])] = {
-    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbmbAliases ).flatMap { afia =>
+    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbIdAndMbAliases ).flatMap { afia =>
       if ( afia._2.payable ) {
         valueInWeiParser("[ETH to pay, optional]").?.flatMap( mbv => success(  ( afia, mbv ) ) ) // useless flatmap rather than map
       } else {
