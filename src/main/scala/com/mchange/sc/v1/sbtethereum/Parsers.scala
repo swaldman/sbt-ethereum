@@ -168,6 +168,7 @@ object Parsers {
   }
 
   private [sbtethereum] def genGenericAddressParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[EthAddress] = {
+    if ( mbmbAliases == None ) WARNING.log("Failed to load aliases for address parser.")
     _genGenericAddressParser( state, mbmbAliases.flatten )
   }
 
@@ -182,9 +183,16 @@ object Parsers {
     state : State,
     mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
   ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
-    val Some( Tuple2(blockchainId, mbAliases) ) = mbIdAndMbAliases
-    _genGenericAddressParser( state, mbAliases ).map( a => ( a, abiForAddressOrEmpty(blockchainId,a) ) ).flatMap { case ( address, abi ) =>
-      ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbAliases ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
+    mbIdAndMbAliases match {
+      case Some( Tuple2(blockchainId, mbAliases) ) => { 
+        _genGenericAddressParser( state, mbAliases ).map( a => ( a, abiForAddressOrEmpty(blockchainId,a) ) ).flatMap { case ( address, abi ) =>
+          ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbAliases ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
+        }
+      }
+      case None => {
+        WARNING.log("Failed to load blockchain ID and aliases for address, function, inputs, abi parser")
+        failure( "Blockchain ID and alias list are unavailable, can't parse address and ABI" )
+      }
     }
   }
   private [sbtethereum] def genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants : Boolean  )(

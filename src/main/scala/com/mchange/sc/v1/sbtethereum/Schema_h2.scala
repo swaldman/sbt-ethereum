@@ -91,7 +91,7 @@ object Schema_h2 {
     DEBUG.log( s"Migrating sbt-ethereum database schema from version $versionFrom to version $versionTo." )
     Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, "-1" )
     migrateUpTo( conn, versionFrom, versionTo )
-    Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, versionFrom.toString )
+    Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, versionTo.toString )
     DEBUG.log( s"Migration complete." )
   }
 
