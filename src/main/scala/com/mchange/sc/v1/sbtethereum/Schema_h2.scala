@@ -5,7 +5,7 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress,EthHash}
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc20._
-import com.mchange.sc.v2.sql.{getMaybeSingleString,getMaybeSingleValue,setMaybeString}
+import com.mchange.sc.v2.sql.{borrowTransact,getMaybeSingleString,getMaybeSingleValue,setMaybeString}
 import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.reconcile.{Reconcilable,CantReconcileException}
@@ -33,7 +33,9 @@ object Schema_h2 {
   val SchemaVersion = 1
 
   def ensureSchema( dataSource : DataSource ) = {
-    borrow( dataSource.getConnection() ){ conn =>
+
+    // should be executed in a transaction, although it looks like in h2 DDL commands autocommit anyway :(
+    borrowTransact( dataSource.getConnection() ){ conn =>
       borrow( conn.createStatement() ){ stmt =>
         stmt.executeUpdate( Table.Metadata.CreateSql )
         stmt.executeUpdate( Table.KnownCode.CreateSql )
@@ -44,6 +46,7 @@ object Schema_h2 {
       }
       Table.Metadata.ensureSchemaVersion( conn )
     }
+
   }
 
   private def migrateUpOne( conn : Connection, versionFrom : Int ) : Int = {
@@ -59,9 +62,9 @@ object Schema_h2 {
           stmt.executeUpdate(
             s"""|INSERT INTO deployed_compilations ( blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when )
                 |SELECT '${MainnetIdentifier}', contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
-                |FROM deployed_compilations_v0"""
+                |FROM deployed_compilations_v0""".stripMargin
           )
-          stmt.executeUpdate("DROP TABLE deployed_compiltions_v0")
+          stmt.executeUpdate("DROP TABLE deployed_compilations_v0")
         }
         1
       }
@@ -75,15 +78,20 @@ object Schema_h2 {
     if ( next != versionTo ) migrateUpTo( conn, next, versionFrom )
   }
 
-  // should be executed in a transaction, although it looks like in h2 DDL commands autocommit anyway :(
-  def migrateSchema( conn : Connection, versionFrom : Int, versionTo : Int ) : Unit = {
-    require( versionFrom >= 0, s"Valid schema versions begin are non-negative, version $versionFrom is invalid." )
+  private def migrateSchema( conn : Connection, versionFrom : Int, versionTo : Int ) : Unit = {
+
+    // we don't check whether versionFrom is the current version in the database, because
+    // we should have just gotten the current version from the database
+
+    require( versionFrom >= 0, s"Please restore database from backup! Valid schema versions begin are non-negative, version $versionFrom is invalid, may indicate database corruption." )
     require( versionFrom < versionTo, s"We can only upmigrate schemas, can't transition from $versionFrom to $versionTo" )
 
+    Repository.Database.h2.makeBackup( conn, versionFrom ).get // throw if something goes wrong
+
     DEBUG.log( s"Migrating sbt-ethereum database schema from version $versionFrom to version $versionTo." )
-    Table.Metadata.insert( conn, Table.Metadata.Key.SchemaVersion, -1.toString )
+    Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, "-1" )
     migrateUpTo( conn, versionFrom, versionTo )
-    Table.Metadata.insert( conn, Table.Metadata.Key.SchemaVersion, versionFrom.toString )
+    Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, versionFrom.toString )
     DEBUG.log( s"Migration complete." )
   }
 
@@ -121,14 +129,14 @@ object Schema_h2 {
 
       def ensureSchemaVersion( conn : Connection ) : Unit = {
         val currentVersion = select( conn, Key.SchemaVersion )
-        currentVersion.fold( insert( conn, Key.SchemaVersion, SchemaVersion.toString ) ){ versionStr =>
+        currentVersion.fold( upsert( conn, Key.SchemaVersion, SchemaVersion.toString ) ){ versionStr =>
           val v = versionStr.toInt
           if ( v != SchemaVersion ) migrateSchema( conn, v, SchemaVersion )
         }
       }
 
-      def insert( conn : Connection, key : String, value : String ) : Unit = {
-        borrow( conn.prepareStatement( "INSERT INTO metadata ( key, value ) VALUES ( ?, ? )" ) ) { ps =>
+      def upsert( conn : Connection, key : String, value : String ) : Unit = {
+        borrow( conn.prepareStatement( "MERGE INTO metadata ( key, value ) VALUES ( ?, ? )" ) ) { ps =>
           ps.setString( 1, key )
           ps.setString( 2, value )
           ps.executeUpdate()
@@ -397,7 +405,7 @@ object Schema_h2 {
       final object V1 {
         val CreateSql = {
           """|CREATE TABLE IF NOT EXISTS deployed_compilations (
-             |   blockchain_id    VARCHAR(64)
+             |   blockchain_id    VARCHAR(64),
              |   contract_address CHAR(40),
              |   base_code_hash   CHAR(128) NOT NULL,
              |   full_code_hash   CHAR(128) NOT NULL,
@@ -423,6 +431,11 @@ object Schema_h2 {
         """|SELECT blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
            |FROM deployed_compilations
            |WHERE blockchain_id = ? AND full_code_hash = ?""".stripMargin
+      }
+      val AllForFullCodeHashAnyBlockchainIdSql = {
+        """|SELECT blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
+           |FROM deployed_compilations
+           |WHERE full_code_hash = ?""".stripMargin
       }
       final case class DeployedCompilation (
         blockchainId      : String,
@@ -455,6 +468,16 @@ object Schema_h2 {
         borrow( conn.prepareStatement( AllForFullCodeHashSql ) ) { ps =>
           ps.setString(1, blockchainId)
           ps.setString(2, fullCodeHash.hex)
+          borrow( ps.executeQuery() ) { rs =>
+            var out = immutable.Set.empty[DeployedCompilation]
+            while ( rs.next() ) out = out + extract( rs )
+            out
+          }
+        }
+      }
+      def allForFullCodeHashAnyBlockchainId( conn : Connection, fullCodeHash : EthHash ) : immutable.Set[DeployedCompilation] = {
+        borrow( conn.prepareStatement( AllForFullCodeHashAnyBlockchainIdSql ) ) { ps =>
+          ps.setString(1, fullCodeHash.hex)
           borrow( ps.executeQuery() ) { rs =>
             var out = immutable.Set.empty[DeployedCompilation]
             while ( rs.next() ) out = out + extract( rs )

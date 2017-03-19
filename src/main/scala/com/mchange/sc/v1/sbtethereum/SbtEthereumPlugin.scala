@@ -355,23 +355,25 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethCompilationsListAll := {
         val contractsSummary = Repository.Database.contractsSummary.get // throw for any db problem
 
-        val Address   = "Deployer Address"
-        val Name      = "Name"
-        val CodeHash  = "Code Hash"
-        val Timestamp = "Deployment Timestamp"
+        val Blockchain = "Blockchain"
+        val Address    = "Deployer Address"
+        val Name       = "Name"
+        val CodeHash   = "Code Hash"
+        val Timestamp  = "Deployment Timestamp"
 
-        val cap = "+" + span(44) + "+" + span(22) + "+" + span(68) + "+" + span(30) + "+"
+        val cap = "+" + span(12) + "+" + span(44) + "+" + span(22) + "+" + span(68) + "+" + span(30) + "+"
         println( cap )
-        println( f"| $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
+        println( f"| $Blockchain%-10s | $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
         println( cap )
 
         contractsSummary.foreach { row =>
           import row._
+          val id = blankNull( blockchain_id )
           val ca = emptyOrHex( contract_address )
           val nm = blankNull( name )
           val ch = emptyOrHex( code_hash )
           val ts = blankNull( timestamp )
-          println( f"| $ca%-42s | $nm%-20s | $ch%-66s | $ts%-28s |" )
+          println( f"| $id%-10s | $ca%-42s | $nm%-20s | $ch%-66s | $ts%-28s |" )
         }
         println( cap )
       },
@@ -970,8 +972,11 @@ object SbtEthereumPlugin extends AutoPlugin {
           println();
           println( (if ( hex ) "0x" else "") + b )
         }
-        def addressSection( title : String, body : Set[EthAddress] ) : Unit = {
-          val ordered = immutable.SortedSet.empty[String] ++ body.map( a => s"0x${a.hex}" )
+        def addressSection( title : String, body : Set[ (String,EthAddress) ] ) : Unit = {
+          val ordered = immutable.SortedSet.empty[String] ++ body.map { tup =>
+            val ( blockchainId, address ) = tup
+            s"0x${address.hex} (on blockchain '${blockchainId}')"
+          }
           val bodyOpt = if ( ordered.size == 0 ) None else Some( ordered.mkString(", ") )
           section( title, bodyOpt, false )
         }
@@ -984,7 +989,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           case Left( address ) => {
             val mbinfo = Repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw any db problem
             mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
-              section( "Contract Address", Some( info.contractAddress.hex ), true )
+              section( s"Contract Address (on blockchain '${info.blockchainId}')", Some( info.contractAddress.hex ), true )
               section( "Deployer Address", info.mbDeployerAddress.map( _.hex ), true )
               section( "Transaction Hash", info.mbTransactionHash.map( _.hex ), true )
               section( "Deployment Timestamp", info.mbDeployedWhen.map( l => (new Date(l)).toString ) )
@@ -1017,7 +1022,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               jsonSection( "User Documentation", info.mbUserDoc )
               jsonSection( "Developer Documentation", info.mbDeveloperDoc )
               section( "Metadata", info.mbMetadata )
-              addressSection( "Deployments", Repository.Database.contractAddressesForCodeHash( blockchainId, hash ).get )
+              addressSection( "Deployments", Repository.Database.blockchainIdContractAddressesForCodeHash( hash ).get )
             }
           }
         }

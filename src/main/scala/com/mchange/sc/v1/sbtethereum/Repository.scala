@@ -25,8 +25,6 @@ import com.mchange.v2.c3p0.ComboPooledDataSource
 import play.api.libs.json._
 
 object Repository {
-  private val TimestampPattern = "yyyy-MM-dd'T'HH-mm-ssZ"
-
   private val SystemProperty      = "sbt.ethereum.repository"
   private val EnvironmentVariable = "SBT_ETHEREUM_REPOSITORY"
 
@@ -40,6 +38,8 @@ object Repository {
   }
 
   final object TransactionLog {
+    private val TimestampPattern = "yyyy-MM-dd'T'HH-mm-ssZ"
+
     lazy val File = Directory.map( dir => new java.io.File(dir, "transaction-log") )
 
     case class Entry( timestamp : Date, txn : EthTransaction.Signed, transactionHash : EthHash ) {
@@ -418,6 +418,16 @@ object Repository {
       }
     }
 
+    def blockchainIdContractAddressesForCodeHash( codeHash : EthHash ) : Failable[immutable.Set[(String,EthAddress)]] = {
+      DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection() ) { conn =>
+            Table.DeployedCompilations.allForFullCodeHashAnyBlockchainId( conn, codeHash ).map( dc => ( dc.blockchainId, dc.contractAddress ) )
+          }
+        }
+      }
+    }
+
     case class ContractsSummaryRow( blockchain_id : String, contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
 
     def contractsSummary : Failable[immutable.Seq[ContractsSummaryRow]] = {
@@ -485,9 +495,17 @@ object Repository {
 
     final object h2 {
       val DirName = "h2"
+      val DbName  = "sbt-ethereum"
+
+      val BackupsDirName = "h2-backups"
+
       lazy val Directory : Failable[File] = Database.Directory.flatMap( dbDir => ensureUserOnlyDirectory( new File( dbDir, DirName ) ) )
 
-      lazy val JdbcUrl : Failable[String] = h2.Directory.map( d => s"jdbc:h2:${d.getAbsolutePath};AUTO_SERVER=TRUE" )
+      lazy val DbAsFile : Failable[File] = Directory.map( dir => new File( dir, DbName ) ) // the db will make files of this name, with various suffixes appended
+
+      lazy val BackupsDir : Failable[File] = Database.Directory.flatMap( dbDir => ensureUserOnlyDirectory( new File( dbDir, BackupsDirName ) ) ) 
+
+      lazy val JdbcUrl : Failable[String] = h2.DbAsFile.map( f => s"jdbc:h2:${f.getAbsolutePath};AUTO_SERVER=TRUE" )
 
       lazy val DataSource : Failable[javax.sql.DataSource] = {
         for {
@@ -500,6 +518,15 @@ object Repository {
           ds.setTestConnectionOnCheckout( true )
           Schema_h2.ensureSchema( ds )
           ds
+        }
+      }
+
+      def makeBackup( conn : Connection, schemaVersion : Int ) : Failable[Unit] = {
+        BackupsDir.map{ pmbDir =>
+          val df = new SimpleDateFormat("yyyyMMdd'T'HHmmssZ")
+          val ts = df.format( new Date() )
+          val targetFile = new File( pmbDir, s"${DbName}-v${schemaVersion}-$ts.sql" )
+          borrow( conn.prepareStatement( s"SCRIPT TO '${targetFile.getAbsolutePath}' CHARSET 'UTF8'" ) )( _.executeQuery().close() ) // we don't need the result set, just want the file
         }
       }
     }
