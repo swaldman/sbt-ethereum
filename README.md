@@ -209,7 +209,7 @@ If you wish to interact with a smart contract that you did not deploy from sbt-e
 
 To generate a new account, the safest and most straightforward approach is to generate a geth-style V3 wallet:
 
-    > ethGenWalletV3
+    > ethKeystoreCreateWalletV3
     
 Follow the prompts (to enter and confirm a masked passphrase), and an account and wallet will be generated.
 The wallet will reside in the sbt-ethereum repository (see below), under `keystore/v3`, in a format and under filenames that are interoperable with `geth`.
@@ -220,7 +220,7 @@ __Note: Be sure to test a wallet before sending signficant value to it. And then
 One way to test your new wallet is with `ethSelfPing`, which causes the currently set `ethAddress` to send a zero ether transaction to itself.
 You'll need to send a small amount of ether to your new account, so that the ping can succeed.
 
-    > ethGenWalletV3
+    > ethKeystoreCreateWalletV3
     [info] Generated keypair for address '0x47cd9e257d144a2d54d20b1b3695f939f5208b10'
     [info] Generating V3 wallet, alogorithm=scrypt, n=262144, r=8, p=1, dklen=32
     Enter passphrase for new wallet: ****************************
@@ -313,7 +313,7 @@ The database constains metainformation about contracts that you have deployed or
 
 You can list addresses available in the sbt-ethereum keystore.
 
-    > ethKeystoreListAddresses
+    > ethKeystoreList
     +--------------------------------------------+
     | Keystore Address                           |
     +--------------------------------------------+
@@ -334,7 +334,7 @@ You can list addresses available in the sbt-ethereum keystore.
 
 You can also list all compilations and deployed contracts known by the repository.
 
-    > ethCompilationsListAll
+    > ethCompilationsList
     +--------------------------------------------+----------------------+--------------------------------------------------------------------+------------------------------+
     | Deployer Address                           | Name                 | Code Hash                                                          | Deployment Timestamp         |
     +--------------------------------------------+----------------------+--------------------------------------------------------------------+------------------------------+
@@ -353,7 +353,7 @@ You can also list all compilations and deployed contracts known by the repositor
 
 For complete information known by the repository about a contract, try
 
-    > ethCompilationsDumpOnly <tab>
+    > ethCompilationsInspect <tab>
     <address-hex>          <contract-code-hash>   
 
 Supply a contract's address or the hash of its code (see the table just above), and you'll get a detailed dump of information,
@@ -385,7 +385,7 @@ If you don't see the `eth*` tasks and settings, you may be running an older vers
 
 Consider adding a `build.properties` file under `my-project/project` like this:
 
-    sbt.version=0.13.12
+    sbt.version=0.13.13
 
 Even if your sbt-launcher is from an older version, this will cause `sbt` to manage your project
 from a sufficiently recent sbt.
