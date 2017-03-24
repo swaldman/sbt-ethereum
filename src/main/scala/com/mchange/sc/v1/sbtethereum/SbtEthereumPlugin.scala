@@ -117,7 +117,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethBalanceInWei = inputKey[BigInt]("Computes the balance in wei of a given address, or of 'ethAddress' if no address is supplied")
 
-    val ethCallConstant = inputKey[(Abi.Function,immutable.Seq[DecodedReturnValue])]("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
+    val ethInvokeConstant = inputKey[(Abi.Function,immutable.Seq[DecodedReturnValue])]("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
     val ethCompilationsCull = taskKey[Unit]("Removes never-deployed compilations from the repository database.")
 
@@ -143,9 +143,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethKeystoreCreateWalletV3 = taskKey[wallet.V3]("Generates a new V3 wallet, using ethEntropySource as a source of randomness")
 
-    val ethInvoke = inputKey[Option[ClientTransactionReceipt]]("Calls a function on a deployed smart contract")
+    val ethInvokeTransaction = inputKey[Option[ClientTransactionReceipt]]("Calls a function on a deployed smart contract")
 
-    val ethInvokeData = inputKey[immutable.Seq[Byte]]("Reveals the data portion that would be sent in a message invoking a function and its arguments on a deployed smart contract")
+    val xethInvokeData = inputKey[immutable.Seq[Byte]]("Reveals the data portion that would be sent in a message invoking a function and its arguments on a deployed smart contract")
 
     val ethKeystoreList = taskKey[immutable.Map[EthAddress,immutable.Set[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
 
@@ -157,11 +157,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
-    val ethMemorizeAbi = taskKey[Unit]("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
+    val ethAbiMemorize = taskKey[Unit]("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
 
     val ethKeystoreMemorizeWalletV3 = taskKey[Unit]("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
 
-    val ethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
+    val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
     val xethFindCacheFunctionInputsAbiParsers = taskKey[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]("Internal use only -- loads information required by some parsers")
 
@@ -169,7 +169,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethSolidityCompile = taskKey[Unit]("Compiles solidity files")
 
-    val ethQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
+    val xethQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
 
     val xethTriggerDirtyAliasCache = taskKey[Unit]("Indirectly provokes an update of the cache of aliases used for tab completions.")
 
@@ -323,7 +323,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethBalanceInWei <<= ethBalanceInWeiTask,
 
-      ethCallConstant <<= ethCallConstantTask,
+      ethInvokeConstant <<= ethInvokeConstantTask,
 
       ethCompilationsCull := {
         val log = streams.value.log
@@ -447,11 +447,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethKeystoreCreateWalletV3 := xethKeystoreCreateWalletV3Scrypt.value,
 
-      ethInvoke <<= ethInvokeTask,
+      ethInvokeTransaction <<= ethInvokeTransactionTask,
 
-      ethInvokeData <<= ethInvokeDataTask, 
+      xethInvokeData <<= xethInvokeDataTask, 
 
-      ethNextNonce := {
+      xethNextNonce := {
         val log            = streams.value.log
         val jsonRpcUrl     = ethJsonRpcUrl.value
         doGetTransactionCount( log, jsonRpcUrl, EthAddress( ethAddress.value ), jsonrpc20.Client.BlockNumber.Pending )
@@ -582,7 +582,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         result
       },
 
-      ethMemorizeAbi := {
+      ethAbiMemorize := {
         val blockchainId = ethBlockchainId.value
         val jsonRpcUrl = ethJsonRpcUrl.value
         val log = streams.value.log
@@ -612,7 +612,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethDeployOnly <<= ethDeployOnlyTask,
 
-      ethQueryRepositoryDatabase := {
+      xethQueryRepositoryDatabase := {
         val log   = streams.value.log
         val query = DbQueryParser.parsed
 
@@ -678,7 +678,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val args = ethSendEtherParser.parsed
         val to = args._1
         val amount = args._2
-        val nextNonce = ethNextNonce.value
+        val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
         val gas = markupEstimateGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
@@ -840,7 +840,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethCallConstantTask : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedReturnValue])]] = {
+    def ethInvokeConstantTask : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedReturnValue])]] = {
       val parser = Defaults.loadForParser(xethFindCacheFunctionInputsAbiParsers)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
 
       Def.inputTask {
@@ -920,7 +920,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val codeHex = compilation.code
         val dataHex = codeHex ++ inputsHex
         val address = EthAddress( ethAddress.value )
-        val nextNonce = ethNextNonce.value
+        val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
         val gas = xethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, Some(address), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
@@ -1022,7 +1022,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethInvokeDataTask : Initialize[InputTask[immutable.Seq[Byte]]] = {
+    def xethInvokeDataTask : Initialize[InputTask[immutable.Seq[Byte]]] = {
       val parser = Defaults.loadForParser(xethFindCacheFunctionInputsAbiParsers)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
 
       Def.inputTask {
@@ -1035,14 +1035,14 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethInvokeTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+    def ethInvokeTransactionTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
       val parser = Defaults.loadForParser(xethFindCacheFunctionInputsAbiParsers)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
 
       Def.inputTask {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
         val caller = EthAddress( ethAddress.value )
-        val nextNonce = ethNextNonce.value
+        val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
         val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
