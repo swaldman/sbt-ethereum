@@ -73,13 +73,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethIncludeLocations = settingKey[Seq[String]]("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
 
-    val ethGasOverrides = settingKey[Map[String,BigInt]]("Map of contract names to gas limits for contract creation transactions, overriding automatic estimates")
+    val xethGasOverrides = settingKey[Map[String,BigInt]]("Map of contract names to gas limits for contract creation transactions, overriding automatic estimates")
 
     val ethGasMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
 
     val ethGasPriceMarkup = settingKey[Double]("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
 
-    val ethKeystoresV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
+    val ethKeystoreLocationsV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
 
     val ethKnownStubAddresses = settingKey[immutable.Map[String,immutable.Set[String]]]("Names of stubs that might be generated in compilation mapped to addresses known to conform to their ABIs.")
 
@@ -91,17 +91,17 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethSolidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
 
-    val ethWalletV3ScryptN = settingKey[Int]("The value to use for parameter N when generating Scrypt V3 wallets")
+    val xethWalletV3ScryptN = settingKey[Int]("The value to use for parameter N when generating Scrypt V3 wallets")
 
-    val ethWalletV3ScryptR = settingKey[Int]("The value to use for parameter R when generating Scrypt V3 wallets")
+    val xethWalletV3ScryptR = settingKey[Int]("The value to use for parameter R when generating Scrypt V3 wallets")
 
-    val ethWalletV3ScryptP = settingKey[Int]("The value to use for parameter P when generating Scrypt V3 wallets")
+    val xethWalletV3ScryptP = settingKey[Int]("The value to use for parameter P when generating Scrypt V3 wallets")
 
-    val ethWalletV3ScryptDkLen = settingKey[Int]("The derived key length parameter used when generating Scrypt V3 wallets")
+    val xethWalletV3ScryptDkLen = settingKey[Int]("The derived key length parameter used when generating Scrypt V3 wallets")
 
-    val ethWalletV3Pbkdf2C = settingKey[Int]("The value to use for parameter C when generating pbkdf2 V3 wallets")
+    val xethWalletV3Pbkdf2C = settingKey[Int]("The value to use for parameter C when generating pbkdf2 V3 wallets")
 
-    val ethWalletV3Pbkdf2DkLen = settingKey[Int]("The derived key length parameter used when generating pbkdf2 V3 wallets")
+    val xethWalletV3Pbkdf2DkLen = settingKey[Int]("The derived key length parameter used when generating pbkdf2 V3 wallets")
 
     // tasks
 
@@ -129,7 +129,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethCompilationsList = taskKey[Unit]("Lists summary information about compilations known in the repository")
 
-    val ethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
+    val xethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
     val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
 
@@ -137,13 +137,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethFindCacheOmitDupsCurrentCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethSolidityCompile")
 
-    val ethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
+    val xethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
 
-    val ethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
+    val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
 
-    val ethKeystoreCreateWalletV3Pbkdf2 = taskKey[wallet.V3]("Generates a new pbkdf2 V3 wallet, using ethEntropySource as a source of randomness")
+    val xethKeystoreCreateWalletV3Pbkdf2 = taskKey[wallet.V3]("Generates a new pbkdf2 V3 wallet, using ethEntropySource as a source of randomness")
 
-    val ethKeystoreCreateWalletV3Scrypt = taskKey[wallet.V3]("Generates a new scrypt V3 wallet, using ethEntropySource as a source of randomness")
+    val xethKeystoreCreateWalletV3Scrypt = taskKey[wallet.V3]("Generates a new scrypt V3 wallet, using ethEntropySource as a source of randomness")
 
     val ethKeystoreCreateWalletV3 = taskKey[wallet.V3]("Generates a new V3 wallet, using ethEntropySource as a source of randomness")
 
@@ -259,11 +259,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethGasMarkup := 0.2,
 
-      ethGasOverrides := Map.empty[String,BigInt],
+      xethGasOverrides := Map.empty[String,BigInt],
 
       ethGasPriceMarkup := 0.0, // by default, use conventional gas price
 
-      ethKeystoresV3 := {
+      ethKeystoreLocationsV3 := {
         def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
         def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
         listify( Repository.KeyStore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
@@ -285,17 +285,17 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethSolidityDestination in Compile := (ethTargetDir in Compile).value / "solidity",
 
-      ethWalletV3ScryptN := wallet.V3.Default.Scrypt.N,
+      xethWalletV3ScryptN := wallet.V3.Default.Scrypt.N,
 
-      ethWalletV3ScryptR := wallet.V3.Default.Scrypt.R,
+      xethWalletV3ScryptR := wallet.V3.Default.Scrypt.R,
 
-      ethWalletV3ScryptP := wallet.V3.Default.Scrypt.P,
+      xethWalletV3ScryptP := wallet.V3.Default.Scrypt.P,
 
-      ethWalletV3ScryptDkLen := wallet.V3.Default.Scrypt.DkLen,
+      xethWalletV3ScryptDkLen := wallet.V3.Default.Scrypt.DkLen,
 
-      ethWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
+      xethWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
 
-      ethWalletV3Pbkdf2DkLen := wallet.V3.Default.Pbkdf2.DkLen,
+      xethWalletV3Pbkdf2DkLen := wallet.V3.Default.Pbkdf2.DkLen,
 
       // tasks
 
@@ -394,7 +394,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         doCompileSolidity( log, jsonRpcUrl, includeLocations, solSource, solDestination )
       },
 
-      ethDefaultGasPrice := {
+      xethDefaultGasPrice := {
         val log        = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
         doGetDefaultGasPrice( log, jsonRpcUrl )
@@ -406,17 +406,17 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethFindCacheFunctionInputsAbiParsers <<= xethFindCacheFunctionInputsAbiParsersTask.storeAs( xethFindCacheFunctionInputsAbiParsers ).triggeredBy( xethTriggerDirtyAliasCache ),
 
-      ethGasPrice := {
+      xethGasPrice := {
         val log        = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
 
         val markup          = ethGasPriceMarkup.value
-        val defaultGasPrice = ethDefaultGasPrice.value
+        val defaultGasPrice = xethDefaultGasPrice.value
 
         rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) ).toBigInt 
       },
 
-      ethGenKeyPair := {
+      xethGenKeyPair := {
         val log = streams.value.log
         val out = EthKeyPair( ethEntropySource.value )
 
@@ -431,13 +431,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         out
       },
 
-      ethKeystoreCreateWalletV3Pbkdf2 := {
+      xethKeystoreCreateWalletV3Pbkdf2 := {
         val log   = streams.value.log
-        val c     = ethWalletV3Pbkdf2C.value
-        val dklen = ethWalletV3Pbkdf2DkLen.value
+        val c     = xethWalletV3Pbkdf2C.value
+        val dklen = xethWalletV3Pbkdf2DkLen.value
 
         val is = interactionService.value
-        val keyPair = ethGenKeyPair.value
+        val keyPair = xethGenKeyPair.value
         val entropySource = ethEntropySource.value
 
         log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
@@ -446,15 +446,15 @@ object SbtEthereumPlugin extends AutoPlugin {
         Repository.KeyStore.V3.storeWallet( w ).get // asserts success
       },
 
-      ethKeystoreCreateWalletV3Scrypt := {
+      xethKeystoreCreateWalletV3Scrypt := {
         val log   = streams.value.log
-        val n     = ethWalletV3ScryptN.value
-        val r     = ethWalletV3ScryptR.value
-        val p     = ethWalletV3ScryptP.value
-        val dklen = ethWalletV3ScryptDkLen.value
+        val n     = xethWalletV3ScryptN.value
+        val r     = xethWalletV3ScryptR.value
+        val p     = xethWalletV3ScryptP.value
+        val dklen = xethWalletV3ScryptDkLen.value
 
         val is = interactionService.value
-        val keyPair = ethGenKeyPair.value
+        val keyPair = xethGenKeyPair.value
         val entropySource = ethEntropySource.value
 
         log.info( s"Generating V3 wallet, alogorithm=scrypt, n=${n}, r=${r}, p=${p}, dklen=${dklen}" )
@@ -463,7 +463,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         Repository.KeyStore.V3.storeWallet( w ).get // asserts success
       },
 
-      ethKeystoreCreateWalletV3 := ethKeystoreCreateWalletV3Scrypt.value,
+      ethKeystoreCreateWalletV3 := xethKeystoreCreateWalletV3Scrypt.value,
 
       ethInvoke <<= ethInvokeTask,
 
@@ -476,7 +476,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethKeystoreList := {
-        val keystoresV3 = ethKeystoresV3.value
+        val keystoresV3 = ethKeystoreLocationsV3.value
         val log         = streams.value.log
         val combined = {
           keystoresV3
@@ -685,7 +685,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethKeystoreInspectWalletV3 := {
-        val keystoreDirs = ethKeystoresV3.value
+        val keystoreDirs = ethKeystoreLocationsV3.value
         val w = xethLoadWalletV3For.evaluated.getOrElse( unknownWallet( keystoreDirs ) )
         println( Json.stringify( w.withLowerCaseKeys ) )
       },
@@ -698,7 +698,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val amount = args._2
         val nextNonce = ethNextNonce.value
         val markup = ethGasMarkup.value
-        val gasPrice = ethGasPrice.value
+        val gasPrice = xethGasPrice.value
         val gas = markupEstimateGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
         val privateKey = findCachePrivateKey.value
@@ -856,7 +856,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val jsonRpcUrl = ethJsonRpcUrl.value
         val from = if ( ethAddress.value == ZeroEthAddress ) None else Some( EthAddress( ethAddress.value ) )
         val markup = ethGasMarkup.value
-        val gasPrice = ethGasPrice.value
+        val gasPrice = xethGasPrice.value
         val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
         if (! function.constant ) {
           log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
@@ -930,8 +930,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         val address = EthAddress( ethAddress.value )
         val nextNonce = ethNextNonce.value
         val markup = ethGasMarkup.value
-        val gasPrice = ethGasPrice.value
-        val gas = ethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, Some(address), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
+        val gasPrice = xethGasPrice.value
+        val gas = xethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, Some(address), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey.value
         val updateChangedDb = xethUpdateContractDatabase.value
@@ -1052,7 +1052,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val caller = EthAddress( ethAddress.value )
         val nextNonce = ethNextNonce.value
         val markup = ethGasMarkup.value
-        val gasPrice = ethGasPrice.value
+        val gasPrice = xethGasPrice.value
         val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
         val amount = mbWei.getOrElse( Zero )
         val privateKey = findCachePrivateKey.value
@@ -1073,7 +1073,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
 
       Def.inputTask {
-        val keystoresV3 = ethKeystoresV3.value
+        val keystoresV3 = ethKeystoreLocationsV3.value
         val log         = streams.value.log
 
         val address = parser.parsed
@@ -1123,7 +1123,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       Def.inputTask {
         val log = streams.value.log
         val is = interactionService.value
-        val keystoreDirs = ethKeystoresV3.value
+        val keystoreDirs = ethKeystoreLocationsV3.value
         val s = state.value
 	val extract = Project.extract(s)
         val inputAddress = parser.parsed
