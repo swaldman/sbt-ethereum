@@ -172,6 +172,10 @@ object Parsers {
     _genGenericAddressParser( state, mbmbAliases.flatten )
   }
 
+  private [sbtethereum] def genOptionalGenericAddressParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[Option[EthAddress]] = {
+    genGenericAddressParser( state, mbmbAliases ).?
+  }
+
   private [sbtethereum] def recipientAddressParser = createAddressParser("<recipient-address-hex or alias>") // def not val so that ideally they'd pick up new aliases, but doesn't work
 
   private [sbtethereum] def genContractAddressOrCodeHashParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[Either[EthAddress,EthHash]] = {

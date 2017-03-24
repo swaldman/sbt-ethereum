@@ -113,13 +113,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethAliasSet = inputKey[Unit]("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
 
-    val ethBalance = inputKey[BigDecimal]("Computes the balance in ether of the address set as 'ethAddress'")
+    val ethBalance = inputKey[BigDecimal]("Computes the balance in ether of a given address, or of 'ethAddress' if no address is supplied")
 
-    val ethBalanceFor = inputKey[BigDecimal]("Computes the balance in ether of a given address")
-
-    val ethBalanceInWei = inputKey[BigInt]("Computes the balance in wei of the address set as 'ethAddress'")
-
-    val ethBalanceInWeiFor = inputKey[BigInt]("Computes the balance in wei of a given address")
+    val ethBalanceInWei = inputKey[BigInt]("Computes the balance in wei of a given address, or of 'ethAddress' if no address is supplied")
 
     val ethCallConstant = inputKey[(Abi.Function,immutable.Seq[DecodedReturnValue])]("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
@@ -189,20 +185,24 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // anonymous tasks
 
-    val warnOnZeroAddress = Def.task {
-      val current = ethAddress.value
-
-      if ( current == ZeroEthAddress ) {
+    def assertNonzeroAddress( stringAddress : String ) : EthAddress = {
+      if ( stringAddress.decodeHex.forall( _ == 0 ) ) {
         throw new Exception(s"""No valid EthAddress set. Please use 'set ethAddress := "<your ethereum address>"'""")
+      } else {
+        EthAddress( stringAddress )
       }
+    }
 
+    val dieOnZeroAddress = Def.task {
+      val current = ethAddress.value
+      assertNonzeroAddress( current )
       true
     }
 
     val xethUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
 
     val findCachePrivateKey = Def.task {
-      val checked = warnOnZeroAddress.value
+      val checked = dieOnZeroAddress.value
 
       val CurAddrStr = ethAddress.value
       val CurAddress = EthAddress(CurAddrStr)
@@ -319,27 +319,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethAliasSet <<= ethAliasSetTask,
 
-      ethBalance := {
-        val checked = warnOnZeroAddress.value
-        val s = state.value
-        val addressStr = ethAddress.value
-	val extract = Project.extract(s)
-	val (_, result) = extract.runInputTask(ethBalanceFor, addressStr, s)
-        result
-      },
+      ethBalance <<= ethBalanceTask,
 
-      ethBalanceFor <<= ethBalanceForTask,
-
-      ethBalanceInWei := {
-        val checked = warnOnZeroAddress.value
-        val s = state.value
-        val addressStr = ethAddress.value
-	val extract = Project.extract(s)
-	val (_, result) = extract.runInputTask(ethBalanceInWeiFor, addressStr, s)
-        result
-      },
-
-      ethBalanceInWeiFor <<= ethBalanceInWeiForTask,
+      ethBalanceInWei <<= ethBalanceInWeiTask,
 
       ethCallConstant <<= ethCallConstantTask,
 
@@ -592,7 +574,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       xethLoadWalletV3For <<= xethLoadWalletV3ForTask,
 
       xethLoadWalletV3 := {
-        val checked = warnOnZeroAddress.value
+        val checked = dieOnZeroAddress.value
         val s = state.value
         val addressStr = ethAddress.value
 	val extract = Project.extract(s)
@@ -668,7 +650,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethKeystoreRevealPrivateKey <<= ethKeystoreRevealPrivateKeyTask,
 
       ethSelfPing := {
-        val checked  = warnOnZeroAddress.value
+        val checked  = dieOnZeroAddress.value
         val address  = ethAddress.value
         val sendArgs = s" ${address} 0 wei"
         val log = streams.value.log
@@ -824,25 +806,35 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethBalanceForTask : Initialize[InputTask[BigDecimal]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+    def ethBalanceTask : Initialize[InputTask[BigDecimal]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genOptionalGenericAddressParser )
 
       Def.inputTask {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
-        val address = parser.parsed
+        val mbAddress = parser.parsed
+        val defaultAddress = ethAddress.value
+        val address = mbAddress match {
+          case Some( a ) => a
+          case None      => assertNonzeroAddress( defaultAddress )
+        }
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Ether )
         result.denominated
       }
     }
 
-    def ethBalanceInWeiForTask : Initialize[InputTask[BigInt]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+    def ethBalanceInWeiTask : Initialize[InputTask[BigInt]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genOptionalGenericAddressParser )
 
       Def.inputTask {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
-        val address = parser.parsed
+        val mbAddress = parser.parsed
+        val defaultAddress = ethAddress.value
+        val address = mbAddress match {
+          case Some( a ) => a
+          case None      => assertNonzeroAddress( defaultAddress )
+        }
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Wei )
         result.wei
       }
