@@ -60,7 +60,7 @@ package object sbtethereum {
 
   val MainnetIdentifier = "mainnet"
 
-  private def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String )( operation : jsonrpc20.Client => T )( implicit ec : ExecutionContext ) : T = {
+  private [sbtethereum] def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String )( operation : jsonrpc20.Client => T )( implicit ec : ExecutionContext ) : T = {
     try {
       borrow( new jsonrpc20.Client.Simple( new URL( jsonRpcUrl ) ) )( operation )
     } catch {
@@ -136,6 +136,9 @@ package object sbtethereum {
   def goodSolidityFileName( simpleName : String ) : Boolean =  simpleName.endsWith(".sol") && SolidityFileBadFirstChars.indexOf( simpleName.head ) < 0
 
   private [sbtethereum] def doCompileSolidity( log : sbt.Logger, jsonRpcUrl : String, includeSourceLocations : Seq[SourceFile.Location], solSourceDir : File, solDestDir : File )( implicit ec : ExecutionContext ) : Unit = {
+
+    val compiler = Compiler.Solidity.EthJsonRpc( jsonRpcUrl )
+
     def solToJson( filename : String ) : String = filename match {
       case SolFileRegex( base ) => base + ".json"
     }
@@ -156,41 +159,37 @@ package object sbtethereum {
       }
     }
 
-    doWithJsonClient( log, jsonRpcUrl ){ client =>
-      solDestDir.mkdirs()
-      val files = (solSourceDir ** "*.sol").get.filter( file => goodSolidityFileName( file.getName ) )
+    solDestDir.mkdirs()
+    val files = (solSourceDir ** "*.sol").get.filter( file => goodSolidityFileName( file.getName ) )
 
-      val filePairs = files.map( file => ( file, loadResolveSourceFile( file, includeSourceLocations ).get, new File( solDestDir, solToJson( file.getName() ) ) ) ) // (sourceFile, destinationFile), exception if file can't load
-      val compileFiles = filePairs.filter{ case ( file, sourceFile, destFile ) => changed( destFile, sourceFile ) }
+    val filePairs = files.map( file => ( file, loadResolveSourceFile( file, includeSourceLocations ).get, new File( solDestDir, solToJson( file.getName() ) ) ) ) // (sourceFile, destinationFile), exception if file can't load
+    val compileFiles = filePairs.filter{ case ( file, sourceFile, destFile ) => changed( destFile, sourceFile ) }
 
-      val cfl = compileFiles.length
-      if ( cfl > 0 ) {
-        val mbS = if ( cfl > 1 ) "s" else ""
-        log.info( s"Compiling ${compileFiles.length} Solidity source${mbS} to ${solDestDir}..." )
+    val cfl = compileFiles.length
+    if ( cfl > 0 ) {
+      val mbS = if ( cfl > 1 ) "s" else ""
+      log.info( s"Compiling ${compileFiles.length} Solidity source${mbS} to ${solDestDir}..." )
 
-        val compileLabeledFuts = compileFiles.map { case ( file, sourceFile, destFile ) =>
-          val code = sourceFile.text
-          // println( code )
-          file -> client.eth.compileSolidity( code ).map( result => ( destFile, result ) )
-        }
-        waitForFiles( compileLabeledFuts, count => s"compileSolidity failed. [${count} failures]" )
+      val compileLabeledFuts = compileFiles.map { case ( file, sourceFile, destFile ) =>
+        file -> compiler.compile( log, sourceFile.text ).map( result => ( destFile, result ) )
+      }
+      waitForFiles( compileLabeledFuts, count => s"compileSolidity failed. [${count} failures]" )
 
-        // if we're here, all compilations succeeded
-        val destFileResultPairs = compileLabeledFuts.map {
-          case ( _, fut ) => fut.value.get.get
-        }
+      // if we're here, all compilations succeeded
+      val destFileResultPairs = compileLabeledFuts.map {
+        case ( _, fut ) => fut.value.get.get
+      }
 
-        val writerLabeledFuts = destFileResultPairs.map {
-          case ( destFile, result ) => {
-            destFile -> Future {
-              borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) ){ writer =>
-                writer.write( Json.stringify( Json.toJson ( result ) ) )
-              }
+      val writerLabeledFuts = destFileResultPairs.map {
+        case ( destFile, result ) => {
+          destFile -> Future {
+            borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) ){ writer =>
+              writer.write( Json.stringify( Json.toJson ( result ) ) )
             }
           }
         }
-        waitForFiles( writerLabeledFuts, count => s"Failed to write the output of some compilations. [${count} failures]" )
       }
+      waitForFiles( writerLabeledFuts, count => s"Failed to write the output of some compilations. [${count} failures]" )
     }
   }
 
