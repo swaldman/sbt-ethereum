@@ -135,9 +135,7 @@ package object sbtethereum {
 
   def goodSolidityFileName( simpleName : String ) : Boolean =  simpleName.endsWith(".sol") && SolidityFileBadFirstChars.indexOf( simpleName.head ) < 0
 
-  private [sbtethereum] def doCompileSolidity( log : sbt.Logger, jsonRpcUrl : String, includeSourceLocations : Seq[SourceFile.Location], solSourceDir : File, solDestDir : File )( implicit ec : ExecutionContext ) : Unit = {
-
-    val compiler = Compiler.Solidity.EthJsonRpc( jsonRpcUrl )
+  private [sbtethereum] def doCompileSolidity( log : sbt.Logger, compiler : Compiler.Solidity, includeSourceLocations : Seq[SourceFile.Location], solSourceDir : File, solDestDir : File )( implicit ec : ExecutionContext ) : Unit = {
 
     def solToJson( filename : String ) : String = filename match {
       case SolFileRegex( base ) => base + ".json"

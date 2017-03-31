@@ -85,6 +85,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethJsonRpcUrl = settingKey[String]("URL of the Ethereum JSON-RPC service build should work with")
 
+    val ethNetcompileUrl = settingKey[String]("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
+
+    val ethSolidityCompiler = settingKey[Compiler.Solidity]("Implementation of com.mchange.sc.v1.sbtethereum.Compiler.Solidity to use for compiling solidity files.")
+
     val ethTargetDir = settingKey[File]("Location in target directory where ethereum artifacts will be placed")
 
     val ethSoliditySource = settingKey[File]("Solidity source code directory")
@@ -281,6 +285,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
 
+      ethSolidityCompiler in Compile := {
+        (ethNetcompileUrl in Compile).?.value match {
+          case Some( netcompileUrl ) => Compiler.Solidity.EthNetcompile( netcompileUrl )
+          case None                  => Compiler.Solidity.EthJsonRpc( (ethJsonRpcUrl in Compile).value )
+        }
+      },
+
       ethSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
 
       ethSolidityDestination in Compile := (ethTargetDir in Compile).value / "solidity",
@@ -361,8 +372,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       ethSolidityCompile in Compile := {
-        val log        = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
+        val log = streams.value.log
+
+        val compiler = (ethSolidityCompiler in Compile).value
 
         val includeStrings = ethIncludeLocations.value    
 
@@ -373,7 +385,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val includeLocations = includeStrings.map( SourceFile.Location.apply( baseDir, _ ) )
 
-        doCompileSolidity( log, jsonRpcUrl, includeLocations, solSource, solDestination )
+        doCompileSolidity( log, compiler, includeLocations, solSource, solDestination )
       },
 
       xethDefaultGasPrice := {
