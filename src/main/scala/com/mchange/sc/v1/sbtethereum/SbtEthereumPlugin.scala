@@ -288,7 +288,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethSolidityCompiler in Compile := {
         (ethNetcompileUrl in Compile).?.value match {
           case Some( netcompileUrl ) => Compiler.Solidity.EthNetcompile( netcompileUrl )
-          case None                  => Compiler.Solidity.EthJsonRpc( (ethJsonRpcUrl in Compile).value )
+          case None                  => {
+            if ( Compiler.Solidity.test( Compiler.Solidity.LocalSolc ) ) {
+              Compiler.Solidity.LocalSolc
+            } else {
+              Compiler.Solidity.EthJsonRpc( (ethJsonRpcUrl in Compile).value )
+            }
+          }
         }
       },
 

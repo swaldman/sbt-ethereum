@@ -46,6 +46,7 @@ package object sbtethereum {
   final class BadCodeFormatException( msg : String )                         extends SbtEthereumException( msg )
   final class UnparsableFileException( msg : String, line : Int, col : Int ) extends SbtEthereumException( msg + s" [${line}:${col}]" )
   final class RepositoryException( msg : String )                            extends SbtEthereumException( msg )
+  final class CompilationFailedException( msg : String )                     extends SbtEthereumException( msg )
 
   private val SolFileRegex = """(.+)\.sol""".r
 
