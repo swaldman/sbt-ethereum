@@ -135,38 +135,31 @@ object Repository {
       }
     }
 
-    /**
-      * Return value is whether any change was made, won't update already set ABIs.
-      * Explicitly forget the ABI if you really need to change the ABI.
-      */ 
-    def setContractAbi( code : Seq[Byte], abiString : String ) : Failable[Boolean] = {
+    def setMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress, abiDefinition : Abi.Definition ) : Failable[Unit] = {
       DataSource.flatMap { ds =>
         Failable {
-          val bcas = BaseCodeAndSuffix( code.hex )
           borrow( ds.getConnection() ){ conn =>
-            Table.KnownCompilations.select( conn, bcas.fullCodeHash ) match {
-              case Some( knownCompilation ) => {
-                knownCompilation.mbAbiDefinition match {
-                  case Some( _ ) => false // ABI definition already set
-                  case None      => Table.KnownCompilations.updateAbiDefinition( conn, bcas.baseCodeHash, bcas.fullCodeHash, Some( abiString ) )
-                }
-              }
-              case None => {
-                insertCompilation( code = code.hex, mbAbiDefinition = Some( abiString ) )
-                true
-              }
-            }
+            Table.MemorizedAbis.insert( conn, blockchainId, contractAddress, abiDefinition )
           }
         }
       }
     }
 
-    def forgetContractAbi( code : Seq[Byte] ) : Failable[Unit] = {
+    def deleteMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress ) : Failable[Unit] = {
       DataSource.flatMap { ds =>
         Failable {
-          val bcas = BaseCodeAndSuffix( code.hex )
           borrow( ds.getConnection() ){ conn =>
-            Table.KnownCompilations.updateAbiDefinition( conn, bcas.baseCodeHash, bcas.fullCodeHash, None )
+            Table.MemorizedAbis.delete( conn, blockchainId, contractAddress )
+          }
+        }
+      }
+    }
+
+    def getMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress ) : Failable[Option[Abi.Definition]] = {
+      DataSource.flatMap { ds =>
+        Failable {
+          borrow( ds.getConnection() ){ conn =>
+            Table.MemorizedAbis.select( conn, blockchainId, contractAddress )
           }
         }
       }

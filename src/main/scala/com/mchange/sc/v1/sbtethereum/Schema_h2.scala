@@ -513,7 +513,54 @@ object Schema_h2 {
         }
       }
     }
-
+    final object MemorizedAbis {
+      final val CreateSql = {
+        """|CREATE TABLE IF NOT EXISTS memorized_abis (
+           |   blockchain_id    VARCHAR(64),
+           |   contract_address CHAR(40),
+           |   abi_definition   CLOB,
+           |   PRIMARY KEY ( blockchain_id, contract_address )
+           |)""".stripMargin
+      }
+      private val InsertSql = {
+        """|INSERT INTO memorized_abis ( blockchain_id, contract_address, abi_definition )
+           |VALUES( ?, ?, ? )""".stripMargin
+      }
+      private val DeleteSql = {
+        """|DELETE FROM memorized_abis
+           |WHERE blockchain_id = ? AND contract_address = ?""".stripMargin
+      }
+      private val SelectSql = {
+        """|SELECT abi_definition
+           |FROM memorized_abis
+           |WHERE blockchain_id = ? AND contract_address = ?""".stripMargin
+      }
+      def select( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Option[Abi.Definition] = {
+        borrow( conn.prepareStatement( SelectSql ) ){ ps =>
+          ps.setString(1, blockchainId )
+          ps.setString(2, contractAddress.hex )
+          borrow( ps.executeQuery() ){ rs =>
+            val mbJson = getMaybeSingleString( rs )
+            mbJson.map( Json.parse ).map( _.as[Abi.Definition] )
+          }
+        }
+      }
+      def insert( conn : Connection, blockchainId : String, contractAddress : EthAddress, abiDefinition : Abi.Definition ) : Unit = {
+        borrow( conn.prepareStatement( InsertSql ) ) { ps =>
+          ps.setString( 1, blockchainId )
+          ps.setString( 2, contractAddress.hex )
+          ps.setString( 3, Json.stringify( Json.toJson( abiDefinition ) ) )
+          ps.executeUpdate()
+        }
+      }
+      def delete( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Unit = {
+        borrow( conn.prepareStatement( DeleteSql ) ) { ps =>
+          ps.setString( 1, blockchainId )
+          ps.setString( 2, contractAddress.hex )
+          ps.executeUpdate()
+        }
+      }
+    }
     final object AddressAliases {
       val CreateSql = {
         """|CREATE TABLE IF NOT EXISTS address_aliases (
@@ -523,10 +570,6 @@ object Schema_h2 {
       }
       val CreateIndex = "CREATE INDEX IF NOT EXISTS address_aliases_address_idx ON address_aliases( address )"
 
-      private val InsertSql = {
-        """|MERGE INTO address_aliases ( alias, addres )
-           |VALUES( ?, ? )""".stripMargin
-      }
       def selectByAlias( conn : Connection, alias : String ) : Option[EthAddress] = {
         borrow( conn.prepareStatement( "SELECT address FROM address_aliases WHERE alias = ?" ) ) { ps =>
           ps.setString(1, alias)

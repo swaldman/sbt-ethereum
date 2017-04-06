@@ -602,20 +602,20 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethAbiMemorize := {
         val blockchainId = ethBlockchainId.value
-        val jsonRpcUrl = ethJsonRpcUrl.value
         val log = streams.value.log
         val is = interactionService.value
         val ( address, abi ) = readAddressAndAbi( log, is )
-        val code = doCodeForAddress( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest )
-
-        val check = Repository.Database.setContractAbi( code, Json.stringify( Json.toJson( abi ) ) ).get // thrown an Exception if there's a database issue
-        if (!check) {
-          log.info( s"The contract code at address '$address' was already associated with an ABI, which has not been overwritten." )
-          log.info( s"Associating address with the known ABI.")
+        val mbKnownCompilation = Repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
+        mbKnownCompilation match {
+          case Some( knownCompilation ) => {
+            log.info( s"The contract at address '$address' was already associated with a deployed compilation." )
+            // TODO, maybe, check if the deployed compilation includes a non-null ABI
+          }
+          case None => {
+            Repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // thrown an Exception if there's a database issue
+            log.info( s"ABI is now known for the contract at address ${address.hex}" )
+          }
         }
-        Repository.Database.insertExistingDeployment( blockchainId, address, code.hex ).get // throw an Exception if there's a database issue
-
-        log.info( s"ABI is now known for the contract at address ${address.hex}" )
       },
 
       ethKeystoreMemorizeWalletV3 := {
