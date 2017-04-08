@@ -441,6 +441,11 @@ object Repository {
     }
   }
 
+  final object SolcJ {
+    val DirName = "solcJ"
+    lazy val Directory : Failable[File] = Repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
+  }
+
   lazy val Directory : Failable[File] = {
     def defaultLocation = {
       Platform.Current

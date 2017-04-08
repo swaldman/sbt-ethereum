@@ -56,10 +56,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val Zero = BigInt(0)
 
-
   private val Zero256 = Unsigned256( 0 )
 
   private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
+
+  private val LatestSolcJVersion = "0.4.10"
 
   object autoImport {
 
@@ -170,6 +171,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreRevealPrivateKey = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
 
     val ethSolidityCompile = taskKey[Unit]("Compiles solidity files")
+
+    val ethSolidityInstallLocalCompiler = taskKey[Unit]("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum Repository")
 
     val xethQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
 
@@ -388,6 +391,18 @@ object SbtEthereumPlugin extends AutoPlugin {
         val includeLocations = includeStrings.map( SourceFile.Location.apply( baseDir, _ ) )
 
         doCompileSolidity( log, compiler, includeLocations, solSource, solDestination )
+      },
+
+      ethSolidityInstallLocalCompiler := {
+        val log = streams.value.log
+        log.info( s"Installing local solidity compiler into the sbt-ethereum repository. This may take a few minutes." )
+        val check = Repository.SolcJ.Directory.flatMap { rootSolcJDir =>
+          Failable {
+            SolcJInstaller.installLocalSolcJ( rootSolcJDir.toPath, LatestSolcJVersion )
+            log.info( s"Installed local solcJ compiler, version ${LatestSolcJVersion} in '${rootSolcJDir}'." )
+          }
+        }
+        check.get // throw if a failure occurred
       },
 
       xethDefaultGasPrice := {
