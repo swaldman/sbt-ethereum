@@ -41,6 +41,7 @@ object Schema_h2 {
         stmt.executeUpdate( Table.KnownCode.CreateSql )
         stmt.executeUpdate( Table.KnownCompilations.CreateSql )
         stmt.executeUpdate( Table.DeployedCompilations.CreateSql )
+        stmt.executeUpdate( Table.MemorizedAbis.CreateSql )
         stmt.executeUpdate( Table.AddressAliases.CreateSql )
         stmt.executeUpdate( Table.AddressAliases.CreateIndex )
       }
