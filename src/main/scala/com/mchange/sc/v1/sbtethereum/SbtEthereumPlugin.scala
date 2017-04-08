@@ -921,20 +921,21 @@ object SbtEthereumPlugin extends AutoPlugin {
         val blockchainId = ethBlockchainId.value
         val jsonRpcUrl = ethJsonRpcUrl.value
         val ( contractName, extraData ) = parser.parsed
-        val ( compilation, inputsHex ) = {
+        val ( compilation, inputsBytes ) = {
           extraData match {
             case None => { 
               // at the time of parsing, a compiled contract is not available. we'll force compilation now, but can't accept contructor arguments
               val contractsMap = xethLoadCompilationsOmitDups.value
               val compilation = contractsMap( contractName )
-              ( compilation, "" )
+              ( compilation, immutable.Seq.empty[Byte] )
             }
             case Some( ( inputs, abi, compilation ) ) => {
               // at the time of parsing, a compiled contract is available, so we've decoded constructor inputs( if any )
-              ( compilation, ethabi.constructorCallData( inputs, abi ).get.hex ) // asserts successful encoding of params
+              ( compilation, ethabi.constructorCallData( inputs, abi ).get ) // asserts successful encoding of params
             }
           }
         }
+        val inputsHex = inputsBytes.hex
         val codeHex = compilation.code
         val dataHex = codeHex ++ inputsHex
         val address = EthAddress( ethAddress.value )
@@ -953,7 +954,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
             val dbCheck = {
               import compilation.info._
-              Repository.Database.insertNewDeployment( blockchainId, ca, codeHex, address, txnHash )
+              Repository.Database.insertNewDeployment( blockchainId, ca, codeHex, address, txnHash, inputsBytes )
             }
             dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
           }

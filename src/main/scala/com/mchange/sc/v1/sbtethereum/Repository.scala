@@ -115,11 +115,11 @@ object Repository {
       }
     }
 
-    def insertNewDeployment( blockchainId : String, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash ) : Failable[Unit] = {
+    def insertNewDeployment( blockchainId : String, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash, constructorInputs : immutable.Seq[Byte] ) : Failable[Unit] = {
       DataSource.flatMap { ds =>
         Failable {
           borrow( ds.getConnection() ){ conn =>
-            Table.DeployedCompilations.insertNewDeployment( conn, blockchainId, contractAddress, code, deployerAddress, transactionHash )
+            Table.DeployedCompilations.insertNewDeployment( conn, blockchainId, contractAddress, code, deployerAddress, transactionHash, constructorInputs )
           }
         }
       }
@@ -305,23 +305,24 @@ object Repository {
     }
 
     case class DeployedContractInfo (
-      blockchainId      : String,
-      contractAddress   : EthAddress,
-      codeHash          : EthHash,
-      code              : String,
-      mbDeployerAddress : Option[EthAddress],
-      mbTransactionHash : Option[EthHash],
-      mbDeployedWhen    : Option[Long],
-      mbName            : Option[String],
-      mbSource          : Option[String],
-      mbLanguage        : Option[String],
-      mbLanguageVersion : Option[String],
-      mbCompilerVersion : Option[String],
-      mbCompilerOptions : Option[String],
-      mbAbiDefinition   : Option[Abi.Definition],
-      mbUserDoc         : Option[Doc.User],
-      mbDeveloperDoc    : Option[Doc.Developer],
-      mbMetadata        : Option[String]
+      blockchainId        : String,
+      contractAddress     : EthAddress,
+      codeHash            : EthHash,
+      code                : String,
+      mbDeployerAddress   : Option[EthAddress],
+      mbTransactionHash   : Option[EthHash],
+      mbDeployedWhen      : Option[Long],
+      mbConstructorInputs : Option[immutable.Seq[Byte]],
+      mbName              : Option[String],
+      mbSource            : Option[String],
+      mbLanguage          : Option[String],
+      mbLanguageVersion   : Option[String],
+      mbCompilerVersion   : Option[String],
+      mbCompilerOptions   : Option[String],
+      mbAbiDefinition     : Option[Abi.Definition],
+      mbUserDoc           : Option[Doc.User],
+      mbDeveloperDoc      : Option[Doc.Developer],
+      mbMetadata          : Option[String]
     )
 
     def deployedContractInfoForAddress( blockchainId : String, address : EthAddress ) : Failable[Option[DeployedContractInfo]] =  {
@@ -334,23 +335,24 @@ object Repository {
               knownCompilation    <- Table.KnownCompilations.select( conn, deployedCompilation.fullCodeHash )
             } yield {
               DeployedContractInfo (
-                blockchainId       = deployedCompilation.blockchainId,
-                contractAddress    = deployedCompilation.contractAddress,
-                codeHash           = deployedCompilation.fullCodeHash,
-                code               = knownCode ++ knownCompilation.codeSuffix,
-                mbDeployerAddress  = deployedCompilation.mbDeployerAddress,
-                mbTransactionHash  = deployedCompilation.mbTransactionHash,
-                mbDeployedWhen     = deployedCompilation.mbDeployedWhen,
-                mbName             = knownCompilation.mbName,
-                mbSource           = knownCompilation.mbSource,
-                mbLanguage         = knownCompilation.mbLanguage,
-                mbLanguageVersion  = knownCompilation.mbLanguageVersion,
-                mbCompilerVersion  = knownCompilation.mbCompilerVersion,
-                mbCompilerOptions  = knownCompilation.mbCompilerOptions,
-                mbAbiDefinition    = knownCompilation.mbAbiDefinition,
-                mbUserDoc          = knownCompilation.mbUserDoc,
-                mbDeveloperDoc     = knownCompilation.mbDeveloperDoc,
-                mbMetadata         = knownCompilation.mbMetadata
+                blockchainId         = deployedCompilation.blockchainId,
+                contractAddress      = deployedCompilation.contractAddress,
+                codeHash             = deployedCompilation.fullCodeHash,
+                code                 = knownCode ++ knownCompilation.codeSuffix,
+                mbDeployerAddress    = deployedCompilation.mbDeployerAddress,
+                mbTransactionHash    = deployedCompilation.mbTransactionHash,
+                mbDeployedWhen       = deployedCompilation.mbDeployedWhen,
+                mbConstructorInputs  = deployedCompilation.mbConstructorInputs,
+                mbName               = knownCompilation.mbName,
+                mbSource             = knownCompilation.mbSource,
+                mbLanguage           = knownCompilation.mbLanguage,
+                mbLanguageVersion    = knownCompilation.mbLanguageVersion,
+                mbCompilerVersion    = knownCompilation.mbCompilerVersion,
+                mbCompilerOptions    = knownCompilation.mbCompilerOptions,
+                mbAbiDefinition      = knownCompilation.mbAbiDefinition,
+                mbUserDoc            = knownCompilation.mbUserDoc,
+                mbDeveloperDoc       = knownCompilation.mbDeveloperDoc,
+                mbMetadata           = knownCompilation.mbMetadata
               )
             }
           }
