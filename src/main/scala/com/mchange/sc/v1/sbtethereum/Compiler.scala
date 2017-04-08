@@ -54,10 +54,15 @@ object Compiler {
         val top = ethNetcompileResult.value
         top("warnings").as[JsArray].value.foreach( jsv => log.warn( jsv.as[String] ) )
         val tuples = {
-          top( "contracts" ).as[JsObject].fields.map { case ( contractName : String, jsv : JsValue ) =>
+          top( "contracts" ).as[JsObject].fields.foldLeft( immutable.Seq.empty[(String,Compilation.Contract)] ) { case ( last, ( contractName : String, jsv : JsValue ) ) =>
             val jsoMap = jsv.as[JsObject].value
-            val contract = contractFromMetadata( log, source, contractName, jsoMap( "code" ).as[String], jsoMap( "metadata" ).as[String] )
-            contractName -> contract
+            val metadata = jsoMap( "metadata" ).as[String]
+            if ( metadata != null && metadata.length > 0 ) {
+              val contract = contractFromMetadata( log, source, contractName, jsoMap( "code" ).as[String], metadata )
+              last :+ ( contractName -> contract )
+            } else {
+              last
+            }
           }
         }
         immutable.Map( tuples : _* )
@@ -120,10 +125,15 @@ object Compiler {
             if ( stdout.length > 0 ) {
               val top = Json.parse( stdout ).as[JsObject].value
               val tuples = {
-                top( "contracts" ).as[JsObject].fields.map { case ( SimpleContractNameRegex( contractName ), jsv : JsValue ) =>
+                top( "contracts" ).as[JsObject].fields.foldLeft( immutable.Seq.empty[(String,Compilation.Contract)] ) { case ( last, ( SimpleContractNameRegex( contractName ), jsv : JsValue ) ) =>
                   val jsoMap = jsv.as[JsObject].value
-                  val contract = contractFromMetadata( log, source, contractName, jsoMap( "bin" ).as[String], jsoMap( "metadata" ).as[String] )
-                  contractName -> contract
+                  val metadata = jsoMap( "metadata" ).as[String]
+                  if ( metadata != null && metadata.length > 0 ) {
+                    val contract = contractFromMetadata( log, source, contractName, jsoMap( "bin" ).as[String], metadata )
+                    last :+ ( contractName -> contract )
+                  } else {
+                    last
+                  }
                 }
               }
               completedCompilation.set( Some( immutable.Map( tuples : _* ) ) )
