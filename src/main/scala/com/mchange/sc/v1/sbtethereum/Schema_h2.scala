@@ -529,20 +529,6 @@ object Schema_h2 {
           ps.executeUpdate()
         }
       }
-      def insertExistingDeployment( conn : Connection, blockchainId : String, contractAddress : EthAddress, code : String ) : Unit = {
-        val bcas = BaseCodeAndSuffix( code )
-        borrow( conn.prepareStatement( InsertSql ) ) { ps =>
-          ps.setString( 1, blockchainId )
-          ps.setString( 2, contractAddress.hex )
-          ps.setString( 3, bcas.baseCodeHash.hex )
-          ps.setString( 4, bcas.fullCodeHash.hex )
-          ps.setNull  ( 5, Types.CHAR )
-          ps.setNull  ( 6, Types.CHAR )
-          ps.setNull  ( 7, Types.TIMESTAMP )
-          ps.setNull  ( 8, Types.CLOB )
-          ps.executeUpdate()
-        }
-      }
     }
     final object MemorizedAbis {
       final val CreateSql = {

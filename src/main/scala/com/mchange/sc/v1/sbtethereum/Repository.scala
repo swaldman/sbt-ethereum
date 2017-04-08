@@ -128,16 +128,6 @@ object Repository {
       }
     }
 
-    def insertExistingDeployment( blockchainId : String, contractAddress : EthAddress, code : String ) : Failable[Unit] = {
-      DataSource.flatMap { ds =>
-        Failable {
-          borrow( ds.getConnection() ){ conn =>
-            Table.DeployedCompilations.insertExistingDeployment( conn, blockchainId, contractAddress, code )
-          }
-        }
-      }
-    }
-
     def setMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress, abiDefinition : Abi.Definition ) : Failable[Unit] = {
       DataSource.flatMap { ds =>
         Failable {
