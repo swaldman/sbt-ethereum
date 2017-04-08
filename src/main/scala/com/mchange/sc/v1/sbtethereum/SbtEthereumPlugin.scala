@@ -81,8 +81,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethKeystoreLocationsV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
 
-    val ethKnownStubAddresses = settingKey[immutable.Map[String,immutable.Set[String]]]("Names of stubs that might be generated in compilation mapped to addresses known to conform to their ABIs.")
-
     val ethJsonRpcUrl = settingKey[String]("URL of the Ethereum JSON-RPC service build should work with")
 
     val ethNetcompileUrl = settingKey[String]("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
@@ -183,7 +181,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethKeystoreInspectWalletV3 = inputKey[Unit]("Prints V3 wallet as JSON to the console.")
 
-    val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts and stubs (defined in ethKnownStubAddresses) into the contract database. Returns true if changes were made.")
+    val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts into the contract database. Returns true if changes were made.")
 
     val ethKeystoreValidateWalletV3 = inputKey[Unit]("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
@@ -272,8 +270,6 @@ object SbtEthereumPlugin extends AutoPlugin {
         def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
         listify( Repository.KeyStore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
       },
-
-      ethKnownStubAddresses := Map.empty,
 
       ethAddress := {
         val mbProperty = Option( System.getProperty( EthAddressSystemProperty ) )
@@ -711,16 +707,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       },
 
       xethUpdateContractDatabase := {
-        val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        val compilations           = xethLoadCompilationsKeepDups.value // we want to "know" every contract we've seen, which might include contracts with multiple names
-        val stubNameToAddresses    = ethKnownStubAddresses.value.mapValues( stringSet => stringSet.map( EthAddress.apply ) )
-        val stubNameToAddressCodes  = {
-          stubNameToAddresses.map { case ( name, addresses ) =>
-            ( name, immutable.Map( addresses.map( address => ( address, doCodeForAddress( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Pending ).hex ) ).toSeq : _* ) )
-          }
-        }
-        Repository.Database.updateContractDatabase( compilations, stubNameToAddressCodes ).get
+        val log          = streams.value.log
+        val jsonRpcUrl   = ethJsonRpcUrl.value
+        val compilations = xethLoadCompilationsKeepDups.value // we want to "know" every contract we've seen, which might include contracts with multiple names
+
+        Repository.Database.updateContractDatabase( compilations ).get
       },
 
       ethKeystoreValidateWalletV3 <<= ethKeystoreValidateWalletV3Task,

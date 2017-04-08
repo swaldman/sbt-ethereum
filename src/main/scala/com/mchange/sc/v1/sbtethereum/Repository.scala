@@ -12,6 +12,7 @@ import scala.collection._
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.sql._
+import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v2.util.Platform
 
@@ -25,6 +26,8 @@ import com.mchange.v2.c3p0.ComboPooledDataSource
 import play.api.libs.json._
 
 object Repository {
+  private implicit lazy val logger : com.mchange.sc.v1.log.MLogger = mlogger( this )
+
   private val SystemProperty      = "sbt.ethereum.repository"
   private val EnvironmentVariable = "SBT_ETHEREUM_REPOSITORY"
 
@@ -165,13 +168,12 @@ object Repository {
       }
     }
 
-    /*
-     *  this could be a bit less convoluted.
-     * 
-     *  okay. it could be a lot less convoluted.
-     */ 
-    def updateContractDatabase( compilations : Iterable[(String,jsonrpc20.Compilation.Contract)], stubNameToAddressCodes : Map[String,Map[EthAddress,String]] ) : Failable[Boolean] = {
+    def updateContractDatabase( compilations : Iterable[(String,jsonrpc20.Compilation.Contract)] ) : Failable[Boolean] = {
       val ( compiledContracts, stubsWithDups ) = compilations.partition { case ( name, compilation ) => compilation.code.decodeHex.length > 0 }
+
+      stubsWithDups.foreach { case ( name, compilation ) =>
+        DEBUG.log( s"Contract '$name' is a stub or abstract contract, and so has not been incorporated into Repository compilations." )( Repository.logger )
+      }
 
       def updateKnownContracts( conn : Connection ) : Failable[Boolean] = {
         def doUpdate( conn : Connection, contractTuple : Tuple2[String,jsonrpc20.Compilation.Contract] ) : Failable[Boolean] = Failable {
@@ -220,87 +222,9 @@ object Repository {
         }
         compiledContracts.toSeq.foldLeft( succeed( false ) )( ( failable, tup ) => failable.flatMap( last => doUpdate( conn, tup ).map( next => last || next ) ) )
       }
-      def updateStubs( conn : Connection ) : Failable[Boolean] = {
-        def doUpdate( address : EthAddress, code : String, name : String, abiDefinition : Abi.Definition ) : Failable[Boolean] = Failable {
-          val bcas = BaseCodeAndSuffix( code )
-
-          Table.KnownCode.upsert( conn, bcas.baseCodeHex )
-
-          val stubCompilation = Table.KnownCompilations.KnownCompilation(
-            bcas.baseCodeHash,
-            bcas.fullCodeHash,
-            bcas.codeSuffixHex,
-            Some( name ),
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some( abiDefinition ),
-            None,
-            None,
-            None
-          )
-
-          val mbKnownCompilation = Table.KnownCompilations.select( conn, bcas.fullCodeHash )
-
-          mbKnownCompilation match {
-            case Some( kc ) => {
-              if ( kc != stubCompilation ) {
-                // note: we don't reconcile stubs over known compilations, we fail on any inconsistency
-                Table.KnownCompilations.upsert( conn, stubCompilation reconcile kc ) 
-                true
-              } else {
-                false
-              }
-            }
-            case None => {
-              Table.KnownCompilations.upsert( conn, stubCompilation )
-              true
-            }
-          }
-        }
-
-        // we fail if there are duplicate stubs, which we cannot support, succeed otherwise
-        val fstubs : Failable[Map[String,jsonrpc20.Compilation.Contract]] = Failable.sequence {
-          stubsWithDups
-            .groupBy( _._1 )                                     // key -> Iterable( key -> v0, key -> v1, ... )
-            .map( tup => ( tup._1, tup._2.map( _._2 ).toSet ) )  // key -> Set( v0, v1, ... )
-            .map( tup => if ( tup._2.size > 1 ) fail( s"Unsupported: '${tup._1}' is associated with multiple stubs with different ABIs." ) else succeed( ( tup._1, tup._2.head ) ) )
-            .toSeq
-        }.map( _.toMap )
-
-        fstubs.flatMap { stubs =>
-          stubNameToAddressCodes.toSeq.foldLeft( succeed( false ) ) { case ( last, ( name, addressToCode ) ) =>
-            last.flatMap { l =>
-              val fabi = {
-                (for {
-                  compilation <- stubs.get( name )
-                  abiStr      <- compilation.info.mbAbiDefinition
-                } yield {
-                  Json.parse( abiStr ).as[Abi.Definition]
-                }).toFailable( s"Could not find abi definition for '${name}' in stub compilations. [ present in compilations? ${compilations.toMap.contains(name)}; zero-code stub? ${stubs.contains(name)} ]" )
-              }
-              val fb = fabi.flatMap { abi =>
-                addressToCode.toSeq.foldLeft( succeed( false ) ){ ( failable, tup ) =>
-                  failable.flatMap( last => doUpdate( tup._1, tup._2, name, abi ).map( next => last || next ) )
-                }
-              }
-              fb.map( b => l || b )
-            }
-          }
-        }
-      }
 
       DataSource.flatMap { ds =>
-        borrowTransact( ds.getConnection() ){ conn =>
-          for {
-            knownContractsCheck <- updateKnownContracts( conn )
-            stubsCheck          <- updateStubs( conn )
-          } yield {
-            knownContractsCheck || stubsCheck
-          }
-        }
+        borrowTransact( ds.getConnection() )( updateKnownContracts )
       }
     }
 
