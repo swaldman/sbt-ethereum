@@ -539,7 +539,7 @@ object Schema_h2 {
           ps.setNull  ( 5, Types.CHAR )
           ps.setNull  ( 6, Types.CHAR )
           ps.setNull  ( 7, Types.TIMESTAMP )
-          ps.setNull  ( 8, Types.CHAR )
+          ps.setNull  ( 8, Types.CLOB )
           ps.executeUpdate()
         }
       }
