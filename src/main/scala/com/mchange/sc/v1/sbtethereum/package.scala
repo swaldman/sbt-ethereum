@@ -13,6 +13,7 @@ import scala.util.matching.Regex.Match
 import scala.annotation.tailrec
 
 import java.io._
+import java.nio.file.Files
 
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v2.concurrent._
@@ -40,13 +41,15 @@ package object sbtethereum {
 
   abstract class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
 
-  final class NoSolidityCompilerException( msg : String )                    extends SbtEthereumException( msg )
-  final class DatabaseVersionException( msg : String )                       extends SbtEthereumException( msg )
-  final class ContractUnknownException( msg : String )                       extends SbtEthereumException( msg )
-  final class BadCodeFormatException( msg : String )                         extends SbtEthereumException( msg )
-  final class UnparsableFileException( msg : String, line : Int, col : Int ) extends SbtEthereumException( msg + s" [${line}:${col}]" )
-  final class RepositoryException( msg : String )                            extends SbtEthereumException( msg )
-  final class CompilationFailedException( msg : String )                     extends SbtEthereumException( msg )
+  final class NoSolidityCompilerException( msg : String )                                   extends SbtEthereumException( msg )
+  final class DatabaseVersionException( msg : String )                                      extends SbtEthereumException( msg )
+  final class ContractUnknownException( msg : String )                                      extends SbtEthereumException( msg )
+  final class BadCodeFormatException( msg : String )                                        extends SbtEthereumException( msg )
+  final class UnparsableFileException( msg : String, line : Int, col : Int )                extends SbtEthereumException( msg + s" [${line}:${col}]" )
+  final class RepositoryException( msg : String )                                           extends SbtEthereumException( msg )
+  final class CompilationFailedException( msg : String )                                    extends SbtEthereumException( msg )
+  final class BadSolidityVersionException( badVersion : String )                            extends SbtEthereumException( s"Bad version string: '$badVersion'" )
+  final class IncompatibleSolidityVersionsException( versions : Iterable[SemanticVersion] ) extends SbtEthereumException( s"""Can't reconcile: ${versions.map("^"+_).mkString(", ")}""" )
 
   private val SolFileRegex = """(.+)\.sol""".r
 
@@ -106,7 +109,7 @@ package object sbtethereum {
 
     var lastModified : Long = input.lastModified
 
-    val ( normalized, tcq ) = TextCommentQuote.parse( input.text )
+    val ( normalized, tcq ) = TextCommentQuote.parse( input.rawText )
      
     def replaceMatch( m : Match ) : String = {
       if ( tcq.quote.containsPoint( m.start ) ) {          // if the word import is in a quote
@@ -120,7 +123,7 @@ package object sbtethereum {
             val fimport = loadResolveSourceFile( input.immediateParent +: allSourceLocations, key ) // look first local to this file to resolve recursive imports
             val sourceFile = fimport.get // throw the Exception if resolution failed
             lastModified = max( lastModified, sourceFile.lastModified )
-            sourceFile.text
+            sourceFile.rawText
           }
           case unkey => throw new Exception( s"""Unsupported import format: '${unkey}' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
         }
@@ -161,16 +164,33 @@ package object sbtethereum {
     solDestDir.mkdirs()
     val files = (solSourceDir ** "*.sol").get.filter( file => goodSolidityFileName( file.getName ) )
 
-    val filePairs = files.map( file => ( file, loadResolveSourceFile( file, includeSourceLocations ).get, new File( solDestDir, solToJson( file.getName() ) ) ) ) // (sourceFile, destinationFile), exception if file can't load
-    val compileFiles = filePairs.filter{ case ( file, sourceFile, destFile ) => changed( destFile, sourceFile ) }
+    val filePairs = files.map { file =>
+       // ( rawSourceFile, sourceFile, destinationFile, debugDestinationFile ), exception if file can't load
+      ( file, loadResolveSourceFile( file, includeSourceLocations ).get, new File( solDestDir, solToJson( file.getName() ) ), new File( solDestDir, file.getName() ) )
+    }
+    val compileFiles = filePairs.filter { case ( _, sourceFile, destFile, _ ) => changed( destFile, sourceFile ) }
 
     val cfl = compileFiles.length
     if ( cfl > 0 ) {
       val mbS = if ( cfl > 1 ) "s" else ""
       log.info( s"Compiling ${compileFiles.length} Solidity source${mbS} to ${solDestDir}..." )
 
-      val compileLabeledFuts = compileFiles.map { case ( file, sourceFile, destFile ) =>
-        file -> compiler.compile( log, sourceFile.text ).map( result => ( destFile, result ) )
+      val compileLabeledFuts = compileFiles.map { case ( file, sourceFile, destFile, debugDestFile ) =>
+        val combinedSource = {
+          s"""|/*
+              | * DO NOT EDIT! DO NOT EDIT! DO NOT EDIT!
+              | *
+              | * This is an automatically generated file. It will be overwritten.
+              | *
+              | * For the original source see 
+              | *    '${file.getPath}'
+              | */
+              |
+              |""".stripMargin + sourceFile.pragmaResolvedText
+        }
+        Files.write( debugDestFile.toPath(), combinedSource.getBytes( Codec.UTF8.charSet ) )
+        log.info( s"Compiling '${file.getName()}'. (Debug source: '${debugDestFile.getPath()}')" )
+        file -> compiler.compile( log, combinedSource ).map( result => ( destFile, result ) )
       }
       waitForFiles( compileLabeledFuts, count => s"compileSolidity failed. [${count} failures]" )
 

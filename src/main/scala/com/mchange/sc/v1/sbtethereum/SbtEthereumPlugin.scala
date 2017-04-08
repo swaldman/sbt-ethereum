@@ -517,7 +517,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           vec ++ next
         }
 
-        dir.list.foldLeft( immutable.Vector.empty[(String,jsonrpc20.Compilation.Contract)] )( addContracts )
+        dir.list.filter( _.endsWith(".json") ).foldLeft( immutable.Vector.empty[(String,jsonrpc20.Compilation.Contract)] )( addContracts )
       },
 
       xethLoadCompilationsOmitDups := {
@@ -570,7 +570,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           ( addAllKeepShorterSource( addTo, next ), overlaps ++ realNewOverlaps )
         }
 
-        val ( rawCompilations, duplicates ) = dir.list.foldLeft( ( immutable.Map.empty[String,jsonrpc20.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
+        val ( rawCompilations, duplicates ) = dir.list.filter( _.endsWith( ".json" ) ).foldLeft( ( immutable.Map.empty[String,jsonrpc20.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
         if ( !duplicates.isEmpty ) {
           val dupsStr = duplicates.mkString(", ")
           log.warn( s"The project contains mutiple contracts and/or libraries that have identical names but compile to distinct code: $dupsStr" )

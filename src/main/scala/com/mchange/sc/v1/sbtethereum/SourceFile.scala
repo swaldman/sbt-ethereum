@@ -19,6 +19,8 @@ object SourceFile {
 
   val AbsoluteFileRegex = """^(?:/|\\).*|[A-Z]\:\\.*""".r
 
+  val PragmaSolidityRegex = """(?i)pragma\s+solidity\s+\^([^\s\;]+)\s*\;""".r
+
   def transformSpecialUrl( mbSpecialUrl : String ) : Option[String] = {
     mbSpecialUrl match {
       case GithubUrlRegex( host, path ) => Some( s"""https://raw.githubusercontent.com${BlobRegex.replaceAllIn(path,"")}""" )
@@ -142,5 +144,31 @@ object SourceFile {
     }
   }
 }
-case class SourceFile( immediateParent : SourceFile.Location, text : String, lastModified : Long )
+case class SourceFile( immediateParent : SourceFile.Location, rawText : String, lastModified : Long ) {
+
+  import SourceFile.PragmaSolidityRegex
+
+  private def exciseAndPrepend( semanticVersion : SemanticVersion ) : String = {
+    val pragma = s"pragma solidity ^${semanticVersion.versionString};\n\n"
+    pragma + PragmaSolidityRegex.replaceAllIn( rawText, _ => "\n\n" )
+  }
+
+  lazy val pragmaResolvedText : String = {
+    val matches = PragmaSolidityRegex.findAllMatchIn( rawText ).toVector
+    matches.length match {
+      case 0 => rawText
+      case 1 => exciseAndPrepend( SemanticVersion( matches.head.group(1) ) )
+      case n => {
+        val versions = matches.map( m => SemanticVersion( m.group(1) ) )
+        val optVersions = versions.map( Some.apply )
+        val mbCompatibleVersion = optVersions.reduceLeft( SemanticVersion.restrictiveCaretCompatible )
+        val compatibleVersion = mbCompatibleVersion match {
+          case Some( sv ) => sv
+          case None => throw new IncompatibleSolidityVersionsException( versions )
+        }
+        exciseAndPrepend( compatibleVersion )
+      }
+    }
+  }
+}
 
