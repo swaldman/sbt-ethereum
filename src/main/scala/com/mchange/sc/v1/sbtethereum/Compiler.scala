@@ -65,6 +65,9 @@ object Compiler {
     }
     final case object LocalSolc extends Compiler.Solidity {
       val SolcCommand = immutable.Seq("solc","--combined-json","bin,metadata","-")
+
+      val SimpleContractNameRegex = """^(?:[^\:]*\:)?(.+)$""".r
+
       def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         import java.io._
         import scala.sys.process._
@@ -117,7 +120,7 @@ object Compiler {
             if ( stdout.length > 0 ) {
               val top = Json.parse( stdout ).as[JsObject].value
               val tuples = {
-                top( "contracts" ).as[JsObject].fields.map { case ( contractName : String, jsv : JsValue ) =>
+                top( "contracts" ).as[JsObject].fields.map { case ( SimpleContractNameRegex( contractName ), jsv : JsValue ) =>
                   val jsoMap = jsv.as[JsObject].value
                   val contract = contractFromMetadata( log, source, contractName, jsoMap( "bin" ).as[String], jsoMap( "metadata" ).as[String] )
                   contractName -> contract
