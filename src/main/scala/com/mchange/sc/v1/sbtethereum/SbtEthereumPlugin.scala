@@ -326,7 +326,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethAliasList := {
         val log = streams.value.log
-        val faliases = Repository.Database.findAllAliases
+        val blockchainId = ethBlockchainId.value
+        val faliases = Repository.Database.findAllAliases( blockchainId )
         faliases.fold(
           _ => log.warn("Could not read aliases from repository database."),
           aliases => aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
@@ -701,22 +702,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         println( Json.stringify( w.withLowerCaseKeys ) )
       },
 
-      ethSendEther := {
-        val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        val args = ethSendEtherParser.parsed
-        val to = args._1
-        val amount = args._2
-        val nextNonce = xethNextNonce.value
-        val markup = ethGasMarkup.value
-        val gasPrice = xethGasPrice.value
-        val gas = markupEstimateGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
-        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
-        val privateKey = findCachePrivateKey.value
-        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
-        log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
-        awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
-      },
+      ethSendEther <<= ethSendEtherTask,
 
       xethTriggerDirtyAliasCache := { // this is intentionally empty, it's execution just triggers a re-caching of aliases
       },
@@ -784,20 +770,42 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     )
 
+    def ethSendEtherTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+      val parser = Defaults.loadForParser( xethFindCacheFunctionInputsAbiParsers )( genEthSendEtherParser )
+
+      Def.inputTask {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val args = parser.parsed
+        val to = args._1
+        val amount = args._2
+        val nextNonce = xethNextNonce.value
+        val markup = ethGasMarkup.value
+        val gasPrice = xethGasPrice.value
+        val gas = markupEstimateGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
+        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
+        val privateKey = findCachePrivateKey.value
+        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
+        awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+      }
+    }
+
     def ethAliasDropTask : Initialize[InputTask[Unit]] = {
       val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAliasParser )
 
       Def.inputTaskDyn {
         val log = streams.value.log
+        val blockchainId = ethBlockchainId.value
 
         // not sure why, but without this xethFindCacheAliasesIfAvailable, which should be triggered by the parser,
         // sometimes fails initialize t0 parser
         val ensureAliases = xethFindCacheAliasesIfAvailable
 
         val alias = parser.parsed
-        val check = Repository.Database.dropAlias( alias ).get // assert success
-        if (check) log.info( s"Alias '${alias}' successfully dropped.")
-        else log.warn( s"Alias '${alias}' is not defined, and so could not be dropped." )
+        val check = Repository.Database.dropAlias( blockchainId, alias ).get // assert no database problem
+        if (check) log.info( s"Alias '${alias}' successfully dropped (for blockchain '${blockchainId}').")
+        else log.warn( s"Alias '${alias}' is not defined (on blockchain '${blockchainId}'), and so could not be dropped." )
 
         Def.taskDyn {
           xethTriggerDirtyAliasCache
@@ -807,12 +815,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def ethAliasSetTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
       val log = streams.value.log
+      val blockchainId = ethBlockchainId.value
       val ( alias, address ) = NewAliasParser.parsed
-      val check = Repository.Database.createUpdateAlias( alias, address )
+      val check = Repository.Database.createUpdateAlias( blockchainId, alias, address )
       check.fold(
         _.vomit,
         _ => {
-          log.info( s"Alias '${alias}' now points to address '${address.hex}'." )
+          log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${blockchainId}')." )
         }
       )
 
@@ -1167,7 +1176,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     
     def xethFindCacheAliasesIfAvailableTask : Initialize[Task[Option[immutable.SortedMap[String,EthAddress]]]] = Def.task {
-      Repository.Database.findAllAliases.toOption
+      val blockchainId = ethBlockchainId.value
+      Repository.Database.findAllAliases( blockchainId ).toOption
     }
 
     def xethFindCacheFunctionInputsAbiParsersTask : Initialize[Task[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]] = Def.task {

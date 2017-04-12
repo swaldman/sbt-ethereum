@@ -25,6 +25,8 @@ object Parsers {
 
   private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
 
+  private val EmptyAliasMap = immutable.SortedMap.empty[String,EthAddress]
+
   private def createSimpleAddressParser( tabHelp : String ) = Space.* ~> token( RawAddressParser, tabHelp )
 
   private def rawAliasParser( aliases : SortedMap[String,EthAddress] ) : Parser[String] = {
@@ -42,8 +44,9 @@ object Parsers {
     }
   }
 
-  private def createAddressParser( tabHelp : String ) : Parser[EthAddress] = {
-    val faliases = Repository.Database.findAllAliases
+  /*
+  private def createAddressParser( mbBlockchainId : Option[String], tabHelp : String ) : Parser[EthAddress] = {
+    val faliases = mbBlockchainId.fold( fail("Blockchain ID unavailable, can't locate aliases), blockchainId => Repository.Database.findAllAliases( blockchainId ) )
     if ( faliases.isFailed ) {
       WARNING.log("Could not select address aliases from the repository database, so aliases cannot be parsed")
       createSimpleAddressParser( tabHelp )
@@ -51,6 +54,7 @@ object Parsers {
       createAddressParser( tabHelp, faliases.get )
     }
   }
+  */ 
 
   private [sbtethereum] val NewAliasParser = token(Space.* ~> ID, "<alias>") ~ createSimpleAddressParser("<hex-address>")
 
@@ -69,10 +73,6 @@ object Parsers {
 
   private [sbtethereum] def valueInWeiParser( tabHelp : String ) = {
     (amountParser( tabHelp ) ~ UnitParser).map { case ( amount, unit ) => toValueInWei( amount, unit ) }
-  }
-
-  private [sbtethereum] def ethSendEtherParser : Parser[( EthAddress, BigInt )] = { // def not val so that ideally they'd pick up new aliases, but doesn't work
-    recipientAddressParser ~ valueInWeiParser("<amount>")
   }
 
   private [sbtethereum] def functionParser( abi : Abi.Definition, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
@@ -164,7 +164,7 @@ object Parsers {
 
   private def _genGenericAddressParser( state : State, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[EthAddress] = {
     val sample = mbAliases.fold( "<address-hex>" )( map => if ( map.isEmpty ) "<address-hex>" else "<address-hex or alias>" )
-    createAddressParser( sample, mbAliases.getOrElse( immutable.SortedMap.empty[String,EthAddress] ) )
+    createAddressParser( sample, mbAliases.getOrElse( EmptyAliasMap ) )
   }
 
   private [sbtethereum] def genGenericAddressParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[EthAddress] = {
@@ -176,7 +176,33 @@ object Parsers {
     genGenericAddressParser( state, mbmbAliases ).?
   }
 
-  private [sbtethereum] def recipientAddressParser = createAddressParser("<recipient-address-hex or alias>") // def not val so that ideally they'd pick up new aliases, but doesn't work
+  private [sbtethereum] def genRecipientAddressParser(
+    state : State,
+    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+  ) = {
+    mbIdAndMbAliases match {
+      case Some( Tuple2(blockchainId, mbAliases) ) => {
+        mbAliases match {
+          case Some( aliases ) => createAddressParser("<recipient-address-hex or alias>", aliases)
+          case None            => createAddressParser("<recipient-address-hex or alias>", EmptyAliasMap)
+        }
+      }
+      case None => {
+        WARNING.log("Failed to load blockchain ID and aliases for address, function, inputs, abi parser")
+        failure( "Blockchain ID and alias list are unavailable, can't parse address and ABI" )
+      }
+    }
+  }
+
+  private [sbtethereum] def genEthSendEtherParser(
+    state : State,
+    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+  ) : Parser[( EthAddress, BigInt )] = {
+    genRecipientAddressParser( state, mbIdAndMbAliases ) ~ valueInWeiParser("<amount>")
+  }
+
+
+          
 
   private [sbtethereum] def genContractAddressOrCodeHashParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[Either[EthAddress,EthHash]] = {
     val chp = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), "<contract-code-hash>").map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )

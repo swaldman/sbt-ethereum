@@ -30,7 +30,7 @@ object Schema_h2 {
   def setVarcharOption( ps : PreparedStatement, i : Int, mbs : Option[String] ) = mbs.fold( ps.setNull( i, Types.VARCHAR ) ){ str =>  ps.setString( i, str ) }
   def setTimestampOption( ps : PreparedStatement, i : Int, mbl : Option[Long] ) = mbl.fold( ps.setNull( i, Types.TIMESTAMP ) ){ l =>  ps.setTimestamp( i, new Timestamp(l) ) }
 
-  val SchemaVersion = 2
+  val SchemaVersion = 3
 
   def ensureSchema( dataSource : DataSource ) = {
 
@@ -67,7 +67,6 @@ object Schema_h2 {
           )
           stmt.executeUpdate("DROP TABLE deployed_compilations_v0")
         }
-        1
       }
       case 1 => {
         /*
@@ -77,10 +76,26 @@ object Schema_h2 {
         borrow( conn.createStatement() ) { stmt =>
           stmt.executeUpdate("ALTER TABLE deployed_compilations ADD COLUMN constructor_inputs_hex CLOB AFTER deployed_when")
         }
-        2
+      }
+      case 2 => {
+        /* 
+         *  Schema version 3 was identical to schema version 2, except address_aliases lacked a blockchain_id
+         *  We have to completely reconstruct address_aliases because blockchain_id becomes part of a compound public key
+         */
+        borrow( conn.createStatement() ) { stmt =>
+          stmt.executeUpdate("ALTER TABLE address_aliases RENAME TO address_aliases_v2")
+          stmt.executeUpdate( Table.AddressAliases.V3.CreateSql )
+          stmt.executeUpdate(
+            s"""|INSERT INTO address_aliases ( blockchain_id, alias, address )
+                |SELECT '${MainnetIdentifier}', alias, address
+                |FROM address_aliases_v2""".stripMargin
+          )
+          stmt.executeUpdate("DROP TABLE address_aliases_v2")
+        }
       }
       case unknown => throw new DatabaseVersionException( s"Cannot migrate from unknown database version ${unknown}." )
     }
+    versionFrom + 1
   }
 
   @tailrec
@@ -579,30 +594,47 @@ object Schema_h2 {
       }
     }
     final object AddressAliases {
-      val CreateSql = {
-        """|CREATE TABLE IF NOT EXISTS address_aliases (
-           |   alias   VARCHAR(128) PRIMARY KEY,
-           |   address CHAR(40) NOT NULL
-           |)""".stripMargin
+      final object V2 {
+        val CreateSql = {
+          """|CREATE TABLE IF NOT EXISTS address_aliases (
+             |   alias   VARCHAR(128) PRIMARY KEY,
+             |   address CHAR(40) NOT NULL
+             |)""".stripMargin
+        }
       }
+      final object V3 {
+        val CreateSql = {
+          """|CREATE TABLE IF NOT EXISTS address_aliases (
+             |   blockchain_id VARCHAR(64),
+             |   alias         VARCHAR(128),
+             |   address       CHAR(40) NOT NULL,
+             |   PRIMARY KEY ( blockchain_id, alias )
+             |)""".stripMargin
+        }
+      }
+      val CreateSql = V3.CreateSql
+
       val CreateIndex = "CREATE INDEX IF NOT EXISTS address_aliases_address_idx ON address_aliases( address )"
 
-      def selectByAlias( conn : Connection, alias : String ) : Option[EthAddress] = {
-        borrow( conn.prepareStatement( "SELECT address FROM address_aliases WHERE alias = ?" ) ) { ps =>
-          ps.setString(1, alias)
+      def selectByAlias( conn : Connection, blockchainId : String, alias : String ) : Option[EthAddress] = {
+        borrow( conn.prepareStatement( "SELECT address FROM address_aliases WHERE blockchain_id = ? AND alias = ?" ) ) { ps =>
+          ps.setString(1, blockchainId)
+          ps.setString(2, alias)
           val mbAddressStr = borrow( ps.executeQuery() )( getMaybeSingleString )
           mbAddressStr.map( EthAddress.apply )
         }
       }
-      def selectByAddress( conn : Connection, address : EthAddress ) : Option[String] = {
-        borrow( conn.prepareStatement( "SELECT alias FROM address_aliases WHERE address = ?" ) ) { ps =>
-          ps.setString(1, address.hex)
+      def selectByAddress( conn : Connection, blockchainId : String, address : EthAddress ) : Option[String] = {
+        borrow( conn.prepareStatement( "SELECT alias FROM address_aliases WHERE blockchain_id = ? AND address = ?" ) ) { ps =>
+          ps.setString(1, blockchainId)
+          ps.setString(2, address.hex)
           borrow( ps.executeQuery() )( getMaybeSingleString )
         }
       }
-      def select( conn : Connection ) : immutable.SortedMap[String,EthAddress] = {
+      def selectAllForBlockchainId( conn : Connection, blockchainId : String ) : immutable.SortedMap[String,EthAddress] = {
         val buffer = mutable.ArrayBuffer.empty[Tuple2[String,EthAddress]]
-        borrow( conn.prepareStatement( "SELECT alias, address FROM address_aliases ORDER BY alias ASC" ) ) { ps =>
+        borrow( conn.prepareStatement( "SELECT alias, address FROM address_aliases WHERE blockchain_id = ? ORDER BY alias ASC" ) ) { ps =>
+          ps.setString( 1, blockchainId )
           borrow( ps.executeQuery() ) { rs =>
             while ( rs.next() ) {
               buffer += Tuple2( rs.getString(1), EthAddress( rs.getString(2) ) )
@@ -611,16 +643,17 @@ object Schema_h2 {
         }
         immutable.SortedMap( buffer : _* )
       }
-      def upsert( conn : Connection, alias : String, address : EthAddress ) : Unit = {
-        borrow( conn.prepareStatement( "MERGE INTO address_aliases ( alias, address ) VALUES ( ?, ? )" ) ) { ps =>
+      def upsert( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit = {
+        borrow( conn.prepareStatement( "MERGE INTO address_aliases ( blockchinId, alias, address ) VALUES ( ?, ?, ? )" ) ) { ps =>
           ps.setString( 1, alias )
           ps.setString( 2, address.hex )
           ps.executeUpdate()
         }
       }
-      def delete( conn : Connection, alias : String ) : Boolean = {
-        borrow( conn.prepareStatement( "DELETE FROM address_aliases WHERE ALIAS = ?" ) ) { ps =>
-          ps.setString( 1, alias )
+      def delete( conn : Connection, blockchainId : String, alias : String ) : Boolean = {
+        borrow( conn.prepareStatement( "DELETE FROM address_aliases WHERE blockchain_id = ? AND alias = ?" ) ) { ps =>
+          ps.setString( 1, blockchainId )
+          ps.setString( 2, alias )
           ps.executeUpdate() == 1
         }
       }

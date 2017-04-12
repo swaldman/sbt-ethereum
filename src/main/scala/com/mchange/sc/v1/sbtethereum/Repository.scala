@@ -379,24 +379,24 @@ object Repository {
         }
       }
     }
-    def createUpdateAlias( alias : String, address : EthAddress ) : Failable[Unit] = {
+    def createUpdateAlias( blockchainId : String, alias : String, address : EthAddress ) : Failable[Unit] = {
       DataSource.flatMap { ds =>
-        Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, alias, address ) ) )
+        Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, blockchainId, alias, address ) ) )
       }
     }
-    def findAllAliases : Failable[immutable.SortedMap[String,EthAddress]] = {
+    def findAllAliases( blockchainId : String ) : Failable[immutable.SortedMap[String,EthAddress]] = {
       DataSource.flatMap { ds =>
-        Failable( borrow( ds.getConnection() )( Table.AddressAliases.select ) )
+        Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectAllForBlockchainId( _, blockchainId ) ) )
       }
     }
-    def findAddressByAlias( alias : String ) : Failable[Option[EthAddress]] = {
+    def findAddressByAlias( blockchainId : String, alias : String ) : Failable[Option[EthAddress]] = {
       DataSource.flatMap { ds =>
-        Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, alias ) ) )
+        Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, blockchainId, alias ) ) )
       }
     }
-    def dropAlias( alias : String ) : Failable[Boolean] = {
+    def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = {
       DataSource.flatMap { ds =>
-        Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, alias ) ) )
+        Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
       }
     }
 
@@ -422,11 +422,24 @@ object Repository {
           jdbcUrl <- JdbcUrl
         } yield {
           val ds = new ComboPooledDataSource
-          ds.setDriverClass( "org.h2.Driver" )
-          ds.setJdbcUrl( jdbcUrl )
-          ds.setTestConnectionOnCheckout( true )
-          Schema_h2.ensureSchema( ds )
-          ds
+          try {
+            ds.setDriverClass( "org.h2.Driver" )
+            ds.setJdbcUrl( jdbcUrl )
+            ds.setTestConnectionOnCheckout( true )
+            Schema_h2.ensureSchema( ds )
+            ds
+          } catch {
+            case t : Throwable => {
+              try ds.close() catch suppressInto(t)
+              throw t
+            }
+          }
+        }
+      }
+
+      private def suppressInto( original : Throwable ) : PartialFunction[Throwable,Unit] = {
+        case t : Throwable => {
+          original.addSuppressed( t )
         }
       }
 
