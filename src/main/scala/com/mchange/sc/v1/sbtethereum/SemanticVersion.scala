@@ -10,6 +10,8 @@ object SemanticVersion {
 
   private val Regex = """^(\d+)\.(\d+)\.(\d+)(?:\W*)?$""".r
 
+  implicit val DefaultOrdering = Ordering.by( (sv : SemanticVersion) => ( sv.major, sv.minor, sv.patch ) )
+
   def apply( versionString : String ) : SemanticVersion= {
     versionString match {
       case Regex( major, minor, patch ) => SemanticVersion( major.toInt, minor.toInt, patch.toInt )
@@ -41,7 +43,7 @@ object SemanticVersion {
     if ( a == None ) None else if ( b == None ) None else restrictiveCaretCompatible( a.get, b.get )
   }
 }
-case class SemanticVersion( major : Int, minor : Int, patch : Int ) {
+final case class SemanticVersion( major : Int, minor : Int, patch : Int ) {
   def versionString = s"${major}.${minor}.${patch}"
 }
 

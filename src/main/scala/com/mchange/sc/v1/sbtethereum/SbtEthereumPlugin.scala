@@ -170,7 +170,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethSolidityCompile = taskKey[Unit]("Compiles solidity files")
 
-    val ethSolidityInstallLocalCompiler = taskKey[Unit]("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum Repository")
+    val ethSolidityInstallLocalCompiler = inputKey[Unit]("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum Repository")
 
     val xethQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
 
@@ -185,6 +185,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts into the contract database. Returns true if changes were made.")
 
     val ethKeystoreValidateWalletV3 = inputKey[Unit]("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
+
+    val xethFindAvailableSolidityCompilers = taskKey[immutable.SortedMap[String,Compiler.Solidity]]("Finds and tests potential Solidity compilers to see which is available.")
 
     // anonymous tasks
 
@@ -286,8 +288,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         (ethNetcompileUrl in Compile).?.value match {
           case Some( netcompileUrl ) => Compiler.Solidity.EthNetcompile( netcompileUrl )
           case None                  => {
-            if ( Compiler.Solidity.test( Compiler.Solidity.LocalSolc ) ) {
-              Compiler.Solidity.LocalSolc
+            if ( Compiler.Solidity.test( Compiler.Solidity.LocalPathSolc ) ) {
+              Compiler.Solidity.LocalPathSolc
             } else {
               Compiler.Solidity.EthJsonRpc( (ethJsonRpcUrl in Compile).value )
             }
@@ -394,11 +396,23 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethSolidityInstallLocalCompiler := {
         val log = streams.value.log
+
+        val mbVersion = SolcJVersionParser.parsed
+
+        val versionToInstall = mbVersion.getOrElse( LatestSolcJVersion )
+
         log.info( s"Installing local solidity compiler into the sbt-ethereum repository. This may take a few minutes." )
         val check = Repository.SolcJ.Directory.flatMap { rootSolcJDir =>
           Failable {
-            SolcJInstaller.installLocalSolcJ( rootSolcJDir.toPath, LatestSolcJVersion )
-            log.info( s"Installed local solcJ compiler, version ${LatestSolcJVersion} in '${rootSolcJDir}'." )
+            SolcJInstaller.installLocalSolcJ( rootSolcJDir.toPath, versionToInstall )
+            log.info( s"Installed local solcJ compiler, version ${versionToInstall} in '${rootSolcJDir}'." )
+            val versionDir = new File( rootSolcJDir, versionToInstall )
+            val test = Compiler.Solidity.test( new Compiler.Solidity.LocalSolc( Some( versionDir ) ) )
+            if ( test ) {
+              log.info( "Testing newly installed compiler... ok." )
+            } else {
+              log.warn( "Testing newly installed compiler... failed!" )
+            }
           }
         }
         check.get // throw if a failure occurred
@@ -734,6 +748,43 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       },
 
+      xethFindAvailableSolidityCompilers := {
+        val netcompileUrl = ethNetcompileUrl.?.value
+        val jsonRpcUrl    = ethJsonRpcUrl.value
+
+        def check( key : String, compiler : Compiler.Solidity ) : Option[ ( String, Compiler.Solidity ) ] = {
+          val test = Compiler.Solidity.test( compiler )
+          if ( test ) {
+            Some( Tuple2( key, compiler ) )
+          } else {
+            None
+          }
+        }
+        def netcompile = {
+          netcompileUrl.flatMap { ncu =>
+            check( s"eth-netcompile@${ncu}", Compiler.Solidity.EthNetcompile( ncu ) )
+          }
+        }
+        def ethJsonRpc = {
+          check( s"ethjsonrpc@${jsonRpcUrl}", Compiler.Solidity.EthJsonRpc( jsonRpcUrl ) )
+        }
+        def localPath = {
+          check( "local-path-solc", Compiler.Solidity.LocalPathSolc )
+        }
+        def checkLocalRepositorySolc( version : String ) = {
+          Repository.SolcJ.Directory.toOption.flatMap { rootSolcJDir =>
+            check( s"local-repository-solc-v${version}", Compiler.Solidity.LocalSolc( Some( new File( rootSolcJDir, version ) ) ) )
+          }
+        }
+        def checkLocalRepositorySolcs = {
+          SolcJInstaller.SupportedVersions.map( checkLocalRepositorySolc ).toSeq
+        }
+
+        val raw = checkLocalRepositorySolcs :+ localPath :+ ethJsonRpc :+ netcompile
+
+        immutable.SortedMap( raw.filter( _ != None ).map( _.get ) : _* )
+      },
+
       onLoad in Global := {
         val origF : State => State = (onLoad in Global).value
         val newF  : State => State = ( state : State ) => {
@@ -748,7 +799,6 @@ object SbtEthereumPlugin extends AutoPlugin {
               lastState
             }
             case Some((newState, Value(_))) => {
-              INFO.log("Successfully ran task 'xethFindCacheAliasesIfAvailable' in 'onLoad'.")
               newState
             }
           }

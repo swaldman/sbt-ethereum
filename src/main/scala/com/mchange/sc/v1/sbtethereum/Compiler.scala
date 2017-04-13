@@ -1,5 +1,6 @@
 package com.mchange.sc.v1.sbtethereum
 
+import java.io.File
 import java.net.URL
 
 import scala.collection._
@@ -68,8 +69,14 @@ object Compiler {
         immutable.Map( tuples : _* )
       }
     }
-    final case object LocalSolc extends Compiler.Solidity {
-      val SolcCommand = immutable.Seq("solc","--combined-json","bin,metadata","-")
+    final case class LocalSolc( mbSolcParentDir : Option[File] ) extends Compiler.Solidity {
+      val SolcExecutable = {
+        mbSolcParentDir match {
+          case Some( dir ) => new File( dir, "solc" ).getAbsolutePath
+          case None        => "solc" // resolve via PATH environment variable
+        }
+      }
+      val SolcCommand = immutable.Seq(SolcExecutable,"--combined-json","bin,metadata","-")
 
       val SimpleContractNameRegex = """^(?:[^\:]*\:)?(.+)$""".r
 
@@ -150,7 +157,7 @@ object Compiler {
 
         Future {
           val processio = new ProcessIO( spewSource, generateCompilationFromStandardOut, logStandardError )
-          val exitValue = LocalSolc.SolcCommand.run( processio ).exitValue() // awaits completion
+          val exitValue = SolcCommand.run( processio ).exitValue() // awaits completion
           val mbOut = completedCompilation.get()
           if ( exitValue != 0 || mbOut == None || sse.get() != None || lsee.get() != None || gcfsoe.get() != None ) {
             throw new CompilationFailedException( s"solc exit value: $exitValue. See messages logged previously." )
@@ -159,6 +166,7 @@ object Compiler {
         }
       }
     }
+    val LocalPathSolc = LocalSolc( None )
 
     private val LanguageVersionRegex = """^(\d+\.\d+\.\d+)\D?.*""".r
 

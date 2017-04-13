@@ -29,7 +29,7 @@ object SolcJInstaller {
   }
   private lazy val FileListResource = PlatformDirPrefix + "/file.list"
 
-  private val SupportedVersions = immutable.Set( "0.4.3", "0.4.4", "0.4.6", "0.4.7", "0.4.8", "0.4.10" )
+  val SupportedVersions = immutable.TreeSet( /* "0.4.3", "0.4.4", "0.4.6", */ "0.4.7", "0.4.8", "0.4.10" )( Ordering.by( SemanticVersion( _ ) ) ) // only metadata supporting versions
 
   private def createJarUrl( version : String ) : URL = {
     new URL( s"https://dl.bintray.com/ethereum/maven/org/ethereum/solcJ-all/${version}/solcJ-all-${version}.jar" )

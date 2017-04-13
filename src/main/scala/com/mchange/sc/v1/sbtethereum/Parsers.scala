@@ -75,6 +75,11 @@ object Parsers {
     (amountParser( tabHelp ) ~ UnitParser).map { case ( amount, unit ) => toValueInWei( amount, unit ) }
   }
 
+  private [sbtethereum] val SolcJVersionParser : Parser[Option[String]] = {
+    val mandatory = SolcJInstaller.SupportedVersions.foldLeft( failure("No supported versions") : Parser[String] )( ( nascent, next ) => nascent | literal(next) )
+    Space.* ~> token(mandatory.?)
+  }
+
   private [sbtethereum] def functionParser( abi : Abi.Definition, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
 
