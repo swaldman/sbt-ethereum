@@ -322,7 +322,7 @@ package object sbtethereum {
             None
           }
           case ( Some( receipt ), _ ) => {
-            log.info(s"Receipt received for transaction '0x${transactionHash.bytes.hex}':\n${receipt}")
+            log.info(s"Receipt received for transaction '0x${transactionHash.bytes.hex}':\n${prettyClientTransactionReceipt(receipt)}")
             mbReceipt
           }
         }
@@ -392,6 +392,17 @@ package object sbtethereum {
   private [sbtethereum] def unknownWallet( loadDirs : Seq[File] ) : Nothing = {
     val dirs = loadDirs.map( _.getAbsolutePath() ).mkString(", ")
     throw new Exception( s"Could not find V3 wallet for the specified address in the specified keystore directories: ${dirs}}" )
+  }
+
+  private def prettyClientTransactionReceipt( ctr : ClientTransactionReceipt ) : String = {
+    s"""|Transaction Receipt:
+        |       Transaction Hash:    0x${ctr.transactionHash.hex}
+        |       Transaction Index:   ${ctr.transactionIndex.widen}
+        |       Block Hash:          0x${ctr.blockHash.hex}
+        |       Block Number:        ${ctr.blockNumber.widen}
+        |       Cumulative Gas Used: ${ctr.cumulativeGasUsed.widen}
+        |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
+        |       Logs:                ${if (ctr.logs.isEmpty) "None" else ctr.logs.mkString(", ")}""".stripMargin     
   }
 
   // solc now generates code that includes a suffix of non-EVM-code metadata (currently a swarm hash of a metadata file)
