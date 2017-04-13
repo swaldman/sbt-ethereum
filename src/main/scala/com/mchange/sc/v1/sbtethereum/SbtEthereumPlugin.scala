@@ -734,20 +734,23 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       },
 
-      onLoad := {
-        val origF : State => State = onLoad.value
+      onLoad in Global := {
+        val origF : State => State = (onLoad in Global).value
         val newF  : State => State = ( state : State ) => {
           val lastState = origF( state )
-          Project.runTask( xethTriggerDirtyAliasCache, lastState ) match {
+          Project.runTask( xethFindCacheAliasesIfAvailable, lastState ) match {
             case None => {
-              WARNING.log("Huh? Key 'xethTriggerDirtyAliasCache' was undefined in the original state. Ignoring attempt to run that task in onLoad.")
+              WARNING.log("Huh? Key 'xethFindCacheAliasesIfAvailable' was undefined in the original state. Ignoring attempt to run that task in onLoad.")
               lastState
             }
             case Some((newState, Inc(inc))) => {
-              WARNING.log("Failed to run xethTriggerDirtyAliasCache on initialization: " + Incomplete.show(inc.tpe))
+              WARNING.log("Failed to run xethFindCacheAliasesIfAvailable on initialization: " + Incomplete.show(inc.tpe))
               lastState
             }
-            case Some((newState, Value(_))) => newState
+            case Some((newState, Value(_))) => {
+              INFO.log("Successfully ran task 'xethFindCacheAliasesIfAvailable' in 'onLoad'.")
+              newState
+            }
           }
         }
         newF
@@ -795,7 +798,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val blockchainId = ethBlockchainId.value
 
         // not sure why, but without this xethFindCacheAliasesIfAvailable, which should be triggered by the parser,
-        // sometimes fails initialize t0 parser
+        // sometimes fails initialize the parser
         val ensureAliases = xethFindCacheAliasesIfAvailable
 
         val alias = parser.parsed
