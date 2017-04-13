@@ -404,14 +404,19 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.info( s"Installing local solidity compiler into the sbt-ethereum repository. This may take a few minutes." )
         val check = Repository.SolcJ.Directory.flatMap { rootSolcJDir =>
           Failable {
-            SolcJInstaller.installLocalSolcJ( rootSolcJDir.toPath, versionToInstall )
-            log.info( s"Installed local solcJ compiler, version ${versionToInstall} in '${rootSolcJDir}'." )
             val versionDir = new File( rootSolcJDir, versionToInstall )
-            val test = Compiler.Solidity.test( new Compiler.Solidity.LocalSolc( Some( versionDir ) ) )
-            if ( test ) {
-              log.info( "Testing newly installed compiler... ok." )
+            if ( versionDir.exists() ) {
+              log.warn( s"Directory '${versionDir.getAbsolutePath}' already exists. If you would like to reinstall this version, please delete this directory by hand." )
+              throw new Exception( s"Cannot overwrite existing installation in '${versionDir.getAbsolutePath}'. Please delete this directory by hand if you wish to reinstall." )
             } else {
-              log.warn( "Testing newly installed compiler... failed!" )
+              SolcJInstaller.installLocalSolcJ( rootSolcJDir.toPath, versionToInstall )
+              log.info( s"Installed local solcJ compiler, version ${versionToInstall} in '${rootSolcJDir}'." )
+              val test = Compiler.Solidity.test( new Compiler.Solidity.LocalSolc( Some( versionDir ) ) )
+              if ( test ) {
+                log.info( "Testing newly installed compiler... ok." )
+              } else {
+                log.warn( "Testing newly installed compiler... failed!" )
+              }
             }
           }
         }

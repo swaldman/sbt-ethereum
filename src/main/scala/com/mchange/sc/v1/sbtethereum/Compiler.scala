@@ -69,16 +69,19 @@ object Compiler {
         immutable.Map( tuples : _* )
       }
     }
+    final object LocalSolc {
+      val SimpleContractNameRegex = """^(?:[^\:]*\:)?(.+)$""".r
+    }
     final case class LocalSolc( mbSolcParentDir : Option[File] ) extends Compiler.Solidity {
-      val SolcExecutable = {
+      import LocalSolc.SimpleContractNameRegex
+
+      def solcExecutable = {
         mbSolcParentDir match {
           case Some( dir ) => new File( dir, "solc" ).getAbsolutePath
           case None        => "solc" // resolve via PATH environment variable
         }
       }
-      val SolcCommand = immutable.Seq(SolcExecutable,"--combined-json","bin,metadata","-")
-
-      val SimpleContractNameRegex = """^(?:[^\:]*\:)?(.+)$""".r
+      def solcCommand = immutable.Seq(solcExecutable,"--combined-json","bin,metadata","-")
 
       def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         import java.io._
@@ -157,7 +160,7 @@ object Compiler {
 
         Future {
           val processio = new ProcessIO( spewSource, generateCompilationFromStandardOut, logStandardError )
-          val exitValue = SolcCommand.run( processio ).exitValue() // awaits completion
+          val exitValue = solcCommand.run( processio ).exitValue() // awaits completion
           val mbOut = completedCompilation.get()
           if ( exitValue != 0 || mbOut == None || sse.get() != None || lsee.get() != None || gcfsoe.get() != None ) {
             throw new CompilationFailedException( s"solc exit value: $exitValue. See messages logged previously." )
