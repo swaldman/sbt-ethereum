@@ -132,8 +132,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
 
-    val xethFindCacheAliasesIfAvailable = taskKey[Option[immutable.SortedMap[String,EthAddress]]]("Finds and caches address aliases, if they are available. Triggered by ethAliasSet and ethAliasDrop.")
-
     val xethFindCacheOmitDupsCurrentCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethSolidityCompile")
 
     val xethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
@@ -166,7 +164,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
 
-    val xethFindCacheFunctionInputsAbiParsers = taskKey[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]("Internal use only -- loads information required by some parsers")
+    val xethFindCacheAliasesIfAvailable = taskKey[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]("Internal use only -- loads information required by some parsers")
 
     val ethKeystoreRevealPrivateKey = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
 
@@ -412,11 +410,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         doGetDefaultGasPrice( log, jsonRpcUrl )
       },
 
-      xethFindCacheAliasesIfAvailable <<= xethFindCacheAliasesIfAvailableTask.storeAs( xethFindCacheAliasesIfAvailable ).triggeredBy( xethTriggerDirtyAliasCache ),
-
       xethFindCacheOmitDupsCurrentCompilations <<= xethFindCacheOmitDupsCurrentCompilationsTask storeAs xethFindCacheOmitDupsCurrentCompilations triggeredBy (ethSolidityCompile in Compile),
 
-      xethFindCacheFunctionInputsAbiParsers <<= xethFindCacheFunctionInputsAbiParsersTask.storeAs( xethFindCacheFunctionInputsAbiParsers ).triggeredBy( xethTriggerDirtyAliasCache ),
+      xethFindCacheAliasesIfAvailable <<= xethFindCacheAliasesIfAvailableTask.storeAs( xethFindCacheAliasesIfAvailable ).triggeredBy( xethTriggerDirtyAliasCache ),
 
       xethGasPrice := {
         val log        = streams.value.log
@@ -771,7 +767,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     )
 
     def ethSendEtherTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser( xethFindCacheFunctionInputsAbiParsers )( genEthSendEtherParser )
+      val parser = Defaults.loadForParser( xethFindCacheAliasesIfAvailable )( genEthSendEtherParser )
 
       Def.inputTask {
         val log = streams.value.log
@@ -874,7 +870,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def ethInvokeConstantTask : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedReturnValue])]] = {
-      val parser = Defaults.loadForParser(xethFindCacheFunctionInputsAbiParsers)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
 
       Def.inputTask {
         val log = streams.value.log
@@ -1057,7 +1053,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def xethInvokeDataTask : Initialize[InputTask[immutable.Seq[Byte]]] = {
-      val parser = Defaults.loadForParser(xethFindCacheFunctionInputsAbiParsers)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
 
       Def.inputTask {
         val ( contractAddress, function, args, abi ) = parser.parsed
@@ -1070,7 +1066,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def ethInvokeTransactionTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser(xethFindCacheFunctionInputsAbiParsers)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
 
       Def.inputTask {
         val log = streams.value.log
@@ -1175,14 +1171,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       xethLoadCompilationsOmitDups.value
     }
     
-    def xethFindCacheAliasesIfAvailableTask : Initialize[Task[Option[immutable.SortedMap[String,EthAddress]]]] = Def.task {
+    def xethFindCacheAliasesIfAvailableTask : Initialize[Task[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]] = Def.task {
       val blockchainId = ethBlockchainId.value
-      Repository.Database.findAllAliases( blockchainId ).toOption
-    }
-
-    def xethFindCacheFunctionInputsAbiParsersTask : Initialize[Task[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]] = Def.task {
-      val blockchainId = ethBlockchainId.value
-      val mbAliases    = xethFindCacheAliasesIfAvailable.value
+      val mbAliases    = Repository.Database.findAllAliases( blockchainId ).toOption
       ( blockchainId, mbAliases )
     }
   }

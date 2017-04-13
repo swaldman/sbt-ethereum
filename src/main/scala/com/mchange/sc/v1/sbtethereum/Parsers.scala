@@ -156,10 +156,13 @@ object Parsers {
     }
   }
 
-  // this is terrible. the nested option is because SBT's loadForParser function returns an Option, in case the task it loads from somehow fails
-  private [sbtethereum] def genAliasParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) = {
-    // XXX: we accept ID when we don't have aliases, bc maybe there was just a problem getting the aliases but they exist. (kind of weak?)
-    Space.* ~> mbmbAliases.flatten.fold( ID )( aliases => token( rawAliasParser( aliases ).examples( aliases.keySet, false ) ) )
+  private [sbtethereum] def genAliasParser(
+    state : State,
+    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+  ) = {
+    // XXX: we accept ID (sbt's built-in identifier parser) when we don't have aliases,
+    //      bc maybe there was just a problem getting the aliases but they exist. (kind of weak?)
+    Space.* ~> mbIdAndMbAliases.map( _._2 ).flatten.fold( ID )( aliases => token( rawAliasParser( aliases ).examples( aliases.keySet, false ) ) )
   }
 
   private def _genGenericAddressParser( state : State, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[EthAddress] = {
@@ -167,13 +170,25 @@ object Parsers {
     createAddressParser( sample, mbAliases.getOrElse( EmptyAliasMap ) )
   }
 
-  private [sbtethereum] def genGenericAddressParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[EthAddress] = {
-    if ( mbmbAliases == None ) WARNING.log("Failed to load aliases for address parser.")
-    _genGenericAddressParser( state, mbmbAliases.flatten )
+  private [sbtethereum] def genGenericAddressParser(
+    state : State,
+    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+  ) : Parser[EthAddress] = {
+    val mbAliases = mbIdAndMbAliases match {
+      case Some( idAndMbAliases ) => idAndMbAliases._2
+      case None => {
+        WARNING.log("Failed to load aliases for generic address parser.")
+        None
+      }
+    }
+    _genGenericAddressParser( state, mbAliases )
   }
 
-  private [sbtethereum] def genOptionalGenericAddressParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[Option[EthAddress]] = {
-    genGenericAddressParser( state, mbmbAliases ).?
+  private [sbtethereum] def genOptionalGenericAddressParser(
+    state : State,
+    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+  ) : Parser[Option[EthAddress]] = {
+    genGenericAddressParser( state, mbIdAndMbAliases ).?
   }
 
   private [sbtethereum] def genRecipientAddressParser(
@@ -204,9 +219,12 @@ object Parsers {
 
           
 
-  private [sbtethereum] def genContractAddressOrCodeHashParser( state : State, mbmbAliases : Option[Option[immutable.SortedMap[String,EthAddress]]] ) : Parser[Either[EthAddress,EthHash]] = {
+  private [sbtethereum] def genContractAddressOrCodeHashParser(
+    state : State,
+    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+  ) : Parser[Either[EthAddress,EthHash]] = {
     val chp = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), "<contract-code-hash>").map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
-    genGenericAddressParser( state, mbmbAliases ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+    genGenericAddressParser( state, mbIdAndMbAliases ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
   }
 
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
