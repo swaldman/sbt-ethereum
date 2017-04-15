@@ -783,8 +783,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       xethFindCurrentSolidityCompiler := {
         import Compiler.Solidity._
 
-        val compilerKeys = xethFindCacheSessionSolidityCompilerKeys.value
+        // val compilerKeys = xethFindCacheSessionSolidityCompilerKeys.value
         val sessionCompilers = SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys should have forced sessionCompilers to be set, but it's not." ) )
+        val compilerKeys = sessionCompilers.keySet
 
         CurrentSolidityCompiler.get.map( _._2).getOrElse {
           def latestLocalInstallVersion : Option[SemanticVersion] = {
@@ -1317,6 +1318,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def xethFindCacheSessionSolidityCompilerKeysTask : Initialize[Task[immutable.Set[String]]] = Def.task {
+      val log = streams.value.log
+      log.info("Updating available solidity compiler set.")
       val currentSessionCompilers = xethUpdateSessionSolidityCompilers.value
       currentSessionCompilers.keySet
     }
