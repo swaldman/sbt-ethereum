@@ -38,10 +38,16 @@ object Compiler {
         case e : Exception => false
       }
     }
+    final object EthJsonRpc {
+      val KeyPrefix = "ethjsonrpc@"
+    }
     final case class EthJsonRpc( jsonRpcUrl : String ) extends Compiler.Solidity {
       def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         doWithJsonClient( log, jsonRpcUrl )( client => client.eth.compileSolidity( source ) )( ec )
       }
+    }
+    final object EthNetcompile {
+      val KeyPrefix = "eth-netcompile@"
     }
     final case class EthNetcompile( ethNetcompileUrl : String ) extends Compiler.Solidity {
       val url = new URL( ethNetcompileUrl ) 
@@ -71,17 +77,31 @@ object Compiler {
     }
     final object LocalSolc {
       val SimpleContractNameRegex = """^(?:[^\:]*\:)?(.+)$""".r
+
+      val KeyPrefix = "local-repository-solc-v"
+
+      val VersionFromKeyExtractor = (KeyPrefix + """([\d\.]+)""").r
+
+      def versionFromKey( key : String ) : Option[SemanticVersion] = {
+        key match {
+          case VersionFromKeyExtractor( version ) => Some( SemanticVersion( version ) )
+          case _ => {
+            DEBUG.log( s"Could not parse version from compiler key '$key'" )
+            None
+          }
+        }
+      }
     }
     final case class LocalSolc( mbSolcParentDir : Option[File] ) extends Compiler.Solidity {
       import LocalSolc.SimpleContractNameRegex
 
-      def solcExecutable = {
+      val solcExecutable = {
         mbSolcParentDir match {
           case Some( dir ) => new File( dir, "solc" ).getAbsolutePath
           case None        => "solc" // resolve via PATH environment variable
         }
       }
-      def solcCommand = immutable.Seq(solcExecutable,"--combined-json","bin,metadata","-")
+      val solcCommand = immutable.Seq(solcExecutable,"--combined-json","bin,metadata","-")
 
       def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         import java.io._
@@ -169,6 +189,7 @@ object Compiler {
         }
       }
     }
+    val LocalPathSolcKey = "local-path-solc"
     val LocalPathSolc = LocalSolc( None )
 
     private val LanguageVersionRegex = """^(\d+\.\d+\.\d+)\D?.*""".r

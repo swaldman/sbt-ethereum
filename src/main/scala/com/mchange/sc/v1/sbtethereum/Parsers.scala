@@ -260,4 +260,10 @@ object Parsers {
       }
     }
   }
+  private [sbtethereum] def genLiteralSetParser(
+    state : State,
+    mbLiterals : Option[immutable.Set[String]]
+  ) : Parser[String] = {
+    Space.* ~> token( mbLiterals.fold( failure("Failed to load acceptable values") : Parser[String] )( _.foldLeft( failure("No acceptable values") : Parser[String] )( ( nascent, next ) => nascent | literal(next) ) ) )
+  }
 }
