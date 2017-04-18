@@ -39,14 +39,12 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 object SbtEthereumPlugin extends AutoPlugin {
 
-  private val EthAddressSystemProperty      = "eth.address"
-  private val EthAddressEnvironmentVariable = "ETH_ADDRESS"
-
   // not lazy. make sure the initialization banner is emitted before any tasks are executed
   // still, generally we should try to log through sbt loggers
   private implicit val logger = mlogger( this )
 
-  private val UnlockedKey = new AtomicReference[Option[(EthAddress,EthPrivateKey)]]( None )
+  // MT: Protected by own lock
+  private val MutableConfigToSenderAddress = mutable.Map.empty[Configuration,(EthAddress,Option[EthPrivateKey])]
 
   private val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
 
@@ -202,50 +200,55 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // anonymous tasks
 
-    def assertNonzeroAddress( stringAddress : String ) : EthAddress = {
-      if ( stringAddress.decodeHex.forall( _ == 0 ) ) {
-        throw new Exception(s"""No valid EthAddress set. Please use 'set ethAddress := "<your ethereum address>"'""")
-      } else {
-        EthAddress( stringAddress )
-      }
-    }
-
-    val dieOnZeroAddress = Def.task {
-      val current = ethAddress.value
-      assertNonzeroAddress( current )
-      true
-    }
-
     val xethUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
 
-    val findCachePrivateKey = Def.task {
-      val checked = dieOnZeroAddress.value
-
-      val CurAddrStr = ethAddress.value
-      val CurAddress = EthAddress(CurAddrStr)
-      val log = streams.value.log
-      val is = interactionService.value
-      val mbWallet = xethLoadWalletV3.value
-
-      def updateCached : EthPrivateKey = {
-        // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
-        // it also slows down automated attempts to guess passwords, i guess...
-        Thread.sleep(1000)
-
-        val credential = readCredential( is, CurAddress )
-
-        val privateKey = findPrivateKey( log, mbWallet, credential )
-        UnlockedKey.set( Some( (CurAddress, privateKey) ) )
-        privateKey
-      }
-      def goodCached : Option[EthPrivateKey] = {
-        UnlockedKey.get match {
-          case Some( ( CurAddress, privateKey ) ) => Some( privateKey )
-          case _                                  => None
+    def findOrGetSenderAddress( config : Configuration, mbEthAddressInConfig : Option[String] ) = {
+      MutableConfigToSenderAddress.synchronized {
+        MutableConfigToSenderAddress.get( config ) match {
+          case Some( address, _ ) => address
+          case None               => {
+            mbEthAddressInConfig match {
+              case Some( address ) => {
+                MutableConfigToSenderAddress( config ) = ( EthAddress( address ), None )
+                address
+              }
+              case None => {
+                throw new SenderUndefinedException( s"Cannot find sender for config '${config}'" )
+              }
+            }
+          }
         }
       }
+    }
 
-      goodCached.getOrElse( updateCached )
+    def findCachePrivateKey( log : sbt.Logger, is : InteractionService, keystoresV3 : Seq[File], config : Configuration ) = {
+
+      MutableConfigToSenderAddress.synchronized {
+
+        val CurAddress = findOrGetSenderAddress( config, mbEthAddressInConfig )
+        val mbWallet = doLoadWalletV3( log, keystoresV3, CurAddress )
+
+        def updateCached : EthPrivateKey = {
+          // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
+          // it also slows down automated attempts to guess passwords, i guess...
+          Thread.sleep(1000)
+
+          val credential = readCredential( is, CurAddress )
+
+          val privateKey = findPrivateKey( log, mbWallet, credential )
+          MutableConfigToSenderAddress( config ) = Some( (CurAddress, privateKey) )
+          privateKey
+        }
+        def goodCached : Option[EthPrivateKey] = {
+          MutableConfigToSenderAddress.get( config ) match {
+            case Some( ( CurAddress, privateKey ) ) => Some( privateKey )
+            case Some( ( otherAddress, _ ) )        => throw new InternalError( s"Expected address ${CurrentAddress}, found ${otherAddress}" )
+            case _                                  => None
+          }
+        }
+
+        goodCached.getOrElse( updateCached )
+      }
     }
 
     // definitions
@@ -860,12 +863,14 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     )
 
-    def ethSendEtherTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser( xethFindCacheAliasesIfAvailable )( genEthSendEtherParser )
+    def ethSendEtherTask( config : Config ) : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+      val parser = Defaults.loadForParser( xethFindCacheAliasesIfAvailable in config )( genEthSendEtherParser )
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
+        val is = interactionService.value
+        val keystoresV3 = ethKeystoreLocationsV3.value
+        val jsonRpcUrl = (ethJsonRpcUrl in config).value
         val args = parser.parsed
         val to = args._1
         val amount = args._2
@@ -874,7 +879,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val gasPrice = xethGasPrice.value
         val gas = markupEstimateGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
-        val privateKey = findCachePrivateKey.value
+        val privateKey = findCachePrivateKey( log, is, keystoresV3, config )
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
         awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
@@ -1064,13 +1069,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethDeployOnlyTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+    def ethDeployOnlyTask( config : Configuration ) : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
       val parser = Defaults.loadForParser(xethFindCacheOmitDupsCurrentCompilations)( genContractNamesConstructorInputsParser )
 
       Def.inputTask {
         val log = streams.value.log
-        val blockchainId = ethBlockchainId.value
-        val jsonRpcUrl = ethJsonRpcUrl.value
+        val blockchainId = (ethBlockchainId in config).value
+        val jsonRpcUrl = (ethJsonRpcUrl in config).value
         val ( contractName, extraData ) = parser.parsed
         val ( compilation, inputsBytes ) = {
           extraData match {
@@ -1239,15 +1244,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log         = streams.value.log
 
         val address = parser.parsed
-        val out = {
-          keystoresV3
-            .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
-            .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
-            if ( mb.isEmpty ) nextKeystore.get( address ) else mb
-          }
-        }
-        log.info( out.fold( s"No V3 wallet found for '0x${address.hex}'" )( _ => s"V3 wallet found for '0x${address.hex}'" ) )
-        out
+
+        doLoadWalletV3( log, keystoresV3, address )
       }
     }
 

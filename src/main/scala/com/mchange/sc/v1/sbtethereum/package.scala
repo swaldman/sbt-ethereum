@@ -41,6 +41,7 @@ package object sbtethereum {
 
   abstract class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
 
+  final class SenderUndefinedException( msg : String )                                      extends SbtEthereumException( msg )
   final class NoSolidityCompilerException( msg : String )                                   extends SbtEthereumException( msg )
   final class DatabaseVersionException( msg : String )                                      extends SbtEthereumException( msg )
   final class ContractUnknownException( msg : String )                                      extends SbtEthereumException( msg )
@@ -421,6 +422,18 @@ package object sbtethereum {
     lazy val baseCodeHash = EthHash.hash( baseCodeHex.decodeHex )
     lazy val fullCodeHash = EthHash.hash( (baseCodeHex + codeSuffixHex).decodeHex )
     lazy val fullCodeHex  = baseCodeHex + codeSuffixHex
+  }
+
+  def doLoadWalletV3( log : sbt.Logger, keystoreLocationsV3 : Seq[File], address : EthAddress ) : Option[wallet.V3] = {
+    val out = {
+      keystoresV3
+        .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
+        .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
+        if ( mb.isEmpty ) nextKeystore.get( address ) else mb
+      }
+    }
+    log.info( out.fold( s"No V3 wallet found for '0x${address.hex}'" )( _ => s"V3 wallet found for '0x${address.hex}'" ) )
+    out
   }
 }
 
