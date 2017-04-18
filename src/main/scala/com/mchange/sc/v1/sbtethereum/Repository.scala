@@ -1,5 +1,7 @@
 package com.mchange.sc.v1.sbtethereum
 
+import util.BaseCodeAndSuffix
+
 import java.io.{BufferedOutputStream,File,FileOutputStream,OutputStreamWriter,PrintWriter}
 import java.sql.{Connection,Timestamp}
 import java.text.SimpleDateFormat

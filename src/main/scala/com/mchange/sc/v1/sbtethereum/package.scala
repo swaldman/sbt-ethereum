@@ -404,24 +404,6 @@ package object sbtethereum {
         |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
         |       Logs:                ${if (ctr.logs.isEmpty) "None" else ctr.logs.mkString(", ")}""".stripMargin     
   }
-
-  // solc now generates code that includes a suffix of non-EVM-code metadata (currently a swarm hash of a metadata file)
-  final object BaseCodeAndSuffix {
-    private final val Regex = """(?i)^(?:0x)?(\p{XDigit}*?)(a165627a7a72305820\p{XDigit}*0029)?$""".r
-
-    def apply( fullHex : String ) : BaseCodeAndSuffix= {
-      fullHex match {
-        case Regex( baseCodeHex, null )      => BaseCodeAndSuffix( baseCodeHex, "" )
-        case Regex( baseCodeHex, suffixHex ) => BaseCodeAndSuffix( baseCodeHex, suffixHex )
-        case _                               => throw new BadCodeFormatException( s"Unexpected code format: ${fullHex}" )
-      }
-    }
-  }
-  final case class BaseCodeAndSuffix( baseCodeHex : String, codeSuffixHex : String ) {
-    lazy val baseCodeHash = EthHash.hash( baseCodeHex.decodeHex )
-    lazy val fullCodeHash = EthHash.hash( (baseCodeHex + codeSuffixHex).decodeHex )
-    lazy val fullCodeHex  = baseCodeHex + codeSuffixHex
-  }
 }
 
 

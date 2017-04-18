@@ -1,5 +1,7 @@
 package com.mchange.sc.v1.sbtethereum
 
+
+import util.BaseCodeAndSuffix
 import Parsers._
 
 import sbt._

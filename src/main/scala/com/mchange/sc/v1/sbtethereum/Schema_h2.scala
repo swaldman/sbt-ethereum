@@ -1,5 +1,7 @@
 package com.mchange.sc.v1.sbtethereum
 
+import util.BaseCodeAndSuffix
+
 import com.mchange.sc.v1.consuela._
 
 import com.mchange.sc.v2.lang.borrow
