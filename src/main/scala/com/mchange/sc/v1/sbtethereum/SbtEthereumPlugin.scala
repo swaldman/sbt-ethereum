@@ -21,7 +21,7 @@ import java.security.SecureRandom
 import java.util.Date
 import java.util.concurrent.atomic.AtomicReference
 
-import play.api.libs.json.Json
+import play.api.libs.json.{Json, JsObject}
 
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.lang.borrow
@@ -1385,6 +1385,71 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  // helper functions
+
+    private [sbtethereum] def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
+    mbGethWallet.fold {
+      log.info( "No wallet available. Trying passphrase as hex private key." )
+      EthPrivateKey( credential )
+    }{ gethWallet =>
+      try {
+        wallet.V3.decodePrivateKey( gethWallet, credential )
+      } catch {
+        case v3e : wallet.V3.Exception => {
+          log.warn("Credential is not correct geth wallet passphrase. Trying as hex private key.")
+          EthPrivateKey( credential )
+        }
+      }
+    }
+  }
+
+
+  private final val CantReadInteraction = "InteractionService failed to read"
+
+  private def readConfirmCredential(  log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
+    if ( attempt < maxAttempts ) {
+      val credential = is.readLine( readPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
+      val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
+      if ( credential == confirmation ) {
+        credential
+      } else {
+        log.warn("Entries did not match! Retrying.")
+        readConfirmCredential( log, is, readPrompt, confirmPrompt, maxAttempts, attempt + 1 )
+      }
+    } else {
+      throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )
+    }
+  }
+
+  private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi.Definition]
+
+  private def readAddressAndAbi( log : sbt.Logger, is : sbt.InteractionService ) : ( EthAddress, Abi.Definition ) = {
+    val address = EthAddress( is.readLine( "Contract address in hex: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+    val abi = parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+    ( address, abi )
+  }
+
+  private def readV3Wallet( is : sbt.InteractionService ) : wallet.V3 = {
+    val jsonStr = is.readLine( "V3 Wallet JSON: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
+    val jsv = Json.parse( jsonStr )
+    wallet.V3( jsv.as[JsObject] )
+  }
+
+  private def readCredential( is : sbt.InteractionService, address : EthAddress ) : String = {
+    is.readLine(s"Enter passphrase or hex private key for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
+  }
+
+  private def unknownWallet( loadDirs : Seq[File] ) : Nothing = {
+    val dirs = loadDirs.map( _.getAbsolutePath() ).mkString(", ")
+    throw new Exception( s"Could not find V3 wallet for the specified address in the specified keystore directories: ${dirs}}" )
+  }
+
+  // some formatting functions for ascii tables
+  private def emptyOrHex( str : String ) = if (str == null) "" else s"0x$str"
+  private def blankNull( str : String ) = if (str == null) "" else str
+  private def span( len : Int ) = (0 until len).map(_ => "-").mkString
+
+  // plug-in setup
 
   import autoImport._
 
