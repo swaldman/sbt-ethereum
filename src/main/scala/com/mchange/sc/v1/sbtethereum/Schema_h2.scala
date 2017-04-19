@@ -646,9 +646,10 @@ object Schema_h2 {
         immutable.SortedMap( buffer : _* )
       }
       def upsert( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit = {
-        borrow( conn.prepareStatement( "MERGE INTO address_aliases ( blockchinId, alias, address ) VALUES ( ?, ?, ? )" ) ) { ps =>
-          ps.setString( 1, alias )
-          ps.setString( 2, address.hex )
+        borrow( conn.prepareStatement( "MERGE INTO address_aliases ( blockchain_id, alias, address ) VALUES ( ?, ?, ? )" ) ) { ps =>
+          ps.setString( 1, blockchainId )
+          ps.setString( 2, alias )
+          ps.setString( 3, address.hex )
           ps.executeUpdate()
         }
       }
