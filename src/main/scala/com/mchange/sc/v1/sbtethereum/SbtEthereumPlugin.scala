@@ -112,11 +112,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // tasks
 
-    val xethLoadAbiFor = inputKey[Abi.Definition]("Finds the ABI for a contract address, if known")
+    val ethAbiMemorize = taskKey[Unit]("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
 
     val ethAliasDrop = inputKey[Unit]("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
 
-    val ethAliasList = inputKey[Unit]("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
+    val ethAliasList = taskKey[Unit]("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
 
     val ethAliasSet = inputKey[Unit]("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
 
@@ -132,9 +132,41 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethCompilationsList = taskKey[Unit]("Lists summary information about compilations known in the repository")
 
+    val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
+
+    val ethInvokeTransaction = inputKey[Option[ClientTransactionReceipt]]("Calls a function on a deployed smart contract")
+
+    val ethKeystoreCreateWalletV3 = taskKey[wallet.V3]("Generates a new V3 wallet, using ethEntropySource as a source of randomness")
+
+    val ethKeystoreInspectWalletV3 = inputKey[Unit]("Prints V3 wallet as JSON to the console.")
+
+    val ethKeystoreList = taskKey[immutable.Map[EthAddress,immutable.Set[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
+
+    val ethKeystoreMemorizeWalletV3 = taskKey[Unit]("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
+
+    val ethKeystoreRevealPrivateKey = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
+
+    val ethKeystoreValidateWalletV3 = inputKey[Unit]("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
+
+    val ethSelfPing = taskKey[Option[ClientTransactionReceipt]]("Sends 0 ether from ethAddress to itself")
+
+    val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
+
+    val ethSolidityCompile = taskKey[Unit]("Compiles solidity files")
+
+    val ethSolidityInstallCompiler = inputKey[Unit]("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum Repository (or choose a supported version)")
+
+    val ethSolidityChooseCompiler = inputKey[Unit]("Manually select among solidity compilers available to this project")
+
+    val ethSolidityShowCompiler = taskKey[Unit]("Displays currently active Solidity compiler")
+
     val xethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
-    val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
+    val xethFindCacheSessionSolidityCompilerKeys = taskKey[immutable.Set[String]]("Finds and caches keys for available compilers for use parser for ethSolidityCompilerSet")
+
+    val xethFindCurrentSolidityCompiler = taskKey[Compiler.Solidity]("Finds and caches keys for available compilers for use parser for ethSolidityCompilerSet")
+
+    val xethFindCacheAliasesIfAvailable = taskKey[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]("Finds and caches aliases for use by address parsers")
 
     val xethFindCacheOmitDupsCurrentCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethSolidityCompile")
 
@@ -146,39 +178,19 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethKeystoreCreateWalletV3Scrypt = taskKey[wallet.V3]("Generates a new scrypt V3 wallet, using ethEntropySource as a source of randomness")
 
-    val ethKeystoreCreateWalletV3 = taskKey[wallet.V3]("Generates a new V3 wallet, using ethEntropySource as a source of randomness")
-
-    val ethInvokeTransaction = inputKey[Option[ClientTransactionReceipt]]("Calls a function on a deployed smart contract")
-
     val xethInvokeData = inputKey[immutable.Seq[Byte]]("Reveals the data portion that would be sent in a message invoking a function and its arguments on a deployed smart contract")
 
-    val ethKeystoreList = taskKey[immutable.Map[EthAddress,immutable.Set[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
-
-    val xethLoadCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
+    val xethLoadAbiFor = inputKey[Abi.Definition]("Finds the ABI for a contract address, if known")
 
     val xethLoadCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc20.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
+
+    val xethLoadCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
 
     val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for ethAddress")
 
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
-    val ethAbiMemorize = taskKey[Unit]("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
-
-    val ethKeystoreMemorizeWalletV3 = taskKey[Unit]("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
-
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
-
-    val xethFindCacheAliasesIfAvailable = taskKey[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]("Finds and caches aliases for use by address parsers")
-
-    val ethKeystoreRevealPrivateKey = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
-
-    val ethSolidityCompile = taskKey[Unit]("Compiles solidity files")
-
-    val ethSolidityInstallCompiler = inputKey[Unit]("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum Repository (or choose a supported version)")
-
-    val ethSolidityChooseCompiler = inputKey[Unit]("Manually select among solidity compilers available to this project")
-
-    val ethSolidityShowCompiler = taskKey[Unit]("Displays currently active Solidity compiler")
 
     val xethQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
 
@@ -186,69 +198,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethTriggerDirtySolidityCompilerList = taskKey[Unit]("Indirectly provokes an update of the cache of aavailable solidity compilers used for tab completions.")
 
-    val ethSelfPing = taskKey[Option[ClientTransactionReceipt]]("Sends 0 ether from ethAddress to itself")
-
-    val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
-
-    val ethKeystoreInspectWalletV3 = inputKey[Unit]("Prints V3 wallet as JSON to the console.")
-
     val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts into the contract database. Returns true if changes were made.")
-
-    val ethKeystoreValidateWalletV3 = inputKey[Unit]("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
-
-    val xethUpdateSessionSolidityCompilers = taskKey[immutable.SortedMap[String,Compiler.Solidity]]("Finds and tests potential Solidity compilers to see which is available.")
-
-    val xethFindCacheSessionSolidityCompilerKeys = taskKey[immutable.Set[String]]("Finds and caches keys for available compilers for use parser for ethSolidityCompilerSet")
-
-    val xethFindCurrentSolidityCompiler = taskKey[Compiler.Solidity]("Finds and caches keys for available compilers for use parser for ethSolidityCompilerSet")
-
-    // anonymous tasks
-
-    def assertNonzeroAddress( stringAddress : String ) : EthAddress = {
-      if ( stringAddress.decodeHex.forall( _ == 0 ) ) {
-        throw new Exception(s"""No valid EthAddress set. Please use 'set ethAddress := "<your ethereum address>"'""")
-      } else {
-        EthAddress( stringAddress )
-      }
-    }
-
-    val dieOnZeroAddress = Def.task {
-      val current = ethAddress.value
-      assertNonzeroAddress( current )
-      true
-    }
 
     val xethUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
 
-    val findCachePrivateKey = Def.task {
-      val checked = dieOnZeroAddress.value
-
-      val CurAddrStr = ethAddress.value
-      val CurAddress = EthAddress(CurAddrStr)
-      val log = streams.value.log
-      val is = interactionService.value
-      val mbWallet = xethLoadWalletV3.value
-
-      def updateCached : EthPrivateKey = {
-        // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
-        // it also slows down automated attempts to guess passwords, i guess...
-        Thread.sleep(1000)
-
-        val credential = readCredential( is, CurAddress )
-
-        val privateKey = findPrivateKey( log, mbWallet, credential )
-        UnlockedKey.set( Some( (CurAddress, privateKey) ) )
-        privateKey
-      }
-      def goodCached : Option[EthPrivateKey] = {
-        UnlockedKey.get match {
-          case Some( ( CurAddress, privateKey ) ) => Some( privateKey )
-          case _                                  => None
-        }
-      }
-
-      goodCached.getOrElse( updateCached )
-    }
+    val xethUpdateSessionSolidityCompilers = taskKey[immutable.SortedMap[String,Compiler.Solidity]]("Finds and tests potential Solidity compilers to see which is available.")
 
     // definitions
 
@@ -268,26 +222,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       // Settings
 
-      ethBlockchainId   := MainnetIdentifier,
-
-      ethJsonRpcUrl     := "http://localhost:8545",
-
-      ethEntropySource := new java.security.SecureRandom,
-
-      ethIncludeLocations := Nil,
-
-      ethGasMarkup := 0.2,
-
-      xethGasOverrides := Map.empty[String,BigInt],
-
-      ethGasPriceMarkup := 0.0, // by default, use conventional gas price
-
-      ethKeystoreLocationsV3 := {
-        def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
-        def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
-        listify( Repository.KeyStore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
-      },
-
       ethAddress := {
         val mbProperty = Option( System.getProperty( EthAddressSystemProperty ) )
         val mbEnvVar   = Option( System.getenv( EthAddressEnvironmentVariable ) )
@@ -296,11 +230,37 @@ object SbtEthereumPlugin extends AutoPlugin {
         (mbProperty orElse mbEnvVar).getOrElse( ZeroEthAddress )
       },
 
-      ethTargetDir in Compile := (target in Compile).value / "ethereum",
+      ethBlockchainId   := MainnetIdentifier,
+
+      ethEntropySource := new java.security.SecureRandom,
+
+      ethGasMarkup := 0.2,
+
+      ethGasPriceMarkup := 0.0, // by default, use conventional gas price
+
+      ethIncludeLocations := Nil,
+
+      ethJsonRpcUrl := "http://localhost:8545",
+
+      ethKeystoreLocationsV3 := {
+        def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
+        def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
+        listify( Repository.KeyStore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
+      },
 
       ethSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
 
       ethSolidityDestination in Compile := (ethTargetDir in Compile).value / "solidity",
+
+      ethTargetDir in Compile := (target in Compile).value / "ethereum",
+
+      xethGasOverrides := Map.empty[String,BigInt],
+
+      xethWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
+
+      xethWalletV3Pbkdf2DkLen := wallet.V3.Default.Pbkdf2.DkLen,
+
+      xethWalletV3ScryptDkLen := wallet.V3.Default.Scrypt.DkLen,
 
       xethWalletV3ScryptN := wallet.V3.Default.Scrypt.N,
 
@@ -308,32 +268,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethWalletV3ScryptP := wallet.V3.Default.Scrypt.P,
 
-      xethWalletV3ScryptDkLen := wallet.V3.Default.Scrypt.DkLen,
-
-      xethWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
-
-      xethWalletV3Pbkdf2DkLen := wallet.V3.Default.Pbkdf2.DkLen,
-
       // tasks
 
-      compile in Compile := {
-        val dummy = (ethSolidityCompile in Compile).value
-        (compile in Compile).value
-      },
-
-      xethLoadAbiFor <<= xethLoadAbiForTask,
+      ethAbiMemorize <<= ethAbiMemorizeTask,
 
       ethAliasDrop <<= ethAliasDropTask,
 
-      ethAliasList := {
-        val log = streams.value.log
-        val blockchainId = ethBlockchainId.value
-        val faliases = Repository.Database.findAllAliases( blockchainId )
-        faliases.fold(
-          _ => log.warn("Could not read aliases from repository database."),
-          aliases => aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
-        )
-      },
+      ethAliasList <<= ethAliasListTask,
 
       ethAliasSet <<= ethAliasSetTask,
 
@@ -343,474 +284,87 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethInvokeConstant <<= ethInvokeConstantTask,
 
-      ethCompilationsCull := {
-        val log = streams.value.log
-        val fcount = Repository.Database.cullUndeployedCompilations()
-        val count = fcount.get
-        log.info( s"Removed $count undeployed compilations from the repository database." )
-      },
+      ethInvokeTransaction <<= ethInvokeTransactionTask,
+
+      ethCompilationsCull <<= ethCompilationsCullTask,
 
       ethCompilationsInspect <<= ethCompilationsInspectTask,
 
-      ethCompilationsList := {
-        val contractsSummary = Repository.Database.contractsSummary.get // throw for any db problem
+      ethCompilationsList <<= ethCompilationsListTask,
 
-        val Blockchain = "Blockchain"
-        val Address    = "Contract Address"
-        val Name       = "Name"
-        val CodeHash   = "Code Hash"
-        val Timestamp  = "Deployment Timestamp"
+      ethDeployOnly <<= ethDeployOnlyTask,
 
-        val cap = "+" + span(12) + "+" + span(44) + "+" + span(22) + "+" + span(68) + "+" + span(30) + "+"
-        println( cap )
-        println( f"| $Blockchain%-10s | $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
-        println( cap )
+      ethKeystoreCreateWalletV3 := xethKeystoreCreateWalletV3Scrypt.value,
 
-        contractsSummary.foreach { row =>
-          import row._
-          val id = blankNull( blockchain_id )
-          val ca = emptyOrHex( contract_address )
-          val nm = blankNull( name )
-          val ch = emptyOrHex( code_hash )
-          val ts = blankNull( timestamp )
-          println( f"| $id%-10s | $ca%-42s | $nm%-20s | $ch%-66s | $ts%-28s |" )
-        }
-        println( cap )
-      },
+      ethKeystoreInspectWalletV3 <<= ethKeystoreInspectWalletV3Task,
 
-      ethSolidityCompile in Compile := {
-        val log = streams.value.log
+      ethKeystoreList <<= ethKeystoreListTask,
 
-        val compiler = (xethFindCurrentSolidityCompiler in Compile).value
+      ethKeystoreMemorizeWalletV3 <<= ethKeystoreMemorizeWalletV3Task,
 
-        val includeStrings = ethIncludeLocations.value    
+      ethKeystoreRevealPrivateKey <<= ethKeystoreRevealPrivateKeyTask,
 
-        val solSource      = (ethSoliditySource in Compile).value
-        val solDestination = (ethSolidityDestination in Compile).value
+      ethKeystoreValidateWalletV3 <<= ethKeystoreValidateWalletV3Task,
 
-        val baseDir = baseDirectory.value
+      ethSelfPing <<= ethSelfPingTask,
 
-        val includeLocations = includeStrings.map( SourceFile.Location.apply( baseDir, _ ) )
+      ethSendEther <<= ethSendEtherTask,
 
-        doCompileSolidity( log, compiler, includeLocations, solSource, solDestination )
-      },
+      ethSolidityCompile in Compile <<= ethSolidityCompileTask,
 
       ethSolidityChooseCompiler <<= ethSolidityChooseCompilerTask,
 
       ethSolidityInstallCompiler <<= ethSolidityInstallCompilerTask,
 
-      ethSolidityShowCompiler := {
-        val log        = streams.value.log
-        val ensureSet = xethFindCurrentSolidityCompiler.value
-        val ( key, compiler ) = CurrentSolidityCompiler.get.get
-        log.info( s"Current solidity compiler '$key', which refers to $compiler." ) 
-      },
+      ethSolidityShowCompiler <<= ethSolidityShowCompilerTask,
 
-      xethDefaultGasPrice := {
-        val log        = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        doGetDefaultGasPrice( log, jsonRpcUrl )
-      },
+      xethLoadAbiFor <<= xethLoadAbiForTask,
 
-      xethFindCacheOmitDupsCurrentCompilations <<= xethFindCacheOmitDupsCurrentCompilationsTask storeAs xethFindCacheOmitDupsCurrentCompilations triggeredBy (ethSolidityCompile in Compile),
+      xethDefaultGasPrice <<= xethDefaultGasPriceTask,
 
       xethFindCacheAliasesIfAvailable <<= xethFindCacheAliasesIfAvailableTask.storeAs( xethFindCacheAliasesIfAvailable ).triggeredBy( xethTriggerDirtyAliasCache ),
 
-      xethGasPrice := {
-        val log        = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-
-        val markup          = ethGasPriceMarkup.value
-        val defaultGasPrice = xethDefaultGasPrice.value
-
-        rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) ).toBigInt 
-      },
-
-      xethGenKeyPair := {
-        val log = streams.value.log
-        val out = EthKeyPair( ethEntropySource.value )
-
-        // a ridiculous overabundance of caution
-        assert {
-          val checkpub = out.pvt.toPublicKey
-          checkpub == out.pub && checkpub.toAddress == out.address
-        }
-
-        log.info( s"Generated keypair for address '0x${out.address.hex}'" )
-
-        out
-      },
-
-      xethKeystoreCreateWalletV3Pbkdf2 := {
-        val log   = streams.value.log
-        val c     = xethWalletV3Pbkdf2C.value
-        val dklen = xethWalletV3Pbkdf2DkLen.value
-
-        val is = interactionService.value
-        val keyPair = xethGenKeyPair.value
-        val entropySource = ethEntropySource.value
-
-        log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
-        val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
-        val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-        Repository.KeyStore.V3.storeWallet( w ).get // asserts success
-      },
-
-      xethKeystoreCreateWalletV3Scrypt := {
-        val log   = streams.value.log
-        val n     = xethWalletV3ScryptN.value
-        val r     = xethWalletV3ScryptR.value
-        val p     = xethWalletV3ScryptP.value
-        val dklen = xethWalletV3ScryptDkLen.value
-
-        val is = interactionService.value
-        val keyPair = xethGenKeyPair.value
-        val entropySource = ethEntropySource.value
-
-        log.info( s"Generating V3 wallet, alogorithm=scrypt, n=${n}, r=${r}, p=${p}, dklen=${dklen}" )
-        val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
-        val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-        Repository.KeyStore.V3.storeWallet( w ).get // asserts success
-      },
-
-      ethKeystoreCreateWalletV3 := xethKeystoreCreateWalletV3Scrypt.value,
-
-      ethInvokeTransaction <<= ethInvokeTransactionTask,
-
-      xethInvokeData <<= xethInvokeDataTask, 
-
-      xethNextNonce := {
-        val log            = streams.value.log
-        val jsonRpcUrl     = ethJsonRpcUrl.value
-        doGetTransactionCount( log, jsonRpcUrl, EthAddress( ethAddress.value ), jsonrpc20.Client.BlockNumber.Pending )
-      },
-
-      ethKeystoreList := {
-        val keystoresV3 = ethKeystoreLocationsV3.value
-        val log         = streams.value.log
-        val combined = {
-          keystoresV3
-            .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
-            .foldLeft( Map.empty[EthAddress,wallet.V3] )( ( accum, next ) => accum ++ next )
-        }
-
-        // TODO: Aliases as values
-        val out = combined.map( tup => ( tup._1, immutable.Set.empty[String] ) )
-        val cap = "+" + span(44) + "+"
-        val KeystoreAddresses = "Keystore Addresses"
-        println( cap )
-        println( f"| $KeystoreAddresses%-42s |" )
-        println( cap )
-        immutable.TreeSet( out.keySet.toSeq.map( address => s"0x${address.hex}" ) : _* ).foreach { ka =>
-          println( f"| $ka%-42s |" )
-        }
-        println( cap )
-        out
-      },
-
-      xethLoadCompilationsKeepDups := {
-        val log = streams.value.log
-
-        val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
-
-        val dir = (ethSolidityDestination in Compile).value
-
-        def addContracts( vec : immutable.Vector[(String,jsonrpc20.Compilation.Contract)], name : String ) = {
-          val next = {
-            val file = new File( dir, name )
-            try {
-              borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]] )
-            } catch {
-              case e : Exception => {
-                log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
-                log.warn( s"  --> cause: ${e.toString}" )
-                Map.empty[String,jsonrpc20.Compilation.Contract]
-              }
-            }
-          }
-          vec ++ next
-        }
-
-        dir.list.filter( _.endsWith(".json") ).foldLeft( immutable.Vector.empty[(String,jsonrpc20.Compilation.Contract)] )( addContracts )
-      },
-
-      xethLoadCompilationsOmitDups := {
-        val log = streams.value.log
-
-        val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
-
-        val dir = (ethSolidityDestination in Compile).value
-
-        def addBindingKeepShorterSource( addTo : immutable.Map[String,jsonrpc20.Compilation.Contract], binding : (String,jsonrpc20.Compilation.Contract) ) = {
-          val ( name, compilation ) = binding
-          addTo.get( name ) match {
-            case Some( existingCompilation ) => { // this is a duplicate name, we have to think about whether to add and override or keep the old version
-              (existingCompilation.info.mbSource, compilation.info.mbSource) match {
-                case ( Some( existingSource ), Some( newSource ) ) => {
-                  if ( existingSource.length > newSource.length ) addTo + binding else addTo // use the shorter-sourced duplicate
-                }
-                case ( None, Some( newSource ) )                   => addTo + binding // but prioritize compilations for which source is known
-                case ( Some( existingSource ), None )              => addTo
-                case ( None, None )                                => addTo
-              }
-            }
-            case None => addTo + binding // not a duplicate name, so just add the binding
-          }
-        }
-        def addAllKeepShorterSource( addTo : immutable.Map[String,jsonrpc20.Compilation.Contract], nextBindings : Iterable[(String,jsonrpc20.Compilation.Contract)] ) = {
-          nextBindings.foldLeft( addTo )( ( accum, next ) => addBindingKeepShorterSource( accum, next ) )
-        }
-        def addContracts( tup : ( immutable.Map[String,jsonrpc20.Compilation.Contract], immutable.Set[String] ), name : String ) = {
-          val ( addTo, overlaps ) = tup
-          val next = {
-            val file = new File( dir, name )
-            try {
-              borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]] )
-            } catch {
-              case e : Exception => {
-                log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
-                log.warn( s"  --> cause: ${e.toString}" )
-                Map.empty[String,jsonrpc20.Compilation.Contract]
-              }
-            }
-          }
-          val rawNewOverlaps = next.keySet.intersect( addTo.keySet )
-          val realNewOverlaps = rawNewOverlaps.foldLeft( immutable.Set.empty[String] ){ ( cur, key ) =>
-            val origCodeBcas = BaseCodeAndSuffix( addTo( key ).code )
-            val nextCodeBcas = BaseCodeAndSuffix( next( key ).code )
-
-            if ( origCodeBcas.baseCodeHex != nextCodeBcas.baseCodeHex ) cur + key else cur
-          }
-          ( addAllKeepShorterSource( addTo, next ), overlaps ++ realNewOverlaps )
-        }
-
-        val ( rawCompilations, duplicates ) = dir.list.filter( _.endsWith( ".json" ) ).foldLeft( ( immutable.Map.empty[String,jsonrpc20.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
-        if ( !duplicates.isEmpty ) {
-          val dupsStr = duplicates.mkString(", ")
-          log.warn( s"The project contains mutiple contracts and/or libraries that have identical names but compile to distinct code: $dupsStr" )
-          if ( duplicates.size > 1 ) {
-            log.warn( s"Units '$dupsStr' have been dropped from the deployable compilations list as references would be ambiguous." )
-          } else {
-            log.warn( s"Unit '$dupsStr' has been dropped from the deployable compilations list as references would be ambiguous." )
-          }
-          rawCompilations -- duplicates
-        } else {
-          rawCompilations
-        }
-      },
-
-      xethLoadWalletV3For <<= xethLoadWalletV3ForTask,
-
-      xethLoadWalletV3 := {
-        val checked = dieOnZeroAddress.value
-        val s = state.value
-        val addressStr = ethAddress.value
-	val extract = Project.extract(s)
-	val (_, result) = extract.runInputTask(xethLoadWalletV3For, addressStr, s)
-        result
-      },
-
-      ethAbiMemorize := {
-        val blockchainId = ethBlockchainId.value
-        val log = streams.value.log
-        val is = interactionService.value
-        val ( address, abi ) = readAddressAndAbi( log, is )
-        val mbKnownCompilation = Repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
-        mbKnownCompilation match {
-          case Some( knownCompilation ) => {
-            log.info( s"The contract at address '$address' was already associated with a deployed compilation." )
-            // TODO, maybe, check if the deployed compilation includes a non-null ABI
-          }
-          case None => {
-            Repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // thrown an Exception if there's a database issue
-            log.info( s"ABI is now known for the contract at address ${address.hex}" )
-          }
-        }
-      },
-
-      ethKeystoreMemorizeWalletV3 := {
-        val log = streams.value.log
-        val is = interactionService.value
-        val w = readV3Wallet( is )
-        val address = w.address // a very cursory check of the wallet, NOT full validation
-        Repository.KeyStore.V3.storeWallet( w ).get // asserts success
-        log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
-        log.info( s"Consider validating the JSON using 'ethKeystoreValidateWalletV3 0x${address.hex}." )
-      },
-
-      ethDeployOnly <<= ethDeployOnlyTask,
-
-      xethQueryRepositoryDatabase := {
-        val log   = streams.value.log
-        val query = DbQueryParser.parsed
-
-        // removed guard of query (restriction to select),
-        // since updating SQL issued via executeQuery(...)
-        // usefully fails in h3
-
-        val checkDataSource = {
-          Repository.Database.DataSource.map { ds =>
-            borrow( ds.getConnection() ) { conn =>
-              borrow( conn.createStatement() ) { stmt =>
-                borrow( stmt.executeQuery( query ) ) { rs =>
-                  val rsmd = rs.getMetaData
-                  val numCols = rsmd.getColumnCount()
-                  val colRange = (1 to numCols)
-                  val displaySizes = colRange.map( rsmd.getColumnDisplaySize )
-                  val labels = colRange.map( rsmd.getColumnLabel )
-
-                  // XXX: make this pretty. someday.
-                  log.info( labels.mkString(", ") )
-                  while ( rs.next ) {
-                    log.info( colRange.map( rs.getString ).mkString(", ") )
-                  }
-                }
-              }
-            }
-          }
-        }
-        if ( checkDataSource.isFailed ) {
-          log.warn("Failed to find DataSource!")
-          log.warn( checkDataSource.fail.toString )
-        }
-      },
-
-      ethKeystoreRevealPrivateKey <<= ethKeystoreRevealPrivateKeyTask,
-
-      ethSelfPing := {
-        val checked  = dieOnZeroAddress.value
-        val address  = ethAddress.value
-        val sendArgs = s" ${address} 0 wei"
-        val log = streams.value.log
-
-        val s = state.value
-	val extract = Project.extract(s)
-	val (_, result) = extract.runInputTask(ethSendEther, sendArgs, s)
-
-        val out = result
-        out.fold( log.warn("Ping failed! Our attempt to send 0 ether from '${address}' to itself may or may not eventually succeed, but we've timed out before hearing back." ) ) { receipt =>
-          log.info( s"Ping succeeded! Sent 0 ether from '${address}' to itself in transaction '0x${receipt.transactionHash.hex}'" )
-        }
-        out
-      },
-
-      ethKeystoreInspectWalletV3 := {
-        val keystoreDirs = ethKeystoreLocationsV3.value
-        val w = xethLoadWalletV3For.evaluated.getOrElse( unknownWallet( keystoreDirs ) )
-        println( Json.stringify( w.withLowerCaseKeys ) )
-      },
-
-      ethSendEther <<= ethSendEtherTask,
-
-      xethTriggerDirtyAliasCache := { // this is intentionally empty, it's execution just triggers a re-caching of aliases
-      },
-
-      xethTriggerDirtySolidityCompilerList := { // this is intentionally empty, it's execution just triggers a re-caching of of solidity compiler keys
-      },
-
-      xethUpdateContractDatabase := {
-        val log          = streams.value.log
-        val jsonRpcUrl   = ethJsonRpcUrl.value
-        val compilations = xethLoadCompilationsKeepDups.value // we want to "know" every contract we've seen, which might include contracts with multiple names
-
-        Repository.Database.updateContractDatabase( compilations ).get
-      },
-
-      ethKeystoreValidateWalletV3 <<= ethKeystoreValidateWalletV3Task,
-
-      xethUpdateRepositoryDatabase := {
-        val log   = streams.value.log
-        val query = DbQueryParser.parsed
-
-        val checkDataSource = {
-          Repository.Database.DataSource.map { ds =>
-            borrow( ds.getConnection() ) { conn =>
-              borrow( conn.createStatement() ) { stmt =>
-                val rows = stmt.executeUpdate( query )
-                log.info( s"Query succeeded: $query" )
-                log.info( s"$rows rows affected." )
-              }
-            }
-          }
-        }
-        if ( checkDataSource.isFailed ) {
-          log.warn("Failed to find DataSource!")
-          log.warn( checkDataSource.fail.toString )
-        }
-      },
-
-      xethUpdateSessionSolidityCompilers := {
-        import Compiler.Solidity._
-
-        val netcompileUrl = ethNetcompileUrl.?.value
-        val jsonRpcUrl    = ethJsonRpcUrl.value
-
-        def check( key : String, compiler : Compiler.Solidity ) : Option[ ( String, Compiler.Solidity ) ] = {
-          val test = Compiler.Solidity.test( compiler )
-          if ( test ) {
-            Some( Tuple2( key, compiler ) )
-          } else {
-            None
-          }
-        }
-        def netcompile = {
-          netcompileUrl.flatMap { ncu =>
-            check( s"${EthNetcompile.KeyPrefix}${ncu}", Compiler.Solidity.EthNetcompile( ncu ) )
-          }
-        }
-        def ethJsonRpc = {
-          check( s"${EthJsonRpc.KeyPrefix}${jsonRpcUrl}", Compiler.Solidity.EthJsonRpc( jsonRpcUrl ) )
-        }
-        def localPath = {
-          check( Compiler.Solidity.LocalPathSolcKey, Compiler.Solidity.LocalPathSolc )
-        }
-        def checkLocalRepositorySolc( version : String ) = {
-          Repository.SolcJ.Directory.toOption.flatMap { rootSolcJDir =>
-            check( s"${LocalSolc.KeyPrefix}${version}", Compiler.Solidity.LocalSolc( Some( new File( rootSolcJDir, version ) ) ) )
-          }
-        }
-        def checkLocalRepositorySolcs = {
-          SolcJInstaller.SupportedVersions.map( checkLocalRepositorySolc ).toSeq
-        }
-
-        val raw = checkLocalRepositorySolcs :+ localPath :+ ethJsonRpc :+ netcompile
-
-        val out = immutable.SortedMap( raw.filter( _ != None ).map( _.get ) : _* )
-        SessionSolidityCompilers.set( Some( out ) )
-        out
-      },
+      xethFindCacheOmitDupsCurrentCompilations <<= xethFindCacheOmitDupsCurrentCompilationsTask storeAs xethFindCacheOmitDupsCurrentCompilations triggeredBy (ethSolidityCompile in Compile),
 
       xethFindCacheSessionSolidityCompilerKeys <<= xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys ).triggeredBy( xethTriggerDirtySolidityCompilerList ),
 
-      xethFindCurrentSolidityCompiler := {
-        import Compiler.Solidity._
+      xethGasPrice <<= xethGasPriceTask,
 
-        // val compilerKeys = xethFindCacheSessionSolidityCompilerKeys.value
-        val sessionCompilers = SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys should have forced sessionCompilers to be set, but it's not." ) )
-        val compilerKeys = sessionCompilers.keySet
+      xethGenKeyPair <<= xethGenKeyPairTask,
 
-        CurrentSolidityCompiler.get.map( _._2).getOrElse {
-          def latestLocalInstallVersion : Option[SemanticVersion] = {
-            val versions = (immutable.TreeSet.empty[SemanticVersion] ++ compilerKeys.map( LocalSolc.versionFromKey ).filter( _ != None ).map( _.get ))
-            if ( versions.size > 0 ) Some(versions.last) else None
-          }
-          def latestLocalInstallKey : Option[String] = latestLocalInstallVersion.map( version => s"${LocalSolc.KeyPrefix}${version.versionString}" )
+      xethKeystoreCreateWalletV3Pbkdf2 <<= xethKeystoreCreateWalletV3Pbkdf2Task,
 
-          val key = {
-            compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse
-            compilerKeys.find( _ == LocalPathSolcKey ) orElse
-            latestLocalInstallKey orElse
-            compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) ) 
+      xethKeystoreCreateWalletV3Scrypt <<= xethKeystoreCreateWalletV3ScryptTask,
 
-          }.getOrElse {
-            throw new Exception( s"Cannot find a usable solidity compiler. compilerKeys: ${compilerKeys}, sessionCompilers: ${sessionCompilers}" )
-          }
-          val compiler = sessionCompilers.get( key ).getOrElse( throw new Exception( s"Could not find a solidity compiler for key '$key'. sessionCompilers: ${sessionCompilers}" ) )
+      xethInvokeData <<= xethInvokeDataTask,
 
-          CurrentSolidityCompiler.set( Some( Tuple2( key, compiler ) ) )
+      xethNextNonce <<= xethNextNonceTask,
 
-          compiler
-        }
+      xethLoadCompilationsKeepDups <<= xethLoadCompilationsKeepDupsTask,
+
+      xethLoadCompilationsOmitDups <<= xethLoadCompilationsOmitDupsTask,
+
+      xethLoadWalletV3For <<= xethLoadWalletV3ForTask,
+
+      xethLoadWalletV3 <<= xethLoadWalletV3Task,
+
+      xethQueryRepositoryDatabase <<= xethQueryRepositoryDatabaseTask, 
+
+      xethTriggerDirtyAliasCache <<= xethTriggerDirtyAliasCacheTask, // this is a no-op, its execution just triggers a re-caching of aliases
+
+      xethTriggerDirtySolidityCompilerList <<= xethTriggerDirtySolidityCompilerListTask, // this is a no-op, its execution just triggers a re-caching of aliases
+
+      xethUpdateContractDatabase <<= xethUpdateContractDatabaseTask, 
+
+      xethUpdateRepositoryDatabase <<= xethUpdateRepositoryDatabaseTask,
+
+      xethUpdateSessionSolidityCompilers <<= xethUpdateSessionSolidityCompilersTask,
+
+      xethFindCurrentSolidityCompiler <<= xethFindCurrentSolidityCompilerTask,
+
+      compile in Compile := {
+        val dummy = (ethSolidityCompile in Compile).value
+        (compile in Compile).value
       },
 
       // TODO: factor away repeated logic here. yuk.
@@ -862,24 +416,69 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     )
 
-    def ethSendEtherTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser( xethFindCacheAliasesIfAvailable )( genEthSendEtherParser )
+    // anonymous tasks
 
-      Def.inputTask {
-        val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        val args = parser.parsed
-        val to = args._1
-        val amount = args._2
-        val nextNonce = xethNextNonce.value
-        val markup = ethGasMarkup.value
-        val gasPrice = xethGasPrice.value
-        val gas = markupEstimateGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
-        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
-        val privateKey = findCachePrivateKey.value
-        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
-        log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
-        awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+    def assertNonzeroAddress( stringAddress : String ) : EthAddress = {
+      if ( stringAddress.decodeHex.forall( _ == 0 ) ) {
+        throw new Exception(s"""No valid EthAddress set. Please use 'set ethAddress := "<your ethereum address>"'""")
+      } else {
+        EthAddress( stringAddress )
+      }
+    }
+
+    val dieOnZeroAddress = Def.task {
+      val current = ethAddress.value
+      assertNonzeroAddress( current )
+      true
+    }
+
+    val findCachePrivateKey = Def.task {
+      val checked = dieOnZeroAddress.value
+
+      val CurAddrStr = ethAddress.value
+      val CurAddress = EthAddress(CurAddrStr)
+      val log = streams.value.log
+      val is = interactionService.value
+      val mbWallet = xethLoadWalletV3.value
+
+      def updateCached : EthPrivateKey = {
+        // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
+        // it also slows down automated attempts to guess passwords, i guess...
+        Thread.sleep(1000)
+
+        val credential = readCredential( is, CurAddress )
+
+        val privateKey = findPrivateKey( log, mbWallet, credential )
+        UnlockedKey.set( Some( (CurAddress, privateKey) ) )
+        privateKey
+      }
+      def goodCached : Option[EthPrivateKey] = {
+        UnlockedKey.get match {
+          case Some( ( CurAddress, privateKey ) ) => Some( privateKey ) // if ethAddress has changed, this will no longer match
+          case _                                  => None
+        }
+      }
+
+      goodCached.getOrElse( updateCached )
+    }
+
+    // task definitions
+
+    def ethAbiMemorizeTask : Initialize[Task[Unit]] = Def.task {
+      val blockchainId = ethBlockchainId.value
+      val log = streams.value.log
+      val is = interactionService.value
+      val ( address, abi ) = readAddressAndAbi( log, is )
+      val mbKnownCompilation = Repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
+      mbKnownCompilation match {
+        case Some( knownCompilation ) => {
+          log.info( s"The contract at address '$address' was already associated with a deployed compilation." )
+          // TODO, maybe, check if the deployed compilation includes a non-null ABI
+        }
+        case None => {
+          Repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // thrown an Exception if there's a database issue
+          log.info( s"ABI is now known for the contract at address ${address.hex}" )
+        }
       }
     }
 
@@ -905,6 +504,16 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
+    def ethAliasListTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+      val blockchainId = ethBlockchainId.value
+      val faliases = Repository.Database.findAllAliases( blockchainId )
+      faliases.fold(
+        _ => log.warn("Could not read aliases from repository database."),
+        aliases => aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
+      )
+    }
+
     def ethAliasSetTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
       val log = streams.value.log
       val blockchainId = ethBlockchainId.value
@@ -919,61 +528,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       Def.taskDyn {
         xethTriggerDirtyAliasCache
-      }
-    }
-
-    def ethSolidityChooseCompilerTask : Initialize[InputTask[Unit]] = {
-      val parser = Defaults.loadForParser(xethFindCacheSessionSolidityCompilerKeys)( genLiteralSetParser )
-
-      Def.inputTask {
-        val log = streams.value.log
-        val key = parser.parsed
-        val mbNewCompiler = SessionSolidityCompilers.get.get.get( key )
-        val newCompilerTuple = mbNewCompiler.map( nc => ( key, nc ) )
-        CurrentSolidityCompiler.set( newCompilerTuple )
-        log.info( s"Set compiler to '$key'" )
-      }
-    }
-
-    def ethSolidityInstallCompilerTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
-      val log = streams.value.log
-
-      val mbVersion = SolcJVersionParser.parsed
-
-      val versionToInstall = mbVersion.getOrElse( LatestSolcJVersion )
-
-      log.info( s"Installing local solidity compiler into the sbt-ethereum repository. This may take a few minutes." )
-      val check = Repository.SolcJ.Directory.flatMap { rootSolcJDir =>
-        Failable {
-          val versionDir = new File( rootSolcJDir, versionToInstall )
-          if ( versionDir.exists() ) {
-            log.warn( s"Directory '${versionDir.getAbsolutePath}' already exists. If you would like to reinstall this version, please delete this directory by hand." )
-            throw new Exception( s"Cannot overwrite existing installation in '${versionDir.getAbsolutePath}'. Please delete this directory by hand if you wish to reinstall." )
-          } else {
-            SolcJInstaller.installLocalSolcJ( rootSolcJDir.toPath, versionToInstall )
-            log.info( s"Installed local solcJ compiler, version ${versionToInstall} in '${rootSolcJDir}'." )
-            val test = Compiler.Solidity.test( new Compiler.Solidity.LocalSolc( Some( versionDir ) ) )
-            if ( test ) {
-              log.info( "Testing newly installed compiler... ok." )
-            } else {
-              log.warn( "Testing newly installed compiler... failed!" )
-            }
-          }
-        }
-      }
-      check.get // throw if a failure occurred
-
-      Def.taskDyn {
-        xethTriggerDirtySolidityCompilerList // causes parse cache and SessionSolidityCompilers to get updated
-      }
-    }
-
-    def xethLoadAbiForTask : Initialize[InputTask[Abi.Definition]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
-
-      Def.inputTask {
-        val blockchainId = ethBlockchainId.value
-        abiForAddress( blockchainId, parser.parsed )
       }
     }
 
@@ -1011,109 +565,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethInvokeConstantTask : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedReturnValue])]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
-
-      Def.inputTask {
-        val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        val from = if ( ethAddress.value == ZeroEthAddress ) None else Some( EthAddress( ethAddress.value ) )
-        val markup = ethGasMarkup.value
-        val gasPrice = xethGasPrice.value
-        val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
-        if (! function.constant ) {
-          log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
-        }
-        val amount = mbWei.getOrElse( Zero )
-        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
-        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
-        log.info( s"Call data for function call: ${callData.hex}" )
-        val gas = markupEstimateGas( log, jsonRpcUrl, from, Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
-        log.info( s"Gas estimated for function call: ${gas}" )
-        val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Latest )
-        log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
-        log.info( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
-        val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception is we can't get results
-        results.length match {
-          case 0 => {
-            assert( abiFunction.outputs.length == 0 )
-            log.info( s"The function ${abiFunction.name} yields no result." )
-          }
-          case n => {
-            assert( abiFunction.outputs.length == n )
-
-            if ( n == 1 ) {
-              log.info( s"The function '${abiFunction.name}' yields 1 result." )
-            } else {
-              log.info( s"The function '${abiFunction.name}' yields ${n} results." )
-            }
-
-            def formatResult( idx : Int, result : DecodedReturnValue ) : String = {
-              val param = result.parameter
-              val sb = new StringBuilder(256)
-              sb.append( s" + Result ${idx} of type '${param.`type`}'")
-              if ( param.name.length > 0 ) {
-                sb.append( s", named '${param.name}'," )
-              }
-              sb.append( s" is ${result.stringRep}" )
-              sb.toString
-            }
-
-            Stream.from(1).zip(results).foreach { case ( idx, result ) => log.info( formatResult( idx, result ) ) }
-          }
-        }
-        ( abiFunction, results )
-      }
-    }
-
-    def ethDeployOnlyTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser(xethFindCacheOmitDupsCurrentCompilations)( genContractNamesConstructorInputsParser )
-
-      Def.inputTask {
-        val log = streams.value.log
-        val blockchainId = ethBlockchainId.value
-        val jsonRpcUrl = ethJsonRpcUrl.value
-        val ( contractName, extraData ) = parser.parsed
-        val ( compilation, inputsBytes ) = {
-          extraData match {
-            case None => { 
-              // at the time of parsing, a compiled contract is not available. we'll force compilation now, but can't accept contructor arguments
-              val contractsMap = xethLoadCompilationsOmitDups.value
-              val compilation = contractsMap( contractName )
-              ( compilation, immutable.Seq.empty[Byte] )
-            }
-            case Some( ( inputs, abi, compilation ) ) => {
-              // at the time of parsing, a compiled contract is available, so we've decoded constructor inputs( if any )
-              ( compilation, ethabi.constructorCallData( inputs, abi ).get ) // asserts successful encoding of params
-            }
-          }
-        }
-        val inputsHex = inputsBytes.hex
-        val codeHex = compilation.code
-        val dataHex = codeHex ++ inputsHex
-        val address = EthAddress( ethAddress.value )
-        val nextNonce = xethNextNonce.value
-        val markup = ethGasMarkup.value
-        val gasPrice = xethGasPrice.value
-        val gas = xethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, Some(address), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
-        val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
-        val privateKey = findCachePrivateKey.value
-        val updateChangedDb = xethUpdateContractDatabase.value
-        val txnHash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
-        log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
-        val out = awaitTransactionReceipt( log, jsonRpcUrl, txnHash, PollSeconds, PollAttempts )
-        out.foreach { receipt =>
-          receipt.contractAddress.foreach { ca =>
-            log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
-            val dbCheck = {
-              import compilation.info._
-              Repository.Database.insertNewDeployment( blockchainId, ca, codeHex, address, txnHash, inputsBytes )
-            }
-            dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
-          }
-        }
-        out
-      }
+    def ethCompilationsCullTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+      val fcount = Repository.Database.cullUndeployedCompilations()
+      val count = fcount.get
+      log.info( s"Removed $count undeployed compilations from the repository database." )
     }
 
     def ethCompilationsInspectTask : Initialize[InputTask[Unit]] = {
@@ -1194,16 +650,140 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethInvokeDataTask : Initialize[InputTask[immutable.Seq[Byte]]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
+    def ethCompilationsListTask : Initialize[Task[Unit]] = Def.task {
+      val contractsSummary = Repository.Database.contractsSummary.get // throw for any db problem
+
+      val Blockchain = "Blockchain"
+      val Address    = "Contract Address"
+      val Name       = "Name"
+      val CodeHash   = "Code Hash"
+      val Timestamp  = "Deployment Timestamp"
+
+      val cap = "+" + span(12) + "+" + span(44) + "+" + span(22) + "+" + span(68) + "+" + span(30) + "+"
+      println( cap )
+      println( f"| $Blockchain%-10s | $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
+      println( cap )
+
+      contractsSummary.foreach { row =>
+        import row._
+        val id = blankNull( blockchain_id )
+        val ca = emptyOrHex( contract_address )
+        val nm = blankNull( name )
+        val ch = emptyOrHex( code_hash )
+        val ts = blankNull( timestamp )
+        println( f"| $id%-10s | $ca%-42s | $nm%-20s | $ch%-66s | $ts%-28s |" )
+      }
+      println( cap )
+    }
+
+    def ethDeployOnlyTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+      val parser = Defaults.loadForParser(xethFindCacheOmitDupsCurrentCompilations)( genContractNamesConstructorInputsParser )
 
       Def.inputTask {
-        val ( contractAddress, function, args, abi ) = parser.parsed
+        val log = streams.value.log
+        val blockchainId = ethBlockchainId.value
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val ( contractName, extraData ) = parser.parsed
+        val ( compilation, inputsBytes ) = {
+          extraData match {
+            case None => { 
+              // at the time of parsing, a compiled contract is not available. we'll force compilation now, but can't accept contructor arguments
+              val contractsMap = xethLoadCompilationsOmitDups.value
+              val compilation = contractsMap( contractName )
+              ( compilation, immutable.Seq.empty[Byte] )
+            }
+            case Some( ( inputs, abi, compilation ) ) => {
+              // at the time of parsing, a compiled contract is available, so we've decoded constructor inputs( if any )
+              ( compilation, ethabi.constructorCallData( inputs, abi ).get ) // asserts successful encoding of params
+            }
+          }
+        }
+        val inputsHex = inputsBytes.hex
+        val codeHex = compilation.code
+        val dataHex = codeHex ++ inputsHex
+        val address = EthAddress( ethAddress.value )
+        val nextNonce = xethNextNonce.value
+        val markup = ethGasMarkup.value
+        val gasPrice = xethGasPrice.value
+        val gas = xethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, Some(address), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
+        val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
+        val privateKey = findCachePrivateKey.value
+        val updateChangedDb = xethUpdateContractDatabase.value
+        val txnHash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
+        val out = awaitTransactionReceipt( log, jsonRpcUrl, txnHash, PollSeconds, PollAttempts )
+        out.foreach { receipt =>
+          receipt.contractAddress.foreach { ca =>
+            log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
+            val dbCheck = {
+              import compilation.info._
+              Repository.Database.insertNewDeployment( blockchainId, ca, codeHex, address, txnHash, inputsBytes )
+            }
+            dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
+          }
+        }
+        out
+      }
+    }
+
+    def ethKeystoreInspectWalletV3Task : Initialize[InputTask[Unit]] = Def.inputTask {
+      val keystoreDirs = ethKeystoreLocationsV3.value
+      val w = xethLoadWalletV3For.evaluated.getOrElse( unknownWallet( keystoreDirs ) )
+      println( Json.stringify( w.withLowerCaseKeys ) )
+    }
+
+    def ethInvokeConstantTask : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedReturnValue])]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
+
+      Def.inputTask {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val from = if ( ethAddress.value == ZeroEthAddress ) None else Some( EthAddress( ethAddress.value ) )
+        val markup = ethGasMarkup.value
+        val gasPrice = xethGasPrice.value
+        val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
+        if (! function.constant ) {
+          log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
+        }
+        val amount = mbWei.getOrElse( Zero )
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
         val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
-        val log = streams.value.log
-        log.info( s"Call data: ${callData.hex}" )
-        callData
+        log.info( s"Call data for function call: ${callData.hex}" )
+        val gas = markupEstimateGas( log, jsonRpcUrl, from, Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
+        log.info( s"Gas estimated for function call: ${gas}" )
+        val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Latest )
+        log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
+        log.info( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
+        val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception is we can't get results
+        results.length match {
+          case 0 => {
+            assert( abiFunction.outputs.length == 0 )
+            log.info( s"The function ${abiFunction.name} yields no result." )
+          }
+          case n => {
+            assert( abiFunction.outputs.length == n )
+
+            if ( n == 1 ) {
+              log.info( s"The function '${abiFunction.name}' yields 1 result." )
+            } else {
+              log.info( s"The function '${abiFunction.name}' yields ${n} results." )
+            }
+
+            def formatResult( idx : Int, result : DecodedReturnValue ) : String = {
+              val param = result.parameter
+              val sb = new StringBuilder(256)
+              sb.append( s" + Result ${idx} of type '${param.`type`}'")
+              if ( param.name.length > 0 ) {
+                sb.append( s", named '${param.name}'," )
+              }
+              sb.append( s" is ${result.stringRep}" )
+              sb.toString
+            }
+
+            Stream.from(1).zip(results).foreach { case ( idx, result ) => log.info( formatResult( idx, result ) ) }
+          }
+        }
+        ( abiFunction, results )
       }
     }
 
@@ -1233,24 +813,37 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethLoadWalletV3ForTask : Initialize[InputTask[Option[wallet.V3]]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
-
-      Def.inputTask {
-        val keystoresV3 = ethKeystoreLocationsV3.value
-        val log         = streams.value.log
-
-        val address = parser.parsed
-        val out = {
-          keystoresV3
-            .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
-            .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
-            if ( mb.isEmpty ) nextKeystore.get( address ) else mb
-          }
-        }
-        log.info( out.fold( s"No V3 wallet found for '0x${address.hex}'" )( _ => s"V3 wallet found for '0x${address.hex}'" ) )
-        out
+    def ethKeystoreListTask : Initialize[Task[immutable.Map[EthAddress,immutable.Set[String]]]] = Def.task {
+      val keystoresV3 = ethKeystoreLocationsV3.value
+      val log         = streams.value.log
+      val combined = {
+        keystoresV3
+          .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
+          .foldLeft( Map.empty[EthAddress,wallet.V3] )( ( accum, next ) => accum ++ next )
       }
+
+      // TODO: Aliases as values
+      val out = combined.map( tup => ( tup._1, immutable.Set.empty[String] ) )
+      val cap = "+" + span(44) + "+"
+      val KeystoreAddresses = "Keystore Addresses"
+      println( cap )
+      println( f"| $KeystoreAddresses%-42s |" )
+      println( cap )
+      immutable.TreeSet( out.keySet.toSeq.map( address => s"0x${address.hex}" ) : _* ).foreach { ka =>
+        println( f"| $ka%-42s |" )
+      }
+      println( cap )
+      out
+    }
+
+    def ethKeystoreMemorizeWalletV3Task : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+      val is = interactionService.value
+      val w = readV3Wallet( is )
+      val address = w.address // a very cursory check of the wallet, NOT full validation
+      Repository.KeyStore.V3.storeWallet( w ).get // asserts success
+      log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
+      log.info( s"Consider validating the JSON using 'ethKeystoreValidateWalletV3 0x${address.hex}." )
     }
 
     def ethKeystoreRevealPrivateKeyTask : Initialize[InputTask[Unit]] = {
@@ -1305,18 +898,128 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    /*
-     * Things that need to be defined as tasks so that parsers can load them dynamically...
-     */ 
+    def ethSelfPingTask : Initialize[Task[Option[ClientTransactionReceipt]]] = Def.task {
+      val checked  = dieOnZeroAddress.value
+      val address  = ethAddress.value
+      val sendArgs = s" ${address} 0 wei"
+      val log = streams.value.log
 
-    def xethFindCacheOmitDupsCurrentCompilationsTask : Initialize[Task[immutable.Map[String,jsonrpc20.Compilation.Contract]]] = Def.task {
-      xethLoadCompilationsOmitDups.value
+      val s = state.value
+      val extract = Project.extract(s)
+      val (_, result) = extract.runInputTask(ethSendEther, sendArgs, s)
+
+      val out = result
+      out.fold( log.warn("Ping failed! Our attempt to send 0 ether from '${address}' to itself may or may not eventually succeed, but we've timed out before hearing back." ) ) { receipt =>
+        log.info( s"Ping succeeded! Sent 0 ether from '${address}' to itself in transaction '0x${receipt.transactionHash.hex}'" )
+      }
+      out
     }
-    
+
+    def ethSendEtherTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+      val parser = Defaults.loadForParser( xethFindCacheAliasesIfAvailable )( genEthSendEtherParser )
+
+      Def.inputTask {
+        val log = streams.value.log
+        val jsonRpcUrl = ethJsonRpcUrl.value
+        val args = parser.parsed
+        val to = args._1
+        val amount = args._2
+        val nextNonce = xethNextNonce.value
+        val markup = ethGasMarkup.value
+        val gasPrice = xethGasPrice.value
+        val gas = markupEstimateGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
+        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
+        val privateKey = findCachePrivateKey.value
+        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
+        awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+      }
+    }
+
+    def ethSolidityChooseCompilerTask : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(xethFindCacheSessionSolidityCompilerKeys)( genLiteralSetParser )
+
+      Def.inputTask {
+        val log = streams.value.log
+        val key = parser.parsed
+        val mbNewCompiler = SessionSolidityCompilers.get.get.get( key )
+        val newCompilerTuple = mbNewCompiler.map( nc => ( key, nc ) )
+        CurrentSolidityCompiler.set( newCompilerTuple )
+        log.info( s"Set compiler to '$key'" )
+      }
+    }
+
+    def ethSolidityCompileTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+
+      val compiler = (xethFindCurrentSolidityCompiler in Compile).value
+
+      val includeStrings = ethIncludeLocations.value
+
+      val solSource      = (ethSoliditySource in Compile).value
+      val solDestination = (ethSolidityDestination in Compile).value
+
+      val baseDir = baseDirectory.value
+
+      val includeLocations = includeStrings.map( SourceFile.Location.apply( baseDir, _ ) )
+
+      doCompileSolidity( log, compiler, includeLocations, solSource, solDestination )
+    }
+
+    def ethSolidityInstallCompilerTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
+      val log = streams.value.log
+
+      val mbVersion = SolcJVersionParser.parsed
+
+      val versionToInstall = mbVersion.getOrElse( LatestSolcJVersion )
+
+      log.info( s"Installing local solidity compiler into the sbt-ethereum repository. This may take a few minutes." )
+      val check = Repository.SolcJ.Directory.flatMap { rootSolcJDir =>
+        Failable {
+          val versionDir = new File( rootSolcJDir, versionToInstall )
+          if ( versionDir.exists() ) {
+            log.warn( s"Directory '${versionDir.getAbsolutePath}' already exists. If you would like to reinstall this version, please delete this directory by hand." )
+            throw new Exception( s"Cannot overwrite existing installation in '${versionDir.getAbsolutePath}'. Please delete this directory by hand if you wish to reinstall." )
+          } else {
+            SolcJInstaller.installLocalSolcJ( rootSolcJDir.toPath, versionToInstall )
+            log.info( s"Installed local solcJ compiler, version ${versionToInstall} in '${rootSolcJDir}'." )
+            val test = Compiler.Solidity.test( new Compiler.Solidity.LocalSolc( Some( versionDir ) ) )
+            if ( test ) {
+              log.info( "Testing newly installed compiler... ok." )
+            } else {
+              log.warn( "Testing newly installed compiler... failed!" )
+            }
+          }
+        }
+      }
+      check.get // throw if a failure occurred
+
+      Def.taskDyn {
+        xethTriggerDirtySolidityCompilerList // causes parse cache and SessionSolidityCompilers to get updated
+      }
+    }
+
+    def ethSolidityShowCompilerTask : Initialize[Task[Unit]] = Def.task {
+      val log       = streams.value.log
+      val ensureSet = xethFindCurrentSolidityCompiler.value
+      val ( key, compiler ) = CurrentSolidityCompiler.get.get
+      log.info( s"Current solidity compiler '$key', which refers to $compiler." )
+    }
+
+    def xethDefaultGasPriceTask : Initialize[Task[BigInt]] = Def.task {
+      val log        = streams.value.log
+      val jsonRpcUrl = ethJsonRpcUrl.value
+      doGetDefaultGasPrice( log, jsonRpcUrl )
+    }
+
     def xethFindCacheAliasesIfAvailableTask : Initialize[Task[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]] = Def.task {
       val blockchainId = ethBlockchainId.value
       val mbAliases    = Repository.Database.findAllAliases( blockchainId ).toOption
       ( blockchainId, mbAliases )
+    }
+
+    def xethFindCacheOmitDupsCurrentCompilationsTask : Initialize[Task[immutable.Map[String,jsonrpc20.Compilation.Contract]]] = Def.task {
+      xethLoadCompilationsOmitDups.value
     }
 
     def xethFindCacheSessionSolidityCompilerKeysTask : Initialize[Task[immutable.Set[String]]] = Def.task {
@@ -1324,6 +1027,359 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info("Updating available solidity compiler set.")
       val currentSessionCompilers = xethUpdateSessionSolidityCompilers.value
       currentSessionCompilers.keySet
+    }
+
+    def xethFindCurrentSolidityCompilerTask : Initialize[Task[Compiler.Solidity]] = Def.task {
+      import Compiler.Solidity._
+
+      // val compilerKeys = xethFindCacheSessionSolidityCompilerKeys.value
+      val sessionCompilers = SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys should have forced sessionCompilers to be set, but it's not." ) )
+      val compilerKeys = sessionCompilers.keySet
+
+      CurrentSolidityCompiler.get.map( _._2).getOrElse {
+        def latestLocalInstallVersion : Option[SemanticVersion] = {
+          val versions = (immutable.TreeSet.empty[SemanticVersion] ++ compilerKeys.map( LocalSolc.versionFromKey ).filter( _ != None ).map( _.get ))
+          if ( versions.size > 0 ) Some(versions.last) else None
+        }
+        def latestLocalInstallKey : Option[String] = latestLocalInstallVersion.map( version => s"${LocalSolc.KeyPrefix}${version.versionString}" )
+
+        val key = {
+          compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse
+          compilerKeys.find( _ == LocalPathSolcKey ) orElse
+          latestLocalInstallKey orElse
+          compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) )
+
+        }.getOrElse {
+          throw new Exception( s"Cannot find a usable solidity compiler. compilerKeys: ${compilerKeys}, sessionCompilers: ${sessionCompilers}" )
+        }
+        val compiler = sessionCompilers.get( key ).getOrElse( throw new Exception( s"Could not find a solidity compiler for key '$key'. sessionCompilers: ${sessionCompilers}" ) )
+
+        CurrentSolidityCompiler.set( Some( Tuple2( key, compiler ) ) )
+
+        compiler
+      }
+    }
+
+    def xethGasPriceTask : Initialize[Task[BigInt]] = Def.task {
+      val log        = streams.value.log
+      val jsonRpcUrl = ethJsonRpcUrl.value
+
+      val markup          = ethGasPriceMarkup.value
+      val defaultGasPrice = xethDefaultGasPrice.value
+
+      rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) ).toBigInt
+    }
+
+    def xethGenKeyPairTask : Initialize[Task[EthKeyPair]] = Def.task {
+      val log = streams.value.log
+      val out = EthKeyPair( ethEntropySource.value )
+
+      // a ridiculous overabundance of caution
+      assert {
+        val checkpub = out.pvt.toPublicKey
+        checkpub == out.pub && checkpub.toAddress == out.address
+      }
+
+      log.info( s"Generated keypair for address '0x${out.address.hex}'" )
+
+      out
+    }
+
+    def xethInvokeDataTask : Initialize[InputTask[immutable.Seq[Byte]]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
+
+      Def.inputTask {
+        val ( contractAddress, function, args, abi ) = parser.parsed
+        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
+        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
+        val log = streams.value.log
+        log.info( s"Call data: ${callData.hex}" )
+        callData
+      }
+    }
+
+    def xethKeystoreCreateWalletV3Pbkdf2Task : Initialize[Task[wallet.V3]] = Def.task {
+      val log   = streams.value.log
+      val c     = xethWalletV3Pbkdf2C.value
+      val dklen = xethWalletV3Pbkdf2DkLen.value
+
+      val is = interactionService.value
+      val keyPair = xethGenKeyPair.value
+      val entropySource = ethEntropySource.value
+
+      log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
+      val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
+      val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
+      Repository.KeyStore.V3.storeWallet( w ).get // asserts success
+    }
+
+    def xethKeystoreCreateWalletV3ScryptTask : Initialize[Task[wallet.V3]] = Def.task {
+      val log   = streams.value.log
+      val n     = xethWalletV3ScryptN.value
+      val r     = xethWalletV3ScryptR.value
+      val p     = xethWalletV3ScryptP.value
+      val dklen = xethWalletV3ScryptDkLen.value
+
+      val is = interactionService.value
+      val keyPair = xethGenKeyPair.value
+      val entropySource = ethEntropySource.value
+
+      log.info( s"Generating V3 wallet, alogorithm=scrypt, n=${n}, r=${r}, p=${p}, dklen=${dklen}" )
+      val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
+      val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
+      Repository.KeyStore.V3.storeWallet( w ).get // asserts success
+    }
+
+    def xethLoadAbiForTask : Initialize[InputTask[Abi.Definition]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+      Def.inputTask {
+        val blockchainId = ethBlockchainId.value
+        abiForAddress( blockchainId, parser.parsed )
+      }
+    }
+
+    def xethLoadCompilationsKeepDupsTask : Initialize[Task[immutable.Iterable[(String,jsonrpc20.Compilation.Contract)]]] = Def.task {
+      val log = streams.value.log
+
+      val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
+
+      val dir = (ethSolidityDestination in Compile).value
+
+      def addContracts( vec : immutable.Vector[(String,jsonrpc20.Compilation.Contract)], name : String ) = {
+        val next = {
+          val file = new File( dir, name )
+          try {
+            borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]] )
+          } catch {
+            case e : Exception => {
+              log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
+              log.warn( s"  --> cause: ${e.toString}" )
+              Map.empty[String,jsonrpc20.Compilation.Contract]
+            }
+          }
+        }
+        vec ++ next
+      }
+
+      dir.list.filter( _.endsWith(".json") ).foldLeft( immutable.Vector.empty[(String,jsonrpc20.Compilation.Contract)] )( addContracts )
+    }
+
+    def xethLoadCompilationsOmitDupsTask : Initialize[Task[immutable.Map[String,jsonrpc20.Compilation.Contract]]] = Def.task {
+      val log = streams.value.log
+
+      val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
+
+      val dir = (ethSolidityDestination in Compile).value
+
+      def addBindingKeepShorterSource( addTo : immutable.Map[String,jsonrpc20.Compilation.Contract], binding : (String,jsonrpc20.Compilation.Contract) ) = {
+        val ( name, compilation ) = binding
+        addTo.get( name ) match {
+          case Some( existingCompilation ) => { // this is a duplicate name, we have to think about whether to add and override or keep the old version
+            (existingCompilation.info.mbSource, compilation.info.mbSource) match {
+              case ( Some( existingSource ), Some( newSource ) ) => {
+                if ( existingSource.length > newSource.length ) addTo + binding else addTo // use the shorter-sourced duplicate
+              }
+              case ( None, Some( newSource ) )                   => addTo + binding // but prioritize compilations for which source is known
+              case ( Some( existingSource ), None )              => addTo
+              case ( None, None )                                => addTo
+            }
+          }
+          case None => addTo + binding // not a duplicate name, so just add the binding
+        }
+      }
+      def addAllKeepShorterSource( addTo : immutable.Map[String,jsonrpc20.Compilation.Contract], nextBindings : Iterable[(String,jsonrpc20.Compilation.Contract)] ) = {
+        nextBindings.foldLeft( addTo )( ( accum, next ) => addBindingKeepShorterSource( accum, next ) )
+      }
+      def addContracts( tup : ( immutable.Map[String,jsonrpc20.Compilation.Contract], immutable.Set[String] ), name : String ) = {
+        val ( addTo, overlaps ) = tup
+        val next = {
+          val file = new File( dir, name )
+          try {
+            borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]] )
+          } catch {
+            case e : Exception => {
+              log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
+              log.warn( s"  --> cause: ${e.toString}" )
+              Map.empty[String,jsonrpc20.Compilation.Contract]
+            }
+          }
+        }
+        val rawNewOverlaps = next.keySet.intersect( addTo.keySet )
+        val realNewOverlaps = rawNewOverlaps.foldLeft( immutable.Set.empty[String] ){ ( cur, key ) =>
+          val origCodeBcas = BaseCodeAndSuffix( addTo( key ).code )
+          val nextCodeBcas = BaseCodeAndSuffix( next( key ).code )
+
+          if ( origCodeBcas.baseCodeHex != nextCodeBcas.baseCodeHex ) cur + key else cur
+        }
+        ( addAllKeepShorterSource( addTo, next ), overlaps ++ realNewOverlaps )
+      }
+
+      val ( rawCompilations, duplicates ) = dir.list.filter( _.endsWith( ".json" ) ).foldLeft( ( immutable.Map.empty[String,jsonrpc20.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
+      if ( !duplicates.isEmpty ) {
+        val dupsStr = duplicates.mkString(", ")
+        log.warn( s"The project contains mutiple contracts and/or libraries that have identical names but compile to distinct code: $dupsStr" )
+        if ( duplicates.size > 1 ) {
+          log.warn( s"Units '$dupsStr' have been dropped from the deployable compilations list as references would be ambiguous." )
+        } else {
+          log.warn( s"Unit '$dupsStr' has been dropped from the deployable compilations list as references would be ambiguous." )
+        }
+        rawCompilations -- duplicates
+      } else {
+        rawCompilations
+      }
+    }
+
+    def xethLoadWalletV3Task : Initialize[Task[Option[wallet.V3]]] = Def.task {
+      val checked = dieOnZeroAddress.value
+      val s = state.value
+      val addressStr = ethAddress.value
+      val extract = Project.extract(s)
+      val (_, result) = extract.runInputTask(xethLoadWalletV3For, addressStr, s)
+      result
+    }
+
+    def xethLoadWalletV3ForTask : Initialize[InputTask[Option[wallet.V3]]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+      Def.inputTask {
+        val keystoresV3 = ethKeystoreLocationsV3.value
+        val log         = streams.value.log
+
+        val address = parser.parsed
+        val out = {
+          keystoresV3
+            .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
+            .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
+            if ( mb.isEmpty ) nextKeystore.get( address ) else mb
+          }
+        }
+        log.info( out.fold( s"No V3 wallet found for '0x${address.hex}'" )( _ => s"V3 wallet found for '0x${address.hex}'" ) )
+        out
+      }
+    }
+
+    def xethNextNonceTask : Initialize[Task[BigInt]] = Def.task {
+      val log        = streams.value.log
+      val jsonRpcUrl = ethJsonRpcUrl.value
+      doGetTransactionCount( log, jsonRpcUrl, EthAddress( ethAddress.value ), jsonrpc20.Client.BlockNumber.Pending )
+    }
+
+    def xethQueryRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
+      val log   = streams.value.log
+      val query = DbQueryParser.parsed
+
+      // removed guard of query (restriction to select),
+      // since updating SQL issued via executeQuery(...)
+      // usefully fails in h3
+
+      val checkDataSource = {
+        Repository.Database.DataSource.map { ds =>
+          borrow( ds.getConnection() ) { conn =>
+            borrow( conn.createStatement() ) { stmt =>
+              borrow( stmt.executeQuery( query ) ) { rs =>
+                val rsmd = rs.getMetaData
+                val numCols = rsmd.getColumnCount()
+                val colRange = (1 to numCols)
+                val displaySizes = colRange.map( rsmd.getColumnDisplaySize )
+                val labels = colRange.map( rsmd.getColumnLabel )
+
+                // XXX: make this pretty. someday.
+                log.info( labels.mkString(", ") )
+                while ( rs.next ) {
+                  log.info( colRange.map( rs.getString ).mkString(", ") )
+                }
+              }
+            }
+          }
+        }
+      }
+      if ( checkDataSource.isFailed ) {
+        log.warn("Failed to find DataSource!")
+        log.warn( checkDataSource.fail.toString )
+      }
+    }
+
+    // this is a no-op, its execution just triggers a re-caching of aliases
+    def xethTriggerDirtyAliasCacheTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+      log.info( "Refreshing alias cache." )
+    }
+
+    // this is a no-op, its execution just triggers a re-caching of aliases
+    def xethTriggerDirtySolidityCompilerListTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+      log.info( "Refreshing compiler list." )
+    }
+
+    def xethUpdateContractDatabaseTask : Initialize[Task[Boolean]] = Def.task {
+      val log          = streams.value.log
+      val jsonRpcUrl   = ethJsonRpcUrl.value
+      val compilations = xethLoadCompilationsKeepDups.value // we want to "know" every contract we've seen, which might include contracts with multiple names
+
+      Repository.Database.updateContractDatabase( compilations ).get
+    }
+
+    def xethUpdateRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
+      val log   = streams.value.log
+      val query = DbQueryParser.parsed
+
+      val checkDataSource = {
+        Repository.Database.DataSource.map { ds =>
+          borrow( ds.getConnection() ) { conn =>
+            borrow( conn.createStatement() ) { stmt =>
+              val rows = stmt.executeUpdate( query )
+              log.info( s"Query succeeded: $query" )
+              log.info( s"$rows rows affected." )
+            }
+          }
+        }
+      }
+      if ( checkDataSource.isFailed ) {
+        log.warn("Failed to find DataSource!")
+        log.warn( checkDataSource.fail.toString )
+      }
+    }
+
+    def xethUpdateSessionSolidityCompilersTask : Initialize[Task[immutable.SortedMap[String,Compiler.Solidity]]] = Def.task {
+      import Compiler.Solidity._
+
+      val netcompileUrl = ethNetcompileUrl.?.value
+      val jsonRpcUrl    = ethJsonRpcUrl.value
+
+      def check( key : String, compiler : Compiler.Solidity ) : Option[ ( String, Compiler.Solidity ) ] = {
+        val test = Compiler.Solidity.test( compiler )
+        if ( test ) {
+          Some( Tuple2( key, compiler ) )
+        } else {
+          None
+        }
+      }
+      def netcompile = {
+        netcompileUrl.flatMap { ncu =>
+          check( s"${EthNetcompile.KeyPrefix}${ncu}", Compiler.Solidity.EthNetcompile( ncu ) )
+        }
+      }
+      def ethJsonRpc = {
+        check( s"${EthJsonRpc.KeyPrefix}${jsonRpcUrl}", Compiler.Solidity.EthJsonRpc( jsonRpcUrl ) )
+      }
+      def localPath = {
+        check( Compiler.Solidity.LocalPathSolcKey, Compiler.Solidity.LocalPathSolc )
+      }
+      def checkLocalRepositorySolc( version : String ) = {
+        Repository.SolcJ.Directory.toOption.flatMap { rootSolcJDir =>
+          check( s"${LocalSolc.KeyPrefix}${version}", Compiler.Solidity.LocalSolc( Some( new File( rootSolcJDir, version ) ) ) )
+        }
+      }
+      def checkLocalRepositorySolcs = {
+        SolcJInstaller.SupportedVersions.map( checkLocalRepositorySolc ).toSeq
+      }
+
+      val raw = checkLocalRepositorySolcs :+ localPath :+ ethJsonRpc :+ netcompile
+
+      val out = immutable.SortedMap( raw.filter( _ != None ).map( _.get ) : _* )
+      SessionSolidityCompilers.set( Some( out ) )
+      out
     }
   }
 
