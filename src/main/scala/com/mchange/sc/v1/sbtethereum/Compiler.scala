@@ -42,9 +42,7 @@ object Compiler {
       val KeyPrefix = "ethjsonrpc@"
     }
     final case class EthJsonRpc( jsonRpcUrl : String ) extends Compiler.Solidity {
-      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
-        doWithJsonClient( log, jsonRpcUrl )( client => client.eth.compileSolidity( source ) )( ec )
-      }
+      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = util.EthJsonRpc.doAsyncCompileSolidity( log, jsonRpcUrl, source )( ec )
     }
     final object EthNetcompile {
       val KeyPrefix = "eth-netcompile@"

@@ -2,6 +2,8 @@ package com.mchange.sc.v1.sbtethereum
 
 
 import util.BaseCodeAndSuffix
+
+import util.EthJsonRpc._
 import Parsers._
 
 import sbt._
@@ -705,7 +707,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
-        val gas = xethGasOverrides.value.getOrElse( contractName, markupEstimateGas( log, jsonRpcUrl, Some(address), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
+        val gas = xethGasOverrides.value.getOrElse( contractName, doEstimateAndMarkupGas( log, jsonRpcUrl, Some(address), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey.value
         val updateChangedDb = xethUpdateContractDatabase.value
@@ -749,7 +751,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
         val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Call data for function call: ${callData.hex}" )
-        val gas = markupEstimateGas( log, jsonRpcUrl, from, Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
+        val gas = doEstimateAndMarkupGas( log, jsonRpcUrl, from, Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
         log.info( s"Gas estimated for function call: ${gas}" )
         val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Latest )
         log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
@@ -804,7 +806,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
         log.info( s"Call data for function call: ${callData.hex}" )
-        val gas = markupEstimateGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
+        val gas = doEstimateAndMarkupGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
         log.info( s"Gas estimated for function call: ${gas}" )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), contractAddress, Unsigned256( amount ), callData )
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
@@ -927,7 +929,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
-        val gas = markupEstimateGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
+        val gas = doEstimateAndMarkupGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
         val privateKey = findCachePrivateKey.value
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
