@@ -8,14 +8,12 @@ import scala.collection._
 import com.mchange.sc.v2.lang.borrow
 
 import com.mchange.sc.v1.sbtethereum._
+import repository.TransactionLog
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20, specification, EthAddress, EthHash, EthPrivateKey, EthTransaction}
 import jsonrpc20.{Compilation, ClientTransactionReceipt}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
-
-
-import com.mchange.sc.v1.sbtethereum.Repository
 
 import java.net.URL
 
@@ -64,7 +62,7 @@ object EthJsonRpc {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getCode( address, blockNumber ), Duration.Inf ) )
   }
 
-    private [sbtethereum] def doEthCallEphemeral(
+  private [sbtethereum] def doEthCallEphemeral(
     log         : sbt.Logger,
     jsonRpcUrl  : String,
     from        : Option[EthAddress],
@@ -94,7 +92,7 @@ object EthJsonRpc {
     doWithJsonClient( log, jsonRpcUrl ){ client =>
       val signed = unsigned.sign( signer )
       val hash = Await.result( client.eth.sendSignedTransaction( signed ), Duration.Inf )
-      Repository.logTransaction( signed, hash )
+      TransactionLog.logTransaction( signed, hash )
       hash
     }
   }

@@ -46,18 +46,6 @@ object Parsers {
     }
   }
 
-  /*
-  private def createAddressParser( mbBlockchainId : Option[String], tabHelp : String ) : Parser[EthAddress] = {
-    val faliases = mbBlockchainId.fold( fail("Blockchain ID unavailable, can't locate aliases), blockchainId => Repository.Database.findAllAliases( blockchainId ) )
-    if ( faliases.isFailed ) {
-      WARNING.log("Could not select address aliases from the repository database, so aliases cannot be parsed")
-      createSimpleAddressParser( tabHelp )
-    } else {
-      createAddressParser( tabHelp, faliases.get )
-    }
-  }
-  */ 
-
   private [sbtethereum] val NewAliasParser = token(Space.* ~> ID, "<alias>") ~ createSimpleAddressParser("<hex-address>")
 
   private [sbtethereum] val RawAmountParser = ((Digit|literal('.')).+).map( chars => BigDecimal( chars.mkString ) )

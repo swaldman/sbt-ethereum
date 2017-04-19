@@ -29,10 +29,10 @@ package object sbtethereum {
 
   def abiForAddress( blockchainId : String, address : EthAddress, defaultNotInDatabase : => Abi.Definition ) : Abi.Definition = {
     def findMemorizedAbi = {
-      val mbAbi = Repository.Database.getMemorizedContractAbi( blockchainId, address ).get // again, throw if database problem
+      val mbAbi = repository.Database.getMemorizedContractAbi( blockchainId, address ).get // again, throw if database problem
       mbAbi.getOrElse( defaultNotInDatabase )
     }
-    val mbDeployedContractInfo = Repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw an Exception if there's a database problem
+    val mbDeployedContractInfo = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw an Exception if there's a database problem
     mbDeployedContractInfo.fold( findMemorizedAbi ) { deployedContractInfo =>
       deployedContractInfo.mbAbiDefinition match {  
         case Some( abiDefinition ) => abiDefinition

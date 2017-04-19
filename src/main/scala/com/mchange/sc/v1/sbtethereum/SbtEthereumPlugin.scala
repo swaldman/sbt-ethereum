@@ -156,7 +156,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethSolidityCompile = taskKey[Unit]("Compiles solidity files")
 
-    val ethSolidityInstallCompiler = inputKey[Unit]("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum Repository (or choose a supported version)")
+    val ethSolidityInstallCompiler = inputKey[Unit]("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
 
     val ethSolidityChooseCompiler = inputKey[Unit]("Manually select among solidity compilers available to this project")
 
@@ -247,7 +247,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethKeystoreLocationsV3 := {
         def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
         def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
-        listify( Repository.KeyStore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
+        listify( repository.Keystore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
       },
 
       ethSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
@@ -471,14 +471,14 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val is = interactionService.value
       val ( address, abi ) = readAddressAndAbi( log, is )
-      val mbKnownCompilation = Repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
+      val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
       mbKnownCompilation match {
         case Some( knownCompilation ) => {
           log.info( s"The contract at address '$address' was already associated with a deployed compilation." )
           // TODO, maybe, check if the deployed compilation includes a non-null ABI
         }
         case None => {
-          Repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // thrown an Exception if there's a database issue
+          repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // thrown an Exception if there's a database issue
           log.info( s"ABI is now known for the contract at address ${address.hex}" )
         }
       }
@@ -496,7 +496,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val ensureAliases = xethFindCacheAliasesIfAvailable
 
         val alias = parser.parsed
-        val check = Repository.Database.dropAlias( blockchainId, alias ).get // assert no database problem
+        val check = repository.Database.dropAlias( blockchainId, alias ).get // assert no database problem
         if (check) log.info( s"Alias '${alias}' successfully dropped (for blockchain '${blockchainId}').")
         else log.warn( s"Alias '${alias}' is not defined (on blockchain '${blockchainId}'), and so could not be dropped." )
 
@@ -509,7 +509,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     def ethAliasListTask : Initialize[Task[Unit]] = Def.task {
       val log = streams.value.log
       val blockchainId = ethBlockchainId.value
-      val faliases = Repository.Database.findAllAliases( blockchainId )
+      val faliases = repository.Database.findAllAliases( blockchainId )
       faliases.fold(
         _ => log.warn("Could not read aliases from repository database."),
         aliases => aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
@@ -520,7 +520,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val blockchainId = ethBlockchainId.value
       val ( alias, address ) = NewAliasParser.parsed
-      val check = Repository.Database.createUpdateAlias( blockchainId, alias, address )
+      val check = repository.Database.createUpdateAlias( blockchainId, alias, address )
       check.fold(
         _.vomit,
         _ => {
@@ -569,7 +569,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def ethCompilationsCullTask : Initialize[Task[Unit]] = Def.task {
       val log = streams.value.log
-      val fcount = Repository.Database.cullUndeployedCompilations()
+      val fcount = repository.Database.cullUndeployedCompilations()
       val count = fcount.get
       log.info( s"Removed $count undeployed compilations from the repository database." )
     }
@@ -608,7 +608,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val source = parser.parsed
         source match {
           case Left( address ) => {
-            val mbinfo = Repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw any db problem
+            val mbinfo = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw any db problem
             mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
               section( s"Contract Address (on blockchain '${info.blockchainId}')", Some( info.contractAddress.hex ), true )
               section( "Deployer Address", info.mbDeployerAddress.map( _.hex ), true )
@@ -629,7 +629,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             }
           }
           case Right( hash ) => {
-            val mbinfo = Repository.Database.compilationInfoForCodeHash( hash ).get // throw any db problem
+            val mbinfo = repository.Database.compilationInfoForCodeHash( hash ).get // throw any db problem
             mbinfo.fold( println( s"Contract with code hash '$hash' not found." ) ) { info =>
               section( "Code Hash", Some( hash.hex ), true )
               section( "Code", Some( info.code ), true )
@@ -643,7 +643,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               jsonSection( "User Documentation", info.mbUserDoc )
               jsonSection( "Developer Documentation", info.mbDeveloperDoc )
               section( "Metadata", info.mbMetadata )
-              addressSection( "Deployments", Repository.Database.blockchainIdContractAddressesForCodeHash( hash ).get )
+              addressSection( "Deployments", repository.Database.blockchainIdContractAddressesForCodeHash( hash ).get )
             }
           }
         }
@@ -653,7 +653,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def ethCompilationsListTask : Initialize[Task[Unit]] = Def.task {
-      val contractsSummary = Repository.Database.contractsSummary.get // throw for any db problem
+      val contractsSummary = repository.Database.contractsSummary.get // throw for any db problem
 
       val Blockchain = "Blockchain"
       val Address    = "Contract Address"
@@ -719,7 +719,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
             val dbCheck = {
               import compilation.info._
-              Repository.Database.insertNewDeployment( blockchainId, ca, codeHex, address, txnHash, inputsBytes )
+              repository.Database.insertNewDeployment( blockchainId, ca, codeHex, address, txnHash, inputsBytes )
             }
             dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
           }
@@ -843,7 +843,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val w = readV3Wallet( is )
       val address = w.address // a very cursory check of the wallet, NOT full validation
-      Repository.KeyStore.V3.storeWallet( w ).get // asserts success
+      repository.Keystore.V3.storeWallet( w ).get // asserts success
       log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
       log.info( s"Consider validating the JSON using 'ethKeystoreValidateWalletV3 0x${address.hex}." )
     }
@@ -976,7 +976,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val versionToInstall = mbVersion.getOrElse( LatestSolcJVersion )
 
       log.info( s"Installing local solidity compiler into the sbt-ethereum repository. This may take a few minutes." )
-      val check = Repository.SolcJ.Directory.flatMap { rootSolcJDir =>
+      val check = repository.SolcJ.Directory.flatMap { rootSolcJDir =>
         Failable {
           val versionDir = new File( rootSolcJDir, versionToInstall )
           if ( versionDir.exists() ) {
@@ -1016,7 +1016,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethFindCacheAliasesIfAvailableTask : Initialize[Task[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]] = Def.task {
       val blockchainId = ethBlockchainId.value
-      val mbAliases    = Repository.Database.findAllAliases( blockchainId ).toOption
+      val mbAliases    = repository.Database.findAllAliases( blockchainId ).toOption
       ( blockchainId, mbAliases )
     }
 
@@ -1112,7 +1112,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
       val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
       val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-      Repository.KeyStore.V3.storeWallet( w ).get // asserts success
+      repository.Keystore.V3.storeWallet( w ).get // asserts success
     }
 
     def xethKeystoreCreateWalletV3ScryptTask : Initialize[Task[wallet.V3]] = Def.task {
@@ -1129,7 +1129,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info( s"Generating V3 wallet, alogorithm=scrypt, n=${n}, r=${r}, p=${p}, dklen=${dklen}" )
       val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
       val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-      Repository.KeyStore.V3.storeWallet( w ).get // asserts success
+      repository.Keystore.V3.storeWallet( w ).get // asserts success
     }
 
     def xethLoadAbiForTask : Initialize[InputTask[Abi.Definition]] = {
@@ -1276,7 +1276,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       // usefully fails in h3
 
       val checkDataSource = {
-        Repository.Database.DataSource.map { ds =>
+        repository.Database.DataSource.map { ds =>
           borrow( ds.getConnection() ) { conn =>
             borrow( conn.createStatement() ) { stmt =>
               borrow( stmt.executeQuery( query ) ) { rs =>
@@ -1319,7 +1319,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val jsonRpcUrl   = ethJsonRpcUrl.value
       val compilations = xethLoadCompilationsKeepDups.value // we want to "know" every contract we've seen, which might include contracts with multiple names
 
-      Repository.Database.updateContractDatabase( compilations ).get
+      repository.Database.updateContractDatabase( compilations ).get
     }
 
     def xethUpdateRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
@@ -1327,7 +1327,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val query = DbQueryParser.parsed
 
       val checkDataSource = {
-        Repository.Database.DataSource.map { ds =>
+        repository.Database.DataSource.map { ds =>
           borrow( ds.getConnection() ) { conn =>
             borrow( conn.createStatement() ) { stmt =>
               val rows = stmt.executeUpdate( query )
@@ -1369,7 +1369,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         check( Compiler.Solidity.LocalPathSolcKey, Compiler.Solidity.LocalPathSolc )
       }
       def checkLocalRepositorySolc( version : String ) = {
-        Repository.SolcJ.Directory.toOption.flatMap { rootSolcJDir =>
+        repository.SolcJ.Directory.toOption.flatMap { rootSolcJDir =>
           check( s"${LocalSolc.KeyPrefix}${version}", Compiler.Solidity.LocalSolc( Some( new File( rootSolcJDir, version ) ) ) )
         }
       }

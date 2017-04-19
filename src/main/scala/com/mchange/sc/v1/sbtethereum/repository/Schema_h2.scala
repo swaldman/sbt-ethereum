@@ -1,5 +1,6 @@
-package com.mchange.sc.v1.sbtethereum
+package com.mchange.sc.v1.sbtethereum.repository
 
+import com.mchange.sc.v1.sbtethereum._
 import util.BaseCodeAndSuffix
 
 import com.mchange.sc.v1.consuela._
@@ -114,7 +115,7 @@ object Schema_h2 {
     require( versionFrom >= 0, s"Please restore database from backup! Valid schema versions begin are non-negative, version $versionFrom is invalid, may indicate database corruption." )
     require( versionFrom < versionTo, s"We can only upmigrate schemas, can't transition from $versionFrom to $versionTo" )
 
-    Repository.Database.h2.makeBackup( conn, versionFrom ).get // throw if something goes wrong
+    repository.Database.h2.makeBackup( conn, versionFrom ).get // throw if something goes wrong
 
     DEBUG.log( s"Migrating sbt-ethereum database schema from version $versionFrom to version $versionTo." )
     Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, "-1" )
