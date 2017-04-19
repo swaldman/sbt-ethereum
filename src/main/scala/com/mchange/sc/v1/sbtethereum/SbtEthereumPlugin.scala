@@ -5,6 +5,7 @@ import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstalle
 
 import util.EthJsonRpc._
 import util.Parsers._
+import util.SBinaryFormats._
 
 import sbt._
 import sbt.Keys._
@@ -14,7 +15,6 @@ import sbt.InteractionServiceKeys.interactionService
 
 import sbinary._
 import sbinary.DefaultProtocol._
-import SBinaryFormats._
 
 import java.io.{BufferedInputStream,File,FileInputStream,FilenameFilter}
 import java.security.SecureRandom

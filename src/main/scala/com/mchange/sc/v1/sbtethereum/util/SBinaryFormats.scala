@@ -1,4 +1,4 @@
-package com.mchange.sc.v1.sbtethereum
+package com.mchange.sc.v1.sbtethereum.util
 
 import sbinary._
 import DefaultProtocol._
