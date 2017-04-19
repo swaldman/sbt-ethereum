@@ -1,4 +1,6 @@
-package com.mchange.sc.v1.sbtethereum
+package com.mchange.sc.v1.sbtethereum.util
+
+import com.mchange.sc.v1.sbtethereum._
 
 import sbt.State
 
@@ -76,7 +78,7 @@ object Parsers {
   }
 
   private [sbtethereum] val SolcJVersionParser : Parser[Option[String]] = {
-    val mandatory = SolcJInstaller.SupportedVersions.foldLeft( failure("No supported versions") : Parser[String] )( ( nascent, next ) => nascent | literal(next) )
+    val mandatory = compile.SolcJInstaller.SupportedVersions.foldLeft( failure("No supported versions") : Parser[String] )( ( nascent, next ) => nascent | literal(next) )
     Space.* ~> token(mandatory.?)
   }
 

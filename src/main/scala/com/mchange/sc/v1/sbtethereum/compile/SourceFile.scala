@@ -1,4 +1,6 @@
-package com.mchange.sc.v1.sbtethereum
+package com.mchange.sc.v1.sbtethereum.compile
+
+import com.mchange.sc.v1.sbtethereum._
 
 import java.io.{BufferedInputStream, File, FileInputStream}
 import java.net.URL
@@ -9,7 +11,6 @@ import scala.io.{Codec,Source}
 
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.failable._
-
 
 object SourceFile {
 

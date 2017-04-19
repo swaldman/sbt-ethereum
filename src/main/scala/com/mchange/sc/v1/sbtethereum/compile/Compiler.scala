@@ -1,4 +1,7 @@
-package com.mchange.sc.v1.sbtethereum
+package com.mchange.sc.v1.sbtethereum.compile
+
+import com.mchange.sc.v1.sbtethereum._
+import com.mchange.sc.v1.sbtethereum.util
 
 import java.io.File
 import java.net.URL

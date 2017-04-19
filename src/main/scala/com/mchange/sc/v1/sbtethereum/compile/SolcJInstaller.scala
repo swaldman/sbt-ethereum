@@ -1,4 +1,4 @@
-package com.mchange.sc.v1.sbtethereum
+package com.mchange.sc.v1.sbtethereum.compile
 
 import java.io._
 import java.nio.file.{Files,Path}

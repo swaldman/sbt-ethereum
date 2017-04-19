@@ -1,10 +1,10 @@
 package com.mchange.sc.v1.sbtethereum
 
-
-import util.BaseCodeAndSuffix
+import util.{BaseCodeAndSuffix}
+import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstaller, SourceFile}
 
 import util.EthJsonRpc._
-import Parsers._
+import util.Parsers._
 
 import sbt._
 import sbt.Keys._
@@ -364,9 +364,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethFindCurrentSolidityCompiler <<= xethFindCurrentSolidityCompilerTask,
 
-      compile in Compile := {
+      Keys.compile in Compile := {
         val dummy = (ethSolidityCompile in Compile).value
-        (compile in Compile).value
+        (Keys.compile in Compile).value
       },
 
       // TODO: factor away repeated logic here. yuk.
@@ -408,7 +408,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       watchSources ++= {
         val dir = (ethSoliditySource in Compile).value
         val filter = new FilenameFilter {
-          def accept( dir : File, name : String ) = goodSolidityFileName( name )
+          def accept( dir : File, name : String ) = ResolveCompileSolidity.goodSolidityFileName( name )
         }
         if ( dir.exists ) {
           dir.list( filter ).map( name => new File( dir, name ) ).toSeq
@@ -965,7 +965,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val includeLocations = includeStrings.map( SourceFile.Location.apply( baseDir, _ ) )
 
-      doCompileSolidity( log, compiler, includeLocations, solSource, solDestination )
+      ResolveCompileSolidity.doResolveCompile( log, compiler, includeLocations, solSource, solDestination )
     }
 
     def ethSolidityInstallCompilerTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
