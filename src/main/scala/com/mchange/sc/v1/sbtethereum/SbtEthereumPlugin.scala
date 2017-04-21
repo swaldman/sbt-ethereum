@@ -43,8 +43,8 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 object SbtEthereumPlugin extends AutoPlugin {
 
-  private val EthAddressSystemProperty      = "eth.address"
-  private val EthAddressEnvironmentVariable = "ETH_ADDRESS"
+  private val EthSenderSystemProperty      = "eth.sender"
+  private val EthSenderEnvironmentVariable = "ETH_SENDER"
 
   // not lazy. make sure the initialization banner is emitted before any tasks are executed
   // still, generally we should try to log through sbt loggers
@@ -52,7 +52,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private trait AddressInfo;
   private final case object NoAddress                                                                                  extends AddressInfo
-  private final case class  LockedAddress( blockchainId : String, address : EthAddress )                               extends AddressInfo
   private final case class  UnlockedAddress( blockchainId : String, address : EthAddress, privateKey : EthPrivateKey ) extends AddressInfo
 
   // MT: protected by CurrentAddress' lock
@@ -80,7 +79,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // settings
 
-    val ethAddress = settingKey[String]("The address from which transactions will be sent")
+    val ethSender = settingKey[String]("The address from which transactions will be sent")
 
     val ethBlockchainId = settingKey[String]("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
 
@@ -992,12 +991,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     def xethFindCurrentSenderTask : Initialize[Task[Failable[EthAddress]]] = Def.task {
       Failable {
         val blockchainId = ethBlockchainId.value
-        val mbAddrStr = ethAddress.?.value
+        val mbAddrStr = ethSender.?.value
         mbAddrStr match {
           case Some( addrStr ) => EthAddress( addrStr )
           case None            => {
-            val mbProperty = Option( System.getProperty( EthAddressSystemProperty ) )
-            val mbEnvVar   = Option( System.getenv( EthAddressEnvironmentVariable ) )
+            val mbProperty = Option( System.getProperty( EthSenderSystemProperty ) )
+            val mbEnvVar   = Option( System.getenv( EthSenderEnvironmentVariable ) )
 
             val mbExternalEthAddress = (mbProperty orElse mbEnvVar).map( EthAddress.apply )
 
@@ -1006,7 +1005,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
               mbDefaultSenderAddress match {
                 case Some( address ) => address
-                case None => throw new SenderNotAvailableException("Cannot find an 'ethAddress' or default sender")
+                case None => throw new SenderNotAvailableException("Cannot find an 'ethSender' or default sender")
               }
             }
           }
@@ -1410,8 +1409,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         privateKey
       }
       def goodCached : Option[EthPrivateKey] = {
+        // caps for value matches rather than variable names
+        val BlockchainId = blockchainId
+        val Address = address
         CurrentAddress.get match {
-          case UnlockedAddress( blockchainId, address, privateKey ) => { // if blockchainId and/or ethAddress has changed, this will no longer match
+          case UnlockedAddress( BlockchainId, Address, privateKey ) => { // if blockchainId and/or ethSender has changed, this will no longer match
             val ok = {
               if ( userValidateIfCached ) {
                 is.readLine( s"Using sender address '0x${address.hex}' (on blockchain '${blockchainId}'). OK? [y/n] ", false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
