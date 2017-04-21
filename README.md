@@ -26,7 +26,7 @@ running `geth --rpc`, but it should work with any client that supports the JSON-
 3. You'll need to download [sbt](http://www.scala-sbt.org) if you don't have it already. sbt-ethereum is an "autoplugin", which requires sbt 0.13.5 or later.
 
 4. Define a standard project (see [below](https://gist.github.com/swaldman/38ffc4f069a8672b2b86841892fd6762#sbt-project-layout)) that includes the plugin and
-sets an `ethAddress` key, representing the address from which you will be deploying your contracts and/or sending ether
+sets an `ethSender` key, representing the address from which you will be deploying your contracts and/or sending ether
 
 5. Enter your project's top-level directory in a terminal and type `sbt` to enter the environment. sbt-ethereum functionality will now be available.
 
@@ -68,22 +68,22 @@ If you haven't already, you'll need to let the blockchain sync, which might take
 Open a fresh terminal window, go into your project's top-level director (`my-project/` not `project/` in the example project above), and run `sbt`. If
 you intend to deploy contracts or send ether, you'll want to specify an ethereum address on whose behalf it will act. You can do that three ways:
 
-- Set the environment variable `ETH_ADDRESS` prior to running `sbt`
-- Set the JVM System property `eth.address` when running `sbt`, that is, run `sbt -Deth.address=0x465e79b940bc2157e4259ff6b2d92f454497f1e4`
+- Set the environment variable `ETH_SENDER` prior to running `sbt`
+- Set the JVM System property `eth.sender` when running `sbt`, that is, run `sbt -Deth.sender=0x465e79b940bc2157e4259ff6b2d92f454497f1e4`
 - At any time, on the SBT command like, run
 ```
-> set ethAddress := "0x465e79b940bc2157e4259ff6b2d92f454497f1e4"
+> set ethSender := "0x465e79b940bc2157e4259ff6b2d92f454497f1e4"
 ```    
 
-Your `ethAddress` will be stable throughout your interactive session (unless you reset it with `set ethAddress` as above).
+Your `ethSender` will be stable throughout your interactive session (unless you reset it with `set ethSender` as above).
 You will be prompted for its passphrase only once. (Be careful, as commands to send ether or deploy contracts will execute
 without further ceremony.)
 
 You can also specify the ethereum address you wish to work from directly within your `build.sbt` file, by adding
 
-    ethAddress := "0x465e79b940bc2157e4259ff6b2d92f454497f1e4"
+    ethSender := "0x465e79b940bc2157e4259ff6b2d92f454497f1e4"
 
-But keep in mind, if you are distributing your code, an `ethAddress` specified in the build file will not be portable
+But keep in mind, if you are distributing your code, an `ethSender` specified in the build file will not be portable
 to other developers.
 
 If geth is running on the local machine, everything should "just work", but if you want to interact with a JSON-RPC server on another machine or on a nonstandard
