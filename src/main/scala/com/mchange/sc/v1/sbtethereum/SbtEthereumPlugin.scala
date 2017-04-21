@@ -856,7 +856,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def ethSelfPingTask : Initialize[Task[Option[ClientTransactionReceipt]]] = Def.task {
       val address  = xethFindCurrentSender.value.get
-      val sendArgs = s" ${address} 0 wei"
+      val sendArgs = s" ${address.hex} 0 wei"
       val log = streams.value.log
 
       val s = state.value
