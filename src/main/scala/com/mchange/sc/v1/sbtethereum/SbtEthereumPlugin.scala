@@ -50,7 +50,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   // still, generally we should try to log through sbt loggers
   private implicit val logger = mlogger( this )
 
-  private val UnlockedKey = new AtomicReference[Option[(EthAddress,EthPrivateKey)]]( None )
+  private trait AddressInfo;
+  private final case object NoAddress                                                                                  extends AddressInfo
+  private final case class  LockedAddress( blockchainId : String, address : EthAddress )                               extends AddressInfo
+  private final case class  UnlockedAddress( blockchainId : String, address : EthAddress, privateKey : EthPrivateKey ) extends AddressInfo
+
+  // MT: protected by CurrentAddress' lock
+  private val CurrentAddress = new AtomicReference[AddressInfo]( NoAddress )
 
   private val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
 
@@ -66,9 +72,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val Zero256 = Unsigned256( 0 )
 
-  private val ZeroEthAddress = (0 until 40).map(_ => "0").mkString("")
-
   private val LatestSolcJVersion = "0.4.10"
+
+  private val DefaultSenderAlias = "defaultSender"
 
   object autoImport {
 
@@ -122,9 +128,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethAliasSet = inputKey[Unit]("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
 
-    val ethBalance = inputKey[BigDecimal]("Computes the balance in ether of a given address, or of 'ethAddress' if no address is supplied")
+    val ethBalance = inputKey[BigDecimal]("Computes the balance in ether of a given address, or of current sender if no address is supplied")
 
-    val ethBalanceInWei = inputKey[BigInt]("Computes the balance in wei of a given address, or of 'ethAddress' if no address is supplied")
+    val ethBalanceInWei = inputKey[BigInt]("Computes the balance in wei of a given address, or of current sender if no address is supplied")
 
     val ethInvokeConstant = inputKey[(Abi.Function,immutable.Seq[DecodedReturnValue])]("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
@@ -150,9 +156,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethKeystoreValidateWalletV3 = inputKey[Unit]("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
-    val ethSelfPing = taskKey[Option[ClientTransactionReceipt]]("Sends 0 ether from ethAddress to itself")
+    val ethSelfPing = taskKey[Option[ClientTransactionReceipt]]("Sends 0 ether from current sender to itself")
 
-    val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from ethAddress to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
+    val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from current sender to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
     val ethSolidityCompile = taskKey[Unit]("Compiles solidity files")
 
@@ -172,6 +178,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethFindCacheOmitDupsCurrentCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethSolidityCompile")
 
+    val xethFindCurrentSender = taskKey[Failable[EthAddress]]("Finds the address that should be used to send ether or messages")
+
     val xethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
 
     val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
@@ -188,11 +196,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethLoadCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
 
-    val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for ethAddress")
+    val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
 
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
-    val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the address defined by setting 'ethAddress'")
+    val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
 
     val xethQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
 
@@ -223,14 +231,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
 
       // Settings
-
-      ethAddress := {
-        val mbProperty = Option( System.getProperty( EthAddressSystemProperty ) )
-        val mbEnvVar   = Option( System.getenv( EthAddressEnvironmentVariable ) )
-
-
-        (mbProperty orElse mbEnvVar).getOrElse( ZeroEthAddress )
-      },
 
       ethBlockchainId   := MainnetIdentifier,
 
@@ -330,6 +330,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethFindCacheSessionSolidityCompilerKeys <<= xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys ).triggeredBy( xethTriggerDirtySolidityCompilerList ),
 
+      xethFindCurrentSender <<= xethFindCurrentSenderTask,
+
+      xethFindCurrentSolidityCompiler <<= xethFindCurrentSolidityCompilerTask,
+
       xethGasPrice <<= xethGasPriceTask,
 
       xethGenKeyPair <<= xethGenKeyPairTask,
@@ -361,8 +365,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       xethUpdateRepositoryDatabase <<= xethUpdateRepositoryDatabaseTask,
 
       xethUpdateSessionSolidityCompilers <<= xethUpdateSessionSolidityCompilersTask,
-
-      xethFindCurrentSolidityCompiler <<= xethFindCurrentSolidityCompilerTask,
 
       Keys.compile in Compile := {
         val dummy = (ethSolidityCompile in Compile).value
@@ -419,50 +421,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     )
 
     // anonymous tasks
-
-    def assertNonzeroAddress( stringAddress : String ) : EthAddress = {
-      if ( stringAddress.decodeHex.forall( _ == 0 ) ) {
-        throw new Exception(s"""No valid EthAddress set. Please use 'set ethAddress := "<your ethereum address>"'""")
-      } else {
-        EthAddress( stringAddress )
-      }
-    }
-
-    val dieOnZeroAddress = Def.task {
-      val current = ethAddress.value
-      assertNonzeroAddress( current )
-      true
-    }
-
-    val findCachePrivateKey = Def.task {
-      val checked = dieOnZeroAddress.value
-
-      val CurAddrStr = ethAddress.value
-      val CurAddress = EthAddress(CurAddrStr)
-      val log = streams.value.log
-      val is = interactionService.value
-      val mbWallet = xethLoadWalletV3.value
-
-      def updateCached : EthPrivateKey = {
-        // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
-        // it also slows down automated attempts to guess passwords, i guess...
-        Thread.sleep(1000)
-
-        val credential = readCredential( is, CurAddress )
-
-        val privateKey = findPrivateKey( log, mbWallet, credential )
-        UnlockedKey.set( Some( (CurAddress, privateKey) ) )
-        privateKey
-      }
-      def goodCached : Option[EthPrivateKey] = {
-        UnlockedKey.get match {
-          case Some( ( CurAddress, privateKey ) ) => Some( privateKey ) // if ethAddress has changed, this will no longer match
-          case _                                  => None
-        }
-      }
-
-      goodCached.getOrElse( updateCached )
-    }
 
     // task definitions
 
@@ -540,11 +498,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
         val mbAddress = parser.parsed
-        val defaultAddress = ethAddress.value
-        val address = mbAddress match {
-          case Some( a ) => a
-          case None      => assertNonzeroAddress( defaultAddress )
-        }
+        val address = mbAddress.getOrElse( xethFindCurrentSender.value.get )
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Ether )
         result.denominated
       }
@@ -557,11 +511,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
         val mbAddress = parser.parsed
-        val defaultAddress = ethAddress.value
-        val address = mbAddress match {
-          case Some( a ) => a
-          case None      => assertNonzeroAddress( defaultAddress )
-        }
+        val address = mbAddress.getOrElse( xethFindCurrentSender.value.get )
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Wei )
         result.wei
       }
@@ -682,6 +632,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       val parser = Defaults.loadForParser(xethFindCacheOmitDupsCurrentCompilations)( genContractNamesConstructorInputsParser )
 
       Def.inputTask {
+        val s = state.value
+        val is = interactionService.value
         val log = streams.value.log
         val blockchainId = ethBlockchainId.value
         val jsonRpcUrl = ethJsonRpcUrl.value
@@ -703,13 +655,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         val inputsHex = inputsBytes.hex
         val codeHex = compilation.code
         val dataHex = codeHex ++ inputsHex
-        val address = EthAddress( ethAddress.value )
+        val sender = xethFindCurrentSender.value.get
         val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
-        val gas = xethGasOverrides.value.getOrElse( contractName, doEstimateAndMarkupGas( log, jsonRpcUrl, Some(address), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
+        val gas = xethGasOverrides.value.getOrElse( contractName, doEstimateAndMarkupGas( log, jsonRpcUrl, Some(sender), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
-        val privateKey = findCachePrivateKey.value
+        val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, true )
         val updateChangedDb = xethUpdateContractDatabase.value
         val txnHash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
@@ -719,7 +671,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
             val dbCheck = {
               import compilation.info._
-              repository.Database.insertNewDeployment( blockchainId, ca, codeHex, address, txnHash, inputsBytes )
+              repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
             }
             dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
           }
@@ -740,7 +692,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       Def.inputTask {
         val log = streams.value.log
         val jsonRpcUrl = ethJsonRpcUrl.value
-        val from = if ( ethAddress.value == ZeroEthAddress ) None else Some( EthAddress( ethAddress.value ) )
+        val from = xethFindCurrentSender.value.toOption
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
         val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
@@ -793,15 +745,18 @@ object SbtEthereumPlugin extends AutoPlugin {
       val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
 
       Def.inputTask {
+        val s = state.value
         val log = streams.value.log
+        val is = interactionService.value
+        val blockchainId = ethBlockchainId.value
         val jsonRpcUrl = ethJsonRpcUrl.value
-        val caller = EthAddress( ethAddress.value )
+        val caller = xethFindCurrentSender.value.get
         val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
         val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
         val amount = mbWei.getOrElse( Zero )
-        val privateKey = findCachePrivateKey.value
+        val privateKey = findCachePrivateKey(s, log, is, blockchainId, caller, true )
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
         val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
@@ -901,8 +856,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def ethSelfPingTask : Initialize[Task[Option[ClientTransactionReceipt]]] = Def.task {
-      val checked  = dieOnZeroAddress.value
-      val address  = ethAddress.value
+      val address  = xethFindCurrentSender.value.get
       val sendArgs = s" ${address} 0 wei"
       val log = streams.value.log
 
@@ -921,17 +875,21 @@ object SbtEthereumPlugin extends AutoPlugin {
       val parser = Defaults.loadForParser( xethFindCacheAliasesIfAvailable )( genEthSendEtherParser )
 
       Def.inputTask {
+        val s = state.value
         val log = streams.value.log
+        val is = interactionService.value
+        val blockchainId = ethBlockchainId.value
         val jsonRpcUrl = ethJsonRpcUrl.value
         val args = parser.parsed
+        val from = xethFindCurrentSender.value.get
         val to = args._1
         val amount = args._2
         val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
-        val gas = doEstimateAndMarkupGas( log, jsonRpcUrl, Some( EthAddress( ethAddress.value ) ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
+        val gas = doEstimateAndMarkupGas( log, jsonRpcUrl, Some( from ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
-        val privateKey = findCachePrivateKey.value
+        val privateKey = findCachePrivateKey( s, log, is, blockchainId, from, true )
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
         awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
@@ -1029,6 +987,31 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info("Updating available solidity compiler set.")
       val currentSessionCompilers = xethUpdateSessionSolidityCompilers.value
       currentSessionCompilers.keySet
+    }
+
+    def xethFindCurrentSenderTask : Initialize[Task[Failable[EthAddress]]] = Def.task {
+      Failable {
+        val blockchainId = ethBlockchainId.value
+        val mbAddrStr = ethAddress.?.value
+        mbAddrStr match {
+          case Some( addrStr ) => EthAddress( addrStr )
+          case None            => {
+            val mbProperty = Option( System.getProperty( EthAddressSystemProperty ) )
+            val mbEnvVar   = Option( System.getenv( EthAddressEnvironmentVariable ) )
+
+            val mbExternalEthAddress = (mbProperty orElse mbEnvVar).map( EthAddress.apply )
+
+            mbExternalEthAddress.getOrElse {
+              val mbDefaultSenderAddress = repository.Database.findAddressByAlias( blockchainId, DefaultSenderAlias ).get
+
+              mbDefaultSenderAddress match {
+                case Some( address ) => address
+                case None => throw new SenderNotAvailableException("Cannot find an 'ethAddress' or default sender")
+              }
+            }
+          }
+        }
+      }
     }
 
     def xethFindCurrentSolidityCompilerTask : Initialize[Task[Compiler.Solidity]] = Def.task {
@@ -1233,9 +1216,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def xethLoadWalletV3Task : Initialize[Task[Option[wallet.V3]]] = Def.task {
-      val checked = dieOnZeroAddress.value
       val s = state.value
-      val addressStr = ethAddress.value
+      val addressStr = xethFindCurrentSender.value.get.hex
       val extract = Project.extract(s)
       val (_, result) = extract.runInputTask(xethLoadWalletV3For, addressStr, s)
       result
@@ -1264,7 +1246,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     def xethNextNonceTask : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
       val jsonRpcUrl = ethJsonRpcUrl.value
-      doGetTransactionCount( log, jsonRpcUrl, EthAddress( ethAddress.value ), jsonrpc20.Client.BlockNumber.Pending )
+      doGetTransactionCount( log, jsonRpcUrl, xethFindCurrentSender.value.get , jsonrpc20.Client.BlockNumber.Pending )
     }
 
     def xethQueryRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
@@ -1383,71 +1365,124 @@ object SbtEthereumPlugin extends AutoPlugin {
       SessionSolidityCompilers.set( Some( out ) )
       out
     }
-  }
 
-  // helper functions
+    // helper functions
 
-    private [sbtethereum] def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
-    mbGethWallet.fold {
-      log.info( "No wallet available. Trying passphrase as hex private key." )
-      EthPrivateKey( credential )
-    }{ gethWallet =>
-      try {
-        wallet.V3.decodePrivateKey( gethWallet, credential )
-      } catch {
-        case v3e : wallet.V3.Exception => {
-          log.warn("Credential is not correct geth wallet passphrase. Trying as hex private key.")
-          EthPrivateKey( credential )
+    private def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
+      mbGethWallet.fold {
+        log.info( "No wallet available. Trying passphrase as hex private key." )
+        EthPrivateKey( credential )
+      }{ gethWallet =>
+        try {
+          wallet.V3.decodePrivateKey( gethWallet, credential )
+        } catch {
+          case v3e : wallet.V3.Exception => {
+            log.warn("Credential is not correct geth wallet passphrase. Trying as hex private key.")
+            EthPrivateKey( credential )
+          }
         }
       }
     }
-  }
 
+    private final val CantReadInteraction = "InteractionService failed to read"
 
-  private final val CantReadInteraction = "InteractionService failed to read"
+    def findCachePrivateKey(
+      state                : sbt.State,
+      log                  : sbt.Logger,
+      is                   : sbt.InteractionService,
+      blockchainId         : String,
+      address              : EthAddress,
+      userValidateIfCached : Boolean
+    ) : EthPrivateKey = {
 
-  private def readConfirmCredential(  log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
-    if ( attempt < maxAttempts ) {
-      val credential = is.readLine( readPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
-      val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
-      if ( credential == confirmation ) {
-        credential
-      } else {
-        log.warn("Entries did not match! Retrying.")
-        readConfirmCredential( log, is, readPrompt, confirmPrompt, maxAttempts, attempt + 1 )
+      def updateCached : EthPrivateKey = {
+        // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
+        // it also slows down automated attempts to guess passwords, i guess...
+        Thread.sleep(1000)
+
+        val credential = readCredential( is, address )
+
+        val extract = Project.extract(state)
+        val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For, address.hex, state)
+
+        val privateKey = findPrivateKey( log, mbWallet, credential )
+        CurrentAddress.set( UnlockedAddress( blockchainId, address, privateKey ) )
+        privateKey
       }
-    } else {
-      throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )
+      def goodCached : Option[EthPrivateKey] = {
+        CurrentAddress.get match {
+          case UnlockedAddress( blockchainId, address, privateKey ) => { // if blockchainId and/or ethAddress has changed, this will no longer match
+            val ok = {
+              if ( userValidateIfCached ) {
+                is.readLine( s"Using sender address '0x${address.hex}' (on blockchain '${blockchainId}'). OK? [y/n] ", false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
+              } else {
+                true
+              }
+            }
+            if ( ok ) {
+              Some( privateKey )
+            } else {
+              CurrentAddress.set( NoAddress )
+              throw new SenderNotAvailableException( s"Use of sender address '0x${address.hex}' (on blockchain '${blockchainId}') vetoed by user." )
+            }
+          }
+          case _ => { // if we don't match, we reset / forget the cached private key
+            CurrentAddress.set( NoAddress )
+            None
+          }
+        }
+      }
+
+      CurrentAddress.synchronized {
+        goodCached.getOrElse( updateCached )
+      }
+
     }
-  }
 
-  private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi.Definition]
+    private def readConfirmCredential(  log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
+      if ( attempt < maxAttempts ) {
+        val credential = is.readLine( readPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
+        val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
+        if ( credential == confirmation ) {
+          credential
+        } else {
+          log.warn("Entries did not match! Retrying.")
+          readConfirmCredential( log, is, readPrompt, confirmPrompt, maxAttempts, attempt + 1 )
+        }
+      } else {
+        throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )
+      }
+    }
 
-  private def readAddressAndAbi( log : sbt.Logger, is : sbt.InteractionService ) : ( EthAddress, Abi.Definition ) = {
-    val address = EthAddress( is.readLine( "Contract address in hex: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
-    val abi = parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
-    ( address, abi )
-  }
+    private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi.Definition]
 
-  private def readV3Wallet( is : sbt.InteractionService ) : wallet.V3 = {
-    val jsonStr = is.readLine( "V3 Wallet JSON: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
-    val jsv = Json.parse( jsonStr )
-    wallet.V3( jsv.as[JsObject] )
-  }
+    private def readAddressAndAbi( log : sbt.Logger, is : sbt.InteractionService ) : ( EthAddress, Abi.Definition ) = {
+      val address = EthAddress( is.readLine( "Contract address in hex: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+      val abi = parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+      ( address, abi )
+    }
 
-  private def readCredential( is : sbt.InteractionService, address : EthAddress ) : String = {
-    is.readLine(s"Enter passphrase or hex private key for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
-  }
+    private def readV3Wallet( is : sbt.InteractionService ) : wallet.V3 = {
+      val jsonStr = is.readLine( "V3 Wallet JSON: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
+      val jsv = Json.parse( jsonStr )
+      wallet.V3( jsv.as[JsObject] )
+    }
 
-  private def unknownWallet( loadDirs : Seq[File] ) : Nothing = {
-    val dirs = loadDirs.map( _.getAbsolutePath() ).mkString(", ")
-    throw new Exception( s"Could not find V3 wallet for the specified address in the specified keystore directories: ${dirs}}" )
-  }
+    private def readCredential( is : sbt.InteractionService, address : EthAddress ) : String = {
+      is.readLine(s"Enter passphrase or hex private key for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
+    }
 
-  // some formatting functions for ascii tables
-  private def emptyOrHex( str : String ) = if (str == null) "" else s"0x$str"
-  private def blankNull( str : String ) = if (str == null) "" else str
-  private def span( len : Int ) = (0 until len).map(_ => "-").mkString
+    private def unknownWallet( loadDirs : Seq[File] ) : Nothing = {
+      val dirs = loadDirs.map( _.getAbsolutePath() ).mkString(", ")
+      throw new Exception( s"Could not find V3 wallet for the specified address in the specified keystore directories: ${dirs}}" )
+    }
+
+    // some formatting functions for ascii tables
+    private def emptyOrHex( str : String ) = if (str == null) "" else s"0x$str"
+    private def blankNull( str : String ) = if (str == null) "" else str
+    private def span( len : Int ) = (0 until len).map(_ => "-").mkString
+
+  } // end object autoImport
 
   // plug-in setup
 

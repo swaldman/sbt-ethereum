@@ -18,6 +18,8 @@ package object sbtethereum {
   final class BadCodeFormatException( msg : String )      extends SbtEthereumException( msg )
   final class RepositoryException( msg : String )         extends SbtEthereumException( msg )
   final class CompilationFailedException( msg : String )  extends SbtEthereumException( msg )
+  final class SenderNotAvailableException( msg : String ) extends SbtEthereumException( msg )
+
 
   case class EthValue( wei : BigInt, denominated : BigDecimal, denomination : Denomination )
 
