@@ -66,8 +66,9 @@ Make sure a full Ethereum client is running with JSON-RPC enabled. (You can just
 If you haven't already, you'll need to let the blockchain sync, which might take a long time. (Leave `geth` running overnight, or use its new fast-sync.)
 
 Open a fresh terminal window, go into your project's top-level director (`my-project/` not `project/` in the example project above), and run `sbt`. If
-you intend to deploy contracts or send ether, you'll want to specify an ethereum address on whose behalf it will act. You can do that three ways:
+you intend to deploy contracts or send ether, you'll want to specify an ethereum address on whose behalf it will act. You can do that several ways:
 
+- Define an alias called `defaultSender` by typing `ethAliasSet defaultSender 0x465e79b940bc2157e4259ff6b2d92f454497f1e`
 - Set the environment variable `ETH_SENDER` prior to running `sbt`
 - Set the JVM System property `eth.sender` when running `sbt`, that is, run `sbt -Deth.sender=0x465e79b940bc2157e4259ff6b2d92f454497f1e4`
 - At any time, on the SBT command like, run

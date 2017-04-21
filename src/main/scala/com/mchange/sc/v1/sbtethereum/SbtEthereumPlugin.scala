@@ -1017,7 +1017,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       import Compiler.Solidity._
 
       // val compilerKeys = xethFindCacheSessionSolidityCompilerKeys.value
-      val sessionCompilers = SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys should have forced sessionCompilers to be set, but it's not." ) )
+      val sessionCompilers = SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys during onLoad should have forced sessionCompilers to be set, but it's not." ) )
       val compilerKeys = sessionCompilers.keySet
 
       CurrentSolidityCompiler.get.map( _._2).getOrElse {
