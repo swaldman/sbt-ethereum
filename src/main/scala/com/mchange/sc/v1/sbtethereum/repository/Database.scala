@@ -92,11 +92,21 @@ object Database {
     }
   }
 
-  def deleteMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress ) : Failable[Unit] = {
+  def deleteMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress ) : Failable[Boolean] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
           Table.MemorizedAbis.delete( conn, blockchainId, contractAddress )
+        }
+      }
+    }
+  }
+
+  def getMemorizedContractAbiAddresses( blockchainId : String ) : Failable[immutable.Seq[EthAddress]] = {
+    DataSource.flatMap { ds =>
+      Failable {
+        borrow( ds.getConnection() ){ conn =>
+          Table.MemorizedAbis.selectAddressesForBlockchainId( conn, blockchainId )
         }
       }
     }
@@ -346,6 +356,11 @@ object Database {
   def findAddressByAlias( blockchainId : String, alias : String ) : Failable[Option[EthAddress]] = {
     DataSource.flatMap { ds =>
       Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, blockchainId, alias ) ) )
+    }
+  }
+  def findAliasesByAddress( blockchainId : String, address : EthAddress ) : Failable[immutable.Seq[String]] = {
+    DataSource.flatMap { ds =>
+      Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAddress( _, blockchainId, address ) ) )
     }
   }
   def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = {

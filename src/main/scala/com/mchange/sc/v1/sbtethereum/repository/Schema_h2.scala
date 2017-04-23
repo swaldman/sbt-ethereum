@@ -570,6 +570,22 @@ object Schema_h2 {
            |FROM memorized_abis
            |WHERE blockchain_id = ? AND contract_address = ?""".stripMargin
       }
+      private val SelectAddressesForBlackchainIdSql = {
+        """|SELECT contract_address
+           |FROM memorized_abis
+           |WHERE blockchain_id = ?
+           |ORDER BY contract_address DESC""".stripMargin
+      }
+      def selectAddressesForBlockchainId( conn : Connection, blockchainId : String ) : immutable.Seq[EthAddress] = {
+        borrow( conn.prepareStatement( SelectAddressesForBlackchainIdSql ) ){ ps =>
+          ps.setString(1, blockchainId )
+          borrow( ps.executeQuery() ){ rs =>
+            @tailrec
+            def prepend( accum : List[EthAddress] ) : List[EthAddress] = if ( rs.next() ) prepend( EthAddress( rs.getString(1) ) :: accum ) else accum
+            prepend( Nil )
+          }
+        }
+      }
       def select( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Option[Abi.Definition] = {
         borrow( conn.prepareStatement( SelectSql ) ){ ps =>
           ps.setString(1, blockchainId )
@@ -588,11 +604,11 @@ object Schema_h2 {
           ps.executeUpdate()
         }
       }
-      def delete( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Unit = {
+      def delete( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Boolean = {
         borrow( conn.prepareStatement( DeleteSql ) ) { ps =>
           ps.setString( 1, blockchainId )
           ps.setString( 2, contractAddress.hex )
-          ps.executeUpdate()
+          ps.executeUpdate() == 1
         }
       }
     }
@@ -627,11 +643,15 @@ object Schema_h2 {
           mbAddressStr.map( EthAddress.apply )
         }
       }
-      def selectByAddress( conn : Connection, blockchainId : String, address : EthAddress ) : Option[String] = {
-        borrow( conn.prepareStatement( "SELECT alias FROM address_aliases WHERE blockchain_id = ? AND address = ?" ) ) { ps =>
+      def selectByAddress( conn : Connection, blockchainId : String, address : EthAddress ) : immutable.Seq[String] = {
+        borrow( conn.prepareStatement( "SELECT alias FROM address_aliases WHERE blockchain_id = ? AND address = ? ORDER BY alias DESC" ) ) { ps =>
           ps.setString(1, blockchainId)
           ps.setString(2, address.hex)
-          borrow( ps.executeQuery() )( getMaybeSingleString )
+          borrow( ps.executeQuery() ){ rs =>
+            @tailrec
+            def prepend( accum : List[String] ) : List[String] = if ( rs.next() ) prepend( rs.getString(1) :: accum ) else accum
+            prepend( Nil )
+          }
         }
       }
       def selectAllForBlockchainId( conn : Connection, blockchainId : String ) : immutable.SortedMap[String,EthAddress] = {

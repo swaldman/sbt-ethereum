@@ -125,6 +125,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // tasks
 
+    val ethAbiForget = inputKey[Unit]("Removes an ABI definition that was added to the sbt-ethereum database via ethAbiMemorize")
+
+    val ethAbiList = taskKey[Unit]("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethCompilationsList'")
+
     val ethAbiMemorize = taskKey[Unit]("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
 
     val ethAliasDrop = inputKey[Unit]("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
@@ -153,7 +157,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethKeystoreInspectWalletV3 = inputKey[Unit]("Prints V3 wallet as JSON to the console.")
 
-    val ethKeystoreList = taskKey[immutable.Map[EthAddress,immutable.Set[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
+    val ethKeystoreList = taskKey[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
 
     val ethKeystoreMemorizeWalletV3 = taskKey[Unit]("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
 
@@ -278,6 +282,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       xethWalletV3ScryptP := wallet.V3.Default.Scrypt.P,
 
       // tasks
+
+      ethAbiForget <<= ethAbiForgetTask,
+
+      ethAbiList <<= ethAbiListTask,
 
       ethAbiMemorize <<= ethAbiMemorizeTask,
 
@@ -433,6 +441,46 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // task definitions
 
+    def ethAbiForgetTask : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+      Def.inputTask {
+        val blockchainId = ethBlockchainId.value
+        val log = streams.value.log
+        val address = parser.parsed
+        val found = repository.Database.deleteMemorizedContractAbi( blockchainId, address ).get // throw an Exception if there's a database issue
+        if ( found ) {
+          log.info( s"Previously memorized ABI for contract with address '0x${address.hex}' (on blockchain '${blockchainId}') has been forgotten." )
+        } else {
+          val mbDeployment = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get  // throw an Exception if there's a database issue
+          mbDeployment match {
+            case Some( _ ) => throw new SbtEthereumException( s"Contract at address '0x${address.hex}' (on blockchain '${blockchainId}') is not a memorized ABI but our own deployment. Cannot forget." )
+            case None      => throw new ContractUnknownException( s"We have not memorized an ABI for the contract at address '0x${address.hex}' (on blockchain '${blockchainId}')." )
+          }
+        }
+      }
+    }
+
+    def ethAbiListTask : Initialize[Task[Unit]] = Def.task {
+      val blockchainId = ethBlockchainId.value
+      val log = streams.value.log
+
+      val addresses = repository.Database.getMemorizedContractAbiAddresses( blockchainId ).get
+
+      val cap = "+" + span(44) + "+"
+      val header = "Contracts with Memorized ABIs"
+      println( cap )
+      println( f"| $header%-42s |" )
+      println( cap )
+      addresses.foreach { address =>
+        val ka = s"0x${address.hex}"
+        val aliasesArrow = leftwardAliasesArrowOrEmpty( blockchainId, address ).get
+        println( f"| $ka%-42s |" +  aliasesArrow )
+      }
+      println( cap )
+
+    }
+
     def ethAbiMemorizeTask : Initialize[Task[Unit]] = Def.task {
       val blockchainId = ethBlockchainId.value
       val log = streams.value.log
@@ -445,7 +493,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           // TODO, maybe, check if the deployed compilation includes a non-null ABI
         }
         case None => {
-          repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // thrown an Exception if there's a database issue
+          repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // throw an Exception if there's a database issue
           log.info( s"ABI is now known for the contract at address ${address.hex}" )
         }
       }
@@ -781,24 +829,32 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethKeystoreListTask : Initialize[Task[immutable.Map[EthAddress,immutable.Set[String]]]] = Def.task {
-      val keystoresV3 = ethKeystoreLocationsV3.value
-      val log         = streams.value.log
+    def ethKeystoreListTask : Initialize[Task[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]] = Def.task {
+      val keystoresV3  = ethKeystoreLocationsV3.value
+      val log          = streams.value.log
+      val blockchainId = ethBlockchainId.value
       val combined = {
         keystoresV3
           .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
           .foldLeft( Map.empty[EthAddress,wallet.V3] )( ( accum, next ) => accum ++ next )
       }
 
-      // TODO: Aliases as values
-      val out = combined.map( tup => ( tup._1, immutable.Set.empty[String] ) )
+      val out = {
+        def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( repository.Database.findAliasesByAddress( blockchainId, address ).get : _* )
+        immutable.TreeMap( combined.map { case ( address : EthAddress, _ ) => ( address, aliasesSet( address ) ) }.toSeq : _* )( Ordering.by( _.hex ) )
+      }
       val cap = "+" + span(44) + "+"
       val KeystoreAddresses = "Keystore Addresses"
       println( cap )
       println( f"| $KeystoreAddresses%-42s |" )
       println( cap )
-      immutable.TreeSet( out.keySet.toSeq.map( address => s"0x${address.hex}" ) : _* ).foreach { ka =>
-        println( f"| $ka%-42s |" )
+      out.keySet.toSeq.foreach { address =>
+        val ka = s"0x${address.hex}"
+        val aliasesArrow = {
+          val aliases = out(address)
+          if ( aliases.isEmpty ) "" else s""" <-- ${aliases.mkString(", ")}"""
+        }
+        println( f"| $ka%-42s |" +  aliasesArrow )
       }
       println( cap )
       out
@@ -1506,6 +1562,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     private def emptyOrHex( str : String ) = if (str == null) "" else s"0x$str"
     private def blankNull( str : String ) = if (str == null) "" else str
     private def span( len : Int ) = (0 until len).map(_ => "-").mkString
+
+    private def commaSepAliasesForAddress( blockchainId : String, address : EthAddress ) : Failable[Option[String]] = {
+      repository.Database.findAliasesByAddress( blockchainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( ", " ) ) )
+    }
+    private def leftwardAliasesArrowOrEmpty( blockchainId : String, address : EthAddress ) : Failable[String] = {
+      commaSepAliasesForAddress( blockchainId, address ).map( _.fold("")( aliasesStr => s" <-- ${aliasesStr}" ) )
+    }
 
   } // end object autoImport
 

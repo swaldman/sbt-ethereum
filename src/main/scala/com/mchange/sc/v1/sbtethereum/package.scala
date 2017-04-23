@@ -10,7 +10,7 @@ package object sbtethereum {
 
   private implicit lazy val logger = mlogger( "com.mchange.sc.v1.sbtethereum.package" )
 
-  abstract class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
+  class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
 
   final class NoSolidityCompilerException( msg : String ) extends SbtEthereumException( msg )
   final class DatabaseVersionException( msg : String )    extends SbtEthereumException( msg )
