@@ -1,7 +1,5 @@
 # TODO
 
-* Network defaults for compiler and JSON-RPC
-* Expire unlocked private keys
 * ethSenderOverride (?)
 * ethAbiForget
 * ethDebugListing

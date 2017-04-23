@@ -51,8 +51,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private implicit val logger = mlogger( this )
 
   private trait AddressInfo;
-  private final case object NoAddress                                                                                  extends AddressInfo
-  private final case class  UnlockedAddress( blockchainId : String, address : EthAddress, privateKey : EthPrivateKey ) extends AddressInfo
+  private final case object NoAddress                                                                                                         extends AddressInfo
+  private final case class  UnlockedAddress( blockchainId : String, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
 
   // MT: protected by CurrentAddress' lock
   private val CurrentAddress = new AtomicReference[AddressInfo]( NoAddress )
@@ -96,6 +96,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethGasMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
 
     val ethGasPriceMarkup = settingKey[Double]("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
+
+    val ethKeystoreAutoRelockSeconds = settingKey[Int]("Number of seconds after which an unlocked private key should automatically relock")
 
     val ethKeystoreLocationsV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
 
@@ -246,6 +248,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethGasPriceMarkup := 0.0, // by default, use conventional gas price
 
       ethIncludeLocations := Nil,
+
+      ethKeystoreAutoRelockSeconds := 300,
 
       ethKeystoreLocationsV3 := {
         def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
@@ -665,8 +669,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
         val gas = xethGasOverrides.value.getOrElse( contractName, doEstimateAndMarkupGas( log, jsonRpcUrl, Some(sender), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
+        val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
-        val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, true )
+        val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
         val updateChangedDb = xethUpdateContractDatabase.value
         val txnHash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
@@ -759,9 +764,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
+        val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
         val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
         val amount = mbWei.getOrElse( Zero )
-        val privateKey = findCachePrivateKey(s, log, is, blockchainId, caller, true )
+        val privateKey = findCachePrivateKey(s, log, is, blockchainId, caller, autoRelockSeconds, true )
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
         val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
@@ -892,9 +898,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
+        val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
+
         val gas = doEstimateAndMarkupGas( log, jsonRpcUrl, Some( from ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
-        val privateKey = findCachePrivateKey( s, log, is, blockchainId, from, true )
+        val privateKey = findCachePrivateKey( s, log, is, blockchainId, from, autoRelockSeconds, true )
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
         awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
@@ -1404,6 +1412,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       is                   : sbt.InteractionService,
       blockchainId         : String,
       address              : EthAddress,
+      autoRelockSeconds    : Int,
       userValidateIfCached : Boolean
     ) : EthPrivateKey = {
 
@@ -1418,15 +1427,16 @@ object SbtEthereumPlugin extends AutoPlugin {
         val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For, address.hex, state)
 
         val privateKey = findPrivateKey( log, mbWallet, credential )
-        CurrentAddress.set( UnlockedAddress( blockchainId, address, privateKey ) )
+        CurrentAddress.set( UnlockedAddress( blockchainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
         privateKey
       }
       def goodCached : Option[EthPrivateKey] = {
         // caps for value matches rather than variable names
         val BlockchainId = blockchainId
         val Address = address
+        val now = System.currentTimeMillis
         CurrentAddress.get match {
-          case UnlockedAddress( BlockchainId, Address, privateKey ) => { // if blockchainId and/or ethSender has changed, this will no longer match
+          case UnlockedAddress( BlockchainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if blockchainId and/or ethSender has changed, this will no longer match
             val ok = {
               if ( userValidateIfCached ) {
                 is.readLine( s"Using sender address '0x${address.hex}' (on blockchain '${blockchainId}'). OK? [y/n] ", false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
