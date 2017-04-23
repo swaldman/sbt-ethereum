@@ -58,7 +58,7 @@ Here's a minimal `build.sbt`:
     
 And `project/plugins.sbt`:
 
-    addSbtPlugin("com.mchange" % "sbt-ethereum" % "0.0.1")
+    addSbtPlugin("com.mchange" % "sbt-ethereum" % "0.0.2-SNAPSHOT")
 
 ## Using the SBT command line
 
@@ -400,6 +400,6 @@ Define `plugins.sbt` like this:
     // only necessary while using a SNAPSHOT version of sbt-ethereum
     resolvers += ("snapshots" at "https://oss.sonatype.org/content/repositories/snapshots")
 
-    addSbtPlugin("com.mchange" % "sbt-ethereum" % "0.0.1-SNAPSHOT" changing())
+    addSbtPlugin("com.mchange" % "sbt-ethereum" % "0.0.2-SNAPSHOT" changing())
 
 

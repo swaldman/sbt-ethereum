@@ -75,6 +75,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val DefaultSenderAlias = "defaultSender"
 
+  private val DefaultEthJsonRpcUrl = "http://ethjsonrpc.mchange.com:8545"
+
+  private val DefaultEthNetcompileUrl = "http://ethjsonrpc.mchange.com:8456"
+
   object autoImport {
 
     // settings
@@ -179,6 +183,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethFindCurrentSender = taskKey[Failable[EthAddress]]("Finds the address that should be used to send ether or messages")
 
+    val xethFindEthJsonRpcUrl = taskKey[String]("Finds the address that should be used to interact with an Ethereum blockchain")
+
     val xethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
 
     val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
@@ -240,8 +246,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethGasPriceMarkup := 0.0, // by default, use conventional gas price
 
       ethIncludeLocations := Nil,
-
-      ethJsonRpcUrl := "http://localhost:8545",
 
       ethKeystoreLocationsV3 := {
         def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
@@ -332,6 +336,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       xethFindCurrentSender <<= xethFindCurrentSenderTask,
 
       xethFindCurrentSolidityCompiler <<= xethFindCurrentSolidityCompilerTask,
+
+      xethFindEthJsonRpcUrl <<= xethFindEthJsonRpcUrlTask,
 
       xethGasPrice <<= xethGasPriceTask,
 
@@ -495,7 +501,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
+        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
         val mbAddress = parser.parsed
         val address = mbAddress.getOrElse( xethFindCurrentSender.value.get )
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Ether )
@@ -508,7 +514,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
+        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
         val mbAddress = parser.parsed
         val address = mbAddress.getOrElse( xethFindCurrentSender.value.get )
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Wei )
@@ -635,7 +641,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val is = interactionService.value
         val log = streams.value.log
         val blockchainId = ethBlockchainId.value
-        val jsonRpcUrl = ethJsonRpcUrl.value
+        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
         val ( contractName, extraData ) = parser.parsed
         val ( compilation, inputsBytes ) = {
           extraData match {
@@ -690,7 +696,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = ethJsonRpcUrl.value
+        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
         val from = xethFindCurrentSender.value.toOption
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
@@ -748,7 +754,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val is = interactionService.value
         val blockchainId = ethBlockchainId.value
-        val jsonRpcUrl = ethJsonRpcUrl.value
+        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
         val caller = xethFindCurrentSender.value.get
         val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
@@ -878,7 +884,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val is = interactionService.value
         val blockchainId = ethBlockchainId.value
-        val jsonRpcUrl = ethJsonRpcUrl.value
+        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
         val args = parser.parsed
         val from = xethFindCurrentSender.value.get
         val to = args._1
@@ -967,7 +973,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethDefaultGasPriceTask : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
-      val jsonRpcUrl = ethJsonRpcUrl.value
+      val jsonRpcUrl = xethFindEthJsonRpcUrl.value
       doGetDefaultGasPrice( log, jsonRpcUrl )
     }
 
@@ -1020,6 +1026,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       val sessionCompilers = SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys during onLoad should have forced sessionCompilers to be set, but it's not." ) )
       val compilerKeys = sessionCompilers.keySet
 
+      val mbExplicitJsonRpcUrl = ethJsonRpcUrl.?.value
+
       CurrentSolidityCompiler.get.map( _._2).getOrElse {
         def latestLocalInstallVersion : Option[SemanticVersion] = {
           val versions = (immutable.TreeSet.empty[SemanticVersion] ++ compilerKeys.map( LocalSolc.versionFromKey ).filter( _ != None ).map( _.get ))
@@ -1028,11 +1036,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         def latestLocalInstallKey : Option[String] = latestLocalInstallVersion.map( version => s"${LocalSolc.KeyPrefix}${version.versionString}" )
 
         val key = {
-          compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse
-          compilerKeys.find( _ == LocalPathSolcKey ) orElse
-          latestLocalInstallKey orElse
-          compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) )
-
+          mbExplicitJsonRpcUrl.flatMap( ejru => compilerKeys.find( key => key.startsWith(EthNetcompile.KeyPrefix) && key.endsWith( ejru ) ) ) orElse // use an explicitly set netcompile
+          compilerKeys.find( _ == LocalPathSolcKey ) orElse                                                                                          // use a local compiler on the path
+          latestLocalInstallKey orElse                                                                                                               // use the latest local compiler in the repository
+          compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse                                                                          // use the default eth-netcompile
+          compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) )                                                                                  // use the (deprecated, mostly disappeared) json-rpc eth_CompileSolidity
         }.getOrElse {
           throw new Exception( s"Cannot find a usable solidity compiler. compilerKeys: ${compilerKeys}, sessionCompilers: ${sessionCompilers}" )
         }
@@ -1044,9 +1052,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
+    def xethFindEthJsonRpcUrlTask : Initialize[Task[String]] = Def.task {
+      ethJsonRpcUrl.?.value.getOrElse( DefaultEthJsonRpcUrl )
+    }
+
     def xethGasPriceTask : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
-      val jsonRpcUrl = ethJsonRpcUrl.value
+      val jsonRpcUrl = xethFindEthJsonRpcUrl.value
 
       val markup          = ethGasPriceMarkup.value
       val defaultGasPrice = xethDefaultGasPrice.value
@@ -1244,7 +1256,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethNextNonceTask : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
-      val jsonRpcUrl = ethJsonRpcUrl.value
+      val jsonRpcUrl = xethFindEthJsonRpcUrl.value
       doGetTransactionCount( log, jsonRpcUrl, xethFindCurrentSender.value.get , jsonrpc20.Client.BlockNumber.Pending )
     }
 
@@ -1297,7 +1309,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethUpdateContractDatabaseTask : Initialize[Task[Boolean]] = Def.task {
       val log          = streams.value.log
-      val jsonRpcUrl   = ethJsonRpcUrl.value
+      val jsonRpcUrl   = xethFindEthJsonRpcUrl.value
       val compilations = xethLoadCompilationsKeepDups.value // we want to "know" every contract we've seen, which might include contracts with multiple names
 
       repository.Database.updateContractDatabase( compilations ).get
@@ -1328,7 +1340,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       import Compiler.Solidity._
 
       val netcompileUrl = ethNetcompileUrl.?.value
-      val jsonRpcUrl    = ethJsonRpcUrl.value
+      val jsonRpcUrl    = xethFindEthJsonRpcUrl.value
 
       def check( key : String, compiler : Compiler.Solidity ) : Option[ ( String, Compiler.Solidity ) ] = {
         val test = Compiler.Solidity.test( compiler )
@@ -1338,11 +1350,12 @@ object SbtEthereumPlugin extends AutoPlugin {
           None
         }
       }
-      def netcompile = {
-        netcompileUrl.flatMap { ncu =>
-          check( s"${EthNetcompile.KeyPrefix}${ncu}", Compiler.Solidity.EthNetcompile( ncu ) )
-        }
-      }
+      def checkNetcompileUrl( ncu : String ) = check( s"${EthNetcompile.KeyPrefix}${ncu}", Compiler.Solidity.EthNetcompile( ncu ) )
+
+      def netcompile = netcompileUrl.flatMap( checkNetcompileUrl )
+
+      def defaultNetcompile = checkNetcompileUrl( DefaultEthNetcompileUrl )
+
       def ethJsonRpc = {
         check( s"${EthJsonRpc.KeyPrefix}${jsonRpcUrl}", Compiler.Solidity.EthJsonRpc( jsonRpcUrl ) )
       }
@@ -1358,7 +1371,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         SolcJInstaller.SupportedVersions.map( checkLocalRepositorySolc ).toSeq
       }
 
-      val raw = checkLocalRepositorySolcs :+ localPath :+ ethJsonRpc :+ netcompile
+      val raw = checkLocalRepositorySolcs :+ localPath :+ ethJsonRpc :+ netcompile :+ defaultNetcompile
 
       val out = immutable.SortedMap( raw.filter( _ != None ).map( _.get ) : _* )
       SessionSolidityCompilers.set( Some( out ) )
