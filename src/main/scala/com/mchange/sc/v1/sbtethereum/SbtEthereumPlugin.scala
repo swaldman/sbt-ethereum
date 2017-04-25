@@ -39,6 +39,7 @@ import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAnd
 import scala.collection._
 
 // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
+import scala.concurrent.ExecutionContext
 import scala.concurrent.ExecutionContext.Implicits.global
 
 object SbtEthereumPlugin extends AutoPlugin {
@@ -61,6 +62,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val CurrentSolidityCompiler = new AtomicReference[Option[( String, Compiler.Solidity )]]( None )
 
+  private val GasOverride = new AtomicReference[Option[BigInt]]( None )
+
   private val BufferSize = 4096
 
   private val PollSeconds = 15
@@ -70,6 +73,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private val Zero = BigInt(0)
 
   private val Zero256 = Unsigned256( 0 )
+
+  private val EmptyBytes = List.empty[Byte]
 
   private val LatestSolcJVersion = "0.4.10"
 
@@ -90,8 +95,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethEntropySource = settingKey[SecureRandom]("The source of randomness that will be used for key generation")
 
     val ethIncludeLocations = settingKey[Seq[String]]("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
-
-    val xethGasOverrides = settingKey[Map[String,BigInt]]("Map of contract names to gas limits for contract creation transactions, overriding automatic estimates")
 
     val ethGasMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
 
@@ -191,6 +194,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethFindEthJsonRpcUrl = taskKey[String]("Finds the address that should be used to interact with an Ethereum blockchain")
 
+    val xethGasOverrideSet = inputKey[Unit]("Defines a value which overrides the usual automatic marked-up estimation of gas required for a transaction.")
+
+    val xethGasOverrideDrop = taskKey[Unit]("Removes any previously set gas override, reverting to the usual automatic marked-up estimation of gas required for a transaction.")
+
+    val xethGasOverrideShow = taskKey[Unit]("Displays the current gas override, if set.")
+
     val xethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
 
     val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
@@ -243,7 +252,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       // Settings
 
-      ethBlockchainId   := MainnetIdentifier,
+      ethBlockchainId := MainnetIdentifier,
 
       ethEntropySource := new java.security.SecureRandom,
 
@@ -266,8 +275,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethSolidityDestination in Compile := (ethTargetDir in Compile).value / "solidity",
 
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
-
-      xethGasOverrides := Map.empty[String,BigInt],
 
       xethWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
 
@@ -352,6 +359,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       xethFindEthJsonRpcUrl <<= xethFindEthJsonRpcUrlTask,
 
       xethGasPrice <<= xethGasPriceTask,
+
+      xethGasOverrideSet <<= xethGasOverrideSetTask,
+
+      xethGasOverrideDrop <<= xethGasOverrideDropTask,
+
+      xethGasOverrideShow <<= xethGasOverrideShowTask,
 
       xethGenKeyPair <<= xethGenKeyPairTask,
 
@@ -455,7 +468,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           val mbDeployment = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get  // throw an Exception if there's a database issue
           mbDeployment match {
             case Some( _ ) => throw new SbtEthereumException( s"Contract at address '0x${address.hex}' (on blockchain '${blockchainId}') is not a memorized ABI but our own deployment. Cannot forget." )
-            case None      => throw new ContractUnknownException( s"We have not memorized an ABI for the contract at address '0x${address.hex}' (on blockchain '${blockchainId}')." )
+            case None      => throw new SbtEthereumException( s"We have not memorized an ABI for the contract at address '0x${address.hex}' (on blockchain '${blockchainId}')." )
           }
         }
       }
@@ -716,7 +729,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
-        val gas = xethGasOverrides.value.getOrElse( contractName, doEstimateAndMarkupGas( log, jsonRpcUrl, Some(sender), None, dataHex.decodeHex.toImmutableSeq, jsonrpc20.Client.BlockNumber.Pending, markup ) )
+        val gas = computeGas( log, jsonRpcUrl, Some(sender), None, None, Some( dataHex.decodeHex.toImmutableSeq ), jsonrpc20.Client.BlockNumber.Pending, markup )
         val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
@@ -761,8 +774,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
         val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Call data for function call: ${callData.hex}" )
-        val gas = doEstimateAndMarkupGas( log, jsonRpcUrl, from, Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
-        log.info( s"Gas estimated for function call: ${gas}" )
+
+        val gas = 0 // no gas needed for constant function calls
+
         val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Latest )
         log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
         log.info( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
@@ -820,8 +834,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
         log.info( s"Call data for function call: ${callData.hex}" )
-        val gas = doEstimateAndMarkupGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), callData, jsonrpc20.Client.BlockNumber.Pending, markup )
+        val gas = computeGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Pending, markup )
         log.info( s"Gas estimated for function call: ${gas}" )
+        log.info( s"Gas price set to ${gasPrice} wei" )
+        val estdCost = gasPrice * gas
+        log.info( s"Estimated transaction cost ${estdCost} wei (${Ether.fromWei( estdCost )} ether)." )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), contractAddress, Unsigned256( amount ), callData )
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei to address '0x${contractAddress.hex}' in transaction '0x${hash.hex}'.""" )
@@ -947,17 +964,14 @@ object SbtEthereumPlugin extends AutoPlugin {
         val is = interactionService.value
         val blockchainId = ethBlockchainId.value
         val jsonRpcUrl = xethFindEthJsonRpcUrl.value
-        val args = parser.parsed
         val from = xethFindCurrentSender.value.get
-        val to = args._1
-        val amount = args._2
+        val (to, amount) = parser.parsed
         val nextNonce = xethNextNonce.value
         val markup = ethGasMarkup.value
         val gasPrice = xethGasPrice.value
         val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
-
-        val gas = doEstimateAndMarkupGas( log, jsonRpcUrl, Some( from ), Some(to), Nil, jsonrpc20.Client.BlockNumber.Pending, markup )
-        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), List.empty[Byte] )
+        val gas = computeGas( log, jsonRpcUrl, Some(from), Some(to), Some(amount), Some( EmptyBytes ), jsonrpc20.Client.BlockNumber.Pending, markup )
+        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), EmptyBytes )
         val privateKey = findCachePrivateKey( s, log, is, blockchainId, from, autoRelockSeconds, true )
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
@@ -1118,6 +1132,27 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethFindEthJsonRpcUrlTask : Initialize[Task[String]] = Def.task {
       ethJsonRpcUrl.?.value.getOrElse( DefaultEthJsonRpcUrl )
+    }
+
+    def xethGasOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
+      val log = streams.value.log
+      val amount = integerParser("<gas override>").parsed
+      GasOverride.set( Some( amount ) )
+      log.info( s"Gas override set to ${amount}." )
+    }
+
+    def xethGasOverrideDropTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+      GasOverride.set( None )
+      log.info("No gas override is now set. Quantities of gas will be automatically computed.")
+    }
+
+    def xethGasOverrideShowTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+      GasOverride.get match {
+        case Some( value ) => log.info( s"A gas override is set, with value ${value}." )
+        case None          => log.info( "No gas override is currently set." )
+      }
     }
 
     def xethGasPriceTask : Initialize[Task[BigInt]] = Def.task {
@@ -1443,6 +1478,32 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     // helper functions
+
+    private def allUnitsValue( valueInWei : BigInt ) = s"${valueInWei} wei (${Denominations.Ether.fromWei(valueInWei)} ether, ${Denominations.Finney.fromWei(valueInWei)} finney, ${Denominations.Szabo.fromWei(valueInWei)} szabo)"
+
+    private def computeGas(
+      log         : sbt.Logger,
+      jsonRpcUrl  : String,
+      from        : Option[EthAddress],
+      to          : Option[EthAddress],
+      value       : Option[BigInt],
+      data        : Option[Seq[Byte]],
+      blockNumber : jsonrpc20.Client.BlockNumber,
+      markup      : Double
+    )(
+      implicit ec : ExecutionContext
+    ) : BigInt = {
+      GasOverride.get match {
+        case Some( overrideValue ) => {
+          log.info( s"Gas override set: ${overrideValue}")
+          log.info( "Using gas override.")
+          overrideValue
+        }
+        case None => {
+          doEstimateAndMarkupGas( log, jsonRpcUrl, from, to, value, data, blockNumber, markup )( ec )
+        }
+      }
+    }
 
     private def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
       mbGethWallet.fold {

@@ -48,6 +48,10 @@ object Parsers {
 
   private [sbtethereum] val NewAliasParser = token(Space.* ~> ID, "<alias>") ~ createSimpleAddressParser("<hex-address>")
 
+  private [sbtethereum] val RawIntegerParser = (Digit.+).map( chars => BigInt( chars.mkString ) )
+
+  private [sbtethereum] def integerParser( tabHelp : String ) = token(Space.* ~> RawIntegerParser, tabHelp)
+
   private [sbtethereum] val RawAmountParser = ((Digit|literal('.')).+).map( chars => BigDecimal( chars.mkString ) )
 
   //private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )

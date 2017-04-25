@@ -84,8 +84,18 @@ object EthJsonRpc {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), Duration.Inf ) )
   }
 
-  def doEstimateGas( log : sbt.Logger, jsonRpcUrl : String, from : Option[EthAddress], to : Option[EthAddress], data : Seq[Byte], blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = from, to = to, data = Some(data) ), Duration.Inf ) )
+  def doEstimateGas(
+    log : sbt.Logger,
+    jsonRpcUrl : String,
+    from : Option[EthAddress],
+    to : Option[EthAddress],
+    value : Option[BigInt],
+    data : Option[Seq[Byte]],
+    blockNumber : jsonrpc20.Client.BlockNumber
+  )(
+    implicit ec : ExecutionContext
+  ) : BigInt = {
+    doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.estimateGas( from = from, to = to, value = value, data = data ), Duration.Inf ) )
   }
 
   def doSignSendTransaction( log : sbt.Logger, jsonRpcUrl : String, signer : EthPrivateKey, unsigned : EthTransaction.Unsigned )( implicit ec : ExecutionContext ) : EthHash = {
@@ -102,11 +112,12 @@ object EthJsonRpc {
     jsonRpcUrl : String,
     from : Option[EthAddress],
     to : Option[EthAddress],
-    data : Seq[Byte],
+    value : Option[BigInt],
+    data : Option[Seq[Byte]],
     blockNumber : jsonrpc20.Client.BlockNumber,
     markup : Double
   )( implicit ec : ExecutionContext ) : BigInt = {
-    val rawEstimate = doEstimateGas( log, jsonRpcUrl, from, to, data, blockNumber )( ec )
+    val rawEstimate = doEstimateGas( log, jsonRpcUrl, from, to, value, data, blockNumber )( ec )
     rounded(BigDecimal(rawEstimate) * BigDecimal(1 + markup)).toBigInt
   }
 
