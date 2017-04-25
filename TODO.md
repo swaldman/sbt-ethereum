@@ -1,6 +1,5 @@
 # TODO
 
-* ethSenderOverride (?)
 * ethDebugListing
 * giterate project templates
 * Prettify output of log items in client transactions

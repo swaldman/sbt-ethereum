@@ -64,6 +64,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val GasOverride = new AtomicReference[Option[BigInt]]( None )
 
+  // MT: protected by SenderOverride's lock
+  private val SenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
+
   private val BufferSize = 4096
 
   private val PollSeconds = 15
@@ -169,6 +172,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreValidateWalletV3 = inputKey[Unit]("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
     val ethSelfPing = taskKey[Option[ClientTransactionReceipt]]("Sends 0 ether from current sender to itself")
+
+    val ethSenderOverrideSet = inputKey[Unit]("Sets an ethereum address to be used as sender in prefernce to any 'ethSender' or defaultSender that may be set.")
+
+    val ethSenderOverrideDrop = taskKey[Unit]("Removes any sender override, reverting to any 'ethSender' or defaultSender that may be set.")
+
+    val ethSenderOverrideShow = taskKey[Unit]("Displays any sender override, if set.")
 
     val ethSendEther = inputKey[Option[ClientTransactionReceipt]]("Sends ether from current sender to a specified account, format 'ethSendEther <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
@@ -331,6 +340,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethKeystoreValidateWalletV3 <<= ethKeystoreValidateWalletV3Task,
 
       ethSelfPing <<= ethSelfPingTask,
+
+      ethSenderOverrideSet <<= ethSenderOverrideSetTask,
+
+      ethSenderOverrideDrop <<= ethSenderOverrideDropTask,
+
+      ethSenderOverrideShow <<= ethSenderOverrideShowTask,
 
       ethSendEther <<= ethSendEtherTask,
 
@@ -949,8 +964,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val (_, result) = extract.runInputTask(ethSendEther, sendArgs, s)
 
       val out = result
-      out.fold( log.warn("Ping failed! Our attempt to send 0 ether from '${address}' to itself may or may not eventually succeed, but we've timed out before hearing back." ) ) { receipt =>
-        log.info( s"Ping succeeded! Sent 0 ether from '${address}' to itself in transaction '0x${receipt.transactionHash.hex}'" )
+      out.fold( log.warn("Ping failed! Our attempt to send 0 ether from '${address.hex}' to itself may or may not eventually succeed, but we've timed out before hearing back." ) ) { receipt =>
+        log.info( "Ping succeeded!" )
+        log.info( s"Sent 0 ether from '${address.hex}' to itself in transaction '0x${receipt.transactionHash.hex}'" )
       }
       out
     }
@@ -977,6 +993,46 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
         awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
       }
+    }
+
+    def ethSenderOverrideSetTask : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+      Def.inputTask {
+        SenderOverride.synchronized {
+          val log = streams.value.log
+          val blockchainId = ethBlockchainId.value
+          val address = parser.parsed
+          val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases '$str')" ) )
+
+          SenderOverride.set( Some( ( blockchainId, address ) ) )
+
+          log.info( s"Sender override set to '0x${address.hex}' (on blockchain '$blockchainId'${aliasesPart})." )
+        }
+      }
+    }
+
+    def ethSenderOverrideDropTask : Initialize[Task[Unit]] = Def.task {
+      SenderOverride.synchronized {
+        val log = streams.value.log
+        SenderOverride.set( None )
+        log.info("No sender override is now set. Effective sender will be determined by 'ethSender' setting or 'defaultSender' alias.")
+      }
+    }
+
+    def ethSenderOverrideShowTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+
+      val blockchainId = ethBlockchainId.value
+
+      val mbSenderOverride = getSenderOverride( log, blockchainId )
+
+      val message = mbSenderOverride.fold( "No sender override is currently set." ) { address =>
+        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases '$str')" ) )
+        s"A sender override is set, address '${address.hex}' (on blockchain '$blockchainId'${aliasesPart})."
+      }
+
+      log.info( message )
     }
 
     def ethSolidityChooseCompilerTask : Initialize[InputTask[Unit]] = {
@@ -1074,22 +1130,34 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethFindCurrentSenderTask : Initialize[Task[Failable[EthAddress]]] = Def.task {
       Failable {
+        val log = streams.value.log
         val blockchainId = ethBlockchainId.value
-        val mbAddrStr = ethSender.?.value
-        mbAddrStr match {
-          case Some( addrStr ) => EthAddress( addrStr )
-          case None            => {
-            val mbProperty = Option( System.getProperty( EthSenderSystemProperty ) )
-            val mbEnvVar   = Option( System.getenv( EthSenderEnvironmentVariable ) )
 
-            val mbExternalEthAddress = (mbProperty orElse mbEnvVar).map( EthAddress.apply )
+        val mbSenderOverride = getSenderOverride( log, blockchainId )
+        mbSenderOverride match {
+          case Some( address ) => {
+            // val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases '$str')" ) )
+            // log.info( s"Using sender override address '0x${address.hex}' (on blockchain $blockchainId${aliasesPart}" )
+            address
+          }
+          case None => {
+            val mbAddrStr = ethSender.?.value
+            mbAddrStr match {
+              case Some( addrStr ) => EthAddress( addrStr )
+              case None            => {
+                val mbProperty = Option( System.getProperty( EthSenderSystemProperty ) )
+                val mbEnvVar   = Option( System.getenv( EthSenderEnvironmentVariable ) )
 
-            mbExternalEthAddress.getOrElse {
-              val mbDefaultSenderAddress = repository.Database.findAddressByAlias( blockchainId, DefaultSenderAlias ).get
+                val mbExternalEthAddress = (mbProperty orElse mbEnvVar).map( EthAddress.apply )
 
-              mbDefaultSenderAddress match {
-                case Some( address ) => address
-                case None => throw new SenderNotAvailableException("Cannot find an 'ethSender' or default sender")
+                mbExternalEthAddress.getOrElse {
+                  val mbDefaultSenderAddress = repository.Database.findAddressByAlias( blockchainId, DefaultSenderAlias ).get
+
+                  mbDefaultSenderAddress match {
+                    case Some( address ) => address
+                    case None => throw new SenderNotAvailableException("Cannot find an 'ethSender' or default sender")
+                  }
+                }
               }
             }
           }
@@ -1340,6 +1408,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         val keystoresV3 = ethKeystoreLocationsV3.value
         val log         = streams.value.log
 
+        val blockchainId = ethBlockchainId.value
+
         val address = parser.parsed
         val out = {
           keystoresV3
@@ -1348,7 +1418,11 @@ object SbtEthereumPlugin extends AutoPlugin {
             if ( mb.isEmpty ) nextKeystore.get( address ) else mb
           }
         }
-        log.info( out.fold( s"No V3 wallet found for '0x${address.hex}'" )( _ => s"V3 wallet found for '0x${address.hex}'" ) )
+        val message = {
+          val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s" (aliases '$str')" ) )
+          out.fold( s"No V3 wallet found for '0x${address.hex}'${aliasesPart}" )( _ => s"V3 wallet found for '0x${address.hex}'${aliasesPart}" )
+        }
+        log.info( message )
         out
       }
     }
@@ -1481,6 +1555,22 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     private def allUnitsValue( valueInWei : BigInt ) = s"${valueInWei} wei (${Denominations.Ether.fromWei(valueInWei)} ether, ${Denominations.Finney.fromWei(valueInWei)} finney, ${Denominations.Szabo.fromWei(valueInWei)} szabo)"
 
+    private def getSenderOverride( log : sbt.Logger, blockchainId : String ) : Option[EthAddress] = {
+      SenderOverride.synchronized {
+        val BlockchainId = blockchainId
+
+        SenderOverride.get match {
+          case Some( ( BlockchainId, address ) ) => Some( address )
+          case Some( (badBlockchainId, _) ) => {
+            log.info( s"A sender override was set for the blockchain '$badBlockchainId', but that is no longer the current 'ethBlockchainId'. The sender override is stale and will be dropped." )
+            SenderOverride.set( None )
+            None
+          }
+          case None => None
+        }
+      }
+    }
+
     private def computeGas(
       log         : sbt.Logger,
       jsonRpcUrl  : String,
@@ -1538,6 +1628,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         // it also slows down automated attempts to guess passwords, i guess...
         Thread.sleep(1000)
 
+        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( commasep => s", aliases '$commasep'" ) )
+
+        log.info( s"Unlocking address '0x${address.hex}' (on blockchain '$blockchainId'$aliasesPart)" )
+
         val credential = readCredential( is, address )
 
         val extract = Project.extract(state)
@@ -1554,9 +1648,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         val now = System.currentTimeMillis
         CurrentAddress.get match {
           case UnlockedAddress( BlockchainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if blockchainId and/or ethSender has changed, this will no longer match
+            val aliasesPart = commaSepAliasesForAddress( BlockchainId, Address ).fold( _ => "", _.fold("")( commasep => s", aliases '$commasep'" ) )
             val ok = {
               if ( userValidateIfCached ) {
-                is.readLine( s"Using sender address '0x${address.hex}' (on blockchain '${blockchainId}'). OK? [y/n] ", false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
+                is.readLine( s"Using sender address '0x${address.hex}' (on blockchain '${blockchainId}'${aliasesPart}). OK? [y/n] ", false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
               } else {
                 true
               }
@@ -1565,7 +1660,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               Some( privateKey )
             } else {
               CurrentAddress.set( NoAddress )
-              throw new SenderNotAvailableException( s"Use of sender address '0x${address.hex}' (on blockchain '${blockchainId}') vetoed by user." )
+              throw new SenderNotAvailableException( s"Use of sender address '0x${address.hex}' (on blockchain '${blockchainId}'${aliasesPart}) vetoed by user." )
             }
           }
           case _ => { // if we don't match, we reset / forget the cached private key
