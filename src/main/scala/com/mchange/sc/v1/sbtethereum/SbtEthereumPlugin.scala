@@ -35,7 +35,7 @@ import specification.Denominations
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
-import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAndArgs,callDataForAbiFunction,decodeReturnValuesForFunction,DecodedReturnValue,Encoder}
+import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAndArgs,callDataForAbiFunctionFromStringArgs,decodeReturnValuesForFunction,DecodedReturnValue,Encoder}
 import scala.collection._
 
 // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
@@ -787,7 +787,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         val amount = mbWei.getOrElse( Zero )
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
-        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
+        val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Call data for function call: ${callData.hex}" )
 
         val gas = computeGas( log, jsonRpcUrl, from, Some(contractAddress), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Pending, markup )
@@ -846,7 +846,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val amount = mbWei.getOrElse( Zero )
         val privateKey = findCachePrivateKey(s, log, is, blockchainId, caller, autoRelockSeconds, true )
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
-        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
+        val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
         log.info( s"Call data for function call: ${callData.hex}" )
         val gas = computeGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Pending, markup )
@@ -1254,7 +1254,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       Def.inputTask {
         val ( contractAddress, function, args, abi ) = parser.parsed
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
-        val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
+        val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
         val log = streams.value.log
         log.info( s"Call data: ${callData.hex}" )
         callData
