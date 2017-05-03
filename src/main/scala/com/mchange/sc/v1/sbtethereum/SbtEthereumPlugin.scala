@@ -790,7 +790,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val callData = callDataForAbiFunction( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Call data for function call: ${callData.hex}" )
 
-        val gas = 0 // no gas needed for constant function calls
+        val gas = computeGas( log, jsonRpcUrl, from, Some(contractAddress), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Pending, markup )
 
         val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Latest )
         log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
