@@ -1,10 +1,14 @@
 # TODO
 
+* Generate Java/Scala stubs
 * ethDebugListing
-* giterate project templates
+* Richer ABI management
+   let ethAbiList show deployed as well as memorized ABIs
+       ethAbiShow should dump JSON text
+* xethEstimateGas
+* xethSendMessage
 * Prettify output of log items in client transactions
 * Integrate keystore into database? (?)
-* Generate Java/Scala stubs
 * No values permissible in constant function invokation parser
 * Support for compiling and deploying libraries and linking contracts that reference them
 * Import raw private key as wallet

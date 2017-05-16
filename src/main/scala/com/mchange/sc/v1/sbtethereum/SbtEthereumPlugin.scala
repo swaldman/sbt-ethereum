@@ -17,6 +17,7 @@ import sbinary._
 import sbinary.DefaultProtocol._
 
 import java.io.{BufferedInputStream,File,FileInputStream,FilenameFilter}
+import java.nio.file.Files
 import java.security.SecureRandom
 import java.util.Date
 import java.util.concurrent.atomic.AtomicReference
@@ -35,7 +36,7 @@ import specification.Denominations
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
-import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAndArgs,callDataForAbiFunctionFromStringArgs,decodeReturnValuesForFunction,DecodedReturnValue,Encoder}
+import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAndArgs,callDataForAbiFunctionFromStringArgs,decodeReturnValuesForFunction,DecodedReturnValue,Encoder,stub}
 import scala.collection._
 
 // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
@@ -111,11 +112,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethNetcompileUrl = settingKey[String]("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
 
+    val ethPackageScalaStubs = settingKey[String]("Package into which Scala stubs of Solidity compilations should be generated")
+
     val ethTargetDir = settingKey[File]("Location in target directory where ethereum artifacts will be placed")
 
     val ethSoliditySource = settingKey[File]("Solidity source code directory")
 
     val ethSolidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
+
+    val xethScalaStubsTargetDir = settingKey[File]("Location in target directory where generated source for scala stubs of compiled Solidity contracts will be placed")
 
     val xethWalletV3ScryptN = settingKey[Int]("The value to use for parameter N when generating Scrypt V3 wallets")
 
@@ -213,6 +218,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
 
+    val xethGenScalaStubs = taskKey[immutable.Seq[File]]("Generates stubs for compiled Solidity contracts")
+
     val xethKeystoreCreateWalletV3Pbkdf2 = taskKey[wallet.V3]("Generates a new pbkdf2 V3 wallet, using ethEntropySource as a source of randomness")
 
     val xethKeystoreCreateWalletV3Scrypt = taskKey[wallet.V3]("Generates a new scrypt V3 wallet, using ethEntropySource as a source of randomness")
@@ -284,6 +291,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethSolidityDestination in Compile := (ethTargetDir in Compile).value / "solidity",
 
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
+
+      xethScalaStubsTargetDir in Compile := (ethTargetDir in Compile).value / "stubs" / "scala",
 
       xethWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
 
@@ -383,6 +392,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethGenKeyPair <<= xethGenKeyPairTask,
 
+      xethGenScalaStubs <<= xethGenScalaStubsTask,
+
       xethKeystoreCreateWalletV3Pbkdf2 <<= xethKeystoreCreateWalletV3Pbkdf2Task,
 
       xethKeystoreCreateWalletV3Scrypt <<= xethKeystoreCreateWalletV3ScryptTask,
@@ -451,6 +462,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         newF
       },
+
+      sourceGenerators in Compile += xethGenScalaStubs.taskValue,
 
       watchSources ++= {
         val dir = (ethSoliditySource in Compile).value
@@ -1246,6 +1259,69 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info( s"Generated keypair for address '0x${out.address.hex}'" )
 
       out
+    }
+
+    def xethGenScalaStubsTask : Initialize[Task[immutable.Seq[File]]] = Def.task {
+      val log = streams.value.log
+      val mbStubPackage = ethPackageScalaStubs.?.value
+      val scalaStubsTarget = (xethScalaStubsTargetDir in Compile).value
+      val currentCompilations = xethFindCacheOmitDupsCurrentCompilations.value
+      val dependencies = libraryDependencies.value
+
+      def skipNoPackage : immutable.Seq[File] = {
+        log.info("No Scala stubs will be generated as the setting 'ethPackageScalaStubs' has not ben set.")
+        log.info("""If you'd like Scala stubs to be generated, please define 'ethPackageScalaStubs' and be sure to include a recent version of "com.mchange" %% "consuela"  in libraryDependencies.""")
+        immutable.Seq.empty[File]
+      }
+
+      def findBadChar( packageStr : String ) = packageStr.find( c => !(Character.isJavaIdentifierPart(c) || c == '.') )
+
+      def findEmptyPackage( packages : Iterable[String] ) = packages.find( _ == "" )
+
+      def findConsuela = dependencies.find( mid => mid.organization == "com.mchange" && mid.name == "consuela" )
+
+      mbStubPackage.fold( skipNoPackage ){ stubPackage =>
+        if ( findConsuela == None ) {
+          val shortMessage = """Scala stub generation has been requested ('ethPackageScalaStubs' is set), but 'libraryDependencies' do not include a recent version of "com.mchange" %% "consuela""""
+          val fullMessage = {
+            shortMessage + ", a dependency required by stubs."
+          }
+          log.error( shortMessage + '.' )
+          log.error( """Please add a recent version of "com.mchange" %% "consuela" to 'libraryDependencies'.""" ) 
+
+          throw new SbtEthereumException( fullMessage )
+        }
+        findBadChar( stubPackage ) match {
+          case Some( c ) => throw new SbtEthereumException( s"'ethPackageScalaStubs' contains illegal character '${c}'. ('ethPackageScalaStubs' is set to ${stubPackage}.)" )
+          case None => {
+            val packages = stubPackage.split("""\.""")
+            findEmptyPackage( packages ) match {
+              case Some( oops ) => throw new SbtEthereumException( s"'ethPackageScalaStubs' contains an empty String as a package name. ('ethPackageScalaStubs' is set to ${stubPackage}.)" )
+              case None => {
+                val stubsDirFilePath = packages.mkString( File.separator )
+                val stubsDir = new File( scalaStubsTarget, stubsDirFilePath )
+                stubsDir.mkdirs()
+                val mbFiles = currentCompilations.map { case ( className, contract ) =>
+                  contract.info.mbAbiDefinition match {
+                    case Some( abiStr ) => {
+                      val abi = Json.parse( abiStr ).as[Abi.Definition]
+                      val gensrc = stub.Generator.generateContractStub( className, abi, stubPackage )
+                      val srcFile = new File( stubsDir, s"${className}.scala" )
+                      Files.write( srcFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
+                      Some( srcFile )
+                    }
+                    case None => {
+                      log.warn( s"No ABI definition found for contract '${className}'. Skipping Scala stub generation." )
+                      None
+                    }
+                  }
+                }
+                mbFiles.filter( _ != None ).map( _.get ).toVector
+              }
+            }
+          }
+        }
+      }
     }
 
     def xethInvokeDataTask : Initialize[InputTask[immutable.Seq[Byte]]] = {
