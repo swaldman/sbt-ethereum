@@ -9,7 +9,7 @@
 * xethSendMessage
 * Prettify output of log items in client transactions
 * Integrate keystore into database? (?)
-* No values permissible in constant function invokation parser
+* Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup
 * Support for compiling and deploying libraries and linking contracts that reference them
 * Import raw private key as wallet
 * Backup / restore of repository (especially db)
