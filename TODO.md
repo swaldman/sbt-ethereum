@@ -7,6 +7,7 @@
        ethAbiShow should dump JSON text
 * xethEstimateGas
 * xethSendMessage
+* ethSelfPing => ethPingSelf
 * Prettify output of log items in client transactions
 * Integrate keystore into database? (?)
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup

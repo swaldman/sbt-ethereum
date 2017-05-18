@@ -68,6 +68,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   // MT: protected by SenderOverride's lock
   private val SenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
 
+  private val TestSenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
+
   private val BufferSize = 4096
 
   private val PollSeconds = 15
@@ -85,6 +87,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private val DefaultSenderAlias = "defaultSender"
 
   private val DefaultEthJsonRpcUrl = "http://ethjsonrpc.mchange.com:8545"
+
+  private val DefaultTestEthJsonRpcUrl = "http://localhost:58545"
 
   private val DefaultEthNetcompileUrl = "http://ethjsonrpc.mchange.com:8456"
 
@@ -268,7 +272,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       // Settings
 
-      ethBlockchainId := MainnetIdentifier,
+      ethBlockchainId in Compile := MainnetIdentifier,
+
+      ethBlockchainId in Test := TestrpcIdentifier,
 
       ethEntropySource := new java.security.SecureRandom,
 
@@ -308,119 +314,182 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       // tasks
 
-      ethAbiForget <<= ethAbiForgetTask,
+      ethAbiForget in Compile <<= ethAbiForgetTask( Compile ),
 
-      ethAbiList <<= ethAbiListTask,
+      ethAbiForget in Test <<= ethAbiForgetTask( Test ),
 
-      ethAbiMemorize <<= ethAbiMemorizeTask,
+      ethAbiList in Compile <<= ethAbiListTask( Compile ),
 
-      ethAliasDrop <<= ethAliasDropTask,
+      ethAbiList in Test <<= ethAbiListTask( Test ),
 
-      ethAliasList <<= ethAliasListTask,
+      ethAbiMemorize in Compile <<= ethAbiMemorizeTask( Compile ),
 
-      ethAliasSet <<= ethAliasSetTask,
+      ethAbiMemorize in Test <<= ethAbiMemorizeTask( Test ),
 
-      ethBalance <<= ethBalanceTask,
+      ethAliasDrop in Compile <<= ethAliasDropTask( Compile ),
 
-      ethBalanceInWei <<= ethBalanceInWeiTask,
+      ethAliasDrop in Test <<= ethAliasDropTask( Test ),
 
-      ethInvokeConstant <<= ethInvokeConstantTask,
+      ethAliasList in Compile <<= ethAliasListTask( Compile ),
 
-      ethInvokeTransaction <<= ethInvokeTransactionTask,
+      ethAliasList in Test <<= ethAliasListTask( Test ),
+
+      ethAliasSet in Compile <<= ethAliasSetTask( Compile ),
+
+      ethBalance in Compile <<= ethBalanceTask( Compile ),
+
+      ethBalance in Test <<= ethBalanceTask( Test ),
+
+      ethBalanceInWei in Compile <<= ethBalanceInWeiTask( Compile ),
+
+      ethBalanceInWei in Test <<= ethBalanceInWeiTask( Test ),
 
       ethCompilationsCull <<= ethCompilationsCullTask,
 
-      ethCompilationsInspect <<= ethCompilationsInspectTask,
+      ethCompilationsInspect in Compile <<= ethCompilationsInspectTask( Compile ),
+
+      ethCompilationsInspect in Test <<= ethCompilationsInspectTask( Test ),
 
       ethCompilationsList <<= ethCompilationsListTask,
 
-      ethDeployOnly <<= ethDeployOnlyTask,
+      ethDeployOnly in Compile <<= ethDeployOnlyTask( Compile ),
+
+      ethDeployOnly in Test <<= ethDeployOnlyTask( Test ),
+
+      ethInvokeConstant in Compile <<= ethInvokeConstantTask( Compile ),
+
+      ethInvokeConstant in Test <<= ethInvokeConstantTask( Test ),
+
+      ethInvokeTransaction in Compile <<= ethInvokeTransactionTask( Compile ),
+
+      ethInvokeTransaction in Test <<= ethInvokeTransactionTask( Test ),
 
       ethKeystoreCreateWalletV3 := xethKeystoreCreateWalletV3Scrypt.value,
 
       ethKeystoreInspectWalletV3 <<= ethKeystoreInspectWalletV3Task,
 
-      ethKeystoreList <<= ethKeystoreListTask,
+      ethKeystoreList in Compile <<= ethKeystoreListTask( Compile ),
+
+      ethKeystoreList in Test <<= ethKeystoreListTask( Test ),
 
       ethKeystoreMemorizeWalletV3 <<= ethKeystoreMemorizeWalletV3Task,
 
       ethKeystoreRevealPrivateKey <<= ethKeystoreRevealPrivateKeyTask,
 
-      ethKeystoreValidateWalletV3 <<= ethKeystoreValidateWalletV3Task,
+      ethKeystoreValidateWalletV3 in Compile <<= ethKeystoreValidateWalletV3Task( Compile ),
 
-      ethSelfPing <<= ethSelfPingTask,
+      ethKeystoreValidateWalletV3 in Test <<= ethKeystoreValidateWalletV3Task( Test ),
 
-      ethSenderOverrideSet <<= ethSenderOverrideSetTask,
+      ethSelfPing in Compile <<= ethSelfPingTask( Compile ),
 
-      ethSenderOverrideDrop <<= ethSenderOverrideDropTask,
+      ethSelfPing in Test <<= ethSelfPingTask( Test ),
 
-      ethSenderOverrideShow <<= ethSenderOverrideShowTask,
+      ethSenderOverrideSet in Compile <<= ethSenderOverrideSetTask( Compile ),
 
-      ethSendEther <<= ethSendEtherTask,
+      ethSenderOverrideSet in Test <<= ethSenderOverrideSetTask( Test ),
+
+      ethSenderOverrideDrop in Compile <<= ethSenderOverrideDropTask( Compile ),
+
+      ethSenderOverrideDrop in Test <<= ethSenderOverrideDropTask( Test ),
+
+      ethSenderOverrideShow in Compile <<= ethSenderOverrideShowTask( Compile ),
+
+      ethSenderOverrideShow in Test <<= ethSenderOverrideShowTask( Test ),
+
+      ethSendEther in Compile <<= ethSendEtherTask( Compile ),
+
+      ethSendEther in Test <<= ethSendEtherTask( Test ),
 
       ethSolidityCompile in Compile <<= ethSolidityCompileTask,
 
-      ethSolidityChooseCompiler <<= ethSolidityChooseCompilerTask,
+      ethSolidityChooseCompiler in Compile <<= ethSolidityChooseCompilerTask,
 
-      ethSolidityInstallCompiler <<= ethSolidityInstallCompilerTask,
+      ethSolidityInstallCompiler in Compile <<= ethSolidityInstallCompilerTask,
 
-      ethSolidityShowCompiler <<= ethSolidityShowCompilerTask,
+      ethSolidityShowCompiler in Compile <<= ethSolidityShowCompilerTask,
 
-      xethLoadAbiFor <<= xethLoadAbiForTask,
+      xethDefaultGasPrice in Compile <<= xethDefaultGasPriceTask( Compile ),
 
-      xethDefaultGasPrice <<= xethDefaultGasPriceTask,
+      xethDefaultGasPrice in Test <<= xethDefaultGasPriceTask( Test ),
 
-      xethFindCacheAliasesIfAvailable <<= xethFindCacheAliasesIfAvailableTask.storeAs( xethFindCacheAliasesIfAvailable ).triggeredBy( xethTriggerDirtyAliasCache ),
+      xethFindCacheAliasesIfAvailable in Compile <<= xethFindCacheAliasesIfAvailableTask( Compile ).storeAs( xethFindCacheAliasesIfAvailable in Compile ).triggeredBy( xethTriggerDirtyAliasCache ),
 
-      xethFindCacheOmitDupsCurrentCompilations <<= xethFindCacheOmitDupsCurrentCompilationsTask storeAs xethFindCacheOmitDupsCurrentCompilations triggeredBy (ethSolidityCompile in Compile),
+      xethFindCacheAliasesIfAvailable in Test <<= xethFindCacheAliasesIfAvailableTask( Test ).storeAs( xethFindCacheAliasesIfAvailable in Test ).triggeredBy( xethTriggerDirtyAliasCache ),
 
-      xethFindCacheSessionSolidityCompilerKeys <<= xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys ).triggeredBy( xethTriggerDirtySolidityCompilerList ),
+      xethFindCacheOmitDupsCurrentCompilations in Compile <<= xethFindCacheOmitDupsCurrentCompilationsTask storeAs( xethFindCacheOmitDupsCurrentCompilations in Compile ) triggeredBy( ethSolidityCompile in Compile ),
 
-      xethFindCurrentSender <<= xethFindCurrentSenderTask,
+      xethFindCacheSessionSolidityCompilerKeys in Compile <<= xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList ),
 
-      xethFindCurrentSolidityCompiler <<= xethFindCurrentSolidityCompilerTask,
+      xethFindCurrentSender in Compile <<= xethFindCurrentSenderTask( Compile ),
 
-      xethFindEthJsonRpcUrl <<= xethFindEthJsonRpcUrlTask,
+      xethFindCurrentSender in Test <<= xethFindCurrentSenderTask( Test ),
 
-      xethGasPrice <<= xethGasPriceTask,
+      xethFindCurrentSolidityCompiler in Compile <<= xethFindCurrentSolidityCompilerTask,
 
+      xethFindEthJsonRpcUrl in Compile <<= xethFindEthJsonRpcUrlTask( Compile ),
+
+      xethFindEthJsonRpcUrl in Test <<= xethFindEthJsonRpcUrlTask( Test ),
+
+      // we don't scope the gas override tasks for now
+      // since any gas override gets used in tests as well as other contexts
+      // we may bifurcate and scope this in the future
       xethGasOverrideSet <<= xethGasOverrideSetTask,
 
       xethGasOverrideDrop <<= xethGasOverrideDropTask,
 
       xethGasOverrideShow <<= xethGasOverrideShowTask,
 
-      xethGenKeyPair <<= xethGenKeyPairTask,
+      xethGasPrice in Compile <<= xethGasPriceTask( Compile ),
 
-      xethGenScalaStubs <<= xethGenScalaStubsTask,
+      xethGasPrice in Test <<= xethGasPriceTask( Test ),
 
-      xethKeystoreCreateWalletV3Pbkdf2 <<= xethKeystoreCreateWalletV3Pbkdf2Task,
+      xethGenKeyPair in Compile <<= xethGenKeyPairTask,
 
-      xethKeystoreCreateWalletV3Scrypt <<= xethKeystoreCreateWalletV3ScryptTask,
+      xethGenScalaStubs in Compile <<= xethGenScalaStubsTask,
 
-      xethInvokeData <<= xethInvokeDataTask,
+      xethInvokeData in Compile <<= xethInvokeDataTask( Compile ),
 
-      xethNextNonce <<= xethNextNonceTask,
+      xethInvokeData in Test <<= xethInvokeDataTask( Test ),
 
-      xethLoadCompilationsKeepDups <<= xethLoadCompilationsKeepDupsTask,
+      xethKeystoreCreateWalletV3Pbkdf2 in Compile <<= xethKeystoreCreateWalletV3Pbkdf2Task,
 
-      xethLoadCompilationsOmitDups <<= xethLoadCompilationsOmitDupsTask,
+      xethKeystoreCreateWalletV3Scrypt in Compile <<= xethKeystoreCreateWalletV3ScryptTask,
 
-      xethLoadWalletV3For <<= xethLoadWalletV3ForTask,
+      xethLoadAbiFor in Compile <<= xethLoadAbiForTask( Compile ),
 
-      xethLoadWalletV3 <<= xethLoadWalletV3Task,
+      xethLoadAbiFor in Test <<= xethLoadAbiForTask( Test ),
 
-      xethQueryRepositoryDatabase <<= xethQueryRepositoryDatabaseTask, 
+      xethLoadCompilationsKeepDups in Compile <<= xethLoadCompilationsKeepDupsTask,
 
+      xethLoadCompilationsOmitDups in Compile <<= xethLoadCompilationsOmitDupsTask,
+
+      xethLoadWalletV3 in Compile <<= xethLoadWalletV3Task( Compile ),
+
+      xethLoadWalletV3 in Test <<= xethLoadWalletV3Task( Test ),
+
+      xethLoadWalletV3For in Compile <<= xethLoadWalletV3ForTask( Compile ),
+
+      xethLoadWalletV3For in Test <<= xethLoadWalletV3ForTask( Test ),
+
+      xethNextNonce in Compile <<= xethNextNonceTask( Compile ),
+
+      xethNextNonce in Test <<= xethNextNonceTask( Test ),
+
+      xethQueryRepositoryDatabase <<= xethQueryRepositoryDatabaseTask, // we leave this unscoped, just because scoping it to Compile seems weird
+
+      // we leave triggers unscoped, not for any particular reason
+      // (we haven't tried scoping them and seen a problem)
       xethTriggerDirtyAliasCache <<= xethTriggerDirtyAliasCacheTask, // this is a no-op, its execution just triggers a re-caching of aliases
 
       xethTriggerDirtySolidityCompilerList <<= xethTriggerDirtySolidityCompilerListTask, // this is a no-op, its execution just triggers a re-caching of aliases
 
-      xethUpdateContractDatabase <<= xethUpdateContractDatabaseTask, 
+      xethUpdateContractDatabase in Compile <<= xethUpdateContractDatabaseTask( Compile ), 
 
-      xethUpdateRepositoryDatabase <<= xethUpdateRepositoryDatabaseTask,
+      xethUpdateContractDatabase in Test <<= xethUpdateContractDatabaseTask( Test ), 
 
-      xethUpdateSessionSolidityCompilers <<= xethUpdateSessionSolidityCompilersTask,
+      xethUpdateRepositoryDatabase <<= xethUpdateRepositoryDatabaseTask, // we leave this unscoped, just because scoping it to Compile seems weird
+
+      xethUpdateSessionSolidityCompilers in Compile <<= xethUpdateSessionSolidityCompilersTask,
 
       Keys.compile in Compile := {
         val dummy = (ethSolidityCompile in Compile).value
@@ -482,11 +551,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // task definitions
 
-    def ethAbiForgetTask : Initialize[InputTask[Unit]] = {
+    def ethAbiForgetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
       val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
 
       Def.inputTask {
-        val blockchainId = ethBlockchainId.value
+        val blockchainId = (ethBlockchainId in config).value
         val log = streams.value.log
         val address = parser.parsed
         val found = repository.Database.deleteMemorizedContractAbi( blockchainId, address ).get // throw an Exception if there's a database issue
@@ -502,8 +571,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethAbiListTask : Initialize[Task[Unit]] = Def.task {
-      val blockchainId = ethBlockchainId.value
+    def ethAbiListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+      val blockchainId = (ethBlockchainId in config).value
       val log = streams.value.log
 
       val addresses = repository.Database.getMemorizedContractAbiAddresses( blockchainId ).get
@@ -522,8 +591,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     }
 
-    def ethAbiMemorizeTask : Initialize[Task[Unit]] = Def.task {
-      val blockchainId = ethBlockchainId.value
+    def ethAbiMemorizeTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+      val blockchainId = (ethBlockchainId in config).value
       val log = streams.value.log
       val is = interactionService.value
       val ( address, abi ) = readAddressAndAbi( log, is )
@@ -540,16 +609,16 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethAliasDropTask : Initialize[InputTask[Unit]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAliasParser )
+    def ethAliasDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genAliasParser )
 
       Def.inputTaskDyn {
         val log = streams.value.log
-        val blockchainId = ethBlockchainId.value
+        val blockchainId = (ethBlockchainId in config).value
 
         // not sure why, but without this xethFindCacheAliasesIfAvailable, which should be triggered by the parser,
         // sometimes fails initialize the parser
-        val ensureAliases = xethFindCacheAliasesIfAvailable
+        val ensureAliases = (xethFindCacheAliasesIfAvailable in config)
 
         val alias = parser.parsed
         val check = repository.Database.dropAlias( blockchainId, alias ).get // assert no database problem
@@ -562,9 +631,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethAliasListTask : Initialize[Task[Unit]] = Def.task {
+    def ethAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
       val log = streams.value.log
-      val blockchainId = ethBlockchainId.value
+      val blockchainId = (ethBlockchainId in config).value
       val faliases = repository.Database.findAllAliases( blockchainId )
       faliases.fold(
         _ => log.warn("Could not read aliases from repository database."),
@@ -572,9 +641,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       )
     }
 
-    def ethAliasSetTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
+    def ethAliasSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
       val log = streams.value.log
-      val blockchainId = ethBlockchainId.value
+      val blockchainId = (ethBlockchainId in config).value
       val ( alias, address ) = NewAliasParser.parsed
       val check = repository.Database.createUpdateAlias( blockchainId, alias, address )
       check.fold(
@@ -589,27 +658,27 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethBalanceTask : Initialize[InputTask[BigDecimal]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genOptionalGenericAddressParser )
+    def ethBalanceTask( config : Configuration ) : Initialize[InputTask[BigDecimal]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genOptionalGenericAddressParser )
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
+        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
         val mbAddress = parser.parsed
-        val address = mbAddress.getOrElse( xethFindCurrentSender.value.get )
+        val address = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Ether )
         result.denominated
       }
     }
 
-    def ethBalanceInWeiTask : Initialize[InputTask[BigInt]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genOptionalGenericAddressParser )
+    def ethBalanceInWeiTask( config : Configuration ) : Initialize[InputTask[BigInt]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genOptionalGenericAddressParser )
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
+        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
         val mbAddress = parser.parsed
-        val address = mbAddress.getOrElse( xethFindCurrentSender.value.get )
+        val address = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Wei )
         result.wei
       }
@@ -622,11 +691,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info( s"Removed $count undeployed compilations from the repository database." )
     }
 
-    def ethCompilationsInspectTask : Initialize[InputTask[Unit]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genContractAddressOrCodeHashParser )
+    def ethCompilationsInspectTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genContractAddressOrCodeHashParser )
 
       Def.inputTask {
-        val blockchainId = ethBlockchainId.value
+        val blockchainId = (ethBlockchainId in config).value
 
         println()
         val cap =     "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
@@ -726,15 +795,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       println( cap )
     }
 
-    def ethDeployOnlyTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+    def ethDeployOnlyTask( config : Configuration ) : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
       val parser = Defaults.loadForParser(xethFindCacheOmitDupsCurrentCompilations)( genContractNamesConstructorInputsParser )
 
       Def.inputTask {
         val s = state.value
         val is = interactionService.value
         val log = streams.value.log
-        val blockchainId = ethBlockchainId.value
-        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
+        val blockchainId = (ethBlockchainId in config).value
+        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
         val ( contractName, extraData ) = parser.parsed
         val ( compilation, inputsBytes ) = {
           extraData match {
@@ -753,10 +822,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         val inputsHex = inputsBytes.hex
         val codeHex = compilation.code
         val dataHex = codeHex ++ inputsHex
-        val sender = xethFindCurrentSender.value.get
-        val nextNonce = xethNextNonce.value
+        val sender = (xethFindCurrentSender in config).value.get
+        val nextNonce = (xethNextNonce in config).value
         val markup = ethGasMarkup.value
-        val gasPrice = xethGasPrice.value
+        val gasPrice = (xethGasPrice in config).value
         val gas = computeGas( log, jsonRpcUrl, Some(sender), None, None, Some( dataHex.decodeHex.toImmutableSeq ), jsonrpc20.Client.BlockNumber.Pending, markup )
         val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
@@ -785,15 +854,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       println( Json.stringify( w.withLowerCaseKeys ) )
     }
 
-    def ethInvokeConstantTask : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedReturnValue])]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
+    def ethInvokeConstantTask( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedReturnValue])]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
-        val from = xethFindCurrentSender.value.toOption
+        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+        val from = (xethFindCurrentSender in config).value.toOption
         val markup = ethGasMarkup.value
-        val gasPrice = xethGasPrice.value
+        val gasPrice = (xethGasPrice in config).value
         val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
         if (! function.constant ) {
           log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
@@ -841,19 +910,19 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethInvokeTransactionTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
+    def ethInvokeTransactionTask( config : Configuration ) : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
 
       Def.inputTask {
         val s = state.value
         val log = streams.value.log
         val is = interactionService.value
-        val blockchainId = ethBlockchainId.value
-        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
-        val caller = xethFindCurrentSender.value.get
-        val nextNonce = xethNextNonce.value
+        val blockchainId = (ethBlockchainId in config).value
+        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+        val caller = (xethFindCurrentSender in config).value.get
+        val nextNonce = (xethNextNonce in config).value
         val markup = ethGasMarkup.value
-        val gasPrice = xethGasPrice.value
+        val gasPrice = (xethGasPrice in config).value
         val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
         val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
         val amount = mbWei.getOrElse( Zero )
@@ -874,10 +943,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethKeystoreListTask : Initialize[Task[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]] = Def.task {
+    def ethKeystoreListTask( config : Configuration ) : Initialize[Task[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]] = Def.task {
       val keystoresV3  = ethKeystoreLocationsV3.value
       val log          = streams.value.log
-      val blockchainId = ethBlockchainId.value
+      val blockchainId = (ethBlockchainId in config).value
       val combined = {
         keystoresV3
           .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
@@ -943,8 +1012,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethKeystoreValidateWalletV3Task : Initialize[InputTask[Unit]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+    def ethKeystoreValidateWalletV3Task( config : Configuration ) : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genGenericAddressParser )
 
       Def.inputTask {
         val log = streams.value.log
@@ -967,14 +1036,14 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethSelfPingTask : Initialize[Task[Option[ClientTransactionReceipt]]] = Def.task {
-      val address  = xethFindCurrentSender.value.get
+    def ethSelfPingTask( config : Configuration ) : Initialize[Task[Option[ClientTransactionReceipt]]] = Def.task {
+      val address  = (xethFindCurrentSender in config).value.get
       val sendArgs = s" ${address.hex} 0 wei"
       val log = streams.value.log
 
       val s = state.value
       val extract = Project.extract(s)
-      val (_, result) = extract.runInputTask(ethSendEther, sendArgs, s)
+      val (_, result) = extract.runInputTask(ethSendEther in config, sendArgs, s)
 
       val out = result
       out.fold( log.warn("Ping failed! Our attempt to send 0 ether from '${address.hex}' to itself may or may not eventually succeed, but we've timed out before hearing back." ) ) { receipt =>
@@ -984,20 +1053,20 @@ object SbtEthereumPlugin extends AutoPlugin {
       out
     }
 
-    def ethSendEtherTask : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser( xethFindCacheAliasesIfAvailable )( genEthSendEtherParser )
+    def ethSendEtherTask( config : Configuration ) : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+      val parser = Defaults.loadForParser( xethFindCacheAliasesIfAvailable in config )( genEthSendEtherParser )
 
       Def.inputTask {
         val s = state.value
         val log = streams.value.log
         val is = interactionService.value
-        val blockchainId = ethBlockchainId.value
-        val jsonRpcUrl = xethFindEthJsonRpcUrl.value
-        val from = xethFindCurrentSender.value.get
+        val blockchainId = (ethBlockchainId in config).value
+        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+        val from = (xethFindCurrentSender in config).value.get
         val (to, amount) = parser.parsed
-        val nextNonce = xethNextNonce.value
+        val nextNonce = (xethNextNonce in config).value
         val markup = ethGasMarkup.value
-        val gasPrice = xethGasPrice.value
+        val gasPrice = (xethGasPrice in config).value
         val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
         val gas = computeGas( log, jsonRpcUrl, Some(from), Some(to), Some(amount), Some( EmptyBytes ), jsonrpc20.Client.BlockNumber.Pending, markup )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), EmptyBytes )
@@ -1008,41 +1077,43 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethSenderOverrideSetTask : Initialize[InputTask[Unit]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+    def ethSenderOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genGenericAddressParser )
+      val configSenderOverride = senderOverride( config )
 
       Def.inputTask {
-        SenderOverride.synchronized {
+        configSenderOverride.synchronized {
           val log = streams.value.log
-          val blockchainId = ethBlockchainId.value
+          val blockchainId = (ethBlockchainId in config).value
           val address = parser.parsed
           val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases '$str')" ) )
 
-          SenderOverride.set( Some( ( blockchainId, address ) ) )
+          configSenderOverride.set( Some( ( blockchainId, address ) ) )
 
           log.info( s"Sender override set to '0x${address.hex}' (on blockchain '$blockchainId'${aliasesPart})." )
         }
       }
     }
 
-    def ethSenderOverrideDropTask : Initialize[Task[Unit]] = Def.task {
-      SenderOverride.synchronized {
+    def ethSenderOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+      val configSenderOverride = senderOverride( config )
+      configSenderOverride.synchronized {
         val log = streams.value.log
         SenderOverride.set( None )
         log.info("No sender override is now set. Effective sender will be determined by 'ethSender' setting or 'defaultSender' alias.")
       }
     }
 
-    def ethSenderOverrideShowTask : Initialize[Task[Unit]] = Def.task {
+    def ethSenderOverrideShowTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
       val log = streams.value.log
 
-      val blockchainId = ethBlockchainId.value
+      val blockchainId = (ethBlockchainId in config).value
 
-      val mbSenderOverride = getSenderOverride( log, blockchainId )
+      val mbSenderOverride = getSenderOverride( config )( log, blockchainId )
 
-      val message = mbSenderOverride.fold( "No sender override is currently set." ) { address =>
+      val message = mbSenderOverride.fold( s"No sender override is currently set (for configuration '${config}')." ) { address =>
         val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases '$str')" ) )
-        s"A sender override is set, address '${address.hex}' (on blockchain '$blockchainId'${aliasesPart})."
+        s"A sender override is set, address '${address.hex}' (on blockchain '$blockchainId'${aliasesPart}, configuration '${config}')."
       }
 
       log.info( message )
@@ -1118,13 +1189,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info( s"Current solidity compiler '$key', which refers to $compiler." )
     }
 
-    def xethDefaultGasPriceTask : Initialize[Task[BigInt]] = Def.task {
+    def xethDefaultGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
-      val jsonRpcUrl = xethFindEthJsonRpcUrl.value
+      val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
       doGetDefaultGasPrice( log, jsonRpcUrl )
     }
 
-    def xethFindCacheAliasesIfAvailableTask : Initialize[Task[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]] = Def.task {
+    def xethFindCacheAliasesIfAvailableTask( config : Configuration ) : Initialize[Task[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]] = Def.task {
       val blockchainId = ethBlockchainId.value
       val mbAliases    = repository.Database.findAllAliases( blockchainId ).toOption
       ( blockchainId, mbAliases )
@@ -1141,12 +1212,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       currentSessionCompilers.keySet
     }
 
-    def xethFindCurrentSenderTask : Initialize[Task[Failable[EthAddress]]] = Def.task {
+    def xethFindCurrentSenderTask( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = Def.task {
       Failable {
         val log = streams.value.log
-        val blockchainId = ethBlockchainId.value
+        val blockchainId = (ethBlockchainId in config).value
 
-        val mbSenderOverride = getSenderOverride( log, blockchainId )
+        val mbSenderOverride = getSenderOverride( config )( log, blockchainId )
         mbSenderOverride match {
           case Some( address ) => {
             // val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases '$str')" ) )
@@ -1154,7 +1225,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             address
           }
           case None => {
-            val mbAddrStr = ethSender.?.value
+            val mbAddrStr = (ethSender in config).?.value
             mbAddrStr match {
               case Some( addrStr ) => EthAddress( addrStr )
               case None            => {
@@ -1168,7 +1239,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
                   mbDefaultSenderAddress match {
                     case Some( address ) => address
-                    case None => throw new SenderNotAvailableException("Cannot find an 'ethSender' or default sender")
+                    case None => throw new SenderNotAvailableException(s"Cannot find an 'ethSender' or default sender (blockchain '${blockchainId}, configuration '${config}')'")
                   }
                 }
               }
@@ -1211,8 +1282,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethFindEthJsonRpcUrlTask : Initialize[Task[String]] = Def.task {
-      ethJsonRpcUrl.?.value.getOrElse( DefaultEthJsonRpcUrl )
+    def xethFindEthJsonRpcUrlTask( config : Configuration ) : Initialize[Task[String]] = Def.task {
+      def defaultUrl = if ( config == Test ) DefaultTestEthJsonRpcUrl else DefaultEthJsonRpcUrl
+
+      (ethJsonRpcUrl in Test).?.value.getOrElse( defaultUrl )
     }
 
     def xethGasOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
@@ -1236,12 +1309,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethGasPriceTask : Initialize[Task[BigInt]] = Def.task {
+    def xethGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
-      val jsonRpcUrl = xethFindEthJsonRpcUrl.value
+      val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
 
       val markup          = ethGasPriceMarkup.value
-      val defaultGasPrice = xethDefaultGasPrice.value
+      val defaultGasPrice = (xethDefaultGasPrice in config).value
 
       rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) ).toBigInt
     }
@@ -1324,8 +1397,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethInvokeDataTask : Initialize[InputTask[immutable.Seq[Byte]]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
+    def xethInvokeDataTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Byte]]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
 
       Def.inputTask {
         val ( contractAddress, function, args, abi ) = parser.parsed
@@ -1369,8 +1442,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       repository.Keystore.V3.storeWallet( w ).get // asserts success
     }
 
-    def xethLoadAbiForTask : Initialize[InputTask[Abi.Definition]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+    def xethLoadAbiForTask( config : Configuration ) : Initialize[InputTask[Abi.Definition]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genGenericAddressParser )
 
       Def.inputTask {
         val blockchainId = ethBlockchainId.value
@@ -1469,22 +1542,22 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethLoadWalletV3Task : Initialize[Task[Option[wallet.V3]]] = Def.task {
+    def xethLoadWalletV3Task( config : Configuration ) : Initialize[Task[Option[wallet.V3]]] = Def.task {
       val s = state.value
-      val addressStr = xethFindCurrentSender.value.get.hex
+      val addressStr = (xethFindCurrentSender in config).value.get.hex
       val extract = Project.extract(s)
-      val (_, result) = extract.runInputTask(xethLoadWalletV3For, addressStr, s)
+      val (_, result) = extract.runInputTask((xethLoadWalletV3For in config), addressStr, s)
       result
     }
 
-    def xethLoadWalletV3ForTask : Initialize[InputTask[Option[wallet.V3]]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+    def xethLoadWalletV3ForTask( config : Configuration ) : Initialize[InputTask[Option[wallet.V3]]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genGenericAddressParser )
 
       Def.inputTask {
         val keystoresV3 = ethKeystoreLocationsV3.value
         val log         = streams.value.log
 
-        val blockchainId = ethBlockchainId.value
+        val blockchainId = (ethBlockchainId in config).value
 
         val address = parser.parsed
         val out = {
@@ -1503,10 +1576,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethNextNonceTask : Initialize[Task[BigInt]] = Def.task {
+    def xethNextNonceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
-      val jsonRpcUrl = xethFindEthJsonRpcUrl.value
-      doGetTransactionCount( log, jsonRpcUrl, xethFindCurrentSender.value.get , jsonrpc20.Client.BlockNumber.Pending )
+      val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+      doGetTransactionCount( log, jsonRpcUrl, (xethFindCurrentSender in config).value.get , jsonrpc20.Client.BlockNumber.Pending )
     }
 
     def xethQueryRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
@@ -1556,9 +1629,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info( "Refreshing compiler list." )
     }
 
-    def xethUpdateContractDatabaseTask : Initialize[Task[Boolean]] = Def.task {
+    def xethUpdateContractDatabaseTask( config : Configuration ) : Initialize[Task[Boolean]] = Def.task {
       val log          = streams.value.log
-      val jsonRpcUrl   = xethFindEthJsonRpcUrl.value
       val compilations = xethLoadCompilationsKeepDups.value // we want to "know" every contract we've seen, which might include contracts with multiple names
 
       repository.Database.updateContractDatabase( compilations ).get
@@ -1589,7 +1661,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       import Compiler.Solidity._
 
       val netcompileUrl = ethNetcompileUrl.?.value
-      val jsonRpcUrl    = xethFindEthJsonRpcUrl.value
+      val jsonRpcUrl    = xethFindEthJsonRpcUrl.value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
 
       def check( key : String, compiler : Compiler.Solidity ) : Option[ ( String, Compiler.Solidity ) ] = {
         val test = Compiler.Solidity.test( compiler )
@@ -1631,15 +1703,19 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     private def allUnitsValue( valueInWei : BigInt ) = s"${valueInWei} wei (${Denominations.Ether.fromWei(valueInWei)} ether, ${Denominations.Finney.fromWei(valueInWei)} finney, ${Denominations.Szabo.fromWei(valueInWei)} szabo)"
 
-    private def getSenderOverride( log : sbt.Logger, blockchainId : String ) : Option[EthAddress] = {
-      SenderOverride.synchronized {
+    def senderOverride( config : Configuration ) = if ( config == Test ) TestSenderOverride else SenderOverride
+
+    private def getSenderOverride( config : Configuration )( log : sbt.Logger, blockchainId : String ) : Option[EthAddress] = {
+      val configSenderOverride = senderOverride( config )
+
+      configSenderOverride.synchronized {
         val BlockchainId = blockchainId
 
-        SenderOverride.get match {
+        configSenderOverride.get match {
           case Some( ( BlockchainId, address ) ) => Some( address )
           case Some( (badBlockchainId, _) ) => {
             log.info( s"A sender override was set for the blockchain '$badBlockchainId', but that is no longer the current 'ethBlockchainId'. The sender override is stale and will be dropped." )
-            SenderOverride.set( None )
+            configSenderOverride.set( None )
             None
           }
           case None => None

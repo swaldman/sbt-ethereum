@@ -24,6 +24,7 @@ package object sbtethereum {
   case class EthValue( wei : BigInt, denominated : BigDecimal, denomination : Denomination )
 
   val MainnetIdentifier = "mainnet"
+  val TestrpcIdentifier = "testrpc"
 
   val EmptyAbi = Abi.Definition.empty
 
