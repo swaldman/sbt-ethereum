@@ -376,7 +376,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethKeystoreMemorizeWalletV3 <<= ethKeystoreMemorizeWalletV3Task,
 
-      ethKeystoreRevealPrivateKey <<= ethKeystoreRevealPrivateKeyTask,
+      ethKeystoreRevealPrivateKey in Compile <<= ethKeystoreRevealPrivateKeyTask( Compile ),
+
+      ethKeystoreRevealPrivateKey in Test <<= ethKeystoreRevealPrivateKeyTask( Test ),
 
       ethKeystoreValidateWalletV3 in Compile <<= ethKeystoreValidateWalletV3Task( Compile ),
 
@@ -978,8 +980,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info( s"Consider validating the JSON using 'ethKeystoreValidateWalletV3 0x${address.hex}." )
     }
 
-    def ethKeystoreRevealPrivateKeyTask : Initialize[InputTask[Unit]] = {
-      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+    def ethKeystoreRevealPrivateKeyTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+      val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genGenericAddressParser )
 
       Def.inputTask {
         val is = interactionService.value
@@ -990,7 +992,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val s = state.value
 	val extract = Project.extract(s)
-	val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For, addressStr, s)
+	val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For in config, addressStr, s) // config doesn't really matter here, since we provide hex, not a config dependent alias
 
         val credential = readCredential( is, address )
         val privateKey = findPrivateKey( log, mbWallet, credential )
@@ -1016,7 +1018,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val s = state.value
 	val extract = Project.extract(s)
         val inputAddress = parser.parsed
-	val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For, inputAddress.hex, s)
+	val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For in config, inputAddress.hex, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
         val w = mbWallet.getOrElse( unknownWallet( keystoreDirs ) )
         val credential = readCredential( is, inputAddress )
         val privateKey = wallet.V3.decodePrivateKey( w, credential )
@@ -1540,7 +1542,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val addressStr = (xethFindCurrentSender in config).value.get.hex
       val extract = Project.extract(s)
-      val (_, result) = extract.runInputTask((xethLoadWalletV3For in config), addressStr, s)
+      val (_, result) = extract.runInputTask((xethLoadWalletV3For in config), addressStr, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
       result
     }
 
@@ -1781,7 +1783,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val credential = readCredential( is, address )
 
         val extract = Project.extract(state)
-        val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For, address.hex, state)
+        val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For in Compile, address.hex, state) // the config scope of xethLoadWalletV3For doesn't matter here, since we provide hex, not an alias
 
         val privateKey = findPrivateKey( log, mbWallet, credential )
         CurrentAddress.set( UnlockedAddress( blockchainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
