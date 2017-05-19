@@ -366,7 +366,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethKeystoreCreateWalletV3 := xethKeystoreCreateWalletV3Scrypt.value,
 
-      ethKeystoreInspectWalletV3 <<= ethKeystoreInspectWalletV3Task,
+      ethKeystoreInspectWalletV3 in Compile <<= ethKeystoreInspectWalletV3Task( Compile ),
+
+      ethKeystoreInspectWalletV3 in Test <<= ethKeystoreInspectWalletV3Task( Test ),
 
       ethKeystoreList in Compile <<= ethKeystoreListTask( Compile ),
 
@@ -443,7 +445,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethGasPrice in Test <<= xethGasPriceTask( Test ),
 
-      xethGenKeyPair in Compile <<= xethGenKeyPairTask,
+      xethGenKeyPair <<= xethGenKeyPairTask, // global config scope seems appropriate
 
       xethGenScalaStubs in Compile <<= xethGenScalaStubsTask,
 
@@ -451,9 +453,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethInvokeData in Test <<= xethInvokeDataTask( Test ),
 
-      xethKeystoreCreateWalletV3Pbkdf2 in Compile <<= xethKeystoreCreateWalletV3Pbkdf2Task,
+      xethKeystoreCreateWalletV3Pbkdf2 <<= xethKeystoreCreateWalletV3Pbkdf2Task, // global config scope seems appropriate
 
-      xethKeystoreCreateWalletV3Scrypt in Compile <<= xethKeystoreCreateWalletV3ScryptTask,
+      xethKeystoreCreateWalletV3Scrypt <<= xethKeystoreCreateWalletV3ScryptTask, // global config scope seems appropriate
 
       xethLoadAbiFor in Compile <<= xethLoadAbiForTask( Compile ),
 
@@ -496,43 +498,35 @@ object SbtEthereumPlugin extends AutoPlugin {
         (Keys.compile in Compile).value
       },
 
-      // TODO: factor away repeated logic here. yuk.
       onLoad in Global := {
         val origF : State => State = (onLoad in Global).value
         val newF  : State => State = ( state : State ) => {
+          def attemptAdvanceStateWithTask[T]( taskKey : Def.ScopedKey[Task[T]], startState : State ) : State = {
+            Project.runTask( taskKey, startState ) match {
+              case None => {
+                WARNING.log(s"Huh? Key '${taskKey}' was undefined in the original state. Ignoring attempt to run that task in onLoad.")
+                startState
+              }
+              case Some((newState, Inc(inc))) => {
+                WARNING.log("Failed to run '${taskKey}' on initialization: " + Incomplete.show(inc.tpe))
+                startState
+              }
+              case Some((newState, Value(_))) => {
+                newState
+              }
+            }
+          }
+
           val lastState = origF( state )
-          val state1 = Project.runTask( xethFindCacheAliasesIfAvailable, lastState ) match {
-            case None => {
-              WARNING.log("Huh? Key 'xethFindCacheAliasesIfAvailable' was undefined in the original state. Ignoring attempt to run that task in onLoad.")
-              lastState
-            }
-            case Some((newState, Inc(inc))) => {
-              WARNING.log("Failed to run xethFindCacheAliasesIfAvailable on initialization: " + Incomplete.show(inc.tpe))
-              lastState
-            }
-            case Some((newState, Value(_))) => {
-              newState
-            }
-          }
-          val state2 = Project.runTask( xethFindCacheSessionSolidityCompilerKeys, lastState ) match {
-            case None => {
-              WARNING.log("Huh? Key 'xethFindCacheSessionSolidityCompilerKeys' was undefined in the original state. Ignoring attempt to run that task in onLoad.")
-              lastState
-            }
-            case Some((newState, Inc(inc))) => {
-              WARNING.log("Failed to run xethFindCacheSessionSolidityCompilerKeys on initialization: " + Incomplete.show(inc.tpe))
-              lastState
-            }
-            case Some((newState, Value(_))) => {
-              newState
-            }
-          }
-          state2
+          val state1 = attemptAdvanceStateWithTask( xethFindCacheAliasesIfAvailable in Compile,          lastState )
+          val state2 = attemptAdvanceStateWithTask( xethFindCacheAliasesIfAvailable in Test,             state1    )
+          val state3 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state2    )
+          state3
         }
         newF
       },
 
-      sourceGenerators in Compile += xethGenScalaStubs.taskValue,
+      sourceGenerators in Compile += (xethGenScalaStubs in Compile).taskValue,
 
       watchSources ++= {
         val dir = (ethSoliditySource in Compile).value
@@ -809,7 +803,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           extraData match {
             case None => { 
               // at the time of parsing, a compiled contract is not available. we'll force compilation now, but can't accept contructor arguments
-              val contractsMap = xethLoadCompilationsOmitDups.value
+              val contractsMap = (xethLoadCompilationsOmitDups in Compile).value
               val compilation = contractsMap( contractName )
               ( compilation, immutable.Seq.empty[Byte] )
             }
@@ -830,7 +824,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
-        val updateChangedDb = xethUpdateContractDatabase.value
+        val updateChangedDb = (xethUpdateContractDatabase in Compile).value
         val txnHash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
         val out = awaitTransactionReceipt( log, jsonRpcUrl, txnHash, PollSeconds, PollAttempts )
@@ -848,9 +842,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethKeystoreInspectWalletV3Task : Initialize[InputTask[Unit]] = Def.inputTask {
+    def ethKeystoreInspectWalletV3Task( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
       val keystoreDirs = ethKeystoreLocationsV3.value
-      val w = xethLoadWalletV3For.evaluated.getOrElse( unknownWallet( keystoreDirs ) )
+      val w = (xethLoadWalletV3For in config).evaluated.getOrElse( unknownWallet( keystoreDirs ) )
       println( Json.stringify( w.withLowerCaseKeys ) )
     }
 
@@ -1184,7 +1178,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def ethSolidityShowCompilerTask : Initialize[Task[Unit]] = Def.task {
       val log       = streams.value.log
-      val ensureSet = xethFindCurrentSolidityCompiler.value
+      val ensureSet = (xethFindCurrentSolidityCompiler in Compile).value
       val ( key, compiler ) = CurrentSolidityCompiler.get.get
       log.info( s"Current solidity compiler '$key', which refers to $compiler." )
     }
@@ -1196,19 +1190,19 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def xethFindCacheAliasesIfAvailableTask( config : Configuration ) : Initialize[Task[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]] = Def.task {
-      val blockchainId = ethBlockchainId.value
+      val blockchainId = (ethBlockchainId in config).value
       val mbAliases    = repository.Database.findAllAliases( blockchainId ).toOption
       ( blockchainId, mbAliases )
     }
 
     def xethFindCacheOmitDupsCurrentCompilationsTask : Initialize[Task[immutable.Map[String,jsonrpc20.Compilation.Contract]]] = Def.task {
-      xethLoadCompilationsOmitDups.value
+      (xethLoadCompilationsOmitDups in Compile).value
     }
 
     def xethFindCacheSessionSolidityCompilerKeysTask : Initialize[Task[immutable.Set[String]]] = Def.task {
       val log = streams.value.log
       log.info("Updating available solidity compiler set.")
-      val currentSessionCompilers = xethUpdateSessionSolidityCompilers.value
+      val currentSessionCompilers = (xethUpdateSessionSolidityCompilers in Compile).value
       currentSessionCompilers.keySet
     }
 
@@ -1338,7 +1332,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val mbStubPackage = ethPackageScalaStubs.?.value
       val scalaStubsTarget = (xethScalaStubsTargetDir in Compile).value
-      val currentCompilations = xethFindCacheOmitDupsCurrentCompilations.value
+      val currentCompilations = (xethFindCacheOmitDupsCurrentCompilations in Compile).value
       val dependencies = libraryDependencies.value
 
       def skipNoPackage : immutable.Seq[File] = {
@@ -1446,7 +1440,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genGenericAddressParser )
 
       Def.inputTask {
-        val blockchainId = ethBlockchainId.value
+        val blockchainId = (ethBlockchainId in config).value
         abiForAddress( blockchainId, parser.parsed )
       }
     }
@@ -1631,7 +1625,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethUpdateContractDatabaseTask( config : Configuration ) : Initialize[Task[Boolean]] = Def.task {
       val log          = streams.value.log
-      val compilations = xethLoadCompilationsKeepDups.value // we want to "know" every contract we've seen, which might include contracts with multiple names
+      val compilations = (xethLoadCompilationsKeepDups in Compile).value // we want to "know" every contract we've seen, which might include contracts with multiple names
 
       repository.Database.updateContractDatabase( compilations ).get
     }
@@ -1661,7 +1655,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       import Compiler.Solidity._
 
       val netcompileUrl = ethNetcompileUrl.?.value
-      val jsonRpcUrl    = xethFindEthJsonRpcUrl.value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
+      val jsonRpcUrl    = (xethFindEthJsonRpcUrl in Compile).value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
 
       def check( key : String, compiler : Compiler.Solidity ) : Option[ ( String, Compiler.Solidity ) ] = {
         val test = Compiler.Solidity.test( compiler )
