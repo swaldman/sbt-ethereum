@@ -1,7 +1,10 @@
 # TODO
 
+* futureTransactionReceipt / blocking
 * Generate Java/Scala stubs
-* ethDebugListing
+* ethDeployAuto / ethDeployAutoContracts (and test subkey) / managedResources += propfile mapping contract names to deployed addresses
+* ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
+* setting to control whether compilations are retained (defaul true in Compile, false in Test)
 * Richer ABI management
    let ethAbiList show deployed as well as memorized ABIs
        ethAbiShow should dump JSON text
@@ -9,6 +12,7 @@
 * xethSendMessage
 * ethSelfPing => ethPingSelf
 * Prettify output of log items in client transactions
+* event handling generally
 * Integrate keystore into database? (?)
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup
 * Support for compiling and deploying libraries and linking contracts that reference them
