@@ -1634,14 +1634,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethUpdateRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
       val log   = streams.value.log
-      val query = DbQueryParser.parsed
+      val update = DbQueryParser.parsed
 
       val checkDataSource = {
         repository.Database.DataSource.map { ds =>
           borrow( ds.getConnection() ) { conn =>
             borrow( conn.createStatement() ) { stmt =>
-              val rows = stmt.executeUpdate( query )
-              log.info( s"Query succeeded: $query" )
+              val rows = stmt.executeUpdate( update )
+              log.info( s"Update succeeded: $update" )
               log.info( s"$rows rows affected." )
             }
           }
