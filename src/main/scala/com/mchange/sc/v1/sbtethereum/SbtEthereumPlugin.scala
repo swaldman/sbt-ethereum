@@ -124,7 +124,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethSolidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
 
-    val xethScalaStubsTargetDir = settingKey[File]("Location in target directory where generated source for scala stubs of compiled Solidity contracts will be placed")
+    val xethTestingResourcesObjectName = settingKey[String]("The name of the Scala object that will be automatically generated with resources for tests.")
 
     val xethWalletV3ScryptN = settingKey[Int]("The value to use for parameter N when generating Scrypt V3 wallets")
 
@@ -222,7 +222,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
 
-    val xethGenScalaStubs = taskKey[immutable.Seq[File]]("Generates stubs for compiled Solidity contracts")
+    val xethGenScalaStubsAndTestingResources = taskKey[immutable.Seq[File]]("Generates stubs for compiled Solidity contracts, and resources helpful in testing them.")
 
     val xethKeystoreCreateWalletV3Pbkdf2 = taskKey[wallet.V3]("Generates a new pbkdf2 V3 wallet, using ethEntropySource as a source of randomness")
 
@@ -259,15 +259,15 @@ object SbtEthereumPlugin extends AutoPlugin {
     /*
      * The strategy we are using to support dynamic, post-task tab completions
      * is taken most closely from here
-     * 
+     *
      *    https://github.com/etsy/sbt-compile-quick-plugin/blob/7c99b0197634c72924791591e3a790bd7e0e3e82/src/main/scala/com/etsy/sbt/CompileQuick.scala
-     * 
+     *
      * See also Josh Suereth here
-     * 
+     *
      *    http://grokbase.com/t/gg/simple-build-tool/151vq0w03t/sbt-sbt-plugin-developing-using-value-from-anither-task-in-parser-exampels-for-tab-completion
-     * 
+     *
      * It is still rather mysterious to me.
-     */ 
+     */
     lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
 
       // Settings
@@ -298,7 +298,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
 
-      xethScalaStubsTargetDir in Compile := (ethTargetDir in Compile).value / "stubs" / "scala",
+      xethTestingResourcesObjectName in Test := "Testing",
 
       xethWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
 
@@ -449,7 +449,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethGenKeyPair <<= xethGenKeyPairTask, // global config scope seems appropriate
 
-      xethGenScalaStubs in Compile <<= xethGenScalaStubsTask,
+      xethGenScalaStubsAndTestingResources in Compile <<= xethGenScalaStubsAndTestingResourcesTask( Compile ),
+
+      xethGenScalaStubsAndTestingResources in Test <<= xethGenScalaStubsAndTestingResourcesTask( Test ).dependsOn( Keys.compile in Compile ),
 
       xethInvokeData in Compile <<= xethInvokeDataTask( Compile ),
 
@@ -487,18 +489,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethTriggerDirtySolidityCompilerList <<= xethTriggerDirtySolidityCompilerListTask, // this is a no-op, its execution just triggers a re-caching of aliases
 
-      xethUpdateContractDatabase in Compile <<= xethUpdateContractDatabaseTask( Compile ), 
+      xethUpdateContractDatabase in Compile <<= xethUpdateContractDatabaseTask( Compile ),
 
-      xethUpdateContractDatabase in Test <<= xethUpdateContractDatabaseTask( Test ), 
+      xethUpdateContractDatabase in Test <<= xethUpdateContractDatabaseTask( Test ),
 
       xethUpdateRepositoryDatabase <<= xethUpdateRepositoryDatabaseTask, // we leave this unscoped, just because scoping it to Compile seems weird
 
       xethUpdateSessionSolidityCompilers in Compile <<= xethUpdateSessionSolidityCompilersTask,
 
-      Keys.compile in Compile := {
-        val dummy = (ethSolidityCompile in Compile).value
-        (Keys.compile in Compile).value
-      },
+      Keys.compile in Compile := (Keys.compile in Compile).dependsOn(ethSolidityCompile in Compile).value,
 
       onLoad in Global := {
         val origF : State => State = (onLoad in Global).value
@@ -528,7 +527,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         newF
       },
 
-      sourceGenerators in Compile += (xethGenScalaStubs in Compile).taskValue,
+      sourceGenerators in Compile += (xethGenScalaStubsAndTestingResources in Compile).taskValue,
+
+      sourceGenerators in Test += (xethGenScalaStubsAndTestingResources in Test).taskValue,
 
       watchSources ++= {
         val dir = (ethSoliditySource in Compile).value
@@ -803,7 +804,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val ( contractName, extraData ) = parser.parsed
         val ( compilation, inputsBytes ) = {
           extraData match {
-            case None => { 
+            case None => {
               // at the time of parsing, a compiled contract is not available. we'll force compilation now, but can't accept contructor arguments
               val contractsMap = (xethLoadCompilationsOmitDups in Compile).value
               val compilation = contractsMap( contractName )
@@ -986,7 +987,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       Def.inputTask {
         val is = interactionService.value
         val log = streams.value.log
-        
+
         val address = parser.parsed
         val addressStr = address.hex
 
@@ -1281,7 +1282,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     def xethFindEthJsonRpcUrlTask( config : Configuration ) : Initialize[Task[String]] = Def.task {
       def defaultUrl = if ( config == Test ) DefaultTestEthJsonRpcUrl else DefaultEthJsonRpcUrl
 
-      (ethJsonRpcUrl in Test).?.value.getOrElse( defaultUrl )
+      (ethJsonRpcUrl in config).?.value.getOrElse( defaultUrl )
     }
 
     def xethGasOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
@@ -1330,12 +1331,31 @@ object SbtEthereumPlugin extends AutoPlugin {
       out
     }
 
-    def xethGenScalaStubsTask : Initialize[Task[immutable.Seq[File]]] = Def.task {
+    /*
+     * Generates stubs in Compile, testing resources utility in Test.
+     *
+     * Note that most keys read by this task are insensitive to the config.
+     * We need stuff from Compile for stubs, stuff from Test for testing resources
+     * We get it all (so we can reuse a lot of shared task logic, although maybe we
+     * should factor that logic out someday so that we can have separate tasks).
+     *
+     * TODO: Break faucet private key into a setting. Currently hardcoded.
+     *
+     */
+    def xethGenScalaStubsAndTestingResourcesTask( config : Configuration ) : Initialize[Task[immutable.Seq[File]]] = Def.task {
       val log = streams.value.log
+
+      // Used for both Compile and Test
       val mbStubPackage = ethPackageScalaStubs.?.value
-      val scalaStubsTarget = (xethScalaStubsTargetDir in Compile).value
       val currentCompilations = (xethFindCacheOmitDupsCurrentCompilations in Compile).value
       val dependencies = libraryDependencies.value
+
+      // Used only for Test
+      val testingResourcesObjectName = (xethTestingResourcesObjectName in Test).value
+      val testingEthJsonRpcUrl = (xethFindEthJsonRpcUrl in Test).value
+
+      // Sensitive to config
+      val scalaStubsTarget = (sourceManaged in config).value
 
       def skipNoPackage : immutable.Seq[File] = {
         log.info("No Scala stubs will be generated as the setting 'ethPackageScalaStubs' has not ben set.")
@@ -1356,7 +1376,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             shortMessage + ", a dependency required by stubs."
           }
           log.error( shortMessage + '.' )
-          log.error( """Please add a recent version of "com.mchange" %% "consuela" to 'libraryDependencies'.""" ) 
+          log.error( """Please add a recent version of "com.mchange" %% "consuela" to 'libraryDependencies'.""" )
 
           throw new SbtEthereumException( fullMessage )
         }
@@ -1370,22 +1390,35 @@ object SbtEthereumPlugin extends AutoPlugin {
                 val stubsDirFilePath = packages.mkString( File.separator )
                 val stubsDir = new File( scalaStubsTarget, stubsDirFilePath )
                 stubsDir.mkdirs()
-                val mbFiles = currentCompilations.map { case ( className, contract ) =>
-                  contract.info.mbAbiDefinition match {
-                    case Some( abiStr ) => {
-                      val abi = Json.parse( abiStr ).as[Abi.Definition]
-                      val gensrc = stub.Generator.generateContractStub( className, abi, stubPackage )
-                      val srcFile = new File( stubsDir, s"${className}.scala" )
-                      Files.write( srcFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
-                      Some( srcFile )
-                    }
-                    case None => {
-                      log.warn( s"No ABI definition found for contract '${className}'. Skipping Scala stub generation." )
-                      None
+                if ( config != Test ) {
+                  val mbFiles = currentCompilations.map { case ( className, contract ) =>
+                    contract.info.mbAbiDefinition match {
+                      case Some( abiStr ) => {
+                        val abi = Json.parse( abiStr ).as[Abi.Definition]
+                        val gensrc = stub.Generator.generateContractStub( className, abi, stubPackage )
+                        val srcFile = new File( stubsDir, s"${className}.scala" )
+                        Files.write( srcFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
+                        Some( srcFile )
+                      }
+                      case None => {
+                        log.warn( s"No ABI definition found for contract '${className}'. Skipping Scala stub generation." )
+                        None
+                      }
                     }
                   }
+                  mbFiles.filter( _ != None ).map( _.get ).toVector
+                } else {
+                  if ( currentCompilations.contains( testingResourcesObjectName ) ) { // TODO: A case insensitive check
+                    log.warn( s"The name of the requested testing resources object '${testingResourcesObjectName}' conflicts with the name of a contract." )
+                    log.warn(  "The testing resources object '${testingResourcesObjectName}' will not be generated." )
+                    immutable.Seq.empty[File]
+                  } else {
+                    val gensrc = testing.TestingResourcesGenerator.generateTestingResources( testingResourcesObjectName, testingEthJsonRpcUrl, testing.Default.Faucet.pvt, stubPackage )
+                    val testingResourcesFile = new File( stubsDir, s"${testingResourcesObjectName}.scala" )
+                    Files.write( testingResourcesFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
+                    immutable.Seq( testingResourcesFile )
+                  }
                 }
-                mbFiles.filter( _ != None ).map( _.get ).toVector
               }
             }
           }
