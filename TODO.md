@@ -1,5 +1,6 @@
 # TODO
 
+* Manage testrpc from within sbt-ethereum
 * ethDeployAuto / ethDeployAutoContracts (and test subkey) / managedResources += propfile mapping contract names to deployed addresses
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
     -- also for stubs and testing resources
