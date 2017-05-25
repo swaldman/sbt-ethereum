@@ -100,6 +100,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethBlockchainId = settingKey[String]("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
 
+    val ethDeployAutoContracts = settingKey[Seq[String]]("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
+
     val ethEntropySource = settingKey[SecureRandom]("The source of randomness that will be used for key generation")
 
     val ethIncludeLocations = settingKey[Seq[String]]("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
@@ -164,7 +166,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethCompilationsList = taskKey[Unit]("Lists summary information about compilations known in the repository")
 
-    val ethDeployOnly = inputKey[Option[ClientTransactionReceipt]]("Deploys the specified named contract")
+    val ethDeployAuto = taskKey[immutable.Map[String,Either[EthHash,ClientTransactionReceipt]]]("Deploys contracts named in 'ethDeployAutoContracts'.")
+
+    val ethDeployOnly = inputKey[Either[EthHash,ClientTransactionReceipt]]("Deploys the specified named contract")
 
     val ethInvokeTransaction = inputKey[Option[ClientTransactionReceipt]]("Calls a function on a deployed smart contract")
 
@@ -336,6 +340,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethAliasSet in Compile <<= ethAliasSetTask( Compile ),
 
+      ethAliasSet in Test <<= ethAliasSetTask( Test ),
+
       ethBalance in Compile <<= ethBalanceTask( Compile ),
 
       ethBalance in Test <<= ethBalanceTask( Test ),
@@ -351,6 +357,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethCompilationsInspect in Test <<= ethCompilationsInspectTask( Test ),
 
       ethCompilationsList <<= ethCompilationsListTask,
+
+      ethDeployAuto in Compile <<= ethDeployAutoTask( Compile ),
+
+      ethDeployAuto in Test <<= ethDeployAutoTask( Test ),
 
       ethDeployOnly in Compile <<= ethDeployOnlyTask( Compile ),
 
@@ -792,7 +802,23 @@ object SbtEthereumPlugin extends AutoPlugin {
       println( cap )
     }
 
-    def ethDeployOnlyTask( config : Configuration ) : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+    def ethDeployAutoTask( config : Configuration ) : Initialize[Task[immutable.Map[String,Either[EthHash,ClientTransactionReceipt]]]] = Def.task {
+      val s = state.value
+      val autoDeployContracts = (ethDeployAutoContracts in config).?.value
+      autoDeployContracts.fold( immutable.Map.empty[String,Either[EthHash,ClientTransactionReceipt]] ) { seq =>
+        val tuples = {
+          seq map { nameAndArgs =>
+	    val extract = Project.extract(s)
+	    val (_, eitherHashOrReceipt) = extract.runInputTask(ethDeployOnly in config, nameAndArgs, s)
+            val name = nameAndArgs.split("""\s+""").head // we should already have died if this would fail
+            ( name, eitherHashOrReceipt )
+          }
+        }
+        tuples.toMap
+      }
+    }
+
+    def ethDeployOnlyTask( config : Configuration ) : Initialize[InputTask[Either[EthHash,ClientTransactionReceipt]]] = {
       val parser = Defaults.loadForParser(xethFindCacheOmitDupsCurrentCompilations)( genContractNamesConstructorInputsParser )
 
       Def.inputTask {
@@ -830,18 +856,21 @@ object SbtEthereumPlugin extends AutoPlugin {
         val updateChangedDb = (xethUpdateContractDatabase in Compile).value
         val txnHash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
         log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
-        val out = awaitTransactionReceipt( log, jsonRpcUrl, txnHash, PollSeconds, PollAttempts )
-        out.foreach { receipt =>
+        val mbReceipt = awaitTransactionReceipt( log, jsonRpcUrl, txnHash, PollSeconds, PollAttempts )
+        mbReceipt.fold( Left( txnHash ) : Either[EthHash,ClientTransactionReceipt] ) { receipt =>
           receipt.contractAddress.foreach { ca =>
             log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
             val dbCheck = {
               import compilation.info._
               repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
             }
-            dbCheck.xwarn("Could not insert information about deployed contract into the repository database")
+            if ( dbCheck.isFailed ) {
+              dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
+              log.warn("Could not insert information about deployed contract into the repository database. See 'sbt-ethereum.log' for more information.")
+            }
           }
+          Right( receipt ) : Either[EthHash,ClientTransactionReceipt]
         }
-        out
       }
     }
 
