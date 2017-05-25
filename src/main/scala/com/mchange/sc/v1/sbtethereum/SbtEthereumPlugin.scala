@@ -37,7 +37,9 @@ import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
 import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAndArgs,callDataForAbiFunctionFromStringArgs,decodeReturnValuesForFunction,DecodedReturnValue,Encoder,stub}
+
 import scala.collection._
+import scala.sys.process.{Process,ProcessLogger}
 
 // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
 import scala.concurrent.ExecutionContext
@@ -68,7 +70,11 @@ object SbtEthereumPlugin extends AutoPlugin {
   // MT: protected by SenderOverride's lock
   private val SenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
 
+  // MT: protected by TestSenderOverride's lock
   private val TestSenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
+
+  // MT: protected by LocalTestrpc's lock
+  private val LocalTestrpc = new AtomicReference[Option[Process]]( None )
 
   private val BufferSize = 4096
 
@@ -84,13 +90,21 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val LatestSolcJVersion = "0.4.10"
 
-  private val DefaultSenderAlias = "defaultSender"
-
   private val DefaultEthJsonRpcUrl = "http://ethjsonrpc.mchange.com:8545"
 
-  private val DefaultTestEthJsonRpcUrl = "http://localhost:58545"
+  private val DefaultTestEthJsonRpcUrl = testing.Default.EthJsonRpc.Url
 
   private val DefaultEthNetcompileUrl = "http://ethjsonrpc.mchange.com:8456"
+
+  // if we've started a child test process,
+  // kill it on exit
+  java.lang.Runtime.getRuntime().addShutdownHook {
+    new Thread {
+      LocalTestrpc synchronized {
+        LocalTestrpc.get.foreach ( _.destroy )
+      }
+    }
+  }
 
   object autoImport {
 
@@ -201,6 +215,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethSolidityChooseCompiler = inputKey[Unit]("Manually select among solidity compilers available to this project")
 
     val ethSolidityShowCompiler = taskKey[Unit]("Displays currently active Solidity compiler")
+
+    // val ethTestrpcLocalRestart = taskKey[Unit]("Starts a local testrpc environment (if the command 'testrpc' is in your PATH), stopping and clearing any prior testrpc environment")
+
+    val ethTestrpcLocalStart = taskKey[Unit]("Starts a local testrpc environment (if the command 'testrpc' is in your PATH)")
+
+    val ethTestrpcLocalStop = taskKey[Unit]("Stops any local testrpc environment that may have been started previously")
 
     val xethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
 
@@ -421,6 +441,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethSolidityInstallCompiler in Compile <<= ethSolidityInstallCompilerTask,
 
       ethSolidityShowCompiler in Compile <<= ethSolidityShowCompilerTask,
+
+      ethTestrpcLocalStart in Test <<= ethTestrpcLocalStartTask,
+
+      ethTestrpcLocalStop in Test <<= ethTestrpcLocalStopTask,
 
       xethDefaultGasPrice in Compile <<= xethDefaultGasPriceTask( Compile ),
 
@@ -1215,6 +1239,53 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info( s"Current solidity compiler '$key', which refers to $compiler." )
     }
 
+    def ethTestrpcLocalStartTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+
+      def newTestrpcProcess = {
+        try {
+          val plogger = ProcessLogger(
+            line => log.info( s"testrpc: ${line}" ),
+            line => log.warn( s"testrpc: ${line}" ) 
+          )
+          log.info(s"Executing command '${testing.Default.TestrpcCommand}'")
+          Process( testing.Default.TestrpcCommandParsed ).run( plogger )
+        } catch {
+          case t : Throwable => {
+            log.error(s"Failed to start a local testrpc process with command '${testing.Default.TestrpcCommand}'.")
+            throw t
+          }
+        }
+      }
+
+      LocalTestrpc synchronized {
+        LocalTestrpc.get match {
+          case Some( process ) => log.warn("A local testrpc environment is already running. To restart it, please try 'ethTestrpcLocalRestart'.")
+          case _               => {
+            LocalTestrpc.set( Some( newTestrpcProcess ) )
+            log.info("A local testrpc process has been started.")
+          }
+        }
+      }
+    }
+
+    def ethTestrpcLocalStopTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+
+      LocalTestrpc synchronized {
+        LocalTestrpc.get match {
+          case Some( process ) => {
+            LocalTestrpc.set( None )
+            process.destroy()
+            log.info("A local testrpc environment was running but has been stopped.")
+          }
+          case _                                  => {
+            log.warn("No local testrpc process is running.")
+          }
+        }
+      }
+    }
+
     def xethDefaultGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
       val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
@@ -1815,7 +1886,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         } catch {
           case v3e : wallet.V3.Exception => {
             log.warn("Credential is not correct geth wallet passphrase. Trying as hex private key.")
-            EthPrivateKey( credential )
+            val maybe = EthPrivateKey( credential )
+            val desiredAddress = gethWallet.address
+            if (maybe.toPublicKey.toAddress != desiredAddress) {
+              throw new SbtEthereumException( s"The hex private key supplied does not unlock the wallet for '0x${desiredAddress.hex}'" )
+            } else {
+              maybe
+            }
           }
         }
       }
@@ -1880,10 +1957,14 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
 
-      CurrentAddress.synchronized {
-        goodCached.getOrElse( updateCached )
+      // special case for testing...
+      if ( address == testing.Default.Faucet.address ) {
+        testing.Default.Faucet.pvt
+      } else {
+        CurrentAddress.synchronized {
+          goodCached.getOrElse( updateCached )
+        }
       }
-
     }
 
     private def readConfirmCredential(  log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {

@@ -26,6 +26,8 @@ package object sbtethereum {
   val MainnetIdentifier = "mainnet"
   val TestrpcIdentifier = "testrpc"
 
+  val DefaultSenderAlias = "defaultSender"
+
   val EmptyAbi = Abi.Definition.empty
 
   def rounded( bd : BigDecimal ) = bd.round( bd.mc ) // work around absence of default rounded method in scala 2.10 BigDecimal

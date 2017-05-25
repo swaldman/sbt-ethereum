@@ -1,8 +1,5 @@
 # TODO
 
-* add the default faucet as 'defaultSender' for blockchain 'testrpc' during schema generation
-* in configuration test, autofind the primary key for the default faucet
-* Manage testrpc from within sbt-ethereum
 * Implement a setting for ephemeral blockchains, compilations on which should not be retained.
   *  or setting to control whether compilations are retained (defaul true in Compile, false in Test)?
 * managedResources += propfile mapping contract names to deployed addresses
@@ -14,6 +11,7 @@
 * Richer ABI management
    let ethAbiList show deployed as well as memorized ABIs
        ethAbiShow should dump JSON text
+* ethTestrpcLocalRestart
 * xethEstimateGas
 * xethSendMessage
 * ethSelfPing => ethPingSelf

@@ -4,11 +4,19 @@ import com.mchange.sc.v1.consuela.ethereum.{EthKeyPair,EthPrivateKey}
 
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 
+import scala.collection._
+
 package object testing {
   val MaxWei   = Unsigned256.MaxValueExclusive - 1 // we want this to be an inclusive max
 
   final object Default {
-    val EthJsonRpcPort = 58545 // conventional default, for testing
+    final object EthJsonRpc {
+      val Host = "localhost"
+
+      val Port = 58545 // conventional default, for testing
+
+      val Url = s"http://${Host}:${Port}"
+    }
 
     /**
       * This is just a conventional account to use as an Ether fountain in testing environments
@@ -17,7 +25,8 @@ package object testing {
       */
     val Faucet = EthKeyPair( EthPrivateKey( BigInt( 0x7e57 ) ) )
 
-    val TestRpcCommand = s"""testrpc --port ${EthJsonRpcPort} --account="0x${Faucet.pvt.hex},${MaxWei}""""
+    val TestrpcCommandParsed = immutable.Seq( "testrpc", "--port", EthJsonRpc.Port.toString, s"--account=0x${Faucet.pvt.hex},${MaxWei}" )
+    val TestrpcCommand = TestrpcCommandParsed.mkString(" ")
 
     val GasMarkup = 0.2
     val GasPriceMarkup = 0

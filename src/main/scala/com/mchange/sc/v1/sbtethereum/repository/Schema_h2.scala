@@ -49,6 +49,7 @@ object Schema_h2 {
         stmt.executeUpdate( Table.AddressAliases.CreateIndex )
       }
       Table.Metadata.ensureSchemaVersion( conn )
+      Table.AddressAliases.attemptInsertTestrpcFaucetDefaultSender( conn )
     }
 
   }
@@ -666,19 +667,33 @@ object Schema_h2 {
         }
         immutable.SortedMap( buffer : _* )
       }
-      def upsert( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit = {
-        borrow( conn.prepareStatement( "MERGE INTO address_aliases ( blockchain_id, alias, address ) VALUES ( ?, ?, ? )" ) ) { ps =>
+      private def sert( verb : String )( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit = {
+        borrow( conn.prepareStatement( s"${verb} INTO address_aliases ( blockchain_id, alias, address ) VALUES ( ?, ?, ? )" ) ) { ps =>
           ps.setString( 1, blockchainId )
           ps.setString( 2, alias )
           ps.setString( 3, address.hex )
           ps.executeUpdate()
         }
       }
+
+      def upsert( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit = sert( "MERGE" )( conn, blockchainId, alias, address )
+
+      def insert( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit = sert( "INSERT" )( conn, blockchainId, alias, address )
+
       def delete( conn : Connection, blockchainId : String, alias : String ) : Boolean = {
         borrow( conn.prepareStatement( "DELETE FROM address_aliases WHERE blockchain_id = ? AND alias = ?" ) ) { ps =>
           ps.setString( 1, blockchainId )
           ps.setString( 2, alias )
           ps.executeUpdate() == 1
+        }
+      }
+      def attemptInsertTestrpcFaucetDefaultSender( conn : Connection ) : Boolean = {
+        selectByAlias( conn, TestrpcIdentifier, DefaultSenderAlias ) match {
+          case None => {
+            insert( conn, TestrpcIdentifier, DefaultSenderAlias, testing.Default.Faucet.address )
+            true
+          }
+          case _ => false
         }
       }
     }
