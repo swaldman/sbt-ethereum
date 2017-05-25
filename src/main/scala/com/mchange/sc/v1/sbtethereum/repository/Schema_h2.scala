@@ -139,7 +139,7 @@ object Schema_h2 {
       import Column._
       s"""|SELECT DISTINCT $blockchain_id, $contract_address, $name, $deployer_address, known_compilations.$full_code_hash, $txn_hash, $deployed_when
           |FROM deployed_compilations RIGHT JOIN known_compilations ON deployed_compilations.full_code_hash = known_compilations.full_code_hash
-          |ORDER BY deployed_when ASC""".stripMargin
+          |ORDER BY deployed_when DESC""".stripMargin
     }
   }
 
