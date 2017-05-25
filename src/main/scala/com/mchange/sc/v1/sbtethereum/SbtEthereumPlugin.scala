@@ -140,6 +140,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethSolidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
 
+    val xethEphemeralBlockchains = settingKey[Seq[String]]("IDs of blockchains that should be considered ephemeral (so their deployments should not be retained).")
+
     val xethTestingResourcesObjectName = settingKey[String]("The name of the Scala object that will be automatically generated with resources for tests.")
 
     val xethWalletV3ScryptN = settingKey[Int]("The value to use for parameter N when generating Scrypt V3 wallets")
@@ -323,6 +325,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
 
       xethTestingResourcesObjectName in Test := "Testing",
+
+      xethEphemeralBlockchains := immutable.Seq( TestrpcIdentifier ),
 
       xethWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
 
@@ -850,6 +854,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val is = interactionService.value
         val log = streams.value.log
         val blockchainId = (ethBlockchainId in config).value
+        val ephemeralBlockchains = xethEphemeralBlockchains.value
         val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
         val ( contractName, extraData ) = parser.parsed
         val ( compilation, inputsBytes ) = {
@@ -884,15 +889,19 @@ object SbtEthereumPlugin extends AutoPlugin {
         mbReceipt.fold( Left( txnHash ) : Either[EthHash,ClientTransactionReceipt] ) { receipt =>
           receipt.contractAddress.foreach { ca =>
             log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
-            val dbCheck = {
-              import compilation.info._
-              repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
-            }
-            if ( dbCheck.isFailed ) {
-              dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
-              log.warn("Could not insert information about deployed contract into the repository database. See 'sbt-ethereum.log' for more information.")
+
+            if (! ephemeralBlockchains.contains( blockchainId ) ) {
+              val dbCheck = {
+                import compilation.info._
+                repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
+              }
+              if ( dbCheck.isFailed ) {
+                dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
+                log.warn("Could not insert information about deployed contract into the repository database. See 'sbt-ethereum.log' for more information.")
+              }
             }
           }
+          
           Right( receipt ) : Either[EthHash,ClientTransactionReceipt]
         }
       }

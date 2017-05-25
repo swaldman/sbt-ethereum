@@ -1,7 +1,5 @@
 # TODO
 
-* Implement a setting for ephemeral blockchains, compilations on which should not be retained.
-  *  or setting to control whether compilations are retained (defaul true in Compile, false in Test)?
 * managedResources += propfile mapping contract names to deployed addresses
 * should stubs be case classes? (probably not!)
 * add code hashes for stub companion objects, and functions for looking up addresses by hash
@@ -17,6 +15,8 @@
 * ethSelfPing => ethPingSelf
 * Prettify output of log items in client transactions
 * event handling generally
+* ethNameService*
+* ethToken*
 * Integrate keystore into database? (?)
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup!
 * change names of xethQueryRepositoryDatabase and xethUpdateRepositoryDatabase to xethSqlQueryRepositoryDatabase and xethSqlUpdateRepositoryDatabase
