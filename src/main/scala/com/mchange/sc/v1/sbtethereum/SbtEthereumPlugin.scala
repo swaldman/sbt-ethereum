@@ -98,13 +98,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // if we've started a child test process,
   // kill it on exit
-  java.lang.Runtime.getRuntime().addShutdownHook {
-    new Thread {
+  val TestrpcDestroyer = new Thread {
+    override def run() : Unit = {
       LocalTestrpc synchronized {
         LocalTestrpc.get.foreach ( _.destroy )
       }
     }
   }
+  java.lang.Runtime.getRuntime().addShutdownHook( TestrpcDestroyer )
+
 
   object autoImport {
 
