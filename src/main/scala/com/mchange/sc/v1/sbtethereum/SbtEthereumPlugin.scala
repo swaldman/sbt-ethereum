@@ -535,6 +535,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethUpdateSessionSolidityCompilers in Compile <<= xethUpdateSessionSolidityCompilersTask,
 
+      commands += ethTestrpcLocalRestartCommand,
+
       Keys.compile in Compile := (Keys.compile in Compile).dependsOn(ethSolidityCompile in Compile).value,
 
       onLoad in Global := {
@@ -582,7 +584,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     )
 
-    // anonymous tasks
+    // commands
+
+    val ethTestrpcLocalRestartCommand = Command.command( "ethTestrpcLocalRestart" ) { state =>
+      "ethTestrpcLocalStop" :: "ethTestrpcLocalStart" :: state
+    }
 
     // task definitions
 
@@ -901,7 +907,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               }
             }
           }
-          
+
           Right( receipt ) : Either[EthHash,ClientTransactionReceipt]
         }
       }
