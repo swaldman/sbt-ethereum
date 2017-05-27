@@ -40,6 +40,7 @@ import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAnd
 
 import scala.collection._
 import scala.sys.process.{Process,ProcessLogger}
+import scala.io.Source
 
 // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
 import scala.concurrent.ExecutionContext
@@ -96,6 +97,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val DefaultEthNetcompileUrl = "http://ethjsonrpc.mchange.com:8456"
 
+  final object JsonFilter extends FilenameFilter {
+    val DotSuffix = ".json"
+    def accept( dir : File, name : String ) : Boolean = {
+      val lcName = name.toLowerCase
+      lcName != DotSuffix && lcName.endsWith( DotSuffix )
+    }
+  }
+
   // if we've started a child test process,
   // kill it on exit
   val TestrpcDestroyer = new Thread {
@@ -143,6 +152,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethSolidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
 
     val xethEphemeralBlockchains = settingKey[Seq[String]]("IDs of blockchains that should be considered ephemeral (so their deployments should not be retained).")
+
+    val xethNamedAbiSource = settingKey[File]("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
 
     val xethTestingResourcesObjectName = settingKey[String]("The name of the Scala object that will be automatically generated with resources for tests.")
 
@@ -220,8 +231,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethSolidityShowCompiler = taskKey[Unit]("Displays currently active Solidity compiler")
 
-    // val ethTestrpcLocalRestart = taskKey[Unit]("Starts a local testrpc environment (if the command 'testrpc' is in your PATH), stopping and clearing any prior testrpc environment")
-
     val ethTestrpcLocalStart = taskKey[Unit]("Starts a local testrpc environment (if the command 'testrpc' is in your PATH)")
 
     val ethTestrpcLocalStop = taskKey[Unit]("Stops any local testrpc environment that may have been started previously")
@@ -267,6 +276,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
 
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
+
+    val xethNamedAbis = taskKey[immutable.Map[String,Abi.Definition]]("Loads any named ABIs from the 'xethNamedAbiSource' directory")
 
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
 
@@ -325,6 +336,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethSolidityDestination in Compile := (ethTargetDir in Compile).value / "solidity",
 
       ethTargetDir in Compile := (target in Compile).value / "ethereum",
+
+      xethNamedAbiSource in Compile := (sourceDirectory in Compile).value / "ethabi",
 
       xethTestingResourcesObjectName in Test := "Testing",
 
@@ -516,6 +529,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       xethLoadWalletV3For in Compile <<= xethLoadWalletV3ForTask( Compile ),
 
       xethLoadWalletV3For in Test <<= xethLoadWalletV3ForTask( Test ),
+
+      xethNamedAbis in Compile <<= xethNamedAbisTask,
 
       xethNextNonce in Compile <<= xethNextNonceTask( Compile ),
 
@@ -1465,6 +1480,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       // Used for both Compile and Test
       val mbStubPackage = ethPackageScalaStubs.?.value
       val currentCompilations = (xethFindCacheOmitDupsCurrentCompilations in Compile).value
+      val namedAbis = (xethNamedAbis in Compile).value
       val dependencies = libraryDependencies.value
 
       // Used only for Test
@@ -1473,6 +1489,19 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       // Sensitive to config
       val scalaStubsTarget = (sourceManaged in config).value
+
+      // merge ABI sources
+      val overlappingNames = currentCompilations.keySet.intersect( namedAbis.keySet )
+      if ( !overlappingNames.isEmpty ) {
+        throw new SbtEthereumException( s"""Names conflict (overlap) between compilations and named ABIs. Conflicting names: ${overlappingNames.mkString(", ")}""" )
+      }
+      val allMbAbis = {
+        val sureNamedAbis = namedAbis map { case ( name, abi ) => ( name, Some( abi ) ) }
+        val mbCompilationAbis = currentCompilations map { case ( name, contract ) =>
+          ( name,  contract.info.mbAbiDefinition.map( abiStr => Json.parse( abiStr ).as[Abi.Definition] ) )
+        }
+        sureNamedAbis ++ mbCompilationAbis
+      }
 
       def skipNoPackage : immutable.Seq[File] = {
         log.info("No Scala stubs will be generated as the setting 'ethPackageScalaStubs' has not ben set.")
@@ -1508,10 +1537,9 @@ object SbtEthereumPlugin extends AutoPlugin {
                 val stubsDir = new File( scalaStubsTarget, stubsDirFilePath )
                 stubsDir.mkdirs()
                 if ( config != Test ) {
-                  val mbFiles = currentCompilations.map { case ( className, contract ) =>
-                    contract.info.mbAbiDefinition match {
-                      case Some( abiStr ) => {
-                        val abi = Json.parse( abiStr ).as[Abi.Definition]
+                  val mbFiles = allMbAbis map { case ( className, mbAbiDefinition ) =>
+                    mbAbiDefinition match {
+                      case Some( abi ) => {
                         val gensrc = stub.Generator.generateContractStub( className, abi, stubPackage )
                         val srcFile = new File( stubsDir, s"${className}.scala" )
                         Files.write( srcFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
@@ -1525,7 +1553,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                   }
                   mbFiles.filter( _ != None ).map( _.get ).toVector
                 } else {
-                  if ( currentCompilations.contains( testingResourcesObjectName ) ) { // TODO: A case insensitive check
+                  if ( allMbAbis.contains( testingResourcesObjectName ) ) { // TODO: A case insensitive check
                     log.warn( s"The name of the requested testing resources object '${testingResourcesObjectName}' conflicts with the name of a contract." )
                     log.warn(  "The testing resources object '${testingResourcesObjectName}' will not be generated." )
                     immutable.Seq.empty[File]
@@ -1719,6 +1747,33 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         log.info( message )
         out
+      }
+    }
+
+    def xethNamedAbisTask : Initialize[Task[immutable.Map[String,Abi.Definition]]] = Def.task {
+      val log    = streams.value.log
+      val srcDir = xethNamedAbiSource.value
+
+      def empty = immutable.Map.empty[String,Abi.Definition]
+
+      if ( srcDir.exists) {
+        if ( srcDir.isDirectory ) {
+          val files = srcDir.listFiles( JsonFilter )
+
+          def toTuple( f : File ) : ( String, Abi.Definition ) = {
+          val filename = f.getName()
+            val name = filename.take( filename.length - JsonFilter.DotSuffix.length ) // the filter ensures they do have the suffix
+            val json = borrow ( Source.fromFile( f ) )( _.close )( _.mkString ) // is there a better way
+            ( name, Json.parse( json ).as[Abi.Definition] )
+          }
+
+          files.map( toTuple ).toMap // the directory ensures there should be no dups!
+        } else {
+          log.warn( s"Expected named ABI directory '${srcDir.getPath}' is not a directory!" )
+          empty
+        }
+      } else {
+        empty
       }
     }
 

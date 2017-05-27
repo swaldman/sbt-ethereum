@@ -54,9 +54,6 @@ package object sbtethereum {
   def abiForAddressOrEmpty( blockchainId : String, address : EthAddress ) : Abi.Definition = {
     abiForAddress( blockchainId, address, EmptyAbi )
   }
-
-
-
 }
 
 
