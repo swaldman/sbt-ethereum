@@ -1,8 +1,7 @@
 # TODO
 
 * managedResources += propfile mapping contract names to deployed addresses
-* should stubs be case classes? (probably not!)
-* add code hashes for stub companion objects, and functions for looking up addresses by hash
+* stub package out of ethabi, Invoker class into stub package
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
   * also for stubs and testing resources
@@ -17,6 +16,7 @@
 * event handling generally
 * ethNameService*
 * ethToken*
+* Optimize stubs a bit (don't recreate Abi.Function in every call)
 * Integrate keystore into database? (?)
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup!
 * change names of xethQueryRepositoryDatabase and xethUpdateRepositoryDatabase to xethSqlQueryRepositoryDatabase and xethSqlUpdateRepositoryDatabase

@@ -1752,7 +1752,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethNamedAbisTask : Initialize[Task[immutable.Map[String,Abi.Definition]]] = Def.task {
       val log    = streams.value.log
-      val srcDir = xethNamedAbiSource.value
+      val srcDir = (xethNamedAbiSource in Compile).value
 
       def empty = immutable.Map.empty[String,Abi.Definition]
 
