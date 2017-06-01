@@ -1,6 +1,5 @@
 # TODO
 
-* get rid of xethFindJsonRpc, use simple keys
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
   * also for stubs and testing resources

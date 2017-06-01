@@ -248,8 +248,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethFindCurrentSender = taskKey[Failable[EthAddress]]("Finds the address that should be used to send ether or messages")
 
-    val xethFindEthJsonRpcUrl = taskKey[String]("Finds the address that should be used to interact with an Ethereum blockchain")
-
     val xethGasOverrideSet = inputKey[Unit]("Defines a value which overrides the usual automatic marked-up estimation of gas required for a transaction.")
 
     val xethGasOverrideDrop = taskKey[Unit]("Removes any previously set gas override, reverting to the usual automatic marked-up estimation of gas required for a transaction.")
@@ -323,6 +321,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethGasPriceMarkup := 0.0, // by default, use conventional gas price
 
       ethIncludeLocations := Nil,
+
+      ethJsonRpcUrl in Compile := DefaultEthJsonRpcUrl,
+
+      ethJsonRpcUrl in Test := DefaultTestEthJsonRpcUrl,
 
       ethKeystoreAutoRelockSeconds := 300,
 
@@ -483,10 +485,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       xethFindCurrentSender in Test <<= xethFindCurrentSenderTask( Test ),
 
       xethFindCurrentSolidityCompiler in Compile <<= xethFindCurrentSolidityCompilerTask,
-
-      xethFindEthJsonRpcUrl in Compile <<= xethFindEthJsonRpcUrlTask( Compile ),
-
-      xethFindEthJsonRpcUrl in Test <<= xethFindEthJsonRpcUrlTask( Test ),
 
       // we don't scope the gas override tasks for now
       // since any gas override gets used in tests as well as other contexts
@@ -722,7 +720,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+        val jsonRpcUrl = (ethJsonRpcUrl in config).value
         val mbAddress = parser.parsed
         val address = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
@@ -735,7 +733,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+        val jsonRpcUrl = (ethJsonRpcUrl in config).value
         val mbAddress = parser.parsed
         val address = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
         val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Wei )
@@ -879,7 +877,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val blockchainId = (ethBlockchainId in config).value
         val ephemeralBlockchains = xethEphemeralBlockchains.value
-        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+        val jsonRpcUrl = (ethJsonRpcUrl in config).value
         val ( contractName, extraData ) = parser.parsed
         val ( compilation, inputsBytes ) = {
           extraData match {
@@ -942,7 +940,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+        val jsonRpcUrl = (ethJsonRpcUrl in config).value
         val from = (xethFindCurrentSender in config).value.toOption
         val markup = ethGasMarkup.value
         val gasPrice = (xethGasPrice in config).value
@@ -1001,7 +999,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val is = interactionService.value
         val blockchainId = (ethBlockchainId in config).value
-        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+        val jsonRpcUrl = (ethJsonRpcUrl in config).value
         val caller = (xethFindCurrentSender in config).value.get
         val nextNonce = (xethNextNonce in config).value
         val markup = ethGasMarkup.value
@@ -1144,7 +1142,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val is = interactionService.value
         val blockchainId = (ethBlockchainId in config).value
-        val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+        val jsonRpcUrl = (ethJsonRpcUrl in config).value
         val from = (xethFindCurrentSender in config).value.get
         val (to, amount) = parser.parsed
         val nextNonce = (xethNextNonce in config).value
@@ -1321,7 +1319,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethDefaultGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
-      val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+      val jsonRpcUrl = (ethJsonRpcUrl in config).value
       doGetDefaultGasPrice( log, jsonRpcUrl )
     }
 
@@ -1412,12 +1410,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethFindEthJsonRpcUrlTask( config : Configuration ) : Initialize[Task[String]] = Def.task {
-      def defaultUrl = if ( config == Test ) DefaultTestEthJsonRpcUrl else DefaultEthJsonRpcUrl
-
-      (ethJsonRpcUrl in config).?.value.getOrElse( defaultUrl )
-    }
-
     def xethGasOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
       val log = streams.value.log
       val amount = integerParser("<gas override>").parsed
@@ -1441,7 +1433,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
-      val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+      val jsonRpcUrl = (ethJsonRpcUrl in config).value
 
       val markup          = ethGasPriceMarkup.value
       val defaultGasPrice = (xethDefaultGasPrice in config).value
@@ -1486,7 +1478,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       // Used only for Test
       val testingResourcesObjectName = (xethTestingResourcesObjectName in Test).value
-      val testingEthJsonRpcUrl = (xethFindEthJsonRpcUrl in Test).value
+      val testingEthJsonRpcUrl = (ethJsonRpcUrl in Test).value
 
       // Sensitive to config
       val scalaStubsTarget = (sourceManaged in config).value
@@ -1780,7 +1772,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethNextNonceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
-      val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
+      val jsonRpcUrl = (ethJsonRpcUrl in config).value
       doGetTransactionCount( log, jsonRpcUrl, (xethFindCurrentSender in config).value.get , jsonrpc.Client.BlockNumber.Pending )
     }
 
@@ -1863,7 +1855,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       import Compiler.Solidity._
 
       val netcompileUrl = ethNetcompileUrl.?.value
-      val jsonRpcUrl    = (xethFindEthJsonRpcUrl in Compile).value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
+      val jsonRpcUrl    = (ethJsonRpcUrl in Compile).value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
 
       def check( key : String, compiler : Compiler.Solidity ) : Option[ ( String, Compiler.Solidity ) ] = {
         val test = Compiler.Solidity.test( compiler )
