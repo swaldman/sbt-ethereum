@@ -1,14 +1,12 @@
 # TODO
 
 * get rid of xethFindJsonRpc, use simple keys
-* stub package out of ethabi, Invoker class into stub package
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
   * also for stubs and testing resources
 * Richer ABI management
    let ethAbiList show deployed as well as memorized ABIs
        ethAbiShow should dump JSON text
-* ethTestrpcLocalRestart
 * xethEstimateGas
 * xethSendMessage
 * ethSelfPing => ethPingSelf
@@ -26,7 +24,7 @@
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup!
 * change names of xethQueryRepositoryDatabase and xethUpdateRepositoryDatabase to xethSqlQueryRepositoryDatabase and xethSqlUpdateRepositoryDatabase
   *  figure out why failures don't throw Exceptions, and make them do so!
-* Support for compiling and deploying libraries and linking contracts that reference them
+* Support for compiling and deploying solidity libraries and linking contracts that reference them
 * Import raw private key as wallet
 * Backup / restore of repository (especially db)
   * use DROP ALL OBJECTS then RUNSCRIPT to restore
