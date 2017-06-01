@@ -3,7 +3,7 @@ package com.mchange.sc.v1
 import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.consuela.ethereum._
-import jsonrpc20.Abi
+import jsonrpc.Abi
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 
 package object sbtethereum {

@@ -8,9 +8,9 @@ import sbt.complete.{FixedSetExamples,Parser}
 import sbt.complete.DefaultParsers._
 
 import com.mchange.sc.v1.consuela._
-import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20,specification,EthAddress,EthHash}
+import com.mchange.sc.v1.consuela.ethereum.{jsonrpc,specification,EthAddress,EthHash}
 import specification.Denominations
-import jsonrpc20.Abi
+import jsonrpc.Abi
 
 import com.mchange.sc.v2.failable._
 
@@ -129,7 +129,7 @@ object Parsers {
       case _ => throw new Exception( s"""Constructor overloading not supprted (or legal in solidity). Found multiple constructors: ${abi.constructors.mkString(", ")}""" )
     }
   }
-  private def resultFromCompilation( contractName : String, compilation : jsonrpc20.Compilation.Contract ) : Parser[ ( String, Option[ ( immutable.Seq[String], Abi.Definition, jsonrpc20.Compilation.Contract ) ] ) ] = {
+  private def resultFromCompilation( contractName : String, compilation : jsonrpc.Compilation.Contract ) : Parser[ ( String, Option[ ( immutable.Seq[String], Abi.Definition, jsonrpc.Compilation.Contract ) ] ) ] = {
     val mbAbi = compilation.info.mbAbiDefinition
     mbAbi match {
       case Some( abiString ) => {
@@ -142,8 +142,8 @@ object Parsers {
   }
   private [sbtethereum] def genContractNamesConstructorInputsParser(
     state : State,
-    mbContracts : Option[immutable.Map[String,jsonrpc20.Compilation.Contract]]
-  ) : Parser[(String, Option[(immutable.Seq[String], Abi.Definition, jsonrpc20.Compilation.Contract)])] = {
+    mbContracts : Option[immutable.Map[String,jsonrpc.Compilation.Contract]]
+  ) : Parser[(String, Option[(immutable.Seq[String], Abi.Definition, jsonrpc.Compilation.Contract)])] = {
     val contracts = mbContracts.getOrElse( immutable.Map.empty )
     val contractNames = immutable.TreeSet( contracts.keys.toSeq : _* )( Ordering.comparatorToOrdering( String.CASE_INSENSITIVE_ORDER ) )
     val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", ZWSP) else contractNames // non-breaking space to prevent autocompletion to dummy example

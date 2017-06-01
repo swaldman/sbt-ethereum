@@ -17,8 +17,8 @@ object TestingResourcesGenerator {
       iw.println()
 
       iw.println( "import com.mchange.sc.v1.consuela.ethereum.EthPrivateKey" )
-      iw.println( "import com.mchange.sc.v1.consuela.ethereum.ethabi.stub" )
-      iw.println( "import com.mchange.sc.v1.consuela.ethereum.jsonrpc20.Invoker" )
+      iw.println( "import com.mchange.sc.v1.consuela.ethereum.stub" )
+      iw.println( "import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker" )
       iw.println()
 
       iw println( s"object ${objectName} {" )

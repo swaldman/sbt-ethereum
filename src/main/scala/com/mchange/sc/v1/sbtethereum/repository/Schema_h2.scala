@@ -7,7 +7,7 @@ import com.mchange.sc.v1.consuela._
 
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress,EthHash}
-import com.mchange.sc.v1.consuela.ethereum.jsonrpc20._
+import com.mchange.sc.v1.consuela.ethereum.jsonrpc._
 import com.mchange.sc.v2.sql.{borrowTransact,getMaybeSingleString,getMaybeSingleValue,setMaybeString}
 import com.mchange.sc.v1.log.MLevel._
 

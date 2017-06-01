@@ -30,7 +30,7 @@ import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
-import jsonrpc20.{Abi,ClientTransactionReceipt,MapStringCompilationContractFormat}
+import jsonrpc.{Abi,ClientTransactionReceipt,MapStringCompilationContractFormat}
 import specification.Denominations
 
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
@@ -243,7 +243,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethFindCacheAliasesIfAvailable = taskKey[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]("Finds and caches aliases for use by address parsers")
 
-    val xethFindCacheOmitDupsCurrentCompilations = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethSolidityCompile")
+    val xethFindCacheOmitDupsCurrentCompilations = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethSolidityCompile")
 
     val xethFindCurrentSender = taskKey[Failable[EthAddress]]("Finds the address that should be used to send ether or messages")
 
@@ -269,9 +269,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethLoadAbiFor = inputKey[Abi.Definition]("Finds the ABI for a contract address, if known")
 
-    val xethLoadCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc20.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
+    val xethLoadCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
 
-    val xethLoadCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc20.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
+    val xethLoadCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
 
     val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
 
@@ -724,7 +724,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
         val mbAddress = parser.parsed
         val address = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
-        val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Ether )
+        val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
         result.denominated
       }
     }
@@ -737,7 +737,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
         val mbAddress = parser.parsed
         val address = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
-        val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc20.Client.BlockNumber.Latest, Denominations.Wei )
+        val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Wei )
         result.wei
       }
     }
@@ -901,7 +901,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val nextNonce = (xethNextNonce in config).value
         val markup = ethGasMarkup.value
         val gasPrice = (xethGasPrice in config).value
-        val gas = computeGas( log, jsonRpcUrl, Some(sender), None, None, Some( dataHex.decodeHex.toImmutableSeq ), jsonrpc20.Client.BlockNumber.Pending, markup )
+        val gas = computeGas( log, jsonRpcUrl, Some(sender), None, None, Some( dataHex.decodeHex.toImmutableSeq ), jsonrpc.Client.BlockNumber.Pending, markup )
         val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
         val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
@@ -954,9 +954,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Call data for function call: ${callData.hex}" )
 
-        val gas = computeGas( log, jsonRpcUrl, from, Some(contractAddress), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Pending, markup )
+        val gas = computeGas( log, jsonRpcUrl, from, Some(contractAddress), Some( amount ), Some( callData ), jsonrpc.Client.BlockNumber.Pending, markup )
 
-        val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Latest )
+        val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc.Client.BlockNumber.Latest )
         log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
         log.info( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
         val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception is we can't get results
@@ -1013,7 +1013,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
         log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
         log.info( s"Call data for function call: ${callData.hex}" )
-        val gas = computeGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), Some( amount ), Some( callData ), jsonrpc20.Client.BlockNumber.Pending, markup )
+        val gas = computeGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), Some( amount ), Some( callData ), jsonrpc.Client.BlockNumber.Pending, markup )
         log.info( s"Gas estimated for function call: ${gas}" )
         log.info( s"Gas price set to ${gasPrice} wei" )
         val estdCost = gasPrice * gas
@@ -1150,7 +1150,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val markup = ethGasMarkup.value
         val gasPrice = (xethGasPrice in config).value
         val autoRelockSeconds = ethKeystoreAutoRelockSeconds.value
-        val gas = computeGas( log, jsonRpcUrl, Some(from), Some(to), Some(amount), Some( EmptyBytes ), jsonrpc20.Client.BlockNumber.Pending, markup )
+        val gas = computeGas( log, jsonRpcUrl, Some(from), Some(to), Some(amount), Some( EmptyBytes ), jsonrpc.Client.BlockNumber.Pending, markup )
         val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), EmptyBytes )
         val privateKey = findCachePrivateKey( s, log, is, blockchainId, from, autoRelockSeconds, true )
         val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
@@ -1330,7 +1330,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ( blockchainId, mbAliases )
     }
 
-    def xethFindCacheOmitDupsCurrentCompilationsTask : Initialize[Task[immutable.Map[String,jsonrpc20.Compilation.Contract]]] = Def.task {
+    def xethFindCacheOmitDupsCurrentCompilationsTask : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
       (xethLoadCompilationsOmitDups in Compile).value
     }
 
@@ -1625,40 +1625,40 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethLoadCompilationsKeepDupsTask : Initialize[Task[immutable.Iterable[(String,jsonrpc20.Compilation.Contract)]]] = Def.task {
+    def xethLoadCompilationsKeepDupsTask : Initialize[Task[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]] = Def.task {
       val log = streams.value.log
 
       val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
 
       val dir = (ethSolidityDestination in Compile).value
 
-      def addContracts( vec : immutable.Vector[(String,jsonrpc20.Compilation.Contract)], name : String ) = {
+      def addContracts( vec : immutable.Vector[(String,jsonrpc.Compilation.Contract)], name : String ) = {
         val next = {
           val file = new File( dir, name )
           try {
-            borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]] )
+            borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc.Compilation.Contract]] )
           } catch {
             case e : Exception => {
               log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
               log.warn( s"  --> cause: ${e.toString}" )
-              Map.empty[String,jsonrpc20.Compilation.Contract]
+              Map.empty[String,jsonrpc.Compilation.Contract]
             }
           }
         }
         vec ++ next
       }
 
-      dir.list.filter( _.endsWith(".json") ).foldLeft( immutable.Vector.empty[(String,jsonrpc20.Compilation.Contract)] )( addContracts )
+      dir.list.filter( _.endsWith(".json") ).foldLeft( immutable.Vector.empty[(String,jsonrpc.Compilation.Contract)] )( addContracts )
     }
 
-    def xethLoadCompilationsOmitDupsTask : Initialize[Task[immutable.Map[String,jsonrpc20.Compilation.Contract]]] = Def.task {
+    def xethLoadCompilationsOmitDupsTask : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
       val log = streams.value.log
 
       val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
 
       val dir = (ethSolidityDestination in Compile).value
 
-      def addBindingKeepShorterSource( addTo : immutable.Map[String,jsonrpc20.Compilation.Contract], binding : (String,jsonrpc20.Compilation.Contract) ) = {
+      def addBindingKeepShorterSource( addTo : immutable.Map[String,jsonrpc.Compilation.Contract], binding : (String,jsonrpc.Compilation.Contract) ) = {
         val ( name, compilation ) = binding
         addTo.get( name ) match {
           case Some( existingCompilation ) => { // this is a duplicate name, we have to think about whether to add and override or keep the old version
@@ -1674,20 +1674,20 @@ object SbtEthereumPlugin extends AutoPlugin {
           case None => addTo + binding // not a duplicate name, so just add the binding
         }
       }
-      def addAllKeepShorterSource( addTo : immutable.Map[String,jsonrpc20.Compilation.Contract], nextBindings : Iterable[(String,jsonrpc20.Compilation.Contract)] ) = {
+      def addAllKeepShorterSource( addTo : immutable.Map[String,jsonrpc.Compilation.Contract], nextBindings : Iterable[(String,jsonrpc.Compilation.Contract)] ) = {
         nextBindings.foldLeft( addTo )( ( accum, next ) => addBindingKeepShorterSource( accum, next ) )
       }
-      def addContracts( tup : ( immutable.Map[String,jsonrpc20.Compilation.Contract], immutable.Set[String] ), name : String ) = {
+      def addContracts( tup : ( immutable.Map[String,jsonrpc.Compilation.Contract], immutable.Set[String] ), name : String ) = {
         val ( addTo, overlaps ) = tup
         val next = {
           val file = new File( dir, name )
           try {
-            borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]] )
+            borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc.Compilation.Contract]] )
           } catch {
             case e : Exception => {
               log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
               log.warn( s"  --> cause: ${e.toString}" )
-              Map.empty[String,jsonrpc20.Compilation.Contract]
+              Map.empty[String,jsonrpc.Compilation.Contract]
             }
           }
         }
@@ -1701,7 +1701,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         ( addAllKeepShorterSource( addTo, next ), overlaps ++ realNewOverlaps )
       }
 
-      val ( rawCompilations, duplicates ) = dir.list.filter( _.endsWith( ".json" ) ).foldLeft( ( immutable.Map.empty[String,jsonrpc20.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
+      val ( rawCompilations, duplicates ) = dir.list.filter( _.endsWith( ".json" ) ).foldLeft( ( immutable.Map.empty[String,jsonrpc.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
       if ( !duplicates.isEmpty ) {
         val dupsStr = duplicates.mkString(", ")
         log.warn( s"The project contains mutiple contracts and/or libraries that have identical names but compile to distinct code: $dupsStr" )
@@ -1780,7 +1780,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     def xethNextNonceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
       val log        = streams.value.log
       val jsonRpcUrl = (xethFindEthJsonRpcUrl in config).value
-      doGetTransactionCount( log, jsonRpcUrl, (xethFindCurrentSender in config).value.get , jsonrpc20.Client.BlockNumber.Pending )
+      doGetTransactionCount( log, jsonRpcUrl, (xethFindCurrentSender in config).value.get , jsonrpc.Client.BlockNumber.Pending )
     }
 
     def xethQueryRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
@@ -1931,7 +1931,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       to          : Option[EthAddress],
       value       : Option[BigInt],
       data        : Option[Seq[Byte]],
-      blockNumber : jsonrpc20.Client.BlockNumber,
+      blockNumber : jsonrpc.Client.BlockNumber,
       markup      : Double
     )(
       implicit ec : ExecutionContext

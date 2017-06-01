@@ -19,8 +19,8 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.literal._
 import com.mchange.sc.v2.concurrent._
 
-import com.mchange.sc.v1.consuela.ethereum.jsonrpc20
-import jsonrpc20.MapStringCompilationContractFormat
+import com.mchange.sc.v1.consuela.ethereum.jsonrpc
+import jsonrpc.MapStringCompilationContractFormat
 
 import com.mchange.sc.v1.log.MLevel._
 
@@ -113,7 +113,7 @@ object ResolveCompileSolidity {
       if ( failureCount > 0 ) {
         log.error( errorMessage( failureCount ) )
         labeledFailures.foreach { 
-          case ( file, jf : jsonrpc20.Exception ) => log.error( s"File: ${file.getAbsolutePath}${SEP}${jf.message}" )
+          case ( file, jf : jsonrpc.Exception ) => log.error( s"File: ${file.getAbsolutePath}${SEP}${jf.message}" )
           case ( file, other                    ) => log.error( s"File: ${file.getAbsolutePath}${SEP}${other.toString}" )
         }
         throw labeledFailures.head._2

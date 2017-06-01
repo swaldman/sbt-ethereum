@@ -11,16 +11,16 @@ import com.mchange.sc.v1.sbtethereum._
 import repository.TransactionLog
 
 import com.mchange.sc.v1.consuela._
-import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20, specification, EthAddress, EthHash, EthPrivateKey, EthTransaction}
-import jsonrpc20.{Compilation, ClientTransactionReceipt}
+import com.mchange.sc.v1.consuela.ethereum.{jsonrpc, specification, EthAddress, EthHash, EthPrivateKey, EthTransaction}
+import jsonrpc.{Compilation, ClientTransactionReceipt}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 
 import java.net.URL
 
 object EthJsonRpc {
-  def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String )( operation : jsonrpc20.Client => T )( implicit ec : ExecutionContext ) : T = {
+  def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String )( operation : jsonrpc.Client => T )( implicit ec : ExecutionContext ) : T = {
     try {
-      borrow( new jsonrpc20.Client.Simple( new URL( jsonRpcUrl ) ) )( operation )
+      borrow( new jsonrpc.Client.Simple( new URL( jsonRpcUrl ) ) )( operation )
     } catch {
       case e : java.net.ConnectException => {
         log.error( s"Failed to connect to JSON-RPC client at '${jsonRpcUrl}': ${e}" )
@@ -33,7 +33,7 @@ object EthJsonRpc {
     doWithJsonClient( log, jsonRpcUrl )( client => client.eth.compileSolidity( source ) )( ec )
   }
 
-  def doGetBalance( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
+  def doGetBalance( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getBalance( address, blockNumber ), Duration.Inf ) )
   }
 
@@ -41,10 +41,10 @@ object EthJsonRpc {
     log          : sbt.Logger,
     jsonRpcUrl   : String,
     address      : EthAddress,
-    blockNumber  : jsonrpc20.Client.BlockNumber,
+    blockNumber  : jsonrpc.Client.BlockNumber,
     denomination : Denomination
   )( implicit ec : ExecutionContext ) : EthValue = {
-    import jsonrpc20.Client.BlockNumber._
+    import jsonrpc.Client.BlockNumber._
 
     val wei = doGetBalance( log, jsonRpcUrl, address, blockNumber )( ec )
     val out = EthValue( wei, denomination.fromWei( wei ), denomination )
@@ -58,7 +58,7 @@ object EthJsonRpc {
     out
   }
 
-  def doCodeForAddress( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : immutable.Seq[Byte] = {
+  def doCodeForAddress( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc.Client.BlockNumber )( implicit ec : ExecutionContext ) : immutable.Seq[Byte] = {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getCode( address, blockNumber ), Duration.Inf ) )
   }
 
@@ -71,7 +71,7 @@ object EthJsonRpc {
     gasPrice    : Option[BigInt],
     value       : Option[BigInt],
     data        : Option[Seq[Byte]],
-    blockNumber : jsonrpc20.Client.BlockNumber
+    blockNumber : jsonrpc.Client.BlockNumber
   )( implicit ec : ExecutionContext ) : immutable.Seq[Byte] = {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.call( from, Some(to), gas, gasPrice, value, data, blockNumber), Duration.Inf ) )
   }
@@ -80,7 +80,7 @@ object EthJsonRpc {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.gasPrice(), Duration.Inf ) )
   }
 
-  def doGetTransactionCount( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc20.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
+  def doGetTransactionCount( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc.Client.BlockNumber )( implicit ec : ExecutionContext ) : BigInt = {
     doWithJsonClient( log, jsonRpcUrl )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), Duration.Inf ) )
   }
 
@@ -91,7 +91,7 @@ object EthJsonRpc {
     to : Option[EthAddress],
     value : Option[BigInt],
     data : Option[Seq[Byte]],
-    blockNumber : jsonrpc20.Client.BlockNumber
+    blockNumber : jsonrpc.Client.BlockNumber
   )(
     implicit ec : ExecutionContext
   ) : BigInt = {
@@ -114,7 +114,7 @@ object EthJsonRpc {
     to : Option[EthAddress],
     value : Option[BigInt],
     data : Option[Seq[Byte]],
-    blockNumber : jsonrpc20.Client.BlockNumber,
+    blockNumber : jsonrpc.Client.BlockNumber,
     markup : Double
   )( implicit ec : ExecutionContext ) : BigInt = {
     val rawEstimate = doEstimateGas( log, jsonRpcUrl, from, to, value, data, blockNumber )( ec )

@@ -8,7 +8,7 @@ import com.mchange.sc.v1.consuela.ethereum.EthAddress
 import com.mchange.sc.v1.consuela.ethereum.encoding.{RLP,RLPSerializing}
 import com.mchange.sc.v2.collection.immutable.ImmutableArraySeq
 
-import com.mchange.sc.v1.consuela.ethereum.jsonrpc20
+import com.mchange.sc.v1.consuela.ethereum.jsonrpc
 
 import play.api.libs.json.{Json, Format => JsFormat}
 
@@ -57,13 +57,13 @@ object SBinaryFormats {
 
   implicit val EthAddressAsFormat = rlpSerializingAsFormat[EthAddress]
 
-  implicit val CompilationAsFormat = jsonBasedFormat[jsonrpc20.Compilation.Contract]
+  implicit val CompilationAsFormat = jsonBasedFormat[jsonrpc.Compilation.Contract]
 
 
   /*
-   implicit object CompilationMapSBinaryFormat extends sbinary.Format[immutable.Map[String,jsonrpc20.Compilation.Contract]]{
-     def reads(in : Input) = Json.parse( StringFormat.reads( in ) ).as[immutable.Map[String,jsonrpc20.Compilation.Contract]]
-     def writes(out : Output, value : immutable.Map[String,jsonrpc20.Compilation.Contract]) = StringFormat.writes( out, Json.stringify( Json.toJson( value ) ) )
+   implicit object CompilationMapSBinaryFormat extends sbinary.Format[immutable.Map[String,jsonrpc.Compilation.Contract]]{
+     def reads(in : Input) = Json.parse( StringFormat.reads( in ) ).as[immutable.Map[String,jsonrpc.Compilation.Contract]]
+     def writes(out : Output, value : immutable.Map[String,jsonrpc.Compilation.Contract]) = StringFormat.writes( out, Json.stringify( Json.toJson( value ) ) )
    }
    */
 

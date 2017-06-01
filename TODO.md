@@ -1,6 +1,6 @@
 # TODO
 
-* managedResources += propfile mapping contract names to deployed addresses
+* get rid of xethFindJsonRpc, use simple keys
 * stub package out of ethabi, Invoker class into stub package
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
@@ -14,9 +14,14 @@
 * ethSelfPing => ethPingSelf
 * Prettify output of log items in client transactions
 * event handling generally
+* ethSenderEffective
 * ethNameService*
 * ethToken*
+* cap / floor on Invoker.Markup
+* Make stub compilation incremental
 * Optimize stubs a bit (don't recreate Abi.Function in every call)
+* async sections of (or separate async classes of) stubs?
+* managedResources += propfile mapping contract names to deployed addresses
 * Integrate keystore into database? (?)
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup!
 * change names of xethQueryRepositoryDatabase and xethUpdateRepositoryDatabase to xethSqlQueryRepositoryDatabase and xethSqlUpdateRepositoryDatabase

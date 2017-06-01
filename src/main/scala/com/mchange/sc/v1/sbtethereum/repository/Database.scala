@@ -19,8 +19,8 @@ import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.consuela._
 
-import com.mchange.sc.v1.consuela.ethereum.{jsonrpc20, EthAddress, EthHash}
-import jsonrpc20.{Abi, Doc}
+import com.mchange.sc.v1.consuela.ethereum.{jsonrpc, EthAddress, EthHash}
+import jsonrpc.{Abi, Doc}
 
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
@@ -122,7 +122,7 @@ object Database {
     }
   }
 
-  def updateContractDatabase( compilations : Iterable[(String,jsonrpc20.Compilation.Contract)] ) : Failable[Boolean] = {
+  def updateContractDatabase( compilations : Iterable[(String,jsonrpc.Compilation.Contract)] ) : Failable[Boolean] = {
     val ( compiledContracts, stubsWithDups ) = compilations.partition { case ( name, compilation ) => compilation.code.decodeHex.length > 0 }
 
     stubsWithDups.foreach { case ( name, compilation ) =>
@@ -130,7 +130,7 @@ object Database {
     }
 
     def updateKnownContracts( conn : Connection ) : Failable[Boolean] = {
-      def doUpdate( conn : Connection, contractTuple : Tuple2[String,jsonrpc20.Compilation.Contract] ) : Failable[Boolean] = Failable {
+      def doUpdate( conn : Connection, contractTuple : Tuple2[String,jsonrpc.Compilation.Contract] ) : Failable[Boolean] = Failable {
         val ( name, compilation ) = contractTuple
 
         val code = compilation.code
