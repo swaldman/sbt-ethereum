@@ -74,7 +74,7 @@ object Parsers {
     Space.* ~> token(mandatory.?)
   }
 
-  private [sbtethereum] def functionParser( abi : Abi.Definition, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
+  private [sbtethereum] def functionParser( abi : Abi, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
 
     val overloadedNamesToFunctions = namesToFunctions.filter( _._2.length > 1 )
@@ -115,25 +115,25 @@ object Parsers {
     inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space.* ~> next.map( str => partial :+ str ) ) )
   }
 
-  private def functionAndInputsParser( abi : Abi.Definition, restrictToConstants : Boolean, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[(Abi.Function, immutable.Seq[String])] = {
+  private def functionAndInputsParser( abi : Abi, restrictToConstants : Boolean, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[(Abi.Function, immutable.Seq[String])] = {
     token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs, mbAliases ).map( seq => ( function, seq ) ) )
   }
 
   private [sbtethereum] val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
 
   // delayed parsers
-  private def constructorFromAbi( abi : Abi.Definition ) : Abi.Constructor = {
+  private def constructorFromAbi( abi : Abi ) : Abi.Constructor = {
     abi.constructors.length match {
       case 0 => Abi.Constructor.noArg
       case 1 => abi.constructors.head
       case _ => throw new Exception( s"""Constructor overloading not supprted (or legal in solidity). Found multiple constructors: ${abi.constructors.mkString(", ")}""" )
     }
   }
-  private def resultFromCompilation( contractName : String, compilation : jsonrpc.Compilation.Contract ) : Parser[ ( String, Option[ ( immutable.Seq[String], Abi.Definition, jsonrpc.Compilation.Contract ) ] ) ] = {
-    val mbAbi = compilation.info.mbAbiDefinition
+  private def resultFromCompilation( contractName : String, compilation : jsonrpc.Compilation.Contract ) : Parser[ ( String, Option[ ( immutable.Seq[String], Abi, jsonrpc.Compilation.Contract ) ] ) ] = {
+    val mbAbi = compilation.info.mbAbi
     mbAbi match {
       case Some( abiString ) => {
-        val abi = Json.parse( abiString ).as[Abi.Definition]
+        val abi = Json.parse( abiString ).as[Abi]
         val ctor = constructorFromAbi( abi )
         inputsParser( ctor.inputs, None ).map( seq => ( contractName, Some( ( seq, abi, compilation ) ) ) )
       }
@@ -143,7 +143,7 @@ object Parsers {
   private [sbtethereum] def genContractNamesConstructorInputsParser(
     state : State,
     mbContracts : Option[immutable.Map[String,jsonrpc.Compilation.Contract]]
-  ) : Parser[(String, Option[(immutable.Seq[String], Abi.Definition, jsonrpc.Compilation.Contract)])] = {
+  ) : Parser[(String, Option[(immutable.Seq[String], Abi, jsonrpc.Compilation.Contract)])] = {
     val contracts = mbContracts.getOrElse( immutable.Map.empty )
     val contractNames = immutable.TreeSet( contracts.keys.toSeq : _* )( Ordering.comparatorToOrdering( String.CASE_INSENSITIVE_ORDER ) )
     val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", ZWSP) else contractNames // non-breaking space to prevent autocompletion to dummy example
@@ -229,7 +229,7 @@ object Parsers {
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
     state : State,
     mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
-  ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition)] = {
+  ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi)] = {
     mbIdAndMbAliases match {
       case Some( Tuple2(blockchainId, mbAliases) ) => { 
         _genGenericAddressParser( state, mbAliases ).map( a => ( a, abiForAddressOrEmpty(blockchainId,a) ) ).flatMap { case ( address, abi ) =>
@@ -245,7 +245,7 @@ object Parsers {
   private [sbtethereum] def genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants : Boolean  )(
     state : State,
     mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
-  ) : Parser[((EthAddress, Abi.Function, immutable.Seq[String], Abi.Definition), Option[BigInt])] = {
+  ) : Parser[((EthAddress, Abi.Function, immutable.Seq[String], Abi), Option[BigInt])] = {
     genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbIdAndMbAliases ).flatMap { afia =>
       if ( afia._2.payable ) {
         valueInWeiParser("[ETH to pay, optional]").?.flatMap( mbv => success(  ( afia, mbv ) ) ) // useless flatmap rather than map

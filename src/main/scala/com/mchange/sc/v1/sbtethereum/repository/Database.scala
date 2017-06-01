@@ -41,7 +41,7 @@ object Database {
     mbLanguageVersion : Option[String] = None,
     mbCompilerVersion : Option[String] = None,
     mbCompilerOptions : Option[String] = None,
-    mbAbiDefinition   : Option[String] = None,
+    mbAbi             : Option[String] = None,
     mbUserDoc         : Option[String] = None,
     mbDeveloperDoc    : Option[String] = None,
     mbMetadata        : Option[String] = None
@@ -62,7 +62,7 @@ object Database {
             mbLanguageVersion,
             mbCompilerVersion,
             mbCompilerOptions,
-            mbAbiDefinition.map( abiStr => Json.parse( abiStr ).as[Abi.Definition] ),
+            mbAbi.map( abiStr => Json.parse( abiStr ).as[Abi] ),
             mbUserDoc.map( userDoc => Json.parse( userDoc ).as[Doc.User] ),
             mbDeveloperDoc.map( developerDoc => Json.parse( developerDoc ).as[Doc.Developer] ),
             mbMetadata
@@ -82,11 +82,11 @@ object Database {
     }
   }
 
-  def setMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress, abiDefinition : Abi.Definition ) : Failable[Unit] = {
+  def setMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress, abi : Abi ) : Failable[Unit] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
-          Table.MemorizedAbis.insert( conn, blockchainId, contractAddress, abiDefinition )
+          Table.MemorizedAbis.insert( conn, blockchainId, contractAddress, abi )
         }
       }
     }
@@ -112,7 +112,7 @@ object Database {
     }
   }
 
-  def getMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress ) : Failable[Option[Abi.Definition]] = {
+  def getMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress ) : Failable[Option[Abi]] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
@@ -151,7 +151,7 @@ object Database {
           mbLanguageVersion = mbLanguageVersion,
           mbCompilerVersion = mbCompilerVersion,
           mbCompilerOptions = mbCompilerOptions,
-          mbAbiDefinition   = mbAbiDefinition.map( a => Json.parse( a ).as[Abi.Definition] ),
+          mbAbi             = mbAbi.map( a => Json.parse( a ).as[Abi] ),
           mbUserDoc         = mbUserDoc.map( ud => Json.parse( ud ).as[Doc.User] ),
           mbDeveloperDoc    = mbDeveloperDoc.map( dd => Json.parse( dd ).as[Doc.Developer] ),
           mbMetadata        = mbMetadata
@@ -197,7 +197,7 @@ object Database {
     mbLanguageVersion   : Option[String],
     mbCompilerVersion   : Option[String],
     mbCompilerOptions   : Option[String],
-    mbAbiDefinition     : Option[Abi.Definition],
+    mbAbi               : Option[Abi],
     mbUserDoc           : Option[Doc.User],
     mbDeveloperDoc      : Option[Doc.Developer],
     mbMetadata          : Option[String]
@@ -227,7 +227,7 @@ object Database {
               mbLanguageVersion    = knownCompilation.mbLanguageVersion,
               mbCompilerVersion    = knownCompilation.mbCompilerVersion,
               mbCompilerOptions    = knownCompilation.mbCompilerOptions,
-              mbAbiDefinition      = knownCompilation.mbAbiDefinition,
+              mbAbi                = knownCompilation.mbAbi,
               mbUserDoc            = knownCompilation.mbUserDoc,
               mbDeveloperDoc       = knownCompilation.mbDeveloperDoc,
               mbMetadata           = knownCompilation.mbMetadata
@@ -247,7 +247,7 @@ object Database {
     mbLanguageVersion : Option[String],
     mbCompilerVersion : Option[String],
     mbCompilerOptions : Option[String],
-    mbAbiDefinition   : Option[Abi.Definition],
+    mbAbi             : Option[Abi],
     mbUserDoc         : Option[Doc.User],
     mbDeveloperDoc    : Option[Doc.Developer],
     mbMetadata        : Option[String]
@@ -270,7 +270,7 @@ object Database {
               mbLanguageVersion = knownCompilation.mbLanguageVersion,
               mbCompilerVersion = knownCompilation.mbCompilerVersion,
               mbCompilerOptions = knownCompilation.mbCompilerOptions,
-              mbAbiDefinition   = knownCompilation.mbAbiDefinition,
+              mbAbi             = knownCompilation.mbAbi,
               mbUserDoc         = knownCompilation.mbUserDoc,
               mbDeveloperDoc    = knownCompilation.mbDeveloperDoc,
               mbMetadata        = knownCompilation.mbMetadata

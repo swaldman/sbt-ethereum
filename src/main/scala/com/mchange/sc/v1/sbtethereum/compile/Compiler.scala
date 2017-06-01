@@ -213,11 +213,11 @@ object Compiler {
       val compilerOptions = map.get("settings").map( Json.stringify( _ ) )
 
       val omap = map.get("output").map( _.as[JsObject].value )
-      val abiDefinition = omap.flatMap( _.get("abi").map( _.as[Abi.Definition] ) )
+      val abi           = omap.flatMap( _.get("abi").map( _.as[Abi] ) )
       val userDoc       = omap.flatMap( _.get("userdoc").map( _.as[Doc.User] ) )
       val developerDoc  = omap.flatMap( _.get("devdoc").map( _.as[Doc.Developer] ) )
 
-      val info = Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abiDefinition, userDoc, developerDoc, Some( metadata ) )
+      val info = Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abi, userDoc, developerDoc, Some( metadata ) )
       Compilation.Contract( code, info )
     }
   }

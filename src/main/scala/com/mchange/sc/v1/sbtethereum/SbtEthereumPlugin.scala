@@ -36,7 +36,8 @@ import specification.Denominations
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
-import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAndArgs,callDataForAbiFunctionFromStringArgs,decodeReturnValuesForFunction,DecodedReturnValue,Encoder,stub}
+import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAndArgs,callDataForAbiFunctionFromStringArgs,decodeReturnValuesForFunction,DecodedReturnValue,Encoder}
+import com.mchange.sc.v1.consuela.ethereum.stub
 
 import scala.collection._
 import scala.sys.process.{Process,ProcessLogger}
@@ -267,7 +268,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethInvokeData = inputKey[immutable.Seq[Byte]]("Reveals the data portion that would be sent in a message invoking a function and its arguments on a deployed smart contract")
 
-    val xethLoadAbiFor = inputKey[Abi.Definition]("Finds the ABI for a contract address, if known")
+    val xethLoadAbiFor = inputKey[Abi]("Finds the ABI for a contract address, if known")
 
     val xethLoadCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
 
@@ -277,7 +278,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
 
-    val xethNamedAbis = taskKey[immutable.Map[String,Abi.Definition]]("Loads any named ABIs from the 'xethNamedAbiSource' directory")
+    val xethNamedAbis = taskKey[immutable.Map[String,Abi]]("Loads any named ABIs from the 'xethNamedAbiSource' directory")
 
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
 
@@ -797,7 +798,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               section( "Language Version", info.mbLanguageVersion )
               section( "Compiler Version", info.mbCompilerVersion )
               section( "Compiler Options", info.mbCompilerOptions )
-              jsonSection( "ABI Definition", info.mbAbiDefinition )
+              jsonSection( "ABI Definition", info.mbAbi )
               jsonSection( "User Documentation", info.mbUserDoc )
               jsonSection( "Developer Documentation", info.mbDeveloperDoc )
               section( "Metadata", info.mbMetadata )
@@ -814,7 +815,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               section( "Language Version", info.mbLanguageVersion )
               section( "Compiler Version", info.mbCompilerVersion )
               section( "Compiler Options", info.mbCompilerOptions )
-              jsonSection( "ABI Definition", info.mbAbiDefinition )
+              jsonSection( "ABI Definition", info.mbAbi )
               jsonSection( "User Documentation", info.mbUserDoc )
               jsonSection( "Developer Documentation", info.mbDeveloperDoc )
               section( "Metadata", info.mbMetadata )
@@ -1498,7 +1499,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val allMbAbis = {
         val sureNamedAbis = namedAbis map { case ( name, abi ) => ( name, Some( abi ) ) }
         val mbCompilationAbis = currentCompilations map { case ( name, contract ) =>
-          ( name,  contract.info.mbAbiDefinition.map( abiStr => Json.parse( abiStr ).as[Abi.Definition] ) )
+          ( name,  contract.info.mbAbi.map( abiStr => Json.parse( abiStr ).as[Abi] ) )
         }
         sureNamedAbis ++ mbCompilationAbis
       }
@@ -1537,8 +1538,8 @@ object SbtEthereumPlugin extends AutoPlugin {
                 val stubsDir = new File( scalaStubsTarget, stubsDirFilePath )
                 stubsDir.mkdirs()
                 if ( config != Test ) {
-                  val mbFiles = allMbAbis map { case ( className, mbAbiDefinition ) =>
-                    mbAbiDefinition match {
+                  val mbFiles = allMbAbis map { case ( className, mbAbi ) =>
+                    mbAbi match {
                       case Some( abi ) => {
                         val gensrc = stub.Generator.generateContractStub( className, abi, stubPackage )
                         val srcFile = new File( stubsDir, s"${className}.scala" )
@@ -1616,7 +1617,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       repository.Keystore.V3.storeWallet( w ).get // asserts success
     }
 
-    def xethLoadAbiForTask( config : Configuration ) : Initialize[InputTask[Abi.Definition]] = {
+    def xethLoadAbiForTask( config : Configuration ) : Initialize[InputTask[Abi]] = {
       val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genGenericAddressParser )
 
       Def.inputTask {
@@ -1750,21 +1751,21 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethNamedAbisTask : Initialize[Task[immutable.Map[String,Abi.Definition]]] = Def.task {
+    def xethNamedAbisTask : Initialize[Task[immutable.Map[String,Abi]]] = Def.task {
       val log    = streams.value.log
       val srcDir = (xethNamedAbiSource in Compile).value
 
-      def empty = immutable.Map.empty[String,Abi.Definition]
+      def empty = immutable.Map.empty[String,Abi]
 
       if ( srcDir.exists) {
         if ( srcDir.isDirectory ) {
           val files = srcDir.listFiles( JsonFilter )
 
-          def toTuple( f : File ) : ( String, Abi.Definition ) = {
+          def toTuple( f : File ) : ( String, Abi ) = {
           val filename = f.getName()
             val name = filename.take( filename.length - JsonFilter.DotSuffix.length ) // the filter ensures they do have the suffix
             val json = borrow ( Source.fromFile( f ) )( _.close )( _.mkString ) // is there a better way
-            ( name, Json.parse( json ).as[Abi.Definition] )
+            ( name, Json.parse( json ).as[Abi] )
           }
 
           files.map( toTuple ).toMap // the directory ensures there should be no dups!
@@ -2054,9 +2055,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi.Definition]
+    private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
 
-    private def readAddressAndAbi( log : sbt.Logger, is : sbt.InteractionService ) : ( EthAddress, Abi.Definition ) = {
+    private def readAddressAndAbi( log : sbt.Logger, is : sbt.InteractionService ) : ( EthAddress, Abi ) = {
       val address = EthAddress( is.readLine( "Contract address in hex: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
       val abi = parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
       ( address, abi )

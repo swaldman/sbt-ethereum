@@ -280,7 +280,7 @@ object Schema_h2 {
         mbLanguageVersion : Option[String],
         mbCompilerVersion : Option[String],
         mbCompilerOptions : Option[String],
-        mbAbiDefinition   : Option[Abi.Definition],
+        mbAbi   : Option[Abi],
         mbUserDoc         : Option[Doc.User],
         mbDeveloperDoc    : Option[Doc.Developer],
         mbMetadata        : Option[String]
@@ -298,7 +298,7 @@ object Schema_h2 {
             mbLanguageVersion = reconcileLeaf( this.mbLanguageVersion, other.mbLanguageVersion ),
             mbCompilerVersion = reconcileLeaf( this.mbCompilerVersion, other.mbCompilerVersion ),
             mbCompilerOptions = reconcileLeaf( this.mbCompilerOptions, other.mbCompilerOptions ),
-            mbAbiDefinition   = reconcileLeaf( this.mbAbiDefinition, other.mbAbiDefinition ),
+            mbAbi   = reconcileLeaf( this.mbAbi, other.mbAbi ),
             mbUserDoc         = reconcileLeaf( this.mbUserDoc, other.mbUserDoc ),
             mbDeveloperDoc    = reconcileLeaf( this.mbDeveloperDoc, other.mbDeveloperDoc ),
             mbMetadata        = reconcileLeaf( this.mbMetadata, other.mbMetadata )
@@ -316,7 +316,7 @@ object Schema_h2 {
             mbLanguageVersion = reconcileOverLeaf( this.mbLanguageVersion, other.mbLanguageVersion ),
             mbCompilerVersion = reconcileOverLeaf( this.mbCompilerVersion, other.mbCompilerVersion ),
             mbCompilerOptions = reconcileOverLeaf( this.mbCompilerOptions, other.mbCompilerOptions ),
-            mbAbiDefinition   = reconcileOverLeaf( this.mbAbiDefinition, other.mbAbiDefinition ),
+            mbAbi   = reconcileOverLeaf( this.mbAbi, other.mbAbi ),
             mbUserDoc         = reconcileOverLeaf( this.mbUserDoc, other.mbUserDoc ),
             mbDeveloperDoc    = reconcileOverLeaf( this.mbDeveloperDoc, other.mbDeveloperDoc ),
             mbMetadata        = reconcileOverLeaf( this.mbMetadata, other.mbMetadata )
@@ -336,7 +336,7 @@ object Schema_h2 {
             mbLanguageVersion = Option( rs.getString("language_version") ),
             mbCompilerVersion = Option( rs.getString("compiler_version") ),
             mbCompilerOptions = Option( rs.getString("compiler_options") ),
-            mbAbiDefinition   = Option( rs.getString("abi_definition") ).map( parse ).map( _.as[Abi.Definition] ),
+            mbAbi   = Option( rs.getString("abi_definition") ).map( parse ).map( _.as[Abi] ),
             mbUserDoc         = Option( rs.getString("user_doc") ).map( parse ).map( _.as[Doc.User] ),
             mbDeveloperDoc    = Option( rs.getString("developer_doc") ).map( parse ).map( _.as[Doc.Developer] ),
             mbMetadata        = Option( rs.getString("metadata") )
@@ -358,7 +358,7 @@ object Schema_h2 {
         mbLanguageVersion : Option[String],
         mbCompilerVersion : Option[String],
         mbCompilerOptions : Option[String],
-        mbAbiDefinition   : Option[Abi.Definition],
+        mbAbi   : Option[Abi],
         mbUserDoc         : Option[Doc.User],
         mbDeveloperDoc    : Option[Doc.Developer],
         mbMetadata        : Option[String]
@@ -374,7 +374,7 @@ object Schema_h2 {
           setMaybeString( Types.VARCHAR )( ps,  7, mbLanguageVersion )
           setMaybeString( Types.VARCHAR )( ps,  8, mbCompilerVersion )
           setMaybeString( Types.VARCHAR )( ps,  9, mbCompilerOptions )
-          setMaybeString( Types.CLOB )   ( ps, 10, mbAbiDefinition.map( ad => stringify( toJson( ad ) ) ) )
+          setMaybeString( Types.CLOB )   ( ps, 10, mbAbi.map( ad => stringify( toJson( ad ) ) ) )
           setMaybeString( Types.CLOB )   ( ps, 11, mbUserDoc.map( ud => stringify( toJson( ud ) ) ) )
           setMaybeString( Types.CLOB )   ( ps, 12, mbDeveloperDoc.map( dd => stringify( toJson( dd ) ) ) )
           setMaybeString( Types.CLOB )   ( ps, 13, mbMetadata )
@@ -396,7 +396,7 @@ object Schema_h2 {
           kc.mbLanguageVersion,
           kc.mbCompilerVersion,
           kc.mbCompilerOptions,
-          kc.mbAbiDefinition,
+          kc.mbAbi,
           kc.mbUserDoc,
           kc.mbDeveloperDoc,
           kc.mbMetadata
@@ -405,7 +405,7 @@ object Schema_h2 {
       def updateAbiDefinition( conn : Connection, baseCodeHash : EthHash, fullCodeHash : EthHash, mbAbiDefinition : Option[String] ) : Boolean = {
         borrow( conn.prepareStatement( UpdateAbiSql ) ){ ps =>
           mbAbiDefinition match {
-            case Some( abiDefinition ) => ps.setString( 1, abiDefinition )
+            case Some( abi ) => ps.setString( 1, abi )
             case None                  => ps.setNull( 1, Types.CLOB )
           }
           ps.setString( 2, fullCodeHash.hex )
@@ -587,21 +587,21 @@ object Schema_h2 {
           }
         }
       }
-      def select( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Option[Abi.Definition] = {
+      def select( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Option[Abi] = {
         borrow( conn.prepareStatement( SelectSql ) ){ ps =>
           ps.setString(1, blockchainId )
           ps.setString(2, contractAddress.hex )
           borrow( ps.executeQuery() ){ rs =>
             val mbJson = getMaybeSingleString( rs )
-            mbJson.map( Json.parse ).map( _.as[Abi.Definition] )
+            mbJson.map( Json.parse ).map( _.as[Abi] )
           }
         }
       }
-      def insert( conn : Connection, blockchainId : String, contractAddress : EthAddress, abiDefinition : Abi.Definition ) : Unit = {
+      def insert( conn : Connection, blockchainId : String, contractAddress : EthAddress, abi : Abi ) : Unit = {
         borrow( conn.prepareStatement( InsertSql ) ) { ps =>
           ps.setString( 1, blockchainId )
           ps.setString( 2, contractAddress.hex )
-          ps.setString( 3, Json.stringify( Json.toJson( abiDefinition ) ) )
+          ps.setString( 3, Json.stringify( Json.toJson( abi ) ) )
           ps.executeUpdate()
         }
       }
