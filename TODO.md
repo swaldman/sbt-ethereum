@@ -14,11 +14,9 @@
 * ethSenderEffective
 * ethNameService*
 * ethToken*
-* cap / floor on Invoker.Markup
 * Make stub compilation incremental
 * Optimize stubs a bit (don't recreate Abi.Function in every call)
-* async sections of (or separate async classes of) stubs?
-* managedResources += propfile mapping contract names to deployed addresses
+* built-in solcJ-based eth-netcompile
 * Integrate keystore into database? (?)
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup!
 * change names of xethQueryRepositoryDatabase and xethUpdateRepositoryDatabase to xethSqlQueryRepositoryDatabase and xethSqlUpdateRepositoryDatabase

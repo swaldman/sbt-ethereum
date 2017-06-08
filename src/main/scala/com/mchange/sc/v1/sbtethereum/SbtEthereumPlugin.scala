@@ -26,6 +26,8 @@ import play.api.libs.json.{Json, JsObject}
 
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.lang.borrow
+import com.mchange.sc.v2.io._ // for implicit file operations
+
 import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.consuela._
@@ -1530,19 +1532,22 @@ object SbtEthereumPlugin extends AutoPlugin {
                 val stubsDir = new File( scalaStubsTarget, stubsDirFilePath )
                 stubsDir.mkdirs()
                 if ( config != Test ) {
-                  val mbFiles = allMbAbis map { case ( className, mbAbi ) =>
-                    mbAbi match {
-                      case Some( abi ) => {
-                        val gensrc = stub.Generator.generateContractStub( className, abi, stubPackage )
-                        val srcFile = new File( stubsDir, s"${className}.scala" )
-                        Files.write( srcFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
-                        Some( srcFile )
-                      }
-                      case None => {
-                        log.warn( s"No ABI definition found for contract '${className}'. Skipping Scala stub generation." )
-                        None
+                  val mbFiles = allMbAbis flatMap { case ( className, mbAbi ) =>
+                    def genFile( async : Boolean ) : Option[File] = {
+                      mbAbi match {
+                        case Some( abi ) => {
+                          val ( stubClassName, gensrc ) = stub.Generator.generateContractStub( className, abi, async, stubPackage )
+                          val srcFile = new File( stubsDir, s"${stubClassName}.scala" )
+                          srcFile.replaceContents( gensrc, scala.io.Codec.UTF8 )
+                          Some( srcFile )
+                        }
+                        case None => {
+                          log.warn( s"No ABI definition found for contract '${className}'. Skipping Scala stub generation." )
+                          None
+                        }
                       }
                     }
+                    genFile( false ) :: genFile( true ) :: Nil
                   }
                   mbFiles.filter( _ != None ).map( _.get ).toVector
                 } else {
