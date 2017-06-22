@@ -113,8 +113,7 @@ object ResolveCompileSolidity {
       if ( failureCount > 0 ) {
         log.error( errorMessage( failureCount ) )
         labeledFailures.foreach { 
-          case ( file, jf : jsonrpc.Exception ) => log.error( s"File: ${file.getAbsolutePath}${SEP}${jf.message}" )
-          case ( file, other                    ) => log.error( s"File: ${file.getAbsolutePath}${SEP}${other.toString}" )
+          case ( file, info ) => log.error( s"File: ${file.getAbsolutePath}${SEP}${info.toString}" )
         }
         throw labeledFailures.head._2
       }

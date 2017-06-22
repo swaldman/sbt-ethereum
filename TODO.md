@@ -8,14 +8,17 @@
        ethAbiShow should dump JSON text
 * xethEstimateGas
 * xethSendMessage
-* ethSelfPing => ethPingSelf
+* ethSelfPing => ethAccountPingSelf
 * Prettify output of log items in client transactions
 * event handling generally
 * ethSenderEffective
 * ethNameService*
 * ethToken*
 * Make stub compilation incremental
+* Uncloseable default Poller, Exchanger.Factory, jsonrpc.Client.Factory
 * Optimize stubs a bit (don't recreate Abi.Function in every call)
+* NIO-based (netty?) exchanger / invoker / stub
+* Load-balancing exchanger / invoker / stub
 * built-in solcJ-based eth-netcompile
 * Integrate keystore into database? (?)
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup!

@@ -19,6 +19,7 @@ object TestingResourcesGenerator {
       iw.println( "import com.mchange.sc.v1.consuela.ethereum.EthPrivateKey" )
       iw.println( "import com.mchange.sc.v1.consuela.ethereum.stub" )
       iw.println( "import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker" )
+      iw.println( "import com.mchange.sc.v1.consuela.ethereum.specification.Denominations" )
       iw.println()
 
       iw println( s"object ${objectName} {" )
@@ -33,7 +34,7 @@ object TestingResourcesGenerator {
       iw.println( "val EntropySource = new java.security.SecureRandom()" )
       iw.println()
 
-      iw.println( "trait Context extends stub.Utilities {" )
+      iw.println( "trait Context extends Denominations {" )
       iw.upIndent()
 
       iw.println( "implicit val econtext = scala.concurrent.ExecutionContext.Implicits.global" )

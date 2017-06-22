@@ -14,7 +14,12 @@ import play.api.libs.json._
 
 import com.mchange.sc.v2.lang.borrow
 
+import com.mchange.sc.v1.consuela.ethereum.jsonrpc
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc._
+
+import com.mchange.sc.v2.yinyang._
+
+import com.mchange.sc.v2.jsonrpc.Exchanger
 
 import com.mchange.sc.v1.log.MLevel._
 
@@ -45,7 +50,9 @@ object Compiler {
       val KeyPrefix = "ethjsonrpc@"
     }
     final case class EthJsonRpc( jsonRpcUrl : String ) extends Compiler.Solidity {
-      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = util.EthJsonRpc.doAsyncCompileSolidity( log, jsonRpcUrl, source )( ec )
+      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
+        util.EthJsonRpc.doAsyncCompileSolidity( log, jsonRpcUrl, source )( jsonrpc.Client.Factory.Default, ec )
+      }
     }
     final object EthNetcompile {
       val KeyPrefix = "eth-netcompile@"
@@ -53,9 +60,12 @@ object Compiler {
     final case class EthNetcompile( ethNetcompileUrl : String ) extends Compiler.Solidity {
       val url = new URL( ethNetcompileUrl ) 
       def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
-        borrow( new Exchanger.Simple( url ) ) { exchanger =>
+        borrow( Exchanger.Factory.Simple( url ) ) { exchanger =>
           val fsuccess = exchanger.exchange( "ethdev_compile", new JsArray( immutable.Seq( JsObject( immutable.Seq("language" -> JsString("solidity"), "sourceFile" -> JsString(source) ) ) ) ) )( ec )
-          fsuccess.map( success => compilationFromEthNetcompileResult( log, source, success.result.as[JsObject] ) ) 
+          fsuccess map {
+            case Yin( error )    => error.vomit
+            case Yang( success ) => compilationFromEthNetcompileResult( log, source, success.result.as[JsObject] )
+          }
         }
       }
       private def compilationFromEthNetcompileResult( log : sbt.Logger, source : String, ethNetcompileResult : JsObject ) : Compilation = {

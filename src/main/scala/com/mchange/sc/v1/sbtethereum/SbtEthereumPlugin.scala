@@ -1129,7 +1129,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val (_, result) = extract.runInputTask(ethSendEther in config, sendArgs, s)
 
       val out = result
-      out.fold( log.warn("Ping failed! Our attempt to send 0 ether from '${address.hex}' to itself may or may not eventually succeed, but we've timed out before hearing back." ) ) { receipt =>
+      out.fold( log.warn( s"Ping failed! Our attempt to send 0 ether from '${address.hex}' to itself may or may not eventually succeed, but we've timed out before hearing back." ) ) { receipt =>
         log.info( "Ping succeeded!" )
         log.info( s"Sent 0 ether from '${address.hex}' to itself in transaction '0x${receipt.transactionHash.hex}'" )
       }
@@ -1931,9 +1931,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       data        : Option[Seq[Byte]],
       blockNumber : jsonrpc.Client.BlockNumber,
       markup      : Double
-    )(
-      implicit ec : ExecutionContext
-    ) : BigInt = {
+    )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
       GasOverride.get match {
         case Some( overrideValue ) => {
           log.info( s"Gas override set: ${overrideValue}")
@@ -1941,7 +1939,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           overrideValue
         }
         case None => {
-          doEstimateAndMarkupGas( log, jsonRpcUrl, from, to, value, data, blockNumber, markup )( ec )
+          doEstimateAndMarkupGas( log, jsonRpcUrl, from, to, value, data, blockNumber, markup )( clientFactory, ec )
         }
       }
     }
