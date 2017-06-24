@@ -15,9 +15,8 @@
 * ethNameService*
 * ethToken*
 * Make stub compilation incremental
-* Uncloseable default Poller, Exchanger.Factory, jsonrpc.Client.Factory
+* Uncloseable wrappers for default Poller (done!), Exchanger.Factory, jsonrpc.Client.Factory
 * Optimize stubs a bit (don't recreate Abi.Function in every call)
-* NIO-based (netty?) exchanger / invoker / stub
 * Load-balancing exchanger / invoker / stub
 * built-in solcJ-based eth-netcompile
 * Integrate keystore into database? (?)

@@ -58,9 +58,8 @@ object Parsers {
   private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> RawAmountParser, tabHelp)
 
   private [sbtethereum] val UnitParser = {
-    val ( w, s, f, e ) = ( "wei", "szabo", "finney", "ether" );
-    //(Space.* ~>(literal(w) | literal(s) | literal(f) | literal(e))).examples(w, s, f, e)
-    Space.* ~> token(literal(w) | literal(s) | literal(f) | literal(e))
+    val ( w, gw, s, f, e ) = ( "wei", "gwei", "szabo", "finney", "ether" );
+    Space.* ~> token(literal(w) | literal(gw) | literal(s) | literal(f) | literal(e))
   }
 
   private [sbtethereum] def toValueInWei( amount : BigDecimal, unit : String ) = rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt

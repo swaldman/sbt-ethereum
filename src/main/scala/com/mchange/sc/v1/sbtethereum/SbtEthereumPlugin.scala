@@ -71,6 +71,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val GasOverride = new AtomicReference[Option[BigInt]]( None )
 
+  private val GasPriceOverride = new AtomicReference[Option[BigInt]]( None )
+
   // MT: protected by SenderOverride's lock
   private val SenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
 
@@ -257,6 +259,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethGasOverrideShow = taskKey[Unit]("Displays the current gas override, if set.")
 
     val xethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
+
+    val xethGasPriceOverrideSet = inputKey[Unit]("Defines a value which overrides the usual automatic marked-up default gas price that will be paid for a transaction.")
+
+    val xethGasPriceOverrideDrop = taskKey[Unit]("Removes any previously set gas price override, reverting to the usual automatic marked-up default.")
+
+    val xethGasPriceOverrideShow = taskKey[Unit]("Displays the current gas price override, if set.")
 
     val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethEntropySource as a source of randomness")
 
@@ -500,6 +508,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       xethGasPrice in Compile <<= xethGasPriceTask( Compile ),
 
       xethGasPrice in Test <<= xethGasPriceTask( Test ),
+
+      xethGasPriceOverrideSet <<= xethGasPriceOverrideSetTask,
+
+      xethGasPriceOverrideDrop <<= xethGasPriceOverrideDropTask,
+
+      xethGasPriceOverrideShow <<= xethGasPriceOverrideShowTask,
 
       xethGenKeyPair <<= xethGenKeyPairTask, // global config scope seems appropriate
 
@@ -1440,7 +1454,31 @@ object SbtEthereumPlugin extends AutoPlugin {
       val markup          = ethGasPriceMarkup.value
       val defaultGasPrice = (xethDefaultGasPrice in config).value
 
-      rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) ).toBigInt
+      GasPriceOverride.get match {
+        case Some( gasPriceOverride ) => gasPriceOverride
+        case None                     => rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) ).toBigInt
+      }
+    }
+
+    def xethGasPriceOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
+      val log = streams.value.log
+      val amount = valueInWeiParser("<gas price override>").parsed
+      GasPriceOverride.set( Some( amount ) )
+      log.info( s"Gas price override set to ${amount}." )
+    }
+
+    def xethGasPriceOverrideDropTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+      GasPriceOverride.set( None )
+      log.info("No gas price override is now set. Gas price will be automatically marked-up from your ethereum node's current default value.")
+    }
+
+    def xethGasPriceOverrideShowTask : Initialize[Task[Unit]] = Def.task {
+      val log = streams.value.log
+      GasPriceOverride.get match {
+        case Some( value ) => log.info( s"A gas price override is set, with value ${value}." )
+        case None          => log.info( "No gas price override is currently set." )
+      }
     }
 
     def xethGenKeyPairTask : Initialize[Task[EthKeyPair]] = Def.task {
