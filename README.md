@@ -4,7 +4,7 @@
 
 ## What is this?
 
-sbt-ethereum is very much a work in progress. For the moment you can...
+`sbt-ethereum `is very much a work in progress. For the moment you can...
 
 1. Write, compile, and deploy solidity contracts, along with code in Scala and other languages, in a standard SBT project 
 2. Send ether to ethereum addresses
@@ -18,17 +18,17 @@ Expect everything to change. Obviously, NO WARRANTIES, see the [LICENSE](LICENSE
 ## Getting Started
 
 1. `sbt-ethereum` is not a standalone Ethereum client. It requires access to a provider of [Ethereum's JSON-RPC API](https://github.com/ethereum/wiki/wiki/JSON-RPC),
-preferably (for security reasons) running only on the localhost interface. sbt-ethereum has mostly been tried against [go-ethereum](https://github.com/ethereum/go-ethereum) by
+preferably (for security reasons) running only on the `localhost` interface. `sbt-ethereum` has mostly been tried against [go-ethereum](https://github.com/ethereum/go-ethereum) by
 running `geth --rpc`, but it should work with any client that supports the JSON-RPC interface.
 
-2. You will also need the [solidity compiler solc](https://github.com/ethereum/solidity) installed on your computer (available in the `PATH` visible to geth).
+2. You will also need the [solidity compiler solc](https://github.com/ethereum/solidity) installed on your computer (available in the `PATH` visible to `geth`).
 
 3. You'll need to download [sbt](http://www.scala-sbt.org) if you don't have it already. sbt-ethereum is an "autoplugin", which requires sbt 0.13.5 or later.
 
 4. Define a standard project (see [below](https://gist.github.com/swaldman/38ffc4f069a8672b2b86841892fd6762#sbt-project-layout)) that includes the plugin and
 sets an `ethSender` key, representing the address from which you will be deploying your contracts and/or sending ether
 
-5. Enter your project's top-level directory in a terminal and type `sbt` to enter the environment. sbt-ethereum functionality will now be available.
+5. Enter your project's top-level directory in a terminal and type `sbt` to enter the environment. `sbt-ethereum` functionality will now be available.
 
 ## SBT project layout
 
@@ -106,14 +106,12 @@ You can use the `<tab>` key for suggestions and completions. Instead of `wei`, y
 
 ### Compiling and deploying contracts
 
-Compilation of soldity contracts is integrated into sbt's standard compilation pipeline. So, just type
+Compilation of Soldity contracts is integrated into sbt's standard compilation pipeline. So, just type
 
     > compile
 
-You can have sbt continually compile your contracts, every time you save by typing
+You can have `sbt` continually compile your contracts, every time you save by prefixing the word `compile` with a tilda, like this:
     
-To compile your contracts.
-
     > ~compile
 
 To deploy one of the contracts in your `src/main/solidity` directory, use the `ethDeployOnly` task:
@@ -129,25 +127,29 @@ Some contracts require constructor arguments in order to be deployed. Supply tho
     > ethDeployOnly my_contract 234 567 "Hello"
 
 If your contract deploys successfully, you'll see no failure, and information about the deployment will be logged in sbt-ethereum's repository. ABI metadata will be stored in
-the sbt-ethereum repository, making it easy to interact with your contract on the sbt-ethereum command line.
+the `sbt-ethereum` repository, making it easy to interact with your contract on the `sbt-ethereum` command line.
 
-A message indicating the address of your newly deployed contract will usually be emitted. (If for some reason sbt-ethereum cannot get a transaction receipt with the address,
+A message indicating the address of your newly deployed contract will usually be emitted. 
+(If for some reason `sbt-ethereum` cannot get a transaction receipt with the address,
 try an ethereum blockchain browser ([ether.camp](https://live.ether.camp), [etherchain](https://www.etherchain.org), [etherscan](http://etherscan.io)) to lookup the address of your deployed contract.
 You can search on the transaction hash, or on the address from which you are deploying.)
 
 ### Import handling when compiling projects
 
-sbt-ethereum supports only Solidity's simple import syntax, of the form
+`sbt-ethereum` supports only Solidity's simple import syntax, of the form
 ```
-import "somefile.sol"; //looks for somefile.sol in the directory local to the file and anywhere else you may have specified as include locations
+import "somefile.sol"; 
 ```
-However, sbt-ethereum can import from URLs as well as files. For example
+The above looks for `somefile.sol` in the directory local to the file and anywhere else you may have specified as `include` locations
+However, `sbt-ethereum` can `import` from URLs as well as files. For example
 ```
 import "http://solidity.mchange.com/somefile.sol";
 ```
 should work as well.
 
-GitHub URLs are handled specially. You can browse to a solidity source file on GitHub and copy its URL. (You needn't find the URL for the raw source -- sbt-ethereum handles that for you.)
+GitHub URLs are handled specially. 
+You can browse to a Solidity source file on GitHub and copy its URL. 
+(You needn't find the URL for the raw source -- `sbt-ethereum` handles that for you.)
 Both of these are fine:
 ```
 // this is the URL to the current version of the file
@@ -164,7 +166,7 @@ To specify include locations, which should be file paths or URLs, use the settin
 
 **_Please bear in mind that sbt-ethereum is young, largely untested code, offered without warranties. Don't try high-stakes stuff, or work from high-stakes addresses!_**
 
-Metainformation about any smart contract you deploy, from any project, will be saved in the sbt-ethereum database. You can interact with those contracts using
+Metainformation about any smart contract you deploy, from any project, will be saved in the `sbt-ethereum` database. You can interact with those contracts using
 the `ethInvokeTransaction` task. [_Note: The call below is restricted to the contract's issuer, `0x465e79b940bc2157e4259ff6b2d92f454497f1e4`. You won't be able to try this example at home._]
 
     > ethInvokeTransaction 0xde895c2c73e9f5332c90e3e7ffa705f751f747b0 <tab>
@@ -192,7 +194,7 @@ information about a smart contract, do so by calling `constant` functions using 
     [info] Decoded return value of type 'uint256': 888
     [success] Total time: 1 s, completed Dec 18, 2016 3:45:38 PM
 
-If you wish to interact with a smart contract that you did not deploy from sbt-ethereum, you'll have to import its ABI into the sbt-ethereum database.
+If you wish to interact with a smart contract that you did not deploy from sbt-ethereum, you'll have to import its ABI into the `sbt-ethereum` database.
 
     > ethAbiMemorize
     Contract address in hex: 0x18a672E11D637fffADccc99B152F4895Da069601
@@ -208,12 +210,12 @@ If you wish to interact with a smart contract that you did not deploy from sbt-e
 
 ### Generating accounts and wallets
 
-To generate a new account, the safest and most straightforward approach is to generate a geth-style V3 wallet:
+To generate a new account, the safest and most straightforward approach is to generate a `geth`-style V3 wallet:
 
     > ethKeystoreCreateWalletV3
     
 Follow the prompts (to enter and confirm a masked passphrase), and an account and wallet will be generated.
-The wallet will reside in the sbt-ethereum repository (see below), under `keystore/v3`, in a format and under filenames that are interoperable with `geth`.
+The wallet will reside in the `sbt-ethereum` repository (see below), under `keystore/v3`, in a format and under filenames that are interoperable with `geth`.
 (You can copy these files directly into your `geth` keystore if you'd like.)
 
 __Note: Be sure to test a wallet before sending signficant value to it. And then back it up!__
@@ -247,7 +249,8 @@ You'll need to send a small amount of ether to your new account, so that the pin
 
 ### Using aliases instead of addresses
 
-It can be annoying to copy and paste long hexadecimal Ethereum addresses. sbt-ethereum permits you to define aliases for addresses and use
+It can be annoying to copy and paste long hexadecimal Ethereum addresses. 
+`sbt-ethereum` permits you to define aliases for addresses and use
 those in most places in place of a hexadecimal address. To define a alias
 
     > ethAliasSet youtoken 0x5ee998b44d008adb2e00de2ef1b94bee34dfc9e0
@@ -384,11 +387,11 @@ For more advanced and unusual settings, check out the prefix `xeth` (instead of 
 
 ## Troubleshooting
 
-If you don't see the `eth*` tasks and settings, you may be running an older version of sbt.
+If you don't see the `eth*` tasks and settings, you may be running an older version of `sbt`.
 
 Consider adding a `build.properties` file under `my-project/project` like this:
 
-    sbt.version=0.13.13
+    sbt.version=0.13.16
 
 Even if your sbt-launcher is from an older version, this will cause `sbt` to manage your project
 from a sufficiently recent sbt.
@@ -401,5 +404,3 @@ Define `plugins.sbt` like this:
     resolvers += ("snapshots" at "https://oss.sonatype.org/content/repositories/snapshots")
 
     addSbtPlugin("com.mchange" % "sbt-ethereum" % "0.0.2-SNAPSHOT" changing())
-
-

@@ -9,24 +9,26 @@ import com.mchange.v2.io.IndentedWriter
 import com.mchange.sc.v1.consuela.ethereum.EthPrivateKey
 
 object TestingResourcesGenerator {
+  private val ethereumPackage = "com.mchange.sc.v1.consuela.ethereum"
+
   def generateTestingResources( objectName : String, testEthJsonRpcUrl : String, faucetKey : EthPrivateKey, fullyQualifiedPackageName : String ) : String = {
     val sw = new StringWriter()
 
     borrow( new IndentedWriter( sw ) ) { iw =>
-      iw.println( s"package ${fullyQualifiedPackageName}" )
+      iw.println( s"package $fullyQualifiedPackageName" )
       iw.println()
 
-      iw.println( "import com.mchange.sc.v1.consuela.ethereum.EthPrivateKey" )
-      iw.println( "import com.mchange.sc.v1.consuela.ethereum.stub" )
-      iw.println( "import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker" )
-      iw.println( "import com.mchange.sc.v1.consuela.ethereum.specification.Denominations" )
+      iw.println( s"import $ethereumPackage.EthPrivateKey" )
+      iw.println( s"import $ethereumPackage.stub" )
+      iw.println( s"import $ethereumPackage.jsonrpc.Invoker" )
+      iw.println( s"import $ethereumPackage.specification.Denominations" )
       iw.println()
 
-      iw println( s"object ${objectName} {" )
+      iw println s"object $objectName {"
       iw.upIndent()
 
-      iw.println( s"""val EthJsonRpcUrl = "${testEthJsonRpcUrl}"""" )
-      iw.println( s"""val Faucet = EthPrivateKey( "0x${faucetKey.hex}" )""" )
+      iw.println( s"""val EthJsonRpcUrl = "$testEthJsonRpcUrl"""" )
+      iw.println( s"""val Faucet = EthPrivateKey( "0x${ faucetKey.hex }" )""" )
       iw.println()
       iw.println( s"""val DefaultSender = stub.Sender.Basic( Faucet )""" )
       iw.println()
@@ -38,7 +40,7 @@ object TestingResourcesGenerator {
       iw.upIndent()
 
       iw.println( "implicit val econtext = scala.concurrent.ExecutionContext.Implicits.global" )
-      iw.println( s"implicit val icontext = Invoker.Context( EthJsonRpcUrl, Invoker.Markup( ${Default.GasMarkup} ), Invoker.Markup( ${Default.GasPriceMarkup} ) )" )
+      iw.println( s"implicit val icontext = Invoker.Context( EthJsonRpcUrl, Invoker.Markup( ${ Default.GasMarkup } ), Invoker.Markup( ${ Default.GasPriceMarkup } ) )" )
 
       iw.println( "def createRandomSender() : stub.Sender = stub.Sender.Basic( EthPrivateKey( EntropySource ) )" )
 
@@ -48,7 +50,7 @@ object TestingResourcesGenerator {
       iw.println( "trait AutoSender extends Context {" )
       iw.upIndent()
 
-      iw.println( s"implicit val DefaultSender = ${objectName}.DefaultSender" )
+      iw.println( s"implicit val DefaultSender = $objectName.DefaultSender" )
 
       iw.downIndent()
       iw.println( "}" )
@@ -59,6 +61,6 @@ object TestingResourcesGenerator {
       iw.println( "}" )
     }
 
-    sw.toString()
+    sw.toString
   }
 }

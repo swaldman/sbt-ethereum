@@ -3,8 +3,7 @@ package com.mchange.sc.v1.sbtethereum.compile
 import continuum._
 
 object TextCommentQuote {
-
-  sealed trait State;
+  sealed trait State
   case object InText               extends State
   case object InQuote              extends State
   case object InQuoteBackslash     extends State
@@ -17,10 +16,8 @@ object TextCommentQuote {
 
   val empty = TextCommentQuote( IntervalSet.empty[Int], IntervalSet.empty[Int], IntervalSet.empty[Int] )
 
-  /*
-   *  returns as _1 the original source string with its line breaks normalized to '\n',
-   *  which is the version of the String that corresponds to _2
-   */
+  /** @return as `_1` the original source string with its line breaks normalized to '\n',
+   *  which is the version of the `String` that corresponds to `_2` */
   def parse( source : String )  : ( String, TextCommentQuote ) = {
     def normalizeLineSeparators( input : String ) : String = AnyNewLine.replaceAllIn(input, "\n")
 
@@ -29,20 +26,19 @@ object TextCommentQuote {
 
     def i( start : Int, end : Int ) = Interval.closedOpen( start, end )
 
-    def addText( tcq : TextCommentQuote, start : Int, end : Int ) = if ( end > start ) tcq.copy( text = tcq.text + i(start, end) ) else tcq
+    def addText( tcq : TextCommentQuote, start : Int, end : Int )    = if ( end > start ) tcq.copy( text    = tcq.text    + i(start, end) ) else tcq
     def addComment( tcq : TextCommentQuote, start : Int, end : Int ) = if ( end > start ) tcq.copy( comment = tcq.comment + i(start, end) ) else tcq
-    def addQuote( tcq : TextCommentQuote, start : Int, end : Int ) = if ( end > start ) tcq.copy( quote = tcq.quote + i(start, end) ) else tcq
+    def addQuote( tcq : TextCommentQuote, start : Int, end : Int )   = if ( end > start ) tcq.copy( quote   = tcq.quote   + i(start, end) ) else tcq
 
     def _parse( index : Int, state : State, line : Int, col : Int, sectionBegin : Int, accum : TextCommentQuote ) : TextCommentQuote = {
-
       ( index, state ) match {
         case ( Len, InText | AfterSlash )                    => accum.copy( text = accum.text + i( sectionBegin, Len ) )
         case ( Len, InDoubleSlashComment )                   => accum.copy( comment = accum.comment + i( sectionBegin, Len ) )
         case ( Len, InQuote | InQuoteBackslash )             => throw new UnparsableFileException( "Unterminated quote at EOF", line, col )
         case ( Len, InCStyleComment | InCStyleCommentSplat ) => throw new UnparsableFileException( "Unterminated comment at EOF", line, col )
-        case _ => {
+        case _ =>
           val next = input( index )
-            ( state, next ) match {
+          ( state, next ) match {
             case ( InText,               '\042' ) => _parse( index + 1,              InQuote, line    , col + 1,        index, addText(accum, sectionBegin, index) )
             case ( InText,                  '/' ) => _parse( index + 1,           AfterSlash, line    , col + 1, sectionBegin, accum )
             case ( InText,                 '\n' ) => _parse( index + 1,               InText, line + 1,       1, sectionBegin, accum )
@@ -66,7 +62,6 @@ object TextCommentQuote {
             case ( InDoubleSlashComment,   '\n' ) => _parse( index + 1,               InText, line + 1,       1,    index + 1, addComment( accum, sectionBegin, index + 1) )
             case ( InDoubleSlashComment,      _ ) => _parse( index + 1, InDoubleSlashComment, line    , col + 1, sectionBegin, accum )
           }
-        }
       }
     }
 
@@ -74,4 +69,5 @@ object TextCommentQuote {
     ( input, tcq )
   }
 }
+
 case class TextCommentQuote( text : IntervalSet[Int], comment : IntervalSet[Int], quote : IntervalSet[Int] )

@@ -1,14 +1,14 @@
 package com.mchange.sc.v1
 
 import com.mchange.sc.v1.log.MLevel._
-
 import com.mchange.sc.v1.consuela.ethereum._
+import com.mchange.sc.v1.log.MLogger
 import jsonrpc.Abi
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 
 package object sbtethereum {
 
-  private implicit lazy val logger = mlogger( "com.mchange.sc.v1.sbtethereum.package" )
+  private implicit lazy val logger: MLogger = mlogger( "com.mchange.sc.v1.sbtethereum.package" )
 
   class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
 
@@ -28,18 +28,19 @@ package object sbtethereum {
 
   val DefaultSenderAlias = "defaultSender"
 
-  val EmptyAbi = Abi.empty
+  val EmptyAbi: Abi = Abi.empty
 
-  def rounded( bd : BigDecimal ) = bd.round( bd.mc ) // work around absence of default rounded method in scala 2.10 BigDecimal
+  def rounded( bd : BigDecimal ): BigDecimal = bd.round( bd.mc ) // work around absence of default rounded method in scala 2.10 BigDecimal
 
   def abiForAddress( blockchainId : String, address : EthAddress, defaultNotInDatabase : => Abi ) : Abi = {
     def findMemorizedAbi = {
       val mbAbi = repository.Database.getMemorizedContractAbi( blockchainId, address ).get // again, throw if database problem
       mbAbi.getOrElse( defaultNotInDatabase )
     }
+
     val mbDeployedContractInfo = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw an Exception if there's a database problem
     mbDeployedContractInfo.fold( findMemorizedAbi ) { deployedContractInfo =>
-      deployedContractInfo.mbAbi match {  
+      deployedContractInfo.mbAbi match {
         case Some( abi ) => abi
         case None        => findMemorizedAbi
       }
@@ -47,7 +48,7 @@ package object sbtethereum {
   }
 
   def abiForAddress( blockchainId : String, address : EthAddress ) : Abi = {
-    def defaultNotInDatabase = throw new ContractUnknownException( s"A contract at address ${address.hex} is not known in the sbt-ethereum repository." )
+    def defaultNotInDatabase = throw new ContractUnknownException( s"A contract at address ${ address.hex } is not known in the sbt-ethereum repository." )
     abiForAddress( blockchainId, address, defaultNotInDatabase )
   }
 

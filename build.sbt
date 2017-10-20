@@ -1,6 +1,6 @@
 val nexus = "https://oss.sonatype.org/"
-val nexusSnapshots = nexus + "content/repositories/snapshots";
-val nexusReleases = nexus + "service/local/staging/deploy/maven2";
+val nexusSnapshots = nexus + "content/repositories/snapshots"
+val nexusReleases = nexus + "service/local/staging/deploy/maven2"
 
 val sbtCoreNext = Def.setting {
   Defaults.sbtPluginExtra("org.scala-sbt" % "sbt-core-next" % "0.1.1", sbtBinaryVersion.value, scalaBinaryVersion.value)
@@ -14,7 +14,12 @@ version := "0.0.2-SNAPSHOT"
 
 sbtPlugin := true
 
-scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked" /*, "-Xlog-implicits" */)
+scalacOptions ++= Seq(
+  "-deprecation",
+  "-feature",
+  "-unchecked" /*,
+  "-Xlog-implicits" */
+)
 
 resolvers += ("releases" at nexusReleases)
 
@@ -22,14 +27,14 @@ resolvers += ("snapshots" at nexusSnapshots)
 
 resolvers += ("Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/")
 
-publishTo <<= version {
+publishTo := version {
   (v: String) => {
     if (v.trim.endsWith("SNAPSHOT"))
       Some("snapshots" at nexusSnapshots )
     else
       Some("releases"  at nexusReleases )
   }
-}
+}.value
 
 libraryDependencies += sbtCoreNext.value
 

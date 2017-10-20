@@ -2,35 +2,26 @@ package com.mchange.sc.v1.sbtethereum.compile
 
 import java.io.{BufferedOutputStream, File, FileOutputStream, OutputStreamWriter}
 import java.nio.file.Files
-
 import scala.annotation.tailrec
 import scala.concurrent.{ExecutionContext, Future}
-
-import scala.io.{Codec,Source}
-
+import scala.io.{Codec, Source}
 import scala.math.max
 import scala.util.matching.Regex.Match
-
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.failable.fail
-
 import com.mchange.sc.v2.lang.borrow
-
 import com.mchange.sc.v2.literal._
 import com.mchange.sc.v2.concurrent._
-
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc
 import jsonrpc.MapStringCompilationContractFormat
-
 import com.mchange.sc.v1.log.MLevel._
-
+import com.mchange.sc.v1.log.MLogger
 import play.api.libs.json.Json
-
 import sbt._ // for ** operator on File
 
 object ResolveCompileSolidity {
 
-  private implicit lazy val logger = mlogger( this )
+  private implicit lazy val logger: MLogger = mlogger( this )
 
   private val SEP = Option( System.getProperty("line.separator") ).getOrElse( "\n" )
 
@@ -42,15 +33,15 @@ object ResolveCompileSolidity {
   private val GoodImportBodyRegex = """\s*(\042.*?\042)\s*""".r
 
   // XXX: hardcoded
-  private val SolidityWriteBufferSize = 1024 * 1024; //1 MiB
+  private val SolidityWriteBufferSize = 1024 * 1024; // 1 MiB
 
   @tailrec
   private def loadResolveSourceFile( allSourceLocations : Seq[SourceFile.Location], key : String, remainingSourceLocations : Seq[SourceFile.Location] ) : Failable[SourceFile] = {
     if ( remainingSourceLocations.isEmpty ){
-      fail( s"""Could not resolve file for '${key}', checked source locations: '${allSourceLocations.mkString(", ")}'""" )
+      fail( s"""Could not resolve file for '$key', checked source locations: '${allSourceLocations.mkString(", ")}'""" )
     } else {
       val nextSrcLoc = remainingSourceLocations.head
-      def premessage( from : String = nextSrcLoc.toString ) = s"Failed to load '${key}' from '${from}': "
+      def premessage( from : String = nextSrcLoc.toString ) = s"Failed to load '$key' from '$from': "
       val fsource = Failable( SourceFile( nextSrcLoc, key ) ).xdebug( premessage() )
       if ( fsource.isFailed ) {
         loadResolveSourceFile( allSourceLocations, key, remainingSourceLocations.tail )
@@ -67,11 +58,10 @@ object ResolveCompileSolidity {
   }
 
   private def substituteImports( allSourceLocations : Seq[SourceFile.Location], input : SourceFile ) : Failable[SourceFile] = {
-
     var lastModified : Long = input.lastModified
 
     val ( normalized, tcq ) = TextCommentQuote.parse( input.rawText )
-     
+
     def replaceMatch( m : Match ) : String = {
       if ( tcq.quote.containsPoint( m.start ) ) {          // if the word import is in a quote
         m.group(0)                                         //   replace the match with itself
@@ -79,14 +69,14 @@ object ResolveCompileSolidity {
         m.group(0)                                         //   replace the match with itself
       } else {                                             // otherwise, do the replacement
         m.group(1) match {
-          case GoodImportBodyRegex( imported ) => {
+          case GoodImportBodyRegex( imported ) =>
             val key = StringLiteral.parsePermissiveStringLiteral( imported ).parsed
             val fimport = loadResolveSourceFile( input.immediateParent +: allSourceLocations, key ) // look first local to this file to resolve recursive imports
             val sourceFile = fimport.get // throw the Exception if resolution failed
             lastModified = max( lastModified, sourceFile.lastModified )
             sourceFile.rawText
-          }
-          case unkey => throw new Exception( s"""Unsupported import format: '${unkey}' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
+
+          case unkey => throw new Exception( s"""Unsupported import format: '$unkey' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
         }
       }
     }
@@ -112,8 +102,8 @@ object ResolveCompileSolidity {
       val failureCount = labeledFailures.size
       if ( failureCount > 0 ) {
         log.error( errorMessage( failureCount ) )
-        labeledFailures.foreach { 
-          case ( file, info ) => log.error( s"File: ${file.getAbsolutePath}${SEP}${info.toString}" )
+        labeledFailures.foreach {
+          case ( file, info ) => log.error( s"File: ${ file.getAbsolutePath }$SEP$info" )
         }
         throw labeledFailures.head._2
       }
@@ -124,33 +114,34 @@ object ResolveCompileSolidity {
 
     val filePairs = files.map { file =>
        // ( rawSourceFile, sourceFile, destinationFile, debugDestinationFile ), exception if file can't load
-      ( file, loadResolveSourceFile( file, includeSourceLocations ).get, new File( solDestDir, solToJson( file.getName() ) ), new File( solDestDir, file.getName() ) )
+      ( file, loadResolveSourceFile( file, includeSourceLocations ).get, new File( solDestDir, solToJson( file.getName ) ), new File( solDestDir, file.getName ) )
     }
+
     val compileFiles = filePairs.filter { case ( _, sourceFile, destFile, _ ) => changed( destFile, sourceFile ) }
 
     val cfl = compileFiles.length
     if ( cfl > 0 ) {
       val mbS = if ( cfl > 1 ) "s" else ""
-      log.info( s"Compiling ${compileFiles.length} Solidity source${mbS} to ${solDestDir}..." )
+      log.info( s"Compiling ${compileFiles.length} Solidity source$mbS to $solDestDir..." )
 
       val compileLabeledFuts = compileFiles.map { case ( file, sourceFile, destFile, debugDestFile ) =>
-        val combinedSource = {
+        val combinedSource =
           s"""|/*
               | * DO NOT EDIT! DO NOT EDIT! DO NOT EDIT!
               | *
               | * This is an automatically generated file. It will be overwritten.
               | *
-              | * For the original source see 
+              | * For the original source see
               | *    '${file.getPath}'
               | */
               |
               |""".stripMargin + sourceFile.pragmaResolvedText
-        }
-        Files.write( debugDestFile.toPath(), combinedSource.getBytes( Codec.UTF8.charSet ) )
-        log.info( s"Compiling '${file.getName()}'. (Debug source: '${debugDestFile.getPath()}')" )
+
+        Files.write( debugDestFile.toPath, combinedSource.getBytes( Codec.UTF8.charSet ) )
+        log.info( s"Compiling '${ file.getName }'. (Debug source: '${ debugDestFile.getPath }')" )
         file -> compiler.compile( log, combinedSource ).map( result => ( destFile, result ) )
       }
-      waitForFiles( compileLabeledFuts, count => s"compileSolidity failed. [${count} failures]" )
+      waitForFiles( compileLabeledFuts, count => s"compileSolidity failed. [$count failures]" )
 
       // if we're here, all compilations succeeded
       val destFileResultPairs = compileLabeledFuts.map {
@@ -158,15 +149,14 @@ object ResolveCompileSolidity {
       }
 
       val writerLabeledFuts = destFileResultPairs.map {
-        case ( destFile, result ) => {
+        case ( destFile, result ) =>
           destFile -> Future {
-            borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) ){ writer =>
-              writer.write( Json.stringify( Json.toJson ( result ) ) )
+            borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) ) {
+              _.write( Json.stringify( Json.toJson ( result ) ) )
             }
           }
-        }
       }
-      waitForFiles( writerLabeledFuts, count => s"Failed to write the output of some compilations. [${count} failures]" )
+      waitForFiles( writerLabeledFuts, count => s"Failed to write the output of some compilations. [$count failures]" )
     }
   }
 }

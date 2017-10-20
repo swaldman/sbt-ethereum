@@ -7,7 +7,7 @@ import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import scala.collection._
 
 package object testing {
-  val MaxWei   = Unsigned256.MaxValueExclusive - 1 // we want this to be an inclusive max
+  val MaxWei: BigInt = Unsigned256.MaxValueExclusive - 1 // we want this to be an inclusive max
 
   final object Default {
     final object EthJsonRpc {
@@ -15,7 +15,7 @@ package object testing {
 
       val Port = 58545 // conventional default, for testing
 
-      val Url = s"http://${Host}:${Port}"
+      val Url = s"http://$Host:$Port"
     }
 
     /**
@@ -25,8 +25,8 @@ package object testing {
       */
     val Faucet = EthKeyPair( EthPrivateKey( BigInt( 0x7e57 ) ) )
 
-    val TestrpcCommandParsed = immutable.Seq( "testrpc", "--port", EthJsonRpc.Port.toString, s"--account=0x${Faucet.pvt.hex},${MaxWei}" )
-    val TestrpcCommand = TestrpcCommandParsed.mkString(" ")
+    val TestrpcCommandParsed = Seq( "testrpc", "--port", EthJsonRpc.Port.toString, s"--account=0x${ Faucet.pvt.hex },$MaxWei" )
+    val TestrpcCommand: String = TestrpcCommandParsed.mkString(" ")
 
     val GasMarkup = 0.2
     val GasPriceMarkup = 0

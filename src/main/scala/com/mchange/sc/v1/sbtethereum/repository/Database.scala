@@ -1,30 +1,22 @@
 package com.mchange.sc.v1.sbtethereum.repository
 
 import java.io.File
-import java.sql.{Connection,Timestamp}
+import java.sql.{Connection, Timestamp}
 import java.text.SimpleDateFormat
 import java.util.Date
-
+import javax.sql.DataSource
 import scala.collection._
-
 import com.mchange.v2.c3p0.ComboPooledDataSource
-
 import com.mchange.sc.v1.sbtethereum.repository
 import com.mchange.sc.v1.sbtethereum.util.BaseCodeAndSuffix
-
 import com.mchange.sc.v2.sql._
 import com.mchange.sc.v2.failable._
-
 import com.mchange.sc.v1.log.MLevel._
-
 import com.mchange.sc.v1.consuela._
-
-import com.mchange.sc.v1.consuela.ethereum.{jsonrpc, EthAddress, EthHash}
+import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
 import jsonrpc.{Abi, Doc}
-
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
-
 import play.api.libs.json.Json
 
 object Database {
@@ -160,18 +152,15 @@ object Database {
         val mbKnownCompilation = Table.KnownCompilations.select( conn, bcas.fullCodeHash )
 
         mbKnownCompilation match {
-          case Some( kc ) => {
+          case Some( kc ) =>
             if ( kc != newCompilation ) {
               Table.KnownCompilations.upsert( conn, newCompilation reconcileOver kc )
               true
-            } else {
-              false
-            }
-          }
-          case None => {
+            } else false
+
+          case None =>
             Table.KnownCompilations.upsert( conn, newCompilation )
             true
-          }
         }
       }
       compiledContracts.toSeq.foldLeft( succeed( false ) )( ( failable, tup ) => failable.flatMap( last => doUpdate( conn, tup ).map( next => last || next ) ) )
@@ -332,44 +321,44 @@ object Database {
       }
     }
   }
-  def cullUndeployedCompilations() : Failable[Int] = {
+  def cullUndeployedCompilations() : Failable[Int] =
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ) { conn =>
-          borrow( conn.createStatement() ) { stmt =>
-            stmt.executeUpdate( CullUndeployedCompilationsSql )
+          borrow( conn.createStatement() ) {
+            _.executeUpdate( CullUndeployedCompilationsSql )
           }
         }
       }
     }
-  }
-  def createUpdateAlias( blockchainId : String, alias : String, address : EthAddress ) : Failable[Unit] = {
+
+  def createUpdateAlias( blockchainId : String, alias : String, address : EthAddress ) : Failable[Unit] =
     DataSource.flatMap { ds =>
       Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, blockchainId, alias, address ) ) )
     }
-  }
-  def findAllAliases( blockchainId : String ) : Failable[immutable.SortedMap[String,EthAddress]] = {
+
+  def findAllAliases( blockchainId : String ) : Failable[immutable.SortedMap[String,EthAddress]] =
     DataSource.flatMap { ds =>
       Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectAllForBlockchainId( _, blockchainId ) ) )
     }
-  }
-  def findAddressByAlias( blockchainId : String, alias : String ) : Failable[Option[EthAddress]] = {
+
+  def findAddressByAlias( blockchainId : String, alias : String ) : Failable[Option[EthAddress]] =
     DataSource.flatMap { ds =>
       Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, blockchainId, alias ) ) )
     }
-  }
-  def findAliasesByAddress( blockchainId : String, address : EthAddress ) : Failable[immutable.Seq[String]] = {
+
+  def findAliasesByAddress( blockchainId : String, address : EthAddress ) : Failable[immutable.Seq[String]] =
     DataSource.flatMap { ds =>
       Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAddress( _, blockchainId, address ) ) )
     }
-  }
-  def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = {
+
+  def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] =
     DataSource.flatMap { ds =>
       Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
     }
-  }
 
-  lazy val DataSource = h2.DataSource
+
+  lazy val DataSource: Failable[DataSource] = h2.DataSource
 
   final object h2 {
     val DirName = "h2"
@@ -398,25 +387,22 @@ object Database {
           Schema_h2.ensureSchema( ds )
           ds
         } catch {
-          case t : Throwable => {
+          case t : Throwable =>
             try ds.close() catch suppressInto(t)
             throw t
-          }
         }
       }
     }
 
     private def suppressInto( original : Throwable ) : PartialFunction[Throwable,Unit] = {
-      case t : Throwable => {
-        original.addSuppressed( t )
-      }
+      case t : Throwable => original.addSuppressed( t )
     }
 
     def makeBackup( conn : Connection, schemaVersion : Int ) : Failable[Unit] = {
-      BackupsDir.map{ pmbDir =>
+      BackupsDir.map { pmbDir =>
         val df = new SimpleDateFormat("yyyyMMdd'T'HHmmssZ")
         val ts = df.format( new Date() )
-        val targetFile = new File( pmbDir, s"${DbName}-v${schemaVersion}-$ts.sql" )
+        val targetFile = new File( pmbDir, s"$DbName-v$schemaVersion-$ts.sql" )
         borrow( conn.prepareStatement( s"SCRIPT TO '${targetFile.getAbsolutePath}' CHARSET 'UTF8'" ) )( _.executeQuery().close() ) // we don't need the result set, just want the file
       }
     }
