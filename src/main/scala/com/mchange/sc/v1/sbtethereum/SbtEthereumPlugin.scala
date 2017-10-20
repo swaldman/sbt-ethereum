@@ -1,48 +1,39 @@
 package com.mchange.sc.v1.sbtethereum
 
-import util.{BaseCodeAndSuffix}
+import util.BaseCodeAndSuffix
 import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstaller, SourceFile}
-
 import util.EthJsonRpc._
 import util.Parsers._
 import util.SBinaryFormats._
-
 import sbt._
 import sbt.Keys._
-import sbt.plugins.{JvmPlugin,InteractionServicePlugin}
+import sbt.plugins.{InteractionServicePlugin, JvmPlugin}
 import sbt.Def.Initialize
 import sbt.InteractionServiceKeys.interactionService
-
 import sbinary._
 import sbinary.DefaultProtocol._
-
-import java.io.{BufferedInputStream,File,FileInputStream,FilenameFilter}
+import java.io.{BufferedInputStream, File, FileInputStream, FilenameFilter}
 import java.nio.file.Files
 import java.security.SecureRandom
 import java.util.Date
 import java.util.concurrent.atomic.AtomicReference
-
-import play.api.libs.json.{Json, JsObject}
-
+import play.api.libs.json.{JsObject, Json}
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.lang.borrow
-import com.mchange.sc.v2.io._ // for implicit file operations
-
+import com.mchange.sc.v2.io._
 import com.mchange.sc.v1.log.MLevel._
-
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
-import jsonrpc.{Abi,ClientTransactionReceipt,MapStringCompilationContractFormat}
+import jsonrpc.{Abi, ClientTransactionReceipt, MapStringCompilationContractFormat}
 import specification.Denominations
-
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
-import com.mchange.sc.v1.consuela.ethereum.ethabi.{abiFunctionForFunctionNameAndArgs,callDataForAbiFunctionFromStringArgs,decodeReturnValuesForFunction,DecodedReturnValue,Encoder}
+import com.mchange.sc.v1.consuela.ethereum.ethabi.{DecodedReturnValue, Encoder, abiFunctionForFunctionNameAndArgs, callDataForAbiFunctionFromStringArgs, decodeReturnValuesForFunction}
 import com.mchange.sc.v1.consuela.ethereum.stub
-
+import com.mchange.sc.v1.log.MLogger
 import scala.collection._
-import scala.sys.process.{Process,ProcessLogger}
+import scala.sys.process.{Process, ProcessLogger}
 import scala.io.Source
 
 // XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
@@ -56,9 +47,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // not lazy. make sure the initialization banner is emitted before any tasks are executed
   // still, generally we should try to log through sbt loggers
-  private implicit val logger = mlogger( this )
+  private implicit val logger: MLogger = mlogger( this )
 
-  private trait AddressInfo;
+  private trait AddressInfo
   private final case object NoAddress                                                                                                         extends AddressInfo
   private final case class  UnlockedAddress( blockchainId : String, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
 
@@ -112,20 +103,18 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // if we've started a child test process,
   // kill it on exit
-  val TestrpcDestroyer = new Thread {
+  val TestrpcDestroyer: Thread = new Thread {
     override def run() : Unit = {
       LocalTestrpc synchronized {
         LocalTestrpc.get.foreach ( _.destroy )
       }
     }
   }
-  java.lang.Runtime.getRuntime().addShutdownHook( TestrpcDestroyer )
+
+  java.lang.Runtime.getRuntime.addShutdownHook( TestrpcDestroyer )
 
 
-  object autoImport {
-
-    // settings
-
+  object autoImport {// settings
     val ethSender = settingKey[String]("The address from which transactions will be sent")
 
     val ethBlockchainId = settingKey[String]("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
@@ -1293,7 +1282,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         try {
           val plogger = ProcessLogger(
             line => log.info( s"testrpc: ${line}" ),
-            line => log.warn( s"testrpc: ${line}" ) 
+            line => log.warn( s"testrpc: ${line}" )
           )
           log.info(s"Executing command '${testing.Default.TestrpcCommand}'")
           Process( testing.Default.TestrpcCommandParsed ).run( plogger )

@@ -31,9 +31,9 @@ package object repository {
       try {
         dir.mkdirs()
         if ( !dir.exists() || !dir.isDirectory ) {
-          fail(s"Specified sbt-ethereum repository directory '${dir}' must be a directory or must be creatable as a directory!")
+          fail(s"Specified sbt-ethereum repository directory '$dir' must be a directory or must be creatable as a directory!")
         } else if ( !dir.canRead || !dir.canWrite ) {
-          fail(s"Specified sbt-ethereum repository directory '${dir}' is must be readable and writable!")
+          fail(s"Specified sbt-ethereum repository directory '$dir' is must be readable and writable!")
         } else {
           succeed( dir )
         }

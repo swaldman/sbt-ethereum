@@ -47,7 +47,7 @@ object EthJsonRpc {
     import jsonrpc.Client.BlockNumber._
 
     val wei = doGetBalance( log, jsonRpcUrl, address, blockNumber )( clientFactory, ec )
-    val out = EthValue( wei, denomination.fromWei( wei ), denomination )
+    val out = EthValue( wei, denomination )
     val msg = blockNumber match {
       case Earliest       => s"${out.denominated} ${denomination.unitName} (at the earliest available block, address 0x${address.hex})"
       case Latest         => s"${out.denominated} ${denomination.unitName} (as of the latest incorporated block, address 0x${address.hex})"
