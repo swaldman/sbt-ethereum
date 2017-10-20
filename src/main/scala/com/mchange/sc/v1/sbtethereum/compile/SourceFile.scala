@@ -46,11 +46,9 @@ object SourceFile {
 
     private val FileSeparator = System.getProperty("file.separator")
 
-    private val forwardSlashes : String => String =
-      _.replace( '\\', '/' )
+    private val forwardSlashes : String => String = _.replace( '\\', '/' )
 
-    private val backwardSlashes : String => String =
-      _.replace( '/', '\\' )
+    private val backwardSlashes : String => String = _.replace( '/', '\\' )
 
     private val fileSlashes : String => String = {
        FileSeparator match {
@@ -77,8 +75,10 @@ object SourceFile {
         val fullUrl = new java.net.URL( base + forwardSlashes( key ) )
         val urlConn = fullUrl.openConnection()
         val lastMod = urlConn.getLastModified
-        val contents = borrow( Source.fromInputStream( new BufferedInputStream( urlConn.getInputStream ) )(Codec.UTF8) )( _.close )
-                             { _.foldLeft("")( _ + _ ) }
+        val contents = {
+          def gensrc = Source.fromInputStream( new BufferedInputStream( urlConn.getInputStream ) )(Codec.UTF8)
+          borrow( gensrc )( _.close )( _.foldLeft("")( _ + _ ) )
+        }
         val immediateParent = {
           val spec = fullUrl.toExternalForm
           Location.URL( new java.net.URL( spec.substring(0, spec.lastIndexOf('/') + 1) ) ) // include the final slash
@@ -104,18 +104,18 @@ object SourceFile {
 
   trait Location {
     final def resolveKey( key : String ) : Failable[SourceFile] = key match {
-      case AbsoluteFileRegex() =>
+      case AbsoluteFileRegex() => {
         val f = new File( key )
         Location.File( f.getParentFile ).resolveLocalKey( f.getName )
-
-      case _ if key.indexOf(':') >= 0 =>
+      }
+      case _ if (key.indexOf(':') >= 0) => {
         val spec = transformSpecialUrl( key ).getOrElse( key )
         val ( parent, name ) = {
           val nameIndex = spec.lastIndexOf('/') + 1
           ( spec.substring(0, nameIndex), spec.substring( nameIndex ) )
         }
         Location.URL( new java.net.URL( parent ) ).resolveLocalKey( name )
-
+      }
       case _ => this.resolveLocalKey( key )
     }
 
@@ -138,8 +138,9 @@ object SourceFile {
 
   val oldAndEmpty = SourceFile(Location.Empty, "", Long.MinValue)
 
-  def fileToString( srcFile : File ) : String =
+  def fileToString( srcFile : File ) : String = {
     borrow( Source.fromFile( srcFile )(Codec.UTF8) )( _.close() ){ _.foldLeft("")( _ + _ ) }
+  }
 }
 
 case class SourceFile( immediateParent : SourceFile.Location, rawText : String, lastModified : Long ) {
@@ -157,7 +158,7 @@ case class SourceFile( immediateParent : SourceFile.Location, rawText : String, 
 
       case 1 => exciseAndPrepend( SemanticVersion( matches.head.group(1) ) )
 
-      case n =>
+      case n => {
         val versions = matches.map( m => SemanticVersion( m.group(1) ) )
         val optVersions = versions.map( Some.apply )
         val mbCompatibleVersion = optVersions.reduceLeft( SemanticVersion.restrictiveCaretCompatible )
@@ -167,6 +168,7 @@ case class SourceFile( immediateParent : SourceFile.Location, rawText : String, 
           case None => throw new IncompatibleSolidityVersionsException( versions )
         }
         exciseAndPrepend( compatibleVersion )
+      }
     }
   }
 }

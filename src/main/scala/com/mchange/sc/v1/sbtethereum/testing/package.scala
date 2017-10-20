@@ -25,7 +25,7 @@ package object testing {
       */
     val Faucet = EthKeyPair( EthPrivateKey( BigInt( 0x7e57 ) ) )
 
-    val TestrpcCommandParsed = Seq( "testrpc", "--port", EthJsonRpc.Port.toString, s"--account=0x${ Faucet.pvt.hex },$MaxWei" )
+    val TestrpcCommandParsed = immutable.Seq( "testrpc", "--port", EthJsonRpc.Port.toString, s"--account=0x${ Faucet.pvt.hex },$MaxWei" )
     val TestrpcCommand: String = TestrpcCommandParsed.mkString(" ")
 
     val GasMarkup = 0.2

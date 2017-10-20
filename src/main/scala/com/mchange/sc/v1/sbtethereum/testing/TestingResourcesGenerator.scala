@@ -50,7 +50,7 @@ object TestingResourcesGenerator {
       iw.println( "trait AutoSender extends Context {" )
       iw.upIndent()
 
-      iw.println( s"implicit val DefaultSender = $objectName.DefaultSender" )
+      iw.println( s"implicit val DefaultSender = ${objectName}.DefaultSender" )
 
       iw.downIndent()
       iw.println( "}" )

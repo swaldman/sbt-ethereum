@@ -152,15 +152,17 @@ object Database {
         val mbKnownCompilation = Table.KnownCompilations.select( conn, bcas.fullCodeHash )
 
         mbKnownCompilation match {
-          case Some( kc ) =>
+          case Some( kc ) => {
             if ( kc != newCompilation ) {
               Table.KnownCompilations.upsert( conn, newCompilation reconcileOver kc )
               true
-            } else false
-
-          case None =>
+            }
+            else false
+          }
+          case None => {
             Table.KnownCompilations.upsert( conn, newCompilation )
             true
+          }
         }
       }
       compiledContracts.toSeq.foldLeft( succeed( false ) )( ( failable, tup ) => failable.flatMap( last => doUpdate( conn, tup ).map( next => last || next ) ) )
@@ -321,42 +323,35 @@ object Database {
       }
     }
   }
-  def cullUndeployedCompilations() : Failable[Int] =
-    DataSource.flatMap { ds =>
-      Failable {
-        borrow( ds.getConnection() ) { conn =>
-          borrow( conn.createStatement() ) {
-            _.executeUpdate( CullUndeployedCompilationsSql )
-          }
+  def cullUndeployedCompilations() : Failable[Int] = DataSource.flatMap { ds =>
+    Failable {
+      borrow( ds.getConnection() ) { conn =>
+        borrow( conn.createStatement() ) { stmt =>
+          stmt.executeUpdate( CullUndeployedCompilationsSql )
         }
       }
     }
+  }
 
-  def createUpdateAlias( blockchainId : String, alias : String, address : EthAddress ) : Failable[Unit] =
-    DataSource.flatMap { ds =>
-      Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, blockchainId, alias, address ) ) )
-    }
+  def createUpdateAlias( blockchainId : String, alias : String, address : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, blockchainId, alias, address ) ) )
+  }
 
-  def findAllAliases( blockchainId : String ) : Failable[immutable.SortedMap[String,EthAddress]] =
-    DataSource.flatMap { ds =>
-      Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectAllForBlockchainId( _, blockchainId ) ) )
-    }
+  def findAllAliases( blockchainId : String ) : Failable[immutable.SortedMap[String,EthAddress]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectAllForBlockchainId( _, blockchainId ) ) )
+  }
 
-  def findAddressByAlias( blockchainId : String, alias : String ) : Failable[Option[EthAddress]] =
-    DataSource.flatMap { ds =>
-      Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, blockchainId, alias ) ) )
-    }
+  def findAddressByAlias( blockchainId : String, alias : String ) : Failable[Option[EthAddress]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, blockchainId, alias ) ) )
+  }
 
-  def findAliasesByAddress( blockchainId : String, address : EthAddress ) : Failable[immutable.Seq[String]] =
-    DataSource.flatMap { ds =>
-      Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAddress( _, blockchainId, address ) ) )
-    }
+  def findAliasesByAddress( blockchainId : String, address : EthAddress ) : Failable[immutable.Seq[String]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAddress( _, blockchainId, address ) ) )
+  }
 
-  def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] =
-    DataSource.flatMap { ds =>
-      Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
-    }
-
+  def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
+  }
 
   lazy val DataSource: Failable[DataSource] = h2.DataSource
 

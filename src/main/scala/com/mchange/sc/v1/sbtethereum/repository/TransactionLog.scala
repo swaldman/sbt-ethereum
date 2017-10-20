@@ -7,13 +7,12 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{EthHash, EthTransaction}
-import com.mchange.sc.v2.yinyang.YinYang
 import scala.io.Codec
 
 object TransactionLog {
   private val TimestampPattern = "yyyy-MM-dd'T'HH-mm-ssZ"
 
-  lazy val File: YinYang[Fail, File] = Directory.map(dir => new java.io.File(dir, "transaction-log") )
+  lazy val File : Failable[File] = Directory.map(dir => new java.io.File(dir, "transaction-log") )
 
   case class Entry( timestamp : Date, txn : EthTransaction.Signed, transactionHash : EthHash ) {
     override def toString: String = {

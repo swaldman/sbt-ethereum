@@ -36,7 +36,7 @@ object TextCommentQuote {
         case ( Len, InDoubleSlashComment )                   => accum.copy( comment = accum.comment + i( sectionBegin, Len ) )
         case ( Len, InQuote | InQuoteBackslash )             => throw new UnparsableFileException( "Unterminated quote at EOF", line, col )
         case ( Len, InCStyleComment | InCStyleCommentSplat ) => throw new UnparsableFileException( "Unterminated comment at EOF", line, col )
-        case _ =>
+        case _ => {
           val next = input( index )
           ( state, next ) match {
             case ( InText,               '\042' ) => _parse( index + 1,              InQuote, line    , col + 1,        index, addText(accum, sectionBegin, index) )
@@ -62,6 +62,7 @@ object TextCommentQuote {
             case ( InDoubleSlashComment,   '\n' ) => _parse( index + 1,               InText, line + 1,       1,    index + 1, addComment( accum, sectionBegin, index + 1) )
             case ( InDoubleSlashComment,      _ ) => _parse( index + 1, InDoubleSlashComment, line    , col + 1, sectionBegin, accum )
           }
+        }
       }
     }
 

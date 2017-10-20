@@ -35,8 +35,9 @@ object Compiler {
   final object Solidity {
     def test( compiler : Compiler.Solidity )( implicit ec : ExecutionContext ) : Boolean = {
       try {
-        val fcompilation: Future[Compilation] =
+        val fcompilation: Future[Compilation] = {
           compiler.compile( new TestLogger( compiler.toString ), "pragma solidity ^0.4.7;\ncontract Test {}" )( ec )
+        }
         Await.ready( fcompilation, Duration.Inf )
         fcompilation.value.get.isSuccess
       } catch {
@@ -49,8 +50,9 @@ object Compiler {
     }
 
     final case class EthJsonRpc( jsonRpcUrl : String ) extends Compiler.Solidity {
-      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] =
+      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         util.EthJsonRpc.doAsyncCompileSolidity( log, jsonRpcUrl, source )( jsonrpc.Client.Factory.Default, ec )
+      }
     }
 
     final object EthNetcompile {
@@ -60,7 +62,7 @@ object Compiler {
     final case class EthNetcompile( ethNetcompileUrl : String ) extends Compiler.Solidity {
       val url = new URL( ethNetcompileUrl )
 
-      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] =
+      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         borrow( Exchanger.Factory.Simple( url ) ) { exchanger =>
           val fsuccess = exchanger.exchange( "ethdev_compile",
                                              JsArray( Seq( JsObject( Seq(
@@ -71,13 +73,14 @@ object Compiler {
             case Yang( success ) => compilationFromEthNetcompileResult( log, source, success.result.as[JsObject] )
           }
         }
+      }
 
       private def compilationFromEthNetcompileResult( log : sbt.Logger, source : String, ethNetcompileResult : JsObject ) : Compilation = {
         val top = ethNetcompileResult.value
         top("warnings").as[JsArray].value.foreach( jsv => log.warn( jsv.as[String] ) )
         val tuples = {
           top( "contracts" ).as[JsObject].fields.foldLeft( immutable.Seq.empty[(String,Compilation.Contract)] ) {
-            case ( last, ( contractName : String, jsv : JsValue ) ) =>
+            case ( last, ( contractName : String, jsv : JsValue ) ) => {
               val jsoMap = jsv.as[JsObject].value
               val metadata = jsoMap( "metadata" ).as[String]
               if ( metadata != null && metadata.length > 0 ) {
@@ -86,9 +89,10 @@ object Compiler {
               } else {
                 last
               }
+            }
           }
         }
-        Map( tuples : _* )
+        immutable.Map( tuples : _* )
       }
     }
 
@@ -102,9 +106,10 @@ object Compiler {
       def versionFromKey( key : String ) : Option[SemanticVersion] = {
         key match {
           case VersionFromKeyExtractor( version ) => Some( SemanticVersion( version ) )
-          case _ =>
+          case _ => {
             DEBUG.log( s"Could not parse version from compiler key '$key'" )
             None
+          }
         }
       }
     }
@@ -117,7 +122,7 @@ object Compiler {
           case None        => "solc" // resolve via PATH environment variable
         }
       }
-      val solcCommand = Seq(solcExecutable, "--combined-json", "bin,metadata", "-")
+      val solcCommand = immutable.Seq(solcExecutable, "--combined-json", "bin,metadata", "-")
 
       def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         import java.io._
@@ -140,7 +145,7 @@ object Compiler {
           log.warn( msg + " Please see 'sbt-ethereum.log' for details." )
         }
 
-        def spewSource( os : OutputStream ) : Unit =
+        def spewSource( os : OutputStream ) : Unit = {
           try {
             os.write( source.getBytes( Codec.UTF8.charSet ) )
           } catch {
@@ -150,6 +155,7 @@ object Compiler {
           } finally {
             OutputStreamUtils.attemptCloseIgnore( os )
           }
+        }
 
         def logStandardError( is : InputStream ) : Unit =
           try {
@@ -163,14 +169,14 @@ object Compiler {
             InputStreamUtils.attemptCloseIgnore( is )
           }
 
-        def generateCompilationFromStandardOut( is : InputStream ) : Unit =
+        def generateCompilationFromStandardOut( is : InputStream ) : Unit = {
           try {
             val stdout = InputStreamUtils.getContentsAsString( is, "UTF8" )
             if ( stdout.nonEmpty ) {
               val top = Json.parse( stdout ).as[JsObject].value
               val tuples = {
                 top( "contracts" ).as[JsObject].fields.foldLeft( immutable.Seq.empty[(String, Compilation.Contract)] ) {
-                  case ( last, ( SimpleContractNameRegex( contractName ), jsv : JsValue ) ) =>
+                  case ( last, ( SimpleContractNameRegex( contractName ), jsv : JsValue ) ) => {
                     val jsoMap = jsv.as[JsObject].value
                     val metadata = jsoMap( "metadata" ).as[String]
                     if ( metadata != null && metadata.nonEmpty ) {
@@ -179,6 +185,7 @@ object Compiler {
                     } else {
                       last
                     }
+                  }
                 }
               }
               completedCompilation.set( Some( immutable.Map( tuples : _* ) ) )
@@ -190,6 +197,7 @@ object Compiler {
           } finally {
             InputStreamUtils.attemptCloseIgnore( is )
           }
+        }
 
         Future {
           val processio = new ProcessIO( spewSource, generateCompilationFromStandardOut, logStandardError )
@@ -211,15 +219,17 @@ object Compiler {
       val map: Map[String, JsValue] = Json.parse( metadata ).as[JsObject].value
       val language: Option[String] = map.get("language").map( _.as[String] )
       val compilerVersion: Option[String] = map.get("compiler").flatMap( _.as[JsObject].value.get("version").map( _.as[String] ) )
-      val languageVersion: Option[String] =
+      val languageVersion: Option[String] = {
         compilerVersion.flatMap { cv =>
           cv match {
             case LanguageVersionRegex( lv ) => Some( lv )
-            case _ =>
+            case _ => {
               log.warn( s"Could not parse Solidity language version from compiler version '$compilerVersion'." )
               None
+            }
           }
         }
+      }
 
       val compilerOptions: Option[String]     = map.get("settings").map( Json.stringify )
       val omap: Option[Map[String, JsValue]]  = map.get("output").map( _.as[JsObject].value )
@@ -227,7 +237,9 @@ object Compiler {
       val userDoc: Option[Doc.User]           = omap.flatMap( _.get("userdoc").map( _.as[Doc.User] ) )
       val developerDoc: Option[Doc.Developer] = omap.flatMap( _.get("devdoc").map( _.as[Doc.Developer] ) )
 
-      val info: Contract.Info = Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abi, userDoc, developerDoc, Some( metadata ) )
+      val info: Compilation.Contract.Info = {
+        Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abi, userDoc, developerDoc, Some( metadata ) )
+      }
       Compilation.Contract( code, info )
     }
   }

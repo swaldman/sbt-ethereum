@@ -20,22 +20,23 @@ import play.api.libs.json._
 object Schema_h2 {
   private implicit lazy val logger: MLogger = mlogger( this )
 
-  def setClob( ps : PreparedStatement, i : Int, str : String ): Unit =
+  def setClob( ps : PreparedStatement, i : Int, str : String ): Unit = {
     ps.setClob( i, new StringReader( str ) )
-
-  def setClobOption( ps : PreparedStatement, i : Int, mbs : Option[String] ): Unit =
+  }
+  def setClobOption( ps : PreparedStatement, i : Int, mbs : Option[String] ): Unit = {
     mbs.fold( ps.setNull( i, Types.CLOB ) ){ str =>  setClob( ps, i, str ) }
-
-  def setVarcharOption( ps : PreparedStatement, i : Int, mbs : Option[String] ): Unit =
+  }
+  def setVarcharOption( ps : PreparedStatement, i : Int, mbs : Option[String] ): Unit = {
     mbs.fold( ps.setNull( i, Types.VARCHAR ) ){ str =>  ps.setString( i, str ) }
-
-  def setTimestampOption( ps : PreparedStatement, i : Int, mbl : Option[Long] ): Unit =
+  }
+  def setTimestampOption( ps : PreparedStatement, i : Int, mbl : Option[Long] ): Unit = {
     mbl.fold( ps.setNull( i, Types.TIMESTAMP ) ){ l =>  ps.setTimestamp( i, new Timestamp(l) ) }
+  }
 
   val SchemaVersion = 3
 
   // should be executed in a transaction, although it looks like in h2 DDL commands autocommit anyway :(
-  def ensureSchema( dataSource : DataSource ): Boolean =
+  def ensureSchema( dataSource : DataSource ): Boolean = {
     borrowTransact( dataSource.getConnection() ) { conn =>
       borrow( conn.createStatement() ){ stmt =>
         stmt.executeUpdate( Table.Metadata.CreateSql )
@@ -49,10 +50,11 @@ object Schema_h2 {
       Table.Metadata.ensureSchemaVersion( conn )
       Table.AddressAliases.attemptInsertTestrpcFaucetDefaultSender( conn )
     }
+  }
 
   private def migrateUpOne( conn : Connection, versionFrom : Int ) : Int = {
     versionFrom match {
-      case 0 =>
+      case 0 => {
         /*
          *  Schema version 0 was identical to schema version 1, except deployed_compilations lacked a blockchain_id
          *  We have to completely reconstruct deployed_compilations because blockchain_id becomes part of a compound public key
@@ -67,17 +69,17 @@ object Schema_h2 {
           )
           stmt.executeUpdate("DROP TABLE deployed_compilations_v0")
         }
-
-      case 1 =>
+      }
+      case 1 => {
         /* Schema version 1 was identical to schema version 2, except version 2 adds a constructor_inputs_hex column
          * to the deployed_compilations table */
         borrow( conn.createStatement() ) { stmt =>
           stmt.executeUpdate("ALTER TABLE deployed_compilations ADD COLUMN constructor_inputs_hex CLOB AFTER deployed_when")
         }
-
-      case 2 =>
+      }
+      case 2 => {
         /* Schema version 3 was identical to schema version 2, except address_aliases lacked a blockchain_id
-         *  We have to completely reconstruct address_aliases because blockchain_id becomes part of a compound public key */
+         * We have to completely reconstruct address_aliases because blockchain_id becomes part of a compound public key */
         borrow( conn.createStatement() ) { stmt =>
           stmt.executeUpdate("ALTER TABLE address_aliases RENAME TO address_aliases_v2")
           stmt.executeUpdate( Table.AddressAliases.V3.CreateSql )
@@ -88,7 +90,7 @@ object Schema_h2 {
           )
           stmt.executeUpdate("DROP TABLE address_aliases_v2")
         }
-
+      }
       case unknown => throw new DatabaseVersionException( s"Cannot migrate from unknown database version $unknown." )
     }
     versionFrom + 1
@@ -177,32 +179,33 @@ object Schema_h2 {
     }
 
     final object KnownCode {
-      val CreateSql: String =
+      val CreateSql: String = {
         """|CREATE TABLE IF NOT EXISTS known_code (
            |   base_code_hash  CHAR(128) PRIMARY KEY,
            |   base_code       CLOB NOT NULL
            |)""".stripMargin
-
+      }
       val SelectSql = "SELECT base_code FROM known_code WHERE base_code_hash = ?"
 
       val UpsertSql = "MERGE INTO known_code ( base_code_hash, base_code ) VALUES ( ?, ? )"
 
-      def select( conn : Connection, baseCodeHash : EthHash ) : Option[String] =
+      def select( conn : Connection, baseCodeHash : EthHash ) : Option[String] = {
         borrow( conn.prepareStatement( SelectSql ) ) { ps =>
           ps.setString(1, baseCodeHash.hex)
           borrow( ps.executeQuery() )( getMaybeSingleString )
         }
-
-      def upsert( conn : Connection, baseCode : String ) : Unit =
+      }
+      def upsert( conn : Connection, baseCode : String ) : Unit = {
         borrow( conn.prepareStatement( UpsertSql ) ) { ps =>
           ps.setString( 1, EthHash.hash( baseCode.decodeHex ).hex )
           ps.setString( 2, baseCode )
           ps.executeUpdate()
         }
+      }
     }
 
     final object KnownCompilations {
-      val CreateSql: String =
+      val CreateSql: String = {
         """|CREATE TABLE IF NOT EXISTS known_compilations (
            |   full_code_hash    CHAR(128),
            |   base_code_hash    CHAR(128),
@@ -220,8 +223,8 @@ object Schema_h2 {
            |   PRIMARY KEY ( full_code_hash ),
            |   FOREIGN KEY ( base_code_hash ) REFERENCES known_code ( base_code_hash ) ON DELETE CASCADE
            |)""".stripMargin // we delete known_compilations when culling undeployed compilations
-
-      val SelectSql: String =
+      }
+      val SelectSql: String = {
         """|SELECT
            |   base_code_hash,
            |   code_suffix,
@@ -237,8 +240,8 @@ object Schema_h2 {
            |   metadata
            |FROM known_compilations
            |WHERE full_code_hash = ?""".stripMargin
-
-      val UpsertSql: String =
+      }
+      val UpsertSql: String = {
         """|MERGE INTO known_compilations (
            |   full_code_hash,
            |   base_code_hash,
@@ -254,12 +257,12 @@ object Schema_h2 {
            |   developer_doc,
            |   metadata
            |) VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
-
-      val UpdateAbiSql: String =
+      }
+      val UpdateAbiSql: String = {
         """|UPDATE known_compilations
            |SET abi_definition = ?
            |WHERE full_code_hash = ?""".stripMargin
-
+      }
       case class KnownCompilation (
         fullCodeHash      : EthHash,
         baseCodeHash      : EthHash,
@@ -270,7 +273,7 @@ object Schema_h2 {
         mbLanguageVersion : Option[String],
         mbCompilerVersion : Option[String],
         mbCompilerOptions : Option[String],
-        mbAbi   : Option[Abi],
+        mbAbi             : Option[Abi],
         mbUserDoc         : Option[Doc.User],
         mbDeveloperDoc    : Option[Doc.Developer],
         mbMetadata        : Option[String]
@@ -402,7 +405,7 @@ object Schema_h2 {
         borrow( conn.prepareStatement( UpdateAbiSql ) ){ ps =>
           mbAbiDefinition match {
             case Some( abi ) => ps.setString( 1, abi )
-            case None                  => ps.setNull( 1, Types.CLOB )
+            case None        => ps.setNull( 1, Types.CLOB )
           }
           ps.setString( 2, fullCodeHash.hex )
           ps.executeUpdate() match {
@@ -416,7 +419,7 @@ object Schema_h2 {
 
     final object DeployedCompilations {
       final object V0 {
-        val CreateSql: String =
+        val CreateSql: String = {
           """|CREATE TABLE IF NOT EXISTS deployed_compilations (
              |   contract_address CHAR(40) PRIMARY KEY,
              |   base_code_hash   CHAR(128) NOT NULL,
@@ -426,10 +429,11 @@ object Schema_h2 {
              |   deployed_when    TIMESTAMP,
              |   FOREIGN KEY ( base_code_hash, full_code_hash ) REFERENCES known_compilations( base_code_hash, full_code_hash )
              |)""".stripMargin
+        }
       }
 
       final object V1 {
-        val CreateSql: String =
+        val CreateSql: String = {
           """|CREATE TABLE IF NOT EXISTS deployed_compilations (
              |   blockchain_id    VARCHAR(64),
              |   contract_address CHAR(40),
@@ -441,10 +445,11 @@ object Schema_h2 {
              |   PRIMARY KEY ( blockchain_id, contract_address ),
              |   FOREIGN KEY ( base_code_hash, full_code_hash ) REFERENCES known_compilations( base_code_hash, full_code_hash )
              |)""".stripMargin
+        }
       }
 
       final object V2 {
-        val CreateSql: String =
+        val CreateSql: String = {
           """|CREATE TABLE IF NOT EXISTS deployed_compilations (
              |   blockchain_id          VARCHAR(64),
              |   contract_address       CHAR(40),
@@ -457,27 +462,39 @@ object Schema_h2 {
              |   PRIMARY KEY ( blockchain_id, contract_address ),
              |   FOREIGN KEY ( base_code_hash, full_code_hash ) REFERENCES known_compilations( base_code_hash, full_code_hash )
              |)""".stripMargin
+        }
       }
 
       val CreateSql: String = DeployedCompilations.V2.CreateSql
 
-      val SelectSql: String =
+      val SelectSql: String = {
         """|SELECT blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when, constructor_inputs_hex
            |FROM deployed_compilations
            |WHERE blockchain_id = ? AND contract_address = ?""".stripMargin
-
-      val InsertSql: String =
-        "INSERT INTO deployed_compilations ( blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when, constructor_inputs_hex ) VALUES ( ?, ?, ?, ?, ?, ?, ?, ? )"
-
-      val AllForFullCodeHashSql: String =
+      }
+      val InsertSql: String = {
+        """|INSERT INTO deployed_compilations ( 
+           |   blockchain_id,
+           |   contract_address,
+           |   base_code_hash,
+           |   full_code_hash,
+           |   deployer_address,
+           |   txn_hash,
+           |   deployed_when,
+           |   constructor_inputs_hex
+           |) 
+           |VALUES ( ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
+      }
+      val AllForFullCodeHashSql: String = {
         """|SELECT blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when, constructor_inputs_hex
            |FROM deployed_compilations
            |WHERE blockchain_id = ? AND full_code_hash = ?""".stripMargin
-
-      val AllForFullCodeHashAnyBlockchainIdSql: String =
+      }
+      val AllForFullCodeHashAnyBlockchainIdSql: String = {
         """|SELECT blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when, constructor_inputs_hex
            |FROM deployed_compilations
            |WHERE full_code_hash = ?""".stripMargin
+      }
 
       final case class DeployedCompilation (
         blockchainId        : String,
@@ -503,14 +520,15 @@ object Schema_h2 {
         )
       }
 
-      def select( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Option[DeployedCompilation] =
+      def select( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Option[DeployedCompilation] = {
         borrow( conn.prepareStatement( SelectSql ) ) { ps =>
           ps.setString(1, blockchainId)
           ps.setString(2, contractAddress.hex)
           borrow( ps.executeQuery() )( getMaybeSingleValue( extract ) )
         }
+      }
 
-      def allForFullCodeHash( conn : Connection, blockchainId : String, fullCodeHash : EthHash ) : immutable.Set[DeployedCompilation] =
+      def allForFullCodeHash( conn : Connection, blockchainId : String, fullCodeHash : EthHash ) : immutable.Set[DeployedCompilation] = {
         borrow( conn.prepareStatement( AllForFullCodeHashSql ) ) { ps =>
           ps.setString(1, blockchainId)
           ps.setString(2, fullCodeHash.hex)
@@ -520,8 +538,9 @@ object Schema_h2 {
             out
           }
         }
+      }
 
-      def allForFullCodeHashAnyBlockchainId( conn : Connection, fullCodeHash : EthHash ) : immutable.Set[DeployedCompilation] =
+      def allForFullCodeHashAnyBlockchainId( conn : Connection, fullCodeHash : EthHash ) : immutable.Set[DeployedCompilation] = {
         borrow( conn.prepareStatement( AllForFullCodeHashAnyBlockchainIdSql ) ) { ps =>
           ps.setString(1, fullCodeHash.hex)
           borrow( ps.executeQuery() ) { rs =>
@@ -530,8 +549,17 @@ object Schema_h2 {
             out
           }
         }
+      }
 
-      def insertNewDeployment( conn : Connection, blockchainId : String, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash, constructorInputs : immutable.Seq[Byte] ) : Unit = {
+      def insertNewDeployment(
+        conn : Connection,
+        blockchainId : String,
+        contractAddress : EthAddress,
+        code : String,
+        deployerAddress : EthAddress,
+        transactionHash : EthHash,
+        constructorInputs : immutable.Seq[Byte]
+      ) : Unit = {
         val bcas = BaseCodeAndSuffix( code )
         val timestamp = new Timestamp( System.currentTimeMillis )
         borrow( conn.prepareStatement( InsertSql ) ) { ps =>
@@ -549,34 +577,34 @@ object Schema_h2 {
     }
 
     final object MemorizedAbis {
-      final val CreateSql =
+      final val CreateSql = {
         """|CREATE TABLE IF NOT EXISTS memorized_abis (
            |   blockchain_id    VARCHAR(64),
            |   contract_address CHAR(40),
            |   abi_definition   CLOB,
            |   PRIMARY KEY ( blockchain_id, contract_address )
            |)""".stripMargin
-
-      private val InsertSql =
+      }
+      private val InsertSql = {
         """|INSERT INTO memorized_abis ( blockchain_id, contract_address, abi_definition )
            |VALUES( ?, ?, ? )""".stripMargin
-
-      private val DeleteSql =
+      }
+      private val DeleteSql = {
         """|DELETE FROM memorized_abis
            |WHERE blockchain_id = ? AND contract_address = ?""".stripMargin
-
-      private val SelectSql =
+      }
+      private val SelectSql = {
         """|SELECT abi_definition
            |FROM memorized_abis
            |WHERE blockchain_id = ? AND contract_address = ?""".stripMargin
-
-      private val SelectAddressesForBlackchainIdSql =
+      }
+      private val SelectAddressesForBlackchainIdSql = {
         """|SELECT contract_address
            |FROM memorized_abis
            |WHERE blockchain_id = ?
            |ORDER BY contract_address DESC""".stripMargin
-
-      def selectAddressesForBlockchainId( conn : Connection, blockchainId : String ) : immutable.Seq[EthAddress] =
+      }
+      def selectAddressesForBlockchainId( conn : Connection, blockchainId : String ) : immutable.Seq[EthAddress] = {
         borrow( conn.prepareStatement( SelectAddressesForBlackchainIdSql ) ){ ps =>
           ps.setString(1, blockchainId )
           borrow( ps.executeQuery() ){ rs =>
@@ -585,8 +613,8 @@ object Schema_h2 {
             prepend( Nil )
           }
         }
-
-      def select( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Option[Abi] =
+      }
+      def select( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Option[Abi] = {
         borrow( conn.prepareStatement( SelectSql ) ){ ps =>
           ps.setString(1, blockchainId )
           ps.setString(2, contractAddress.hex )
@@ -595,55 +623,58 @@ object Schema_h2 {
             mbJson.map( Json.parse ).map( _.as[Abi] )
           }
         }
-
-      def insert( conn : Connection, blockchainId : String, contractAddress : EthAddress, abi : Abi ) : Unit =
+      }
+      def insert( conn : Connection, blockchainId : String, contractAddress : EthAddress, abi : Abi ) : Unit = {
         borrow( conn.prepareStatement( InsertSql ) ) { ps =>
           ps.setString( 1, blockchainId )
           ps.setString( 2, contractAddress.hex )
           ps.setString( 3, Json.stringify( Json.toJson( abi ) ) )
           ps.executeUpdate()
         }
-
-      def delete( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Boolean =
+      }
+      def delete( conn : Connection, blockchainId : String, contractAddress : EthAddress ) : Boolean = {
         borrow( conn.prepareStatement( DeleteSql ) ) { ps =>
           ps.setString( 1, blockchainId )
           ps.setString( 2, contractAddress.hex )
           ps.executeUpdate() == 1
         }
+      }
     }
 
     final object AddressAliases {
       final object V2 {
-        val CreateSql: String =
+        val CreateSql: String = {
           """|CREATE TABLE IF NOT EXISTS address_aliases (
              |   alias   VARCHAR(128) PRIMARY KEY,
              |   address CHAR(40) NOT NULL
              |)""".stripMargin
+        }
       }
 
       final object V3 {
-        val CreateSql: String =
+        val CreateSql: String = {
           """|CREATE TABLE IF NOT EXISTS address_aliases (
              |   blockchain_id VARCHAR(64),
              |   alias         VARCHAR(128),
              |   address       CHAR(40) NOT NULL,
              |   PRIMARY KEY ( blockchain_id, alias )
              |)""".stripMargin
+        }
       }
 
       val CreateSql: String = V3.CreateSql
 
       val CreateIndex: String = "CREATE INDEX IF NOT EXISTS address_aliases_address_idx ON address_aliases( address )"
 
-      def selectByAlias( conn : Connection, blockchainId : String, alias : String ) : Option[EthAddress] =
+      def selectByAlias( conn : Connection, blockchainId : String, alias : String ) : Option[EthAddress] = {
         borrow( conn.prepareStatement( "SELECT address FROM address_aliases WHERE blockchain_id = ? AND alias = ?" ) ) { ps =>
           ps.setString(1, blockchainId)
           ps.setString(2, alias)
           val mbAddressStr = borrow( ps.executeQuery() )( getMaybeSingleString )
           mbAddressStr.map( EthAddress.apply )
         }
-
-      def selectByAddress( conn : Connection, blockchainId : String, address : EthAddress ) : immutable.Seq[String] =
+      }
+      def selectByAddress( conn : Connection, blockchainId : String, address : EthAddress ) : immutable.Seq[String] = {
         borrow( conn.prepareStatement( "SELECT alias FROM address_aliases WHERE blockchain_id = ? AND address = ? ORDER BY alias DESC" ) ) { ps =>
           ps.setString(1, blockchainId)
           ps.setString(2, address.hex)
@@ -653,7 +684,7 @@ object Schema_h2 {
             prepend( Nil )
           }
         }
-
+      }
       def selectAllForBlockchainId( conn : Connection, blockchainId : String ) : immutable.SortedMap[String,EthAddress] = {
         val buffer = mutable.ArrayBuffer.empty[Tuple2[String, EthAddress]]
         borrow( conn.prepareStatement( "SELECT alias, address FROM address_aliases WHERE blockchain_id = ? ORDER BY alias ASC" ) ) { ps =>
@@ -667,35 +698,36 @@ object Schema_h2 {
         immutable.SortedMap( buffer : _* )
       }
 
-      private def sert( verb : String )( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit =
+      private def sert( verb : String )( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit = {
         borrow( conn.prepareStatement( s"$verb INTO address_aliases ( blockchain_id, alias, address ) VALUES ( ?, ?, ? )" ) ) { ps =>
           ps.setString( 1, blockchainId )
           ps.setString( 2, alias )
           ps.setString( 3, address.hex )
           ps.executeUpdate()
         }
-
-      def upsert( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit =
+      }
+      def upsert( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit = {
         sert( "MERGE" )( conn, blockchainId, alias, address )
-
-      def insert( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit =
+      }
+      def insert( conn : Connection, blockchainId : String, alias : String, address : EthAddress ) : Unit = {
         sert( "INSERT" )( conn, blockchainId, alias, address )
-
-      def delete( conn : Connection, blockchainId : String, alias : String ) : Boolean =
+      }
+      def delete( conn : Connection, blockchainId : String, alias : String ) : Boolean = {
         borrow( conn.prepareStatement( "DELETE FROM address_aliases WHERE blockchain_id = ? AND alias = ?" ) ) { ps =>
           ps.setString( 1, blockchainId )
           ps.setString( 2, alias )
           ps.executeUpdate() == 1
         }
-
-      def attemptInsertTestrpcFaucetDefaultSender( conn : Connection ) : Boolean =
+      }
+      def attemptInsertTestrpcFaucetDefaultSender( conn : Connection ) : Boolean = {
         selectByAlias( conn, TestrpcIdentifier, DefaultSenderAlias ) match {
-          case None =>
+          case None => {
             insert( conn, TestrpcIdentifier, DefaultSenderAlias, testing.Default.Faucet.address )
             true
-
+          }
           case _ => false
         }
+      }
     }
   }
 }

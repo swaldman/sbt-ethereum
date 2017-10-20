@@ -69,13 +69,13 @@ object ResolveCompileSolidity {
         m.group(0)                                         //   replace the match with itself
       } else {                                             // otherwise, do the replacement
         m.group(1) match {
-          case GoodImportBodyRegex( imported ) =>
+          case GoodImportBodyRegex( imported ) => {
             val key = StringLiteral.parsePermissiveStringLiteral( imported ).parsed
             val fimport = loadResolveSourceFile( input.immediateParent +: allSourceLocations, key ) // look first local to this file to resolve recursive imports
             val sourceFile = fimport.get // throw the Exception if resolution failed
             lastModified = max( lastModified, sourceFile.lastModified )
             sourceFile.rawText
-
+          }
           case unkey => throw new Exception( s"""Unsupported import format: '$unkey' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
         }
       }
@@ -103,7 +103,7 @@ object ResolveCompileSolidity {
       if ( failureCount > 0 ) {
         log.error( errorMessage( failureCount ) )
         labeledFailures.foreach {
-          case ( file, info ) => log.error( s"File: ${ file.getAbsolutePath }$SEP$info" )
+          case ( file, info ) => log.error( s"File: ${file.getAbsolutePath}${SEP}${info}" )
         }
         throw labeledFailures.head._2
       }
@@ -125,7 +125,7 @@ object ResolveCompileSolidity {
       log.info( s"Compiling ${compileFiles.length} Solidity source$mbS to $solDestDir..." )
 
       val compileLabeledFuts = compileFiles.map { case ( file, sourceFile, destFile, debugDestFile ) =>
-        val combinedSource =
+        val combinedSource = {
           s"""|/*
               | * DO NOT EDIT! DO NOT EDIT! DO NOT EDIT!
               | *
@@ -136,12 +136,12 @@ object ResolveCompileSolidity {
               | */
               |
               |""".stripMargin + sourceFile.pragmaResolvedText
-
+        }
         Files.write( debugDestFile.toPath, combinedSource.getBytes( Codec.UTF8.charSet ) )
         log.info( s"Compiling '${ file.getName }'. (Debug source: '${ debugDestFile.getPath }')" )
         file -> compiler.compile( log, combinedSource ).map( result => ( destFile, result ) )
       }
-      waitForFiles( compileLabeledFuts, count => s"compileSolidity failed. [$count failures]" )
+      waitForFiles( compileLabeledFuts, count => s"compileSolidity failed. [${count} failures]" )
 
       // if we're here, all compilations succeeded
       val destFileResultPairs = compileLabeledFuts.map {
@@ -149,14 +149,15 @@ object ResolveCompileSolidity {
       }
 
       val writerLabeledFuts = destFileResultPairs.map {
-        case ( destFile, result ) =>
+        case ( destFile, result ) => {
           destFile -> Future {
             borrow( new OutputStreamWriter( new BufferedOutputStream( new FileOutputStream( destFile ), SolidityWriteBufferSize ), Codec.UTF8.charSet ) ) {
               _.write( Json.stringify( Json.toJson ( result ) ) )
             }
           }
+        }
       }
-      waitForFiles( writerLabeledFuts, count => s"Failed to write the output of some compilations. [$count failures]" )
+      waitForFiles( writerLabeledFuts, count => s"Failed to write the output of some compilations. [${count} failures]" )
     }
   }
 }

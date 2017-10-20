@@ -11,7 +11,6 @@ import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.log.MLogger
 import com.mchange.sc.v2.util.Platform
 import com.mchange.sc.v2.lang.borrow
-import scala.collection.immutable.TreeSet
 
 object SolcJInstaller {
   private lazy implicit val logger: MLogger = mlogger( this )
@@ -27,13 +26,17 @@ object SolcJInstaller {
   }
   private lazy val FileListResource = PlatformDirPrefix + "/file.list"
 
-  val SupportedVersions: TreeSet[String] = TreeSet( /* "0.4.3", "0.4.4", "0.4.6", */ "0.4.7", "0.4.8", "0.4.10" )( Ordering.by( SemanticVersion( _ ) ) ) // only metadata supporting versions
+  val SupportedVersions: immutable.TreeSet[String] = {
+    immutable.TreeSet( /* "0.4.3", "0.4.4", "0.4.6", */ "0.4.7", "0.4.8", "0.4.10" )( Ordering.by( SemanticVersion( _ ) ) ) // only metadata supporting versions
+  }
 
-  private def createJarUrl( version : String ) : URL =
+  private def createJarUrl( version : String ) : URL = {
     new URL( s"https://dl.bintray.com/ethereum/maven/org/ethereum/solcJ-all/$version/solcJ-all-$version.jar" )
+  }
 
-  private def createClassLoader( version : String ) : URLClassLoader =
+  private def createClassLoader( version : String ) : URLClassLoader = {
     new URLClassLoader( Array( createJarUrl( version ) ) )
+  }
 
   private def findSolcFileNames( cl : URLClassLoader ) : immutable.Seq[String] = {
     val fileListUrl = cl.findResource( FileListResource )
@@ -65,8 +68,7 @@ object SolcJInstaller {
   }
 
   def installLocalSolcJ( rootLocalCompilerDir : Path, version : String ) : Unit = {
-    if ( ! SupportedVersions( version ) )
-      throw new Exception( s"Unsupported SolcJ Version: $version" )
+    if ( ! SupportedVersions( version ) ) throw new Exception( s"Unsupported SolcJ Version: $version" )
 
     val cl = createClassLoader( version )
     val fileNames = findSolcFileNames( cl )

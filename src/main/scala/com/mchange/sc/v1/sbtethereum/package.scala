@@ -21,7 +21,9 @@ package object sbtethereum {
   final class SenderNotAvailableException( msg : String ) extends SbtEthereumException( msg )
 
 
-  case class EthValue( wei : BigInt, denominated : BigDecimal, denomination : Denomination )
+  final case class EthValue( wei : BigInt, denomination : Denomination ) {
+    lazy val denominated : BigDecimal = denomination.fromWei( wei ) 
+  }
 
   val MainnetIdentifier = "mainnet"
   val TestrpcIdentifier = "testrpc"
