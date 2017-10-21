@@ -321,7 +321,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethIncludeLocations := Nil,
 
-      ethJsonRpcUrl in Compile := DefaultEthJsonRpcUrl,
+      ethJsonRpcUrl := DefaultEthJsonRpcUrl,
 
       ethJsonRpcUrl in Test := DefaultTestEthJsonRpcUrl,
 
