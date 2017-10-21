@@ -14,10 +14,16 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc, specification, EthAddress, EthHash, EthPrivateKey, EthTransaction}
 import jsonrpc.{Compilation, ClientTransactionReceipt}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
+import specification.Types.Unsigned256
 
 import java.net.URL
 
 object EthJsonRpc {
+
+  private val Zero256 = Unsigned256( 0 )
+  private val One256  = Unsigned256( 1 )
+
+
   private def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String, clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext )( operation : jsonrpc.Client => T ) : T = {
     try {
       borrow( clientFactory( jsonRpcUrl ) )( operation )
@@ -149,11 +155,20 @@ object EthJsonRpc {
     }
   }
 
+  private def decodeStatus( status : Option[Unsigned256] ) : String = status.fold( "Unknown" ){ swrapped =>
+    swrapped match {
+      case Zero256 => "FAILED"
+      case One256  => "SUCCEEDED"
+      case _       => s"Unexpected status ${swrapped.widen}"
+    }
+  }
+
   // TODO: pretty up logs output
   private def prettyClientTransactionReceipt( ctr : ClientTransactionReceipt ) : String = {
     s"""|Transaction Receipt:
         |       Transaction Hash:    0x${ctr.transactionHash.hex}
         |       Transaction Index:   ${ctr.transactionIndex.widen}
+        |       Transaction Status:  ${ decodeStatus( ctr.status ) }
         |       Block Hash:          0x${ctr.blockHash.hex}
         |       Block Number:        ${ctr.blockNumber.widen}
         |       Cumulative Gas Used: ${ctr.cumulativeGasUsed.widen}
