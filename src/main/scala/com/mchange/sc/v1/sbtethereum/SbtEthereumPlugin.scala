@@ -884,17 +884,25 @@ object SbtEthereumPlugin extends AutoPlugin {
         val ephemeralBlockchains = xethEphemeralBlockchains.value
         val jsonRpcUrl = (ethJsonRpcUrl in config).value
         val ( contractName, extraData ) = parser.parsed
-        val ( compilation, inputsBytes ) = {
+
+        // at the time of parsing, a compiled contract may not not available.
+        // in that case, we force compilation now, but can't accept contructor arguments
+        //
+        // alternatively, even if at the time of parsing a compilation WAS available
+        // it may be out of date if the source for the prior compilation has changed
+        // to be safe, we have to reload the compilation, rather than use the one found
+        // by the parser
+        val contractsMap = (xethLoadCompilationsOmitDups in Compile).value
+        val compilation = contractsMap( contractName )
+
+        val inputsBytes = {
           extraData match {
-            case None => {
-              // at the time of parsing, a compiled contract is not available. we'll force compilation now, but can't accept contructor arguments
-              val contractsMap = (xethLoadCompilationsOmitDups in Compile).value
-              val compilation = contractsMap( contractName )
-              ( compilation, immutable.Seq.empty[Byte] )
-            }
-            case Some( ( inputs, abi, compilation ) ) => {
+            case None => immutable.Seq.empty[Byte]
+            case Some( ( inputs, _, _ ) ) => {
               // at the time of parsing, a compiled contract is available, so we've decoded constructor inputs( if any )
-              ( compilation, ethabi.constructorCallData( inputs, abi ).get ) // asserts successful encoding of params
+              // ( compilation, ethabi.constructorCallData( inputs, abi ).get ) // asserts successful encoding of params
+
+              ethabi.constructorCallData( inputs, compilation.info.mbAbi.get ).get // asserts that we've found a meaningful ABI, and can parse the constructor inputs
             }
           }
         }
@@ -1520,7 +1528,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val allMbAbis = {
         val sureNamedAbis = namedAbis map { case ( name, abi ) => ( name, Some( abi ) ) }
         val mbCompilationAbis = currentCompilations map { case ( name, contract ) =>
-          ( name,  contract.info.mbAbi.map( abiStr => Json.parse( abiStr ).as[Abi] ) )
+          ( name,  contract.info.mbAbi )
         }
         sureNamedAbis ++ mbCompilationAbis
       }

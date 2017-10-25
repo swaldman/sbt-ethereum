@@ -131,8 +131,7 @@ object Parsers {
   private def resultFromCompilation( contractName : String, compilation : jsonrpc.Compilation.Contract ) : Parser[ ( String, Option[ ( immutable.Seq[String], Abi, jsonrpc.Compilation.Contract ) ] ) ] = {
     val mbAbi = compilation.info.mbAbi
     mbAbi match {
-      case Some( abiString ) => {
-        val abi = Json.parse( abiString ).as[Abi]
+      case Some( abi ) => {
         val ctor = constructorFromAbi( abi )
         inputsParser( ctor.inputs, None ).map( seq => ( contractName, Some( ( seq, abi, compilation ) ) ) )
       }

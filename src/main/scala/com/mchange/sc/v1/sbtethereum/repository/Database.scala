@@ -143,9 +143,9 @@ object Database {
           mbLanguageVersion = mbLanguageVersion,
           mbCompilerVersion = mbCompilerVersion,
           mbCompilerOptions = mbCompilerOptions,
-          mbAbi             = mbAbi.map( a => Json.parse( a ).as[Abi] ),
-          mbUserDoc         = mbUserDoc.map( ud => Json.parse( ud ).as[Doc.User] ),
-          mbDeveloperDoc    = mbDeveloperDoc.map( dd => Json.parse( dd ).as[Doc.Developer] ),
+          mbAbi             = mbAbi,
+          mbUserDoc         = mbUserDoc,
+          mbDeveloperDoc    = mbDeveloperDoc,
           mbMetadata        = mbMetadata
         )
 

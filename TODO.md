@@ -1,5 +1,6 @@
 # TODO
 
+* Update solcJ ourselves, or find a different maintained solution
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
   * also for stubs and testing resources
