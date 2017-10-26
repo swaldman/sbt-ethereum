@@ -2,6 +2,8 @@
 
 #### An SBT-based develoment environment and command line for Ethereum
 
+_**Note:** Michael Slinn has begun working on a [gitbook documenting this project](https://mslinn.gitbooks.io/sbt-ethereum/content/). Check it out!_
+
 ## What is this?
 
 `sbt-ethereum `is very much a work in progress. For the moment you can...
