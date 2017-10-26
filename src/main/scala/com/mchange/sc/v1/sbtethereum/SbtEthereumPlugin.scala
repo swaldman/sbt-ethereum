@@ -42,9 +42,6 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 object SbtEthereumPlugin extends AutoPlugin {
 
-  private val EthSenderSystemProperty      = "eth.sender"
-  private val EthSenderEnvironmentVariable = "ETH_SENDER"
-
   // not lazy. make sure the initialization banner is emitted before any tasks are executed
   // still, generally we should try to log through sbt loggers
   private implicit val logger: MLogger = mlogger( this )
@@ -321,7 +318,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethIncludeLocations := Nil,
 
-      ethJsonRpcUrl := DefaultEthJsonRpcUrl,
+      // thanks to Mike Slinn for suggesting these external defaults
+      ethJsonRpcUrl := {
+        def mbInfura               = ExternalValue.EthInfuraToken.map(token => s"http://mainnet.infura.io/$token")
+        def mbSpecifiedDefaultNode = ExternalValue.EthDefaultNode
+
+        (mbInfura orElse mbSpecifiedDefaultNode).getOrElse( DefaultEthJsonRpcUrl )
+      },
 
       ethJsonRpcUrl in Test := DefaultTestEthJsonRpcUrl,
 
@@ -1370,11 +1373,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             mbAddrStr match {
               case Some( addrStr ) => EthAddress( addrStr )
               case None            => {
-                val mbProperty = Option( System.getProperty( EthSenderSystemProperty ) )
-                val mbEnvVar   = Option( System.getenv( EthSenderEnvironmentVariable ) )
-
-                val mbExternalEthAddress = (mbProperty orElse mbEnvVar).map( EthAddress.apply )
-
+                val mbExternalEthAddress = ExternalValue.EthSender.map( EthAddress.apply )
                 mbExternalEthAddress.getOrElse {
                   val mbDefaultSenderAddress = repository.Database.findAddressByAlias( blockchainId, DefaultSenderAlias ).get
 
