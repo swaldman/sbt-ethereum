@@ -320,7 +320,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       // thanks to Mike Slinn for suggesting these external defaults
       ethJsonRpcUrl := {
-        def mbInfura               = ExternalValue.EthInfuraToken.map(token => s"http://mainnet.infura.io/$token")
+        def mbInfura               = ExternalValue.EthInfuraToken.map(token => s"https://mainnet.infura.io/$token")
         def mbSpecifiedDefaultNode = ExternalValue.EthDefaultNode
 
         (mbInfura orElse mbSpecifiedDefaultNode).getOrElse( DefaultEthJsonRpcUrl )
