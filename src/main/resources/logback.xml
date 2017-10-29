@@ -14,7 +14,11 @@
     </encoder>
   </appender>
 
-  <logger name="com.mchange.sc.v1.consuela.ethereum.jsonrpc20" level="TRACE" additivity="false">
+  <logger name="com.mchange.sc.v1.consuela.ethereum.jsonrpc" level="TRACE" additivity="false">
+    <appender-ref ref="FILE" />
+  </logger>
+
+  <logger name="com.mchange.sc.v2.jsonrpc" level="TRACE" additivity="false">
     <appender-ref ref="FILE" />
   </logger>
 
