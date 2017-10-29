@@ -922,6 +922,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
         val updateChangedDb = (xethUpdateContractDatabase in Compile).value
         val txnHash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
+        if ( inputsHex.nonEmpty ) {
+          log.info( s"Contract constructor imputs encoded to the following hex: '${inputsHex}'" )
+        }
         log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
         val mbReceipt = awaitTransactionReceipt( log, jsonRpcUrl, txnHash, PollSeconds, PollAttempts )
         mbReceipt.fold( Left( txnHash ) : Either[EthHash,ClientTransactionReceipt] ) { receipt =>
@@ -2105,6 +2108,22 @@ object SbtEthereumPlugin extends AutoPlugin {
     private def unknownWallet( loadDirs : Seq[File] ) : Nothing = {
       val dirs = loadDirs.map( _.getAbsolutePath() ).mkString(", ")
       throw new Exception( s"Could not find V3 wallet for the specified address in the specified keystore directories: ${dirs}}" )
+    }
+
+    private def assertSomeSender( log : Logger, fsender : Failable[EthAddress] ) : Option[EthAddress] = {
+      val onFail : Fail => Nothing = fail => {
+        val errMsg = {
+          val base = "No sender found. Please define a 'defaultSender' alias, or the setting 'ethSender', or use 'ethSenderOverrideSet' for a temporary sender."
+          val extra = fail.source match {
+            case _ : SenderNotAvailableException => ""
+            case _                               => s" [Cause: ${fail.message}]"
+          }
+          base + extra
+        }
+        log.error( errMsg )
+        throw new SenderNotAvailableException( errMsg )
+      }
+      fsender.xmap( onFail ).toOption
     }
 
     // some formatting functions for ascii tables

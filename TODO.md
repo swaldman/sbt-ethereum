@@ -1,6 +1,8 @@
 # TODO
 
 * Update solcJ ourselves, or find a different maintained solution
+* Make constructor arg hex acessible from repository deployments.
+  -- then maybe remove verbosity about arg hex from ethDeployOnly
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
   * also for stubs and testing resources
