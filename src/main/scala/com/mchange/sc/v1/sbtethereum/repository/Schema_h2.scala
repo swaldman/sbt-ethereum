@@ -52,6 +52,19 @@ object Schema_h2 {
     }
   }
 
+  // Note: Newer schemas should never REMOVE tables. If tables grow obsolete,
+  //       leave them in place, even delete the rows to save space. But if a
+  //       table were to be dropped entirely, it might be recreated when the
+  //       database is opened by some earlier version of sbt-ethereum, leaving
+  //       tables appropriate to a mix of schema versions. Then if there were
+  //       cause someday to define a new table with the old name, it'd become
+  //       necessary to try to drop the old table anyway as a precaution
+  //       but it would be easy to forget to do that, and end up with a bad,
+  //       old version of the table lingering around in some installations.
+  //       If old tables are always kept, they will always be migrated to their
+  //       latest versions before any upgrade that affacts them and all will
+  //       be sane and well.
+
   private def migrateUpOne( conn : Connection, versionFrom : Int ) : Int = {
     versionFrom match {
       case 0 => {
@@ -91,7 +104,7 @@ object Schema_h2 {
           stmt.executeUpdate("DROP TABLE address_aliases_v2")
         }
       }
-      case unknown => throw new DatabaseVersionException( s"Cannot migrate from unknown database version $unknown." )
+      case unknown => throw new SchemaVersionException( s"Cannot migrate from unknown schema version $unknown." )
     }
     versionFrom + 1
   }
@@ -154,7 +167,16 @@ object Schema_h2 {
         val currentVersion = select( conn, Key.SchemaVersion )
         currentVersion.fold( upsert( conn, Key.SchemaVersion, SchemaVersion.toString ) ){ versionStr =>
           val v = versionStr.toInt
-          if ( v != SchemaVersion ) migrateSchema( conn, v, SchemaVersion )
+          if ( v < SchemaVersion ) {
+            migrateSchema( conn, v, SchemaVersion )
+          } else if ( v > SchemaVersion ) {
+            throw new SchemaVersionException(
+              s"""|Database schema version ${v} is higher than the latest version known to this version of
+                  |sbt-ethereum, ${SchemaVersion}. Please update this project to the latest version of sbt-ethereum!
+                  |Usually this just means modifying 'project/plugin.sbt'. If you still see this message, try
+                  |'reload plugins', then 'update', then restart sbt.""".stripMargin
+            )
+          }
         }
       }
 

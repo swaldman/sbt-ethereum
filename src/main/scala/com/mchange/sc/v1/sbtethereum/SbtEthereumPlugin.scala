@@ -1831,32 +1831,37 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       // removed guard of query (restriction to select),
       // since updating SQL issued via executeQuery(...)
-      // usefully fails in h3
+      // usefully fails in h2
 
-      val checkDataSource = {
-        repository.Database.DataSource.map { ds =>
-          borrow( ds.getConnection() ) { conn =>
-            borrow( conn.createStatement() ) { stmt =>
-              borrow( stmt.executeQuery( query ) ) { rs =>
-                val rsmd = rs.getMetaData
-                val numCols = rsmd.getColumnCount()
-                val colRange = (1 to numCols)
-                val displaySizes = colRange.map( rsmd.getColumnDisplaySize )
-                val labels = colRange.map( rsmd.getColumnLabel )
+      try {
+        val check = {
+          repository.Database.UncheckedDataSource.map { ds =>
+            borrow( ds.getConnection() ) { conn =>
+              borrow( conn.createStatement() ) { stmt =>
+                borrow( stmt.executeQuery( query ) ) { rs =>
+                  val rsmd = rs.getMetaData
+                  val numCols = rsmd.getColumnCount()
+                  val colRange = (1 to numCols)
+                  val displaySizes = colRange.map( rsmd.getColumnDisplaySize )
+                  val labels = colRange.map( rsmd.getColumnLabel )
 
-                // XXX: make this pretty. someday.
-                log.info( labels.mkString(", ") )
-                while ( rs.next ) {
-                  log.info( colRange.map( rs.getString ).mkString(", ") )
+                  // XXX: make this pretty. someday.
+                  log.info( labels.mkString(", ") )
+                  while ( rs.next ) {
+                    log.info( colRange.map( rs.getString ).mkString(", ") )
+                  }
                 }
               }
             }
           }
         }
+        check.get
       }
-      if ( checkDataSource.isFailed ) {
-        log.warn("Failed to find DataSource!")
-        log.warn( checkDataSource.fail.toString )
+      catch {
+        case t : Throwable => {
+          t.printStackTrace()
+          throw t
+        }
       }
     }
 
@@ -1883,20 +1888,25 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log   = streams.value.log
       val update = DbQueryParser.parsed
 
-      val checkDataSource = {
-        repository.Database.DataSource.map { ds =>
-          borrow( ds.getConnection() ) { conn =>
-            borrow( conn.createStatement() ) { stmt =>
-              val rows = stmt.executeUpdate( update )
-              log.info( s"Update succeeded: $update" )
-              log.info( s"$rows rows affected." )
+      try {
+        val check = {
+          repository.Database.UncheckedDataSource.map { ds =>
+            borrow( ds.getConnection() ) { conn =>
+              borrow( conn.createStatement() ) { stmt =>
+                val rows = stmt.executeUpdate( update )
+                log.info( s"Update succeeded: $update" )
+                log.info( s"$rows rows affected." )
+              }
             }
           }
         }
+        check.get // assert success
       }
-      if ( checkDataSource.isFailed ) {
-        log.warn("Failed to find DataSource!")
-        log.warn( checkDataSource.fail.toString )
+      catch {
+        case t : Throwable => {
+          t.printStackTrace()
+          throw t
+        }
       }
     }
 

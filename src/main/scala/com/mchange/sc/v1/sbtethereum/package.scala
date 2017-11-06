@@ -13,7 +13,7 @@ package object sbtethereum {
   class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
 
   final class NoSolidityCompilerException( msg : String ) extends SbtEthereumException( msg )
-  final class DatabaseVersionException( msg : String )    extends SbtEthereumException( msg )
+  final class SchemaVersionException( msg : String )      extends SbtEthereumException( msg )
   final class ContractUnknownException( msg : String )    extends SbtEthereumException( msg )
   final class BadCodeFormatException( msg : String )      extends SbtEthereumException( msg )
   final class RepositoryException( msg : String )         extends SbtEthereumException( msg )

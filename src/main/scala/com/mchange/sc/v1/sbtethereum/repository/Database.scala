@@ -353,7 +353,8 @@ object Database {
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
   }
 
-  lazy val DataSource: Failable[DataSource] = h2.DataSource
+  lazy val DataSource          : Failable[DataSource] = h2.initializeDataSource( true )
+  lazy val UncheckedDataSource : Failable[DataSource] = h2.initializeDataSource( false )
 
   final object h2 {
     val DirName = "h2"
@@ -369,7 +370,7 @@ object Database {
 
     lazy val JdbcUrl : Failable[String] = h2.DbAsFile.map( f => s"jdbc:h2:${f.getAbsolutePath};AUTO_SERVER=TRUE" )
 
-    lazy val DataSource : Failable[javax.sql.DataSource] = {
+    def initializeDataSource( ensureSchema : Boolean ) : Failable[javax.sql.DataSource] = {
       for {
         _       <- Directory
         jdbcUrl <- JdbcUrl
@@ -379,7 +380,7 @@ object Database {
           ds.setDriverClass( "org.h2.Driver" )
           ds.setJdbcUrl( jdbcUrl )
           ds.setTestConnectionOnCheckout( true )
-          Schema_h2.ensureSchema( ds )
+          if ( ensureSchema ) Schema_h2.ensureSchema( ds )
           ds
         } catch {
           case t : Throwable =>
