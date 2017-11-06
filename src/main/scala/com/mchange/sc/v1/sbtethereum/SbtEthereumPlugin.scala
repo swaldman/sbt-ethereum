@@ -21,6 +21,7 @@ import play.api.libs.json.{JsObject, Json}
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.io._
+import com.mchange.sc.v2.util.Platform
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
@@ -1271,6 +1272,12 @@ object SbtEthereumPlugin extends AutoPlugin {
               log.info( "Testing newly installed compiler... ok." )
             } else {
               log.warn( "Testing newly installed compiler... failed!" )
+              Platform.Current match {
+                case Some( Platform.Windows ) => {
+                  log.warn("You may need to install MS Video Studio 2015 Runtime, see https://www.microsoft.com/en-us/download/details.aspx?id=48145") // known to be necessay for 0.4.18
+                }
+                case _ => /* ignore */
+              }
             }
           }
         }

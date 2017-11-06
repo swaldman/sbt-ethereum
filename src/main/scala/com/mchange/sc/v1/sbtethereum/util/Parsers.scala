@@ -123,7 +123,7 @@ object Parsers {
   // delayed parsers
   private def constructorFromAbi( abi : Abi ) : Abi.Constructor = {
     abi.constructors.length match {
-      case 0 => Abi.Constructor.noArg
+      case 0 => Abi.Constructor.noArgNoEffect
       case 1 => abi.constructors.head
       case _ => throw new Exception( s"""Constructor overloading not supprted (or legal in solidity). Found multiple constructors: ${abi.constructors.mkString(", ")}""" )
     }

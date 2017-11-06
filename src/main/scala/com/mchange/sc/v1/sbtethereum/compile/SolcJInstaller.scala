@@ -8,12 +8,11 @@ import scala.collection._
 import JavaConverters._
 import scala.io.Source
 import com.mchange.sc.v1.log.MLevel._
-import com.mchange.sc.v1.log.MLogger
 import com.mchange.sc.v2.util.Platform
 import com.mchange.sc.v2.lang.borrow
 
 object SolcJInstaller {
-  private lazy implicit val logger: MLogger = mlogger( this )
+  private lazy implicit val logger = mlogger( this )
 
   private lazy val PlatformDirPrefix = {
     val platformDirName = Platform.Current match {
@@ -26,16 +25,33 @@ object SolcJInstaller {
   }
   private lazy val FileListResource = PlatformDirPrefix + "/file.list"
 
-  val SupportedVersions: immutable.TreeSet[String] = {
+  private val SolcJSupportedVersions = {
     immutable.TreeSet( /* "0.4.3", "0.4.4", "0.4.6", */ "0.4.7", "0.4.8", "0.4.10" )( Ordering.by( SemanticVersion( _ ) ) ) // only metadata supporting versions
   }
 
-  private def createJarUrl( version : String ) : URL = {
+  private val OtherSolcjCompatibleSupportedVersion = {
+    immutable.TreeMap (
+      "0.4.18" -> new URL( "https://oss.sonatype.org/content/repositories/snapshots/com/mchange/solcj-compat/0.4.18rev1-SNAPSHOT/solcj-compat-0.4.18rev1-SNAPSHOT.jar" )
+    )
+  }
+
+  val SupportedVersions = SolcJSupportedVersions ++ OtherSolcjCompatibleSupportedVersion.keySet
+
+  private def mbVersionUrl( version : String ) : Option[URL] = {
+    if ( SolcJSupportedVersions( version ) ) {
+      Some( createSolcJJarUrl( version ) )
+    }
+    else {
+      OtherSolcjCompatibleSupportedVersion.get( version )
+    }
+  }
+
+  private def createSolcJJarUrl( version : String ) : URL = {
     new URL( s"https://dl.bintray.com/ethereum/maven/org/ethereum/solcJ-all/$version/solcJ-all-$version.jar" )
   }
 
-  private def createClassLoader( version : String ) : URLClassLoader = {
-    new URLClassLoader( Array( createJarUrl( version ) ) )
+  private def createClassLoader( jarUrl : URL ) : URLClassLoader = {
+    new URLClassLoader( Array( jarUrl ) )
   }
 
   private def findSolcFileNames( cl : URLClassLoader ) : immutable.Seq[String] = {
@@ -60,17 +76,24 @@ object SolcJInstaller {
       }
     }
 
-    if ( fileName == "solc" ) {
-      Files.setPosixFilePermissions( filePath, Set( OWNER_READ, OWNER_EXECUTE ).asJava )
+    val file = filePath.toFile
+    if ( fileName == "solc" || fileName == "solc.exe" ) {
+      file.setReadable( true )
+      file.setExecutable( true )
+
+      // fails on Windows :(
+      // Files.setPosixFilePermissions( filePath, Set( OWNER_READ, OWNER_EXECUTE ).asJava )
     } else {
-      Files.setPosixFilePermissions( filePath, Set( OWNER_READ ).asJava )
+      file.setReadable( true )
+
+      // fails on Windows :(
+      // Files.setPosixFilePermissions( filePath, Set( OWNER_READ ).asJava )
     }
   }
 
   def installLocalSolcJ( rootLocalCompilerDir : Path, version : String ) : Unit = {
-    if ( ! SupportedVersions( version ) ) throw new Exception( s"Unsupported SolcJ Version: $version" )
-
-    val cl = createClassLoader( version )
+    val url = mbVersionUrl( version ).getOrElse( throw new Exception( s"Unsupported SolcJ Version: $version" ) )
+    val cl = createClassLoader( url )
     val fileNames = findSolcFileNames( cl )
     fileNames.foreach { name =>
       DEBUG.log( s"Writing solcJ compiler file, version $version: $name" )

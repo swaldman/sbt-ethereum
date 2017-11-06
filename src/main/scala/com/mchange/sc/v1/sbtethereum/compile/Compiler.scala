@@ -210,37 +210,45 @@ object Compiler {
         }
       }
     }
-    val LocalPathSolcKey: String = "local-path-solc"
-    val LocalPathSolc: LocalSolc = LocalSolc( None )
+    val LocalPathSolcKey = "local-path-solc"
+    val LocalPathSolc    = LocalSolc( None )
 
     private val LanguageVersionRegex: Regex = """^(\d+\.\d+\.\d+)\D?.*""".r
 
     private def contractFromMetadata( log : sbt.Logger, source : String, contractName : String,  code : String, metadata : String ) : Compilation.Contract = {
-      val map: Map[String, JsValue] = Json.parse( metadata ).as[JsObject].value
-      val language: Option[String] = map.get("language").map( _.as[String] )
-      val compilerVersion: Option[String] = map.get("compiler").flatMap( _.as[JsObject].value.get("version").map( _.as[String] ) )
-      val languageVersion: Option[String] = {
-        compilerVersion.flatMap { cv =>
-          cv match {
-            case LanguageVersionRegex( lv ) => Some( lv )
-            case _ => {
-              log.warn( s"Could not parse Solidity language version from compiler version '$compilerVersion'." )
-              None
+      try {
+        val map: Map[String, JsValue] = Json.parse( metadata ).as[JsObject].value
+        val language: Option[String] = map.get("language").map( _.as[String] )
+        val compilerVersion: Option[String] = map.get("compiler").flatMap( _.as[JsObject].value.get("version").map( _.as[String] ) )
+        val languageVersion: Option[String] = {
+          compilerVersion.flatMap { cv =>
+            cv match {
+              case LanguageVersionRegex( lv ) => Some( lv )
+              case _ => {
+                log.warn( s"Could not parse Solidity language version from compiler version '$compilerVersion'." )
+                None
+              }
             }
           }
         }
-      }
 
-      val compilerOptions: Option[String]     = map.get("settings").map( Json.stringify )
-      val omap: Option[Map[String, JsValue]]  = map.get("output").map( _.as[JsObject].value )
-      val abi: Option[Abi]                    = omap.flatMap( _.get("abi").map( _.as[Abi] ) )
-      val userDoc: Option[Doc.User]           = omap.flatMap( _.get("userdoc").map( _.as[Doc.User] ) )
-      val developerDoc: Option[Doc.Developer] = omap.flatMap( _.get("devdoc").map( _.as[Doc.Developer] ) )
+        val compilerOptions: Option[String]     = map.get("settings").map( Json.stringify )
+        val omap: Option[Map[String, JsValue]]  = map.get("output").map( _.as[JsObject].value )
+        val abi: Option[Abi]                    = omap.flatMap( _.get("abi").map( _.as[Abi] ) )
+        val userDoc: Option[Doc.User]           = omap.flatMap( _.get("userdoc").map( _.as[Doc.User] ) )
+        val developerDoc: Option[Doc.Developer] = omap.flatMap( _.get("devdoc").map( _.as[Doc.Developer] ) )
 
-      val info: Compilation.Contract.Info = {
-        Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abi, userDoc, developerDoc, Some( metadata ) )
+        val info: Compilation.Contract.Info = {
+          Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abi, userDoc, developerDoc, Some( metadata ) )
+        }
+        Compilation.Contract( code, info )
       }
-      Compilation.Contract( code, info )
+      catch {
+        case t : Throwable => {
+          WARNING.log( s"Throwable '${t}' provoked when trying to parse the following contract metadata!\n${metadata}" )
+          throw t
+        }
+      }
     }
   }
 
