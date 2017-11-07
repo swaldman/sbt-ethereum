@@ -83,8 +83,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val EmptyBytes = List.empty[Byte]
 
-  private val LatestSolcJVersion = "0.4.10"
-
   private val DefaultEthJsonRpcUrl = "http://ethjsonrpc.mchange.com:8545"
 
   private val DefaultTestEthJsonRpcUrl = testing.Default.EthJsonRpc.Url
@@ -1255,7 +1253,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val mbVersion = SolcJVersionParser.parsed
 
-      val versionToInstall = mbVersion.getOrElse( LatestSolcJVersion )
+      val versionToInstall = mbVersion.getOrElse( SolcJInstaller.DefaultSolcJVersion )
 
       log.info( s"Installing local solidity compiler into the sbt-ethereum repository. This may take a few minutes." )
       val check = repository.SolcJ.Directory.flatMap { rootSolcJDir =>
