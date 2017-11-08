@@ -361,206 +361,206 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       // tasks
 
-      ethAbiForget in Compile <<= ethAbiForgetTask( Compile ),
+      ethAbiForget in Compile := { ethAbiForgetTask( Compile ).evaluated },
 
-      ethAbiForget in Test <<= ethAbiForgetTask( Test ),
+      ethAbiForget in Test := { ethAbiForgetTask( Test ).evaluated },
 
-      ethAbiList in Compile <<= ethAbiListTask( Compile ),
+      ethAbiList in Compile := { ethAbiListTask( Compile ).value },
 
-      ethAbiList in Test <<= ethAbiListTask( Test ),
+      ethAbiList in Test := { ethAbiListTask( Test ).value },
 
-      ethAbiMemorize in Compile <<= ethAbiMemorizeTask( Compile ),
+      ethAbiMemorize in Compile := { ethAbiMemorizeTask( Compile ).value },
 
-      ethAbiMemorize in Test <<= ethAbiMemorizeTask( Test ),
+      ethAbiMemorize in Test := { ethAbiMemorizeTask( Test ).value },
 
-      ethAliasDrop in Compile <<= ethAliasDropTask( Compile ),
+      ethAliasDrop in Compile := { ethAliasDropTask( Compile ).evaluated },
 
-      ethAliasDrop in Test <<= ethAliasDropTask( Test ),
+      ethAliasDrop in Test := { ethAliasDropTask( Test ).evaluated },
 
-      ethAliasList in Compile <<= ethAliasListTask( Compile ),
+      ethAliasList in Compile := { ethAliasListTask( Compile ).value },
 
-      ethAliasList in Test <<= ethAliasListTask( Test ),
+      ethAliasList in Test := { ethAliasListTask( Test ).value },
 
-      ethAliasSet in Compile <<= ethAliasSetTask( Compile ),
+      ethAliasSet in Compile := { ethAliasSetTask( Compile ).evaluated },
 
-      ethAliasSet in Test <<= ethAliasSetTask( Test ),
+      ethAliasSet in Test := { ethAliasSetTask( Test ).evaluated },
 
-      ethBalance in Compile <<= ethBalanceTask( Compile ),
+      ethBalance in Compile := { ethBalanceTask( Compile ).evaluated },
 
-      ethBalance in Test <<= ethBalanceTask( Test ),
+      ethBalance in Test := { ethBalanceTask( Test ).evaluated },
 
-      ethBalanceInWei in Compile <<= ethBalanceInWeiTask( Compile ),
+      ethBalanceInWei in Compile := { ethBalanceInWeiTask( Compile ).evaluated },
 
-      ethBalanceInWei in Test <<= ethBalanceInWeiTask( Test ),
+      ethBalanceInWei in Test := { ethBalanceInWeiTask( Test ).evaluated },
 
-      ethCompilationsCull <<= ethCompilationsCullTask,
+      ethCompilationsCull := { ethCompilationsCullTask.value },
 
-      ethCompilationsInspect in Compile <<= ethCompilationsInspectTask( Compile ),
+      ethCompilationsInspect in Compile := { ethCompilationsInspectTask( Compile ).evaluated },
 
-      ethCompilationsInspect in Test <<= ethCompilationsInspectTask( Test ),
+      ethCompilationsInspect in Test := { ethCompilationsInspectTask( Test ).evaluated },
 
-      ethCompilationsList <<= ethCompilationsListTask,
+      ethCompilationsList := { ethCompilationsListTask.value },
 
-      ethDeployAuto in Compile <<= ethDeployAutoTask( Compile ),
+      ethDeployAuto in Compile := { ethDeployAutoTask( Compile ).value },
 
-      ethDeployAuto in Test <<= ethDeployAutoTask( Test ),
+      ethDeployAuto in Test := { ethDeployAutoTask( Test ).value },
 
-      ethDeployOnly in Compile <<= ethDeployOnlyTask( Compile ),
+      ethDeployOnly in Compile := { ethDeployOnlyTask( Compile ).evaluated },
 
-      ethDeployOnly in Test <<= ethDeployOnlyTask( Test ),
+      ethDeployOnly in Test := { ethDeployOnlyTask( Test ).evaluated },
 
-      ethInvokeConstant in Compile <<= ethInvokeConstantTask( Compile ),
+      ethInvokeConstant in Compile := { ethInvokeConstantTask( Compile ).evaluated },
 
-      ethInvokeConstant in Test <<= ethInvokeConstantTask( Test ),
+      ethInvokeConstant in Test := { ethInvokeConstantTask( Test ).evaluated },
 
-      ethInvokeTransaction in Compile <<= ethInvokeTransactionTask( Compile ),
+      ethInvokeTransaction in Compile := { ethInvokeTransactionTask( Compile ).evaluated },
 
-      ethInvokeTransaction in Test <<= ethInvokeTransactionTask( Test ),
+      ethInvokeTransaction in Test := { ethInvokeTransactionTask( Test ).evaluated },
 
-      ethKeystoreCreateWalletV3 := xethKeystoreCreateWalletV3Scrypt.value,
+      ethKeystoreCreateWalletV3 := { xethKeystoreCreateWalletV3Scrypt.value },
 
-      ethKeystoreInspectWalletV3 in Compile <<= ethKeystoreInspectWalletV3Task( Compile ),
+      ethKeystoreInspectWalletV3 in Compile := { ethKeystoreInspectWalletV3Task( Compile ).evaluated },
 
-      ethKeystoreInspectWalletV3 in Test <<= ethKeystoreInspectWalletV3Task( Test ),
+      ethKeystoreInspectWalletV3 in Test := { ethKeystoreInspectWalletV3Task( Test ).evaluated },
 
-      ethKeystoreList in Compile <<= ethKeystoreListTask( Compile ),
+      ethKeystoreList in Compile := { ethKeystoreListTask( Compile ).value },
 
-      ethKeystoreList in Test <<= ethKeystoreListTask( Test ),
+      ethKeystoreList in Test := { ethKeystoreListTask( Test ).value },
 
-      ethKeystoreMemorizeWalletV3 <<= ethKeystoreMemorizeWalletV3Task,
+      ethKeystoreMemorizeWalletV3 := { ethKeystoreMemorizeWalletV3Task.value },
 
-      ethKeystoreRevealPrivateKey in Compile <<= ethKeystoreRevealPrivateKeyTask( Compile ),
+      ethKeystoreRevealPrivateKey in Compile := { ethKeystoreRevealPrivateKeyTask( Compile ).evaluated },
 
-      ethKeystoreRevealPrivateKey in Test <<= ethKeystoreRevealPrivateKeyTask( Test ),
+      ethKeystoreRevealPrivateKey in Test := { ethKeystoreRevealPrivateKeyTask( Test ).evaluated },
 
-      ethKeystoreValidateWalletV3 in Compile <<= ethKeystoreValidateWalletV3Task( Compile ),
+      ethKeystoreValidateWalletV3 in Compile := { ethKeystoreValidateWalletV3Task( Compile ).evaluated },
 
-      ethKeystoreValidateWalletV3 in Test <<= ethKeystoreValidateWalletV3Task( Test ),
+      ethKeystoreValidateWalletV3 in Test := { ethKeystoreValidateWalletV3Task( Test ).evaluated },
 
-      ethSelfPing in Compile <<= ethSelfPingTask( Compile ),
+      ethSelfPing in Compile := { ethSelfPingTask( Compile ).value },
 
-      ethSelfPing in Test <<= ethSelfPingTask( Test ),
+      ethSelfPing in Test := { ethSelfPingTask( Test ).value },
 
-      ethSenderOverrideSet in Compile <<= ethSenderOverrideSetTask( Compile ),
+      ethSenderOverrideSet in Compile := { ethSenderOverrideSetTask( Compile ).evaluated },
 
-      ethSenderOverrideSet in Test <<= ethSenderOverrideSetTask( Test ),
+      ethSenderOverrideSet in Test := { ethSenderOverrideSetTask( Test ).evaluated },
 
-      ethSenderOverrideDrop in Compile <<= ethSenderOverrideDropTask( Compile ),
+      ethSenderOverrideDrop in Compile := { ethSenderOverrideDropTask( Compile ).value },
 
-      ethSenderOverrideDrop in Test <<= ethSenderOverrideDropTask( Test ),
+      ethSenderOverrideDrop in Test := { ethSenderOverrideDropTask( Test ).value },
 
-      ethSenderOverrideShow in Compile <<= ethSenderOverrideShowTask( Compile ),
+      ethSenderOverrideShow in Compile := { ethSenderOverrideShowTask( Compile ).value },
 
-      ethSenderOverrideShow in Test <<= ethSenderOverrideShowTask( Test ),
+      ethSenderOverrideShow in Test := { ethSenderOverrideShowTask( Test ).value },
 
-      ethSendEther in Compile <<= ethSendEtherTask( Compile ),
+      ethSendEther in Compile := { ethSendEtherTask( Compile ).evaluated },
 
-      ethSendEther in Test <<= ethSendEtherTask( Test ),
+      ethSendEther in Test := { ethSendEtherTask( Test ).evaluated },
 
-      ethSolidityCompile in Compile <<= ethSolidityCompileTask,
+      ethSolidityCompile in Compile := { ethSolidityCompileTask.value },
 
-      ethSolidityChooseCompiler in Compile <<= ethSolidityChooseCompilerTask,
+      ethSolidityChooseCompiler in Compile := { ethSolidityChooseCompilerTask.evaluated },
 
-      ethSolidityInstallCompiler in Compile <<= ethSolidityInstallCompilerTask,
+      ethSolidityInstallCompiler in Compile := { ethSolidityInstallCompilerTask.evaluated },
 
-      ethSolidityShowCompiler in Compile <<= ethSolidityShowCompilerTask,
+      ethSolidityShowCompiler in Compile := { ethSolidityShowCompilerTask.value },
 
-      ethTestrpcLocalStart in Test <<= ethTestrpcLocalStartTask,
+      ethTestrpcLocalStart in Test := { ethTestrpcLocalStartTask.value },
 
-      ethTestrpcLocalStop in Test <<= ethTestrpcLocalStopTask,
+      ethTestrpcLocalStop in Test := { ethTestrpcLocalStopTask.value },
 
-      xethDefaultGasPrice in Compile <<= xethDefaultGasPriceTask( Compile ),
+      xethDefaultGasPrice in Compile := { xethDefaultGasPriceTask( Compile ).value },
 
-      xethDefaultGasPrice in Test <<= xethDefaultGasPriceTask( Test ),
+      xethDefaultGasPrice in Test := { xethDefaultGasPriceTask( Test ).value },
 
-      xethFindCacheAliasesIfAvailable in Compile <<= xethFindCacheAliasesIfAvailableTask( Compile ).storeAs( xethFindCacheAliasesIfAvailable in Compile ).triggeredBy( xethTriggerDirtyAliasCache ),
+      xethFindCacheAliasesIfAvailable in Compile := { (xethFindCacheAliasesIfAvailableTask( Compile ).storeAs( xethFindCacheAliasesIfAvailable in Compile ).triggeredBy( xethTriggerDirtyAliasCache )).value },
 
-      xethFindCacheAliasesIfAvailable in Test <<= xethFindCacheAliasesIfAvailableTask( Test ).storeAs( xethFindCacheAliasesIfAvailable in Test ).triggeredBy( xethTriggerDirtyAliasCache ),
+      xethFindCacheAliasesIfAvailable in Test := { (xethFindCacheAliasesIfAvailableTask( Test ).storeAs( xethFindCacheAliasesIfAvailable in Test ).triggeredBy( xethTriggerDirtyAliasCache )).value },
 
-      xethFindCacheOmitDupsCurrentCompilations in Compile <<= xethFindCacheOmitDupsCurrentCompilationsTask storeAs( xethFindCacheOmitDupsCurrentCompilations in Compile ) triggeredBy( ethSolidityCompile in Compile ),
+      xethFindCacheOmitDupsCurrentCompilations in Compile := { (xethFindCacheOmitDupsCurrentCompilationsTask storeAs( xethFindCacheOmitDupsCurrentCompilations in Compile ) triggeredBy( ethSolidityCompile in Compile )).value },
 
-      xethFindCacheSessionSolidityCompilerKeys in Compile <<= xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList ),
+      xethFindCacheSessionSolidityCompilerKeys in Compile := { (xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList )).value },
 
-      xethFindCurrentSender in Compile <<= xethFindCurrentSenderTask( Compile ),
+      xethFindCurrentSender in Compile := { xethFindCurrentSenderTask( Compile ).value },
 
-      xethFindCurrentSender in Test <<= xethFindCurrentSenderTask( Test ),
+      xethFindCurrentSender in Test := { xethFindCurrentSenderTask( Test ).value },
 
-      xethFindCurrentSolidityCompiler in Compile <<= xethFindCurrentSolidityCompilerTask,
+      xethFindCurrentSolidityCompiler in Compile := { xethFindCurrentSolidityCompilerTask.value },
 
       // we don't scope the gas override tasks for now
       // since any gas override gets used in tests as well as other contexts
       // we may bifurcate and scope this in the future
-      xethGasOverrideSet <<= xethGasOverrideSetTask,
+      xethGasOverrideSet := { xethGasOverrideSetTask.evaluated },
 
-      xethGasOverrideDrop <<= xethGasOverrideDropTask,
+      xethGasOverrideDrop := { xethGasOverrideDropTask.value },
 
-      xethGasOverrideShow <<= xethGasOverrideShowTask,
+      xethGasOverrideShow := { xethGasOverrideShowTask.value },
 
-      xethGasPrice in Compile <<= xethGasPriceTask( Compile ),
+      xethGasPrice in Compile := { xethGasPriceTask( Compile ).value },
 
-      xethGasPrice in Test <<= xethGasPriceTask( Test ),
+      xethGasPrice in Test := { xethGasPriceTask( Test ).value },
 
-      xethGasPriceOverrideSet <<= xethGasPriceOverrideSetTask,
+      xethGasPriceOverrideSet := { xethGasPriceOverrideSetTask.evaluated },
 
-      xethGasPriceOverrideDrop <<= xethGasPriceOverrideDropTask,
+      xethGasPriceOverrideDrop := { xethGasPriceOverrideDropTask.value },
 
-      xethGasPriceOverrideShow <<= xethGasPriceOverrideShowTask,
+      xethGasPriceOverrideShow := { xethGasPriceOverrideShowTask.value },
 
-      xethGenKeyPair <<= xethGenKeyPairTask, // global config scope seems appropriate
+      xethGenKeyPair := { xethGenKeyPairTask.value }, // global config scope seems appropriate
 
-      xethGenScalaStubsAndTestingResources in Compile <<= xethGenScalaStubsAndTestingResourcesTask( Compile ),
+      xethGenScalaStubsAndTestingResources in Compile := { xethGenScalaStubsAndTestingResourcesTask( Compile ).value },
 
-      xethGenScalaStubsAndTestingResources in Test <<= xethGenScalaStubsAndTestingResourcesTask( Test ).dependsOn( Keys.compile in Compile ),
+      xethGenScalaStubsAndTestingResources in Test := { (xethGenScalaStubsAndTestingResourcesTask( Test ).dependsOn( Keys.compile in Compile )).value },
 
-      xethInvokeData in Compile <<= xethInvokeDataTask( Compile ),
+      xethInvokeData in Compile := { xethInvokeDataTask( Compile ).evaluated },
 
-      xethInvokeData in Test <<= xethInvokeDataTask( Test ),
+      xethInvokeData in Test := { xethInvokeDataTask( Test ).evaluated },
 
-      xethKeystoreCreateWalletV3Pbkdf2 <<= xethKeystoreCreateWalletV3Pbkdf2Task, // global config scope seems appropriate
+      xethKeystoreCreateWalletV3Pbkdf2 := { xethKeystoreCreateWalletV3Pbkdf2Task.value }, // global config scope seems appropriate
 
-      xethKeystoreCreateWalletV3Scrypt <<= xethKeystoreCreateWalletV3ScryptTask, // global config scope seems appropriate
+      xethKeystoreCreateWalletV3Scrypt := { xethKeystoreCreateWalletV3ScryptTask.value }, // global config scope seems appropriate
 
-      xethLoadAbiFor in Compile <<= xethLoadAbiForTask( Compile ),
+      xethLoadAbiFor in Compile := { xethLoadAbiForTask( Compile ).evaluated },
 
-      xethLoadAbiFor in Test <<= xethLoadAbiForTask( Test ),
+      xethLoadAbiFor in Test := { xethLoadAbiForTask( Test ).evaluated },
 
-      xethLoadCompilationsKeepDups in Compile <<= xethLoadCompilationsKeepDupsTask,
+      xethLoadCompilationsKeepDups in Compile := { xethLoadCompilationsKeepDupsTask.value },
 
-      xethLoadCompilationsOmitDups in Compile <<= xethLoadCompilationsOmitDupsTask,
+      xethLoadCompilationsOmitDups in Compile := { xethLoadCompilationsOmitDupsTask.value },
 
-      xethLoadWalletV3 in Compile <<= xethLoadWalletV3Task( Compile ),
+      xethLoadWalletV3 in Compile := { xethLoadWalletV3Task( Compile ).value },
 
-      xethLoadWalletV3 in Test <<= xethLoadWalletV3Task( Test ),
+      xethLoadWalletV3 in Test := { xethLoadWalletV3Task( Test ).value },
 
-      xethLoadWalletV3For in Compile <<= xethLoadWalletV3ForTask( Compile ),
+      xethLoadWalletV3For in Compile := { xethLoadWalletV3ForTask( Compile ).evaluated },
 
-      xethLoadWalletV3For in Test <<= xethLoadWalletV3ForTask( Test ),
+      xethLoadWalletV3For in Test := { xethLoadWalletV3ForTask( Test ).evaluated },
 
-      xethNamedAbis in Compile <<= xethNamedAbisTask,
+      xethNamedAbis in Compile := { xethNamedAbisTask.value },
 
-      xethNextNonce in Compile <<= xethNextNonceTask( Compile ),
+      xethNextNonce in Compile := { xethNextNonceTask( Compile ).value },
 
-      xethNextNonce in Test <<= xethNextNonceTask( Test ),
+      xethNextNonce in Test := { xethNextNonceTask( Test ).value },
 
-      xethQueryRepositoryDatabase <<= xethQueryRepositoryDatabaseTask, // we leave this unscoped, just because scoping it to Compile seems weird
+      xethQueryRepositoryDatabase := { xethQueryRepositoryDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
 
       // we leave triggers unscoped, not for any particular reason
       // (we haven't tried scoping them and seen a problem)
-      xethTriggerDirtyAliasCache <<= xethTriggerDirtyAliasCacheTask, // this is a no-op, its execution just triggers a re-caching of aliases
+      xethTriggerDirtyAliasCache := { xethTriggerDirtyAliasCacheTask.value }, // this is a no-op, its execution just triggers a re-caching of aliases
 
-      xethTriggerDirtySolidityCompilerList <<= xethTriggerDirtySolidityCompilerListTask, // this is a no-op, its execution just triggers a re-caching of aliases
+      xethTriggerDirtySolidityCompilerList := { xethTriggerDirtySolidityCompilerListTask.value }, // this is a no-op, its execution just triggers a re-caching of aliases
 
-      xethUpdateContractDatabase in Compile <<= xethUpdateContractDatabaseTask( Compile ),
+      xethUpdateContractDatabase in Compile := { xethUpdateContractDatabaseTask( Compile ).value },
 
-      xethUpdateContractDatabase in Test <<= xethUpdateContractDatabaseTask( Test ),
+      xethUpdateContractDatabase in Test := { xethUpdateContractDatabaseTask( Test ).value },
 
-      xethUpdateRepositoryDatabase <<= xethUpdateRepositoryDatabaseTask, // we leave this unscoped, just because scoping it to Compile seems weird
+      xethUpdateRepositoryDatabase := { xethUpdateRepositoryDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
 
-      xethUpdateSessionSolidityCompilers in Compile <<= xethUpdateSessionSolidityCompilersTask,
+      xethUpdateSessionSolidityCompilers in Compile := { xethUpdateSessionSolidityCompilersTask.value },
 
       commands += ethTestrpcLocalRestartCommand,
 
-      Keys.compile in Compile := (Keys.compile in Compile).dependsOn(ethSolidityCompile in Compile).value,
+      Keys.compile in Compile := { (Keys.compile in Compile).dependsOn(ethSolidityCompile in Compile).value },
 
       onLoad in Global := {
         val origF : State => State = (onLoad in Global).value
