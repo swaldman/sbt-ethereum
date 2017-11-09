@@ -1,6 +1,6 @@
 # TODO
 
-* Update solcJ ourselves, or find a different maintained solution
+* Condense ethContractSpawnOnly and ethContractSpawnAuto into ethContractSpawn
 * Make constructor arg hex acessible from repository deployments.
   -- then maybe remove verbosity about arg hex from ethDeployOnly
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
@@ -9,9 +9,9 @@
 * Richer ABI management
    let ethAbiList show deployed as well as memorized ABIs
        ethAbiShow should dump JSON text
+* richer balances (multi-unit, fiat balances)
 * xethEstimateGas
 * xethSendMessage
-* ethSelfPing => ethAccountPingSelf
 * Prettify output of log items in client transactions
 * event handling generally
 * ethSenderEffective
