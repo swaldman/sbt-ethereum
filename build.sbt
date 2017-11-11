@@ -39,7 +39,7 @@ publishTo := version {
 libraryDependencies += sbtCoreNext.value
 
 libraryDependencies ++= Seq(
-  "com.mchange"    %% "consuela"              % "0.0.3",
+  "com.mchange"    %% "consuela"              % "0.0.4-SNAPSHOT" changing(),
   "com.mchange"    %% "mchange-commons-scala" % "0.4.3",
   "com.mchange"    %% "mlog-scala"            % "0.3.9",
   "com.mchange"    %% "literal"               % "0.0.2",
