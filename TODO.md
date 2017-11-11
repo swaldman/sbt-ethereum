@@ -2,19 +2,19 @@
 
 * Condense ethContractSpawnOnly and ethContractSpawnAuto into ethContractSpawn
 * Make constructor arg hex acessible from repository deployments.
-  -- then maybe remove verbosity about arg hex from ethDeployOnly
+  -- then maybe remove verbosity about arg hex from ethContractSpawnOnly
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
   * also for stubs and testing resources
 * Richer ABI management
-   let ethAbiList show deployed as well as memorized ABIs
+   let ethContractAbiList show deployed as well as memorized ABIs
        ethAbiShow should dump JSON text
 * richer balances (multi-unit, fiat balances)
 * xethEstimateGas
 * xethSendMessage
 * Prettify output of log items in client transactions
 * event handling generally
-* ethSenderEffective
+* ethAddressSenderEffective
 * ethNameService*
 * ethToken*
 * Make stub compilation incremental
