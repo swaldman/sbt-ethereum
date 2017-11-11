@@ -191,9 +191,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethContractCompilationsList = taskKey[Unit]("Lists summary information about compilations known in the repository")
 
-    val ethContractSpawnAuto = taskKey[immutable.Map[String,Either[EthHash,ClientTransactionReceipt]]]("Deploys contracts named in 'ethcfgAutoSpawnContracts'.")
+    val ethContractSpawn = taskKey("Deploys named contract with args, if name and arg supplied. Otherwise deploys contracts named in 'ethcfgAutoSpawnContracts'.")
 
-    val ethContractSpawnOnly = inputKey[Either[EthHash,ClientTransactionReceipt]]("Deploys the specified named contract")
+    val xethContractSpawnAuto = taskKey[immutable.Map[String,Either[EthHash,ClientTransactionReceipt]]]("Deploys contracts named in 'ethcfgAutoSpawnContracts'.")
+
+    val xethContractSpawnOnly = inputKey[Either[EthHash,ClientTransactionReceipt]]("Deploys the specified named contract")
 
     val ethDebugTestrpcLocalStart = taskKey[Unit]("Starts a local testrpc environment (if the command 'testrpc' is in your PATH)")
 
@@ -211,7 +213,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethKeystoreWalletV3Validate = inputKey[Unit]("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
-    val ethSolidityCompile = taskKey[Unit]("Compiles solidity files")
+    val compileSolidity = taskKey[Unit]("Compiles solidity files")
 
     val ethSolidityCompilerInstall = inputKey[Unit]("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
 
@@ -233,7 +235,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethFindCacheAliasesIfAvailable = taskKey[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]("Finds and caches aliases for use by address parsers")
 
-    val xethFindCacheOmitDupsCurrentCompilations = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethSolidityCompile")
+    val xethFindCacheOmitDupsCurrentCompilations = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by compileSolidity")
 
     val xethFindCurrentSender = taskKey[Failable[EthAddress]]("Finds the address that should be used to send ether or messages")
 
@@ -401,13 +403,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethContractCompilationsList := { ethContractCompilationsListTask.value },
 
-      ethContractSpawnAuto in Compile := { ethContractSpawnAutoTask( Compile ).value },
+      xethContractSpawnAuto in Compile := { xethContractSpawnAutoTask( Compile ).value },
 
-      ethContractSpawnAuto in Test := { ethContractSpawnAutoTask( Test ).value },
+      xethContractSpawnAuto in Test := { xethContractSpawnAutoTask( Test ).value },
 
-      ethContractSpawnOnly in Compile := { ethContractSpawnOnlyTask( Compile ).evaluated },
+      xethContractSpawnOnly in Compile := { xethContractSpawnOnlyTask( Compile ).evaluated },
 
-      ethContractSpawnOnly in Test := { ethContractSpawnOnlyTask( Test ).evaluated },
+      xethContractSpawnOnly in Test := { xethContractSpawnOnlyTask( Test ).evaluated },
 
       ethTransactionView in Compile := { ethTransactionViewTask( Compile ).evaluated },
 
@@ -457,7 +459,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethTransactionSend in Test := { ethTransactionSendTask( Test ).evaluated },
 
-      ethSolidityCompile in Compile := { ethSolidityCompileTask.value },
+      compileSolidity in Compile := { compileSolidityTask.value },
 
       ethSolidityCompilerSelect in Compile := { ethSolidityCompilerSelectTask.evaluated },
 
@@ -477,7 +479,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethFindCacheAliasesIfAvailable in Test := { (xethFindCacheAliasesIfAvailableTask( Test ).storeAs( xethFindCacheAliasesIfAvailable in Test ).triggeredBy( xethTriggerDirtyAliasCache )).value },
 
-      xethFindCacheOmitDupsCurrentCompilations in Compile := { (xethFindCacheOmitDupsCurrentCompilationsTask storeAs( xethFindCacheOmitDupsCurrentCompilations in Compile ) triggeredBy( ethSolidityCompile in Compile )).value },
+      xethFindCacheOmitDupsCurrentCompilations in Compile := { (xethFindCacheOmitDupsCurrentCompilationsTask storeAs( xethFindCacheOmitDupsCurrentCompilations in Compile ) triggeredBy( compileSolidity in Compile )).value },
 
       xethFindCacheSessionSolidityCompilerKeys in Compile := { (xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList )).value },
 
@@ -560,7 +562,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       commands += ethDebugTestrpcLocalRestartCommand,
 
-      Keys.compile in Compile := { (Keys.compile in Compile).dependsOn(ethSolidityCompile in Compile).value },
+      Keys.compile in Compile := { (Keys.compile in Compile).dependsOn(compileSolidity in Compile).value },
 
       onLoad in Global := {
         val origF : State => State = (onLoad in Global).value
@@ -859,14 +861,33 @@ object SbtEthereumPlugin extends AutoPlugin {
       println( cap )
     }
 
-    def ethContractSpawnAutoTask( config : Configuration ) : Initialize[Task[immutable.Map[String,Either[EthHash,ClientTransactionReceipt]]]] = Def.task {
+    def ethContractSpawn( config : Configuration ) : Initialize[Task[immutable.Map[String,Either[EthHash,ClientTransactionReceipt]]]] = {
+      val parser = Defaults.loadForParser(xethFindCacheOmitDupsCurrentCompilations)( genContractNamesConstructorInputsParser )
+
+      Def.inputTaskDyn {
+        val nameInfo = parser.parsed
+        nameInfo match {
+          case ( "", None ) => Def.taskDyn {
+            xethContractSpawnAuto.value
+          }
+          case ( "", Some(info) ) => {
+            throw new SbtEthereumException( s"Huh? Can't have compilation info about an unnamed contract! Unexpected info: ${info}" )
+          }
+          case name = Def.taskDyn {
+            immutable.Map.empty[String,Either[EthHash,ClientTransactionReceipt]] + (name, xethContractSpawnOnlyTask.value)
+          }
+        }
+      }
+    }
+
+    def xethContractSpawnAutoTask( config : Configuration ) : Initialize[Task[immutable.Map[String,Either[EthHash,ClientTransactionReceipt]]]] = Def.task {
       val s = state.value
       val autoDeployContracts = (ethcfgAutoSpawnContracts in config).?.value
       autoDeployContracts.fold( immutable.Map.empty[String,Either[EthHash,ClientTransactionReceipt]] ) { seq =>
         val tuples = {
           seq map { nameAndArgs =>
 	    val extract = Project.extract(s)
-	    val (_, eitherHashOrReceipt) = extract.runInputTask(ethContractSpawnOnly in config, nameAndArgs, s)
+	    val (_, eitherHashOrReceipt) = extract.runInputTask(xethContractSpawnOnly in config, nameAndArgs, s)
             val name = nameAndArgs.split("""\s+""").head // we should already have died if this would fail
             ( name, eitherHashOrReceipt )
           }
@@ -875,7 +896,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethContractSpawnOnlyTask( config : Configuration ) : Initialize[InputTask[Either[EthHash,ClientTransactionReceipt]]] = {
+    def xethContractSpawnOnlyTask( config : Configuration ) : Initialize[InputTask[Either[EthHash,ClientTransactionReceipt]]] = {
       val parser = Defaults.loadForParser(xethFindCacheOmitDupsCurrentCompilations)( genContractNamesConstructorInputsParser )
 
       Def.inputTask {
@@ -1242,7 +1263,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def ethSolidityCompileTask : Initialize[Task[Unit]] = Def.task {
+    def compileSolidityTask : Initialize[Task[Unit]] = Def.task {
       val log = streams.value.log
 
       val compiler = (xethFindCurrentSolidityCompiler in Compile).value
@@ -1679,7 +1700,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     def xethLoadCompilationsKeepDupsTask : Initialize[Task[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]] = Def.task {
       val log = streams.value.log
 
-      val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
+      val dummy = (compileSolidity in Compile).value // ensure compilation has completed
 
       val dir = (ethcfgSolidityDestination in Compile).value
 
@@ -1705,7 +1726,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     def xethLoadCompilationsOmitDupsTask : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
       val log = streams.value.log
 
-      val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
+      val dummy = (compileSolidity in Compile).value // ensure compilation has completed
 
       val dir = (ethcfgSolidityDestination in Compile).value
 

@@ -145,12 +145,13 @@ object Parsers {
     val contracts = mbContracts.getOrElse( immutable.Map.empty )
     val contractNames = immutable.TreeSet( contracts.keys.toSeq : _* )( Ordering.comparatorToOrdering( String.CASE_INSENSITIVE_ORDER ) )
     val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", ZWSP) else contractNames // non-breaking space to prevent autocompletion to dummy example
-    Space.* ~> token( NotSpace examples exSet ).flatMap { name =>
+    val realParseParser =  NotSpace.flatMap { name =>
       contracts.get( name ) match {
         case None                => success( Tuple2( name, None ) )
         case Some( compilation ) => resultFromCompilation( name, compilation )
       }
     }
+    Space.* ~> token( ( realParseParser | success( Tuple2("",None) ) ) examples exSet )
   }
 
   private [sbtethereum] def genAliasParser(
