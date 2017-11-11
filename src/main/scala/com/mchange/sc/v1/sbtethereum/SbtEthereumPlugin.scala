@@ -35,13 +35,17 @@ import com.mchange.sc.v1.consuela.ethereum.stub
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker
 import com.mchange.sc.v1.log.MLogger
 import scala.collection._
+import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.sys.process.{Process, ProcessLogger}
 import scala.io.Source
 
-// XXX: provisionally, for now... but what sort of ExecutionContext would be best when?
 import scala.concurrent.ExecutionContext
+import com.mchange.sc.v2.jsonrpc.Exchanger.Factory.Default
+
+// global implicits
 import scala.concurrent.ExecutionContext.Implicits.global
+import com.mchange.sc.v2.concurrent.Poller.Default
 
 object SbtEthereumPlugin extends AutoPlugin {
 
@@ -904,7 +908,6 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val blockchainId = (ethcfgBlockchainId in config).value
         val ephemeralBlockchains = xethcfgEphemeralBlockchains.value
-        val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
         val ( contractName, extraData ) = parser.parsed
 
         // at the time of parsing, a compiled contract may not not available.
@@ -932,38 +935,46 @@ object SbtEthereumPlugin extends AutoPlugin {
         val codeHex = compilation.code
         val dataHex = codeHex ++ inputsHex
         val sender = (xethFindCurrentSender in config).value.get
-        val nextNonce = (xethNextNonce in config).value
-        val markup = ethcfgGasLimitMarkup.value
-        val gasPrice = (ethGasPrice in config).value
-        val gas = computeGas( log, jsonRpcUrl, Some(sender), None, None, Some( dataHex.decodeHex.toImmutableSeq ), jsonrpc.Client.BlockNumber.Pending, markup )
         val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-        val unsigned = EthTransaction.Unsigned.ContractCreation( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), Zero256, dataHex.decodeHex.toImmutableSeq )
         val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
-        val updateChangedDb = (xethUpdateContractDatabase in Compile).value
-        val txnHash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
-        if ( inputsHex.nonEmpty ) {
-          log.info( s"Contract constructor imputs encoded to the following hex: '${inputsHex}'" )
-        }
-        log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
-        val mbReceipt = awaitTransactionReceipt( log, jsonRpcUrl, txnHash, PollSeconds, PollAttempts )
-        mbReceipt.fold( Left( txnHash ) : Either[EthHash,ClientTransactionReceipt] ) { receipt =>
-          receipt.contractAddress.foreach { ca =>
-            log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
 
-            if (! ephemeralBlockchains.contains( blockchainId ) ) {
-              val dbCheck = {
-                import compilation.info._
-                repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
+        val updateChangedDb = (xethUpdateContractDatabase in config).value
+
+        if ( inputsHex.nonEmpty ) {
+          log.debug( s"Contract constructor inputs encoded to the following hex: '${inputsHex}'" )
+        }
+
+        implicit val invokerContext = (xethInvokerContext in config).value
+
+        val fout = {
+          for {
+            txnHash <- Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq )
+            mbReceipt <- Invoker.futureTransactionReceipt( txnHash )
+          } yield {
+            log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
+            mbReceipt match {
+              case Some( receipt ) => {
+                receipt.contractAddress.foreach { ca =>
+                  log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
+
+                  if (! ephemeralBlockchains.contains( blockchainId ) ) {
+                    val dbCheck = {
+                      import compilation.info._
+                      repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
+                    }
+                    if ( dbCheck.isFailed ) {
+                      dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
+                      log.warn("Could not insert information about deployed contract into the repository database. See 'sbt-ethereum.log' for more information.")
+                    }
+                  }
+                }
+                Right( receipt ) : Either[EthHash,ClientTransactionReceipt]
               }
-              if ( dbCheck.isFailed ) {
-                dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
-                log.warn("Could not insert information about deployed contract into the repository database. See 'sbt-ethereum.log' for more information.")
-              }
+              case None => Left( txnHash )
             }
           }
-
-          Right( receipt ) : Either[EthHash,ClientTransactionReceipt]
         }
+        Await.result( fout, Duration.Inf )
       }
     }
 
