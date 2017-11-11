@@ -32,8 +32,10 @@ import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
 import com.mchange.sc.v1.consuela.ethereum.ethabi.{DecodedReturnValue, Encoder, abiFunctionForFunctionNameAndArgs, callDataForAbiFunctionFromStringArgs, decodeReturnValuesForFunction}
 import com.mchange.sc.v1.consuela.ethereum.stub
+import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker
 import com.mchange.sc.v1.log.MLogger
 import scala.collection._
+import scala.concurrent.duration._
 import scala.sys.process.{Process, ProcessLogger}
 import scala.io.Source
 
@@ -58,7 +60,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val CurrentSolidityCompiler = new AtomicReference[Option[( String, Compiler.Solidity )]]( None )
 
-  private val GasOverride = new AtomicReference[Option[BigInt]]( None )
+  private val GasLimitOverride = new AtomicReference[Option[BigInt]]( None )
 
   private val GasPriceOverride = new AtomicReference[Option[BigInt]]( None )
 
@@ -117,13 +119,25 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethcfgAutoSpawnContracts = settingKey[Seq[String]]("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
 
+    val ethcfgTransactionReceiptPollPeriod = settingKey[Duration]("Length of period after which sbt-ethereum will poll and repoll for a ClientTransactionReceipt after a transaction")
+
+    val ethcfgTransactionReceiptTimeout = settingKey[Duration]("Length of period after which sbt-ethereum will give up on polling for a ClientTransactionReceipt after a transaction")
+
     val ethcfgEntropySource = settingKey[SecureRandom]("The source of randomness that will be used for key generation")
 
     val ethcfgIncludeLocations = settingKey[Seq[String]]("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
 
     val ethcfgGasLimitMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
 
+    val ethcfgGasLimitCap = settingKey[BigInt]("Maximum gas limit to use in transactions")
+
+    val ethcfgGasLimitFloor = settingKey[BigInt]("Minimum gas limit to use in transactions (usually left unset)")
+
     val ethcfgGasPriceMarkup = settingKey[Double]("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
+
+    val ethcfgGasPriceCap = settingKey[BigInt]("Maximum gas limit to use in transactions")
+
+    val ethcfgGasPriceFloor = settingKey[BigInt]("Minimum gas limit to use in transactions (usually left unset)")
 
     val ethcfgKeystoreAutoRelockSeconds = settingKey[Int]("Number of seconds after which an unlocked private key should automatically relock")
 
@@ -261,6 +275,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethInvokeData = inputKey[immutable.Seq[Byte]]("Prints the data portion that would be sent in a message invoking a function and its arguments on a deployed smart contract")
 
+    val xethInvokerContext = taskKey[Invoker.Context]("Puts together gas and jsonrpc configuration to generate a context for transaction invocation.")
+
     val xethLoadAbiFor = inputKey[Abi]("Finds the ABI for a contract address, if known")
 
     val xethLoadCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
@@ -308,6 +324,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethcfgBlockchainId in Compile := MainnetIdentifier,
 
       ethcfgBlockchainId in Test := TestrpcIdentifier,
+
+      ethcfgTransactionReceiptPollPeriod := 3.seconds, 
+
+      ethcfgTransactionReceiptTimeout := 2.minutes,
 
       ethcfgEntropySource := new java.security.SecureRandom,
 
@@ -1444,19 +1464,19 @@ object SbtEthereumPlugin extends AutoPlugin {
     def ethGasLimitOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
       val log = streams.value.log
       val amount = integerParser("<gas override>").parsed
-      GasOverride.set( Some( amount ) )
+      GasLimitOverride.set( Some( amount ) )
       log.info( s"Gas override set to ${amount}." )
     }
 
     def ethGasLimitOverrideDropTask : Initialize[Task[Unit]] = Def.task {
       val log = streams.value.log
-      GasOverride.set( None )
+      GasLimitOverride.set( None )
       log.info("No gas override is now set. Quantities of gas will be automatically computed.")
     }
 
     def ethGasLimitOverridePrintTask : Initialize[Task[Unit]] = Def.task {
       val log = streams.value.log
-      GasOverride.get match {
+      GasLimitOverride.get match {
         case Some( value ) => log.info( s"A gas override is set, with value ${value}." )
         case None          => log.info( "No gas override is currently set." )
       }
@@ -1633,6 +1653,51 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.info( s"Call data: ${callData.hex}" )
         callData
       }
+    }
+
+    def xethInvokerContextTask( config : Configuration ) : Initialize[Task[Invoker.Context]] = Def.task {
+
+      val log = streams.value.log
+
+      val jsonRpcUrl      = (ethcfgJsonRpcUrl in config).value
+
+      val pollPeriod      = ethcfgTransactionReceiptPollPeriod.value
+      val timeout         = ethcfgTransactionReceiptTimeout.value
+
+      val gasLimitMarkup  = ethcfgGasLimitMarkup.value
+      val gasLimitCap     = ethcfgGasLimitCap.?.value
+      val gasLimitFloor   = ethcfgGasLimitFloor.?.value
+
+      val gasPriceMarkup  = ethcfgGasPriceMarkup.value
+      val gasPriceCap     = ethcfgGasPriceCap.?.value
+      val gasPriceFloor   = ethcfgGasPriceFloor.?.value
+
+      val gasLimitTweak = {
+        GasLimitOverride.get match {
+          case Some( overrideValue ) => {
+            log.info( s"Gas limit override set: ${overrideValue}")
+            log.info( "Using gas limit override.")
+            Invoker.Override( overrideValue )
+          }
+          case None => {
+            Invoker.Markup( gasLimitMarkup, gasLimitCap, gasLimitFloor )
+          }
+        }
+      }
+      val gasPriceTweak = {
+        GasPriceOverride.get match {
+          case Some( overrideValue ) => {
+            log.info( s"Gas price override set: ${overrideValue}")
+            log.info( "Using gas price override.")
+            Invoker.Override( overrideValue )
+          }
+          case None => {
+            Invoker.Markup( gasPriceMarkup, gasPriceCap, gasPriceFloor )
+          }
+        }
+      }
+
+      Invoker.Context( jsonRpcUrl, gasPriceTweak, gasLimitTweak, pollPeriod, timeout )
     }
 
     def xethKeystoreWalletV3CreatePbkdf2Task : Initialize[Task[wallet.V3]] = Def.task {
@@ -1995,7 +2060,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       blockNumber : jsonrpc.Client.BlockNumber,
       markup      : Double
     )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-      GasOverride.get match {
+      GasLimitOverride.get match {
         case Some( overrideValue ) => {
           log.info( s"Gas override set: ${overrideValue}")
           log.info( "Using gas override.")
