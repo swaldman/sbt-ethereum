@@ -540,6 +540,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethInvokeData in Test := { xethInvokeDataTask( Test ).evaluated },
 
+      xethInvokerContext in Compile := { xethInvokerContextTask( Compile ).value },
+
+      xethInvokerContext in Test := { xethInvokerContextTask( Test ).value },
+
       xethKeystoreWalletV3CreatePbkdf2 := { xethKeystoreWalletV3CreatePbkdf2Task.value }, // global config scope seems appropriate
 
       xethKeystoreWalletV3CreateScrypt := { xethKeystoreWalletV3CreateScryptTask.value }, // global config scope seems appropriate
