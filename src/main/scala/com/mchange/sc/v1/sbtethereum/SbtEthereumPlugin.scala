@@ -1056,28 +1056,23 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val is = interactionService.value
         val blockchainId = (ethcfgBlockchainId in config).value
-        val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
         val caller = (xethFindCurrentSender in config).value.get
-        val nextNonce = (xethNextNonce in config).value
-        val markup = ethcfgGasLimitMarkup.value
-        val gasPrice = (ethGasPrice in config).value
         val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
+        val privateKey = findCachePrivateKey(s, log, is, blockchainId, caller, autoRelockSeconds, true )
         val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
         val amount = mbWei.getOrElse( Zero )
-        val privateKey = findCachePrivateKey(s, log, is, blockchainId, caller, autoRelockSeconds, true )
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
         val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
-        log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
-        log.info( s"Call data for function call: ${callData.hex}" )
-        val gas = computeGas( log, jsonRpcUrl, Some(caller), Some(contractAddress), Some( amount ), Some( callData ), jsonrpc.Client.BlockNumber.Pending, markup )
-        log.info( s"Gas estimated for function call: ${gas}" )
-        log.info( s"Gas price set to ${gasPrice} wei" )
-        val estdCost = gasPrice * gas
-        log.info( s"Estimated transaction cost ${estdCost} wei (${Ether.fromWei( estdCost )} ether)." )
-        val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), contractAddress, Unsigned256( amount ), callData )
-        val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
-        log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei to address '0x${contractAddress.hex}' in transaction '0x${hash.hex}'.""" )
-        awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+        log.debug( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
+        log.debug( s"Call data for function call: ${callData.hex}" )
+
+        implicit val invokerContext = (xethInvokerContext in config).value
+
+        val f_out = Invoker.transaction.sendMessage( privateKey, contractAddress, Unsigned256( amount ), callData ) flatMap { txnHash =>
+          log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei to address '0x${contractAddress.hex}' in transaction '0x${txnHash.hex}'.""" )
+          Invoker.futureTransactionReceipt( txnHash )
+        }
+        Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
       }
     }
 
