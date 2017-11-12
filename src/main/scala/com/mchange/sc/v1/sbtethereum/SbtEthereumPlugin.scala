@@ -953,7 +953,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val f_out = {
           for {
             txnHash <- Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq )
-            mbReceipt <- Invoker.futureTransactionReceipt( txnHash )
+            mbReceipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, _ ) )
           } yield {
             log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
             mbReceipt match {
@@ -1070,7 +1070,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val f_out = Invoker.transaction.sendMessage( privateKey, contractAddress, Unsigned256( amount ), callData ) flatMap { txnHash =>
           log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei to address '0x${contractAddress.hex}' in transaction '0x${txnHash.hex}'.""" )
-          Invoker.futureTransactionReceipt( txnHash )
+          Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, _ ) )
         }
         Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
       }

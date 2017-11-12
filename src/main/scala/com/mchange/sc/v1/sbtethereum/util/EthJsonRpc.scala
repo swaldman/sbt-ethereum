@@ -155,6 +155,7 @@ object EthJsonRpc {
     }
   }
 
+
   private def decodeStatus( status : Option[Unsigned256] ) : String = status.fold( "Unknown" ){ swrapped =>
     swrapped match {
       case Zero256 => "FAILED"
@@ -164,7 +165,7 @@ object EthJsonRpc {
   }
 
   // TODO: pretty up logs output
-  private def prettyClientTransactionReceipt( ctr : ClientTransactionReceipt ) : String = {
+  def prettyClientTransactionReceipt( ctr : ClientTransactionReceipt ) : String = {
     s"""|Transaction Receipt:
         |       Transaction Hash:    0x${ctr.transactionHash.hex}
         |       Transaction Index:   ${ctr.transactionIndex.widen}
@@ -175,4 +176,17 @@ object EthJsonRpc {
         |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
         |       Logs:                ${if (ctr.logs.isEmpty) "None" else ctr.logs.mkString(", ")}""".stripMargin     
   }
+
+  def prettyPrintEval( log : sbt.Logger, ctr : ClientTransactionReceipt ) : ClientTransactionReceipt = {
+    log.info( prettyClientTransactionReceipt( ctr ) )
+    ctr
+  }
+
+  def prettyPrintEval( log : sbt.Logger, mbctr : Option[ClientTransactionReceipt] ) : Option[ClientTransactionReceipt] = {
+    mbctr.foreach { ctr =>
+      log.info( prettyClientTransactionReceipt( ctr ) )
+    }
+    mbctr
+  }
+
 }
