@@ -950,7 +950,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         implicit val invokerContext = (xethInvokerContext in config).value
 
-        val fout = {
+        val f_out = {
           for {
             txnHash <- Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq )
             mbReceipt <- Invoker.futureTransactionReceipt( txnHash )
@@ -978,7 +978,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             }
           }
         }
-        Await.result( fout, Duration.Inf )
+        Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
       }
     }
 
@@ -993,10 +993,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       Def.inputTask {
         val log = streams.value.log
-        val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
-        val from = (xethFindCurrentSender in config).value.toOption
-        val markup = ethcfgGasLimitMarkup.value
-        val gasPrice = (ethGasPrice in config).value
+
+        val from = (xethFindCurrentSender in config).value.recover { fail : Fail =>
+          log.info( s"Failed to find a current sender, using the zero address as a default.\nCause: ${fail}" )
+          EthAddress.Zero
+        }.get
+
         val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
         if (! function.constant ) {
           log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
@@ -1004,43 +1006,45 @@ object SbtEthereumPlugin extends AutoPlugin {
         val amount = mbWei.getOrElse( Zero )
         val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
         val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
-        log.info( s"Call data for function call: ${callData.hex}" )
+        log.debug( s"Call data for function call: ${callData.hex}" )
 
-        val gas = computeGas( log, jsonRpcUrl, from, Some(contractAddress), Some( amount ), Some( callData ), jsonrpc.Client.BlockNumber.Pending, markup )
+        implicit val invokerContext = (xethInvokerContext in config).value
 
-        val rawResult = doEthCallEphemeral( log, jsonRpcUrl, from, contractAddress, Some(gas), Some( gasPrice ), Some( amount ), Some( callData ), jsonrpc.Client.BlockNumber.Latest )
-        log.info( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
-        log.info( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
-        val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception is we can't get results
-        results.length match {
-          case 0 => {
-            assert( abiFunction.outputs.length == 0 )
-            log.info( s"The function ${abiFunction.name} yields no result." )
-          }
-          case n => {
-            assert( abiFunction.outputs.length == n )
-
-            if ( n == 1 ) {
-              log.info( s"The function '${abiFunction.name}' yields 1 result." )
-            } else {
-              log.info( s"The function '${abiFunction.name}' yields ${n} results." )
+        val f_out = Invoker.constant.sendMessage( from, contractAddress, Unsigned256(amount), callData ) map { rawResult =>
+          log.debug( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
+          log.debug( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
+          val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception is we can't get results
+          results.length match {
+            case 0 => {
+              assert( abiFunction.outputs.length == 0 )
+              log.info( s"The function ${abiFunction.name} yields no result." )
             }
+            case n => {
+              assert( abiFunction.outputs.length == n )
 
-            def formatResult( idx : Int, result : DecodedReturnValue ) : String = {
-              val param = result.parameter
-              val sb = new StringBuilder(256)
-              sb.append( s" + Result ${idx} of type '${param.`type`}'")
-              if ( param.name.length > 0 ) {
-                sb.append( s", named '${param.name}'," )
+              if ( n == 1 ) {
+                log.info( s"The function '${abiFunction.name}' yields 1 result." )
+              } else {
+                log.info( s"The function '${abiFunction.name}' yields ${n} results." )
               }
-              sb.append( s" is ${result.stringRep}" )
-              sb.toString
-            }
 
-            Stream.from(1).zip(results).foreach { case ( idx, result ) => log.info( formatResult( idx, result ) ) }
+              def formatResult( idx : Int, result : DecodedReturnValue ) : String = {
+                val param = result.parameter
+                val sb = new StringBuilder(256)
+                sb.append( s" + Result ${idx} of type '${param.`type`}'")
+                if ( param.name.length > 0 ) {
+                  sb.append( s", named '${param.name}'," )
+                }
+                sb.append( s" is ${result.stringRep}" )
+                sb.toString
+              }
+
+              Stream.from(1).zip(results).foreach { case ( idx, result ) => log.info( formatResult( idx, result ) ) }
+            }
           }
+          ( abiFunction, results )
         }
-        ( abiFunction, results )
+        Await.result( f_out, Duration.Inf )
       }
     }
 
