@@ -128,6 +128,7 @@ object Parsers {
       case _ => throw new Exception( s"""Constructor overloading not supprted (or legal in solidity). Found multiple constructors: ${abi.constructors.mkString(", ")}""" )
     }
   }
+  /*
   private def resultFromCompilation( contractName : String, compilation : jsonrpc.Compilation.Contract ) : Parser[ ( String, Option[ ( immutable.Seq[String], Abi, jsonrpc.Compilation.Contract ) ] ) ] = {
     val mbAbi = compilation.info.mbAbi
     mbAbi match {
@@ -148,9 +149,32 @@ object Parsers {
     Space.* ~> token( NotSpace examples exSet ).flatMap { name =>
       contracts.get( name ) match {
         case None                => success( Tuple2( name, None ) )
-        case Some( compilation ) => resultFromCompilation( name, compilation )
+        case Some( abi ) => resultFromCompilation( name, compilation )
       }
     }
+  }
+  */
+
+  private def fullFromSeed( contractName : String, seed : MaybeSpawnable.Seed ) : Parser[SpawnInstruction.Full] = {
+    val ctor = constructorFromAbi( seed.abi )
+    inputsParser( ctor.inputs, None ).map( seq => SpawnInstruction.Full( contractName, seq, seed ) )
+  }
+
+  private [sbtethereum] def genContractSpawnParser(
+    state   : State,
+    mbSeeds : Option[immutable.Map[String,MaybeSpawnable.Seed]]
+  ) : Parser[SpawnInstruction] = {
+    val seeds = mbSeeds.getOrElse( immutable.Map.empty )
+    val contractNames = immutable.TreeSet( seeds.keys.toSeq : _* )( Ordering.comparatorToOrdering( String.CASE_INSENSITIVE_ORDER ) )
+    val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", ZWSP) else contractNames // non-breaking space to prevent autocompletion to dummy example
+    val argsParser = token( NotSpace examples exSet ).flatMap { name =>
+      seeds.get( name ) match {
+        case None         => success( SpawnInstruction.UncompiledName( name ) )
+        case Some( seed ) => fullFromSeed( name, seed )
+      }
+    }
+    val autoParser = Space.* map { _ => SpawnInstruction.Auto }
+    Space.* ~> ( argsParser | autoParser )
   }
 
   private [sbtethereum] def genAliasParser(

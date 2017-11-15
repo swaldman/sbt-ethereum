@@ -4,6 +4,8 @@ import sbinary._
 import DefaultProtocol._
 import Operations._
 
+import com.mchange.sc.v1.sbtethereum.MaybeSpawnable
+
 import com.mchange.sc.v1.consuela.ethereum.EthAddress
 import com.mchange.sc.v1.consuela.ethereum.encoding.{RLP,RLPSerializing}
 import com.mchange.sc.v2.collection.immutable.ImmutableArraySeq
@@ -58,6 +60,10 @@ object SBinaryFormats {
   implicit val EthAddressAsFormat = rlpSerializingAsFormat[EthAddress]
 
   implicit val CompilationAsFormat = jsonBasedFormat[jsonrpc.Compilation.Contract]
+
+  implicit val MaybeSpawnableSeedJsFormat = Json.format[MaybeSpawnable.Seed]
+
+  implicit val SeedAsJsFormat = jsonBasedFormat[MaybeSpawnable.Seed]
 
 
   /*

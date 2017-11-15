@@ -209,9 +209,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethContractCompilationsList = taskKey[Unit]("Lists summary information about compilations known in the repository")
 
-    val ethContractSpawnAuto = taskKey[immutable.Map[String,Either[EthHash,ClientTransactionReceipt]]]("Deploys contracts named in 'ethcfgAutoSpawnContracts'.")
-
-    val ethContractSpawnOnly = inputKey[Either[EthHash,ClientTransactionReceipt]]("Deploys the specified named contract")
+    val ethContractSpawn = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,ClientTransactionReceipt]]]](""""Spawns" (deploys) the specified named contract, or contracts via 'ethcfgAutoSpawnContracts'""")
 
     val ethDebugTestrpcLocalStart = taskKey[Unit]("Starts a local testrpc environment (if the command 'testrpc' is in your PATH)")
 
@@ -251,7 +249,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethFindCacheAliasesIfAvailable = taskKey[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]("Finds and caches aliases for use by address parsers")
 
-    val xethFindCacheOmitDupsCurrentCompilations = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Finds and caches compiled, deployable contract names, omitting ambiguous duplicates. Triggered by ethSolidityCompile")
+    val xethFindCacheSeeds = taskKey[immutable.Map[String,MaybeSpawnable.Seed]]("Finds and caches compiled, deployable contracts, omitting ambiguous duplicates. Triggered by ethSolidityCompile")
 
     val xethFindCurrentSender = taskKey[Failable[EthAddress]]("Finds the address that should be used to send ether or messages")
 
@@ -283,9 +281,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethLoadAbiFor = inputKey[Abi]("Finds the ABI for a contract address, if known")
 
-    val xethLoadCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
+    val xethLoadCurrentCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
 
-    val xethLoadCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
+    val xethLoadCurrentCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
+
+    val xethLoadSeeds = taskKey[immutable.Map[String,MaybeSpawnable.Seed]]("""Loads compilations available for deployment (or "spawning"), which may include both current and archived compilations""")
 
     val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
 
@@ -425,13 +425,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       ethContractCompilationsList := { ethContractCompilationsListTask.value },
 
-      ethContractSpawnAuto in Compile := { ethContractSpawnAutoTask( Compile ).value },
+      ethContractSpawn in Compile := { ethContractSpawnTask( Compile ).evaluated },
 
-      ethContractSpawnAuto in Test := { ethContractSpawnAutoTask( Test ).value },
-
-      ethContractSpawnOnly in Compile := { ethContractSpawnOnlyTask( Compile ).evaluated },
-
-      ethContractSpawnOnly in Test := { ethContractSpawnOnlyTask( Test ).evaluated },
+      ethContractSpawn in Test := { ethContractSpawnTask( Test ).evaluated },
 
       ethTransactionView in Compile := { ethTransactionViewTask( Compile ).evaluated },
 
@@ -501,7 +497,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethFindCacheAliasesIfAvailable in Test := { (xethFindCacheAliasesIfAvailableTask( Test ).storeAs( xethFindCacheAliasesIfAvailable in Test ).triggeredBy( xethTriggerDirtyAliasCache )).value },
 
-      xethFindCacheOmitDupsCurrentCompilations in Compile := { (xethFindCacheOmitDupsCurrentCompilationsTask storeAs( xethFindCacheOmitDupsCurrentCompilations in Compile ) triggeredBy( ethSolidityCompile in Compile )).value },
+      xethLoadSeeds in Compile := { xethLoadSeedsTask.value },
+
+      xethFindCacheSeeds in Compile := { (xethFindCacheSeedsTask storeAs( xethFindCacheSeeds in Compile ) triggeredBy( ethSolidityCompile in Compile )).value },
 
       xethFindCacheSessionSolidityCompilerKeys in Compile := { (xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList )).value },
 
@@ -552,9 +550,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethLoadAbiFor in Test := { xethLoadAbiForTask( Test ).evaluated },
 
-      xethLoadCompilationsKeepDups in Compile := { xethLoadCompilationsKeepDupsTask.value },
+      xethLoadCurrentCompilationsKeepDups in Compile := { xethLoadCurrentCompilationsKeepDupsTask.value },
 
-      xethLoadCompilationsOmitDups in Compile := { xethLoadCompilationsOmitDupsTask.value },
+      xethLoadCurrentCompilationsOmitDups in Compile := { xethLoadCurrentCompilationsOmitDupsTask.value },
 
       xethLoadWalletV3 in Compile := { xethLoadWalletV3Task( Compile ).value },
 
@@ -887,24 +885,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       println( cap )
     }
 
-    def ethContractSpawnAutoTask( config : Configuration ) : Initialize[Task[immutable.Map[String,Either[EthHash,ClientTransactionReceipt]]]] = Def.task {
-      val s = state.value
-      val autoDeployContracts = (ethcfgAutoSpawnContracts in config).?.value
-      autoDeployContracts.fold( immutable.Map.empty[String,Either[EthHash,ClientTransactionReceipt]] ) { seq =>
-        val tuples = {
-          seq map { nameAndArgs =>
-	    val extract = Project.extract(s)
-	    val (_, eitherHashOrReceipt) = extract.runInputTask(ethContractSpawnOnly in config, nameAndArgs, s)
-            val name = nameAndArgs.split("""\s+""").head // we should already have died if this would fail
-            ( name, eitherHashOrReceipt )
-          }
-        }
-        tuples.toMap
-      }
-    }
-
-    def ethContractSpawnOnlyTask( config : Configuration ) : Initialize[InputTask[Either[EthHash,ClientTransactionReceipt]]] = {
-      val parser = Defaults.loadForParser(xethFindCacheOmitDupsCurrentCompilations)( genContractNamesConstructorInputsParser )
+    def ethContractSpawnTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Tuple2[String,Either[EthHash,ClientTransactionReceipt]]]]] = {
+      val parser = Defaults.loadForParser(xethFindCacheSeeds)( genContractSpawnParser )
 
       Def.inputTask {
         val s = state.value
@@ -912,7 +894,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val blockchainId = (ethcfgBlockchainId in config).value
         val ephemeralBlockchains = xethcfgEphemeralBlockchains.value
-        val ( contractName, extraData ) = parser.parsed
+
+        val sender = (xethFindCurrentSender in config).value.get
+        val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
+        val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
 
         // at the time of parsing, a compiled contract may not not available.
         // in that case, we force compilation now, but can't accept contructor arguments
@@ -921,64 +906,108 @@ object SbtEthereumPlugin extends AutoPlugin {
         // it may be out of date if the source for the prior compilation has changed
         // to be safe, we have to reload the compilation, rather than use the one found
         // by the parser
-        val contractsMap = (xethLoadCompilationsOmitDups in Compile).value
-        val compilation = contractsMap( contractName )
-
-        val inputsBytes = {
-          extraData match {
-            case None => immutable.Seq.empty[Byte]
-            case Some( ( inputs, _, _ ) ) => {
-              // at the time of parsing, a compiled contract is available, so we've decoded constructor inputs( if any )
-              // ( compilation, ethabi.constructorCallData( inputs, abi ).get ) // asserts successful encoding of params
-
-              ethabi.constructorCallData( inputs, compilation.info.mbAbi.get ).get // asserts that we've found a meaningful ABI, and can parse the constructor inputs
-            }
-          }
-        }
-        val inputsHex = inputsBytes.hex
-        val codeHex = compilation.code
-        val dataHex = codeHex ++ inputsHex
-        val sender = (xethFindCurrentSender in config).value.get
-        val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-        val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
-
+        val currentCompilationsMap = (xethLoadCurrentCompilationsOmitDups in Compile).value
         val updateChangedDb = (xethUpdateContractDatabase in config).value
 
-        if ( inputsHex.nonEmpty ) {
-          log.debug( s"Contract constructor inputs encoded to the following hex: '${inputsHex}'" )
+        def anySourceFreshSeed( deploymentAlias : String ) : MaybeSpawnable.Seed = {
+          val mbCurrentCompilationSeed = {
+            for {
+              cc <- currentCompilationsMap.get( deploymentAlias )
+            } yield {
+              MaybeSpawnable.Seed( deploymentAlias, cc.code, cc.info.mbAbi.get, true /* this is a current compilation */ )  // asserts that we've generated an ABI
+            }
+          }
+
+          // TODO: lookup archived compilation in case no current compilation is found
+
+          mbCurrentCompilationSeed.get // asserts that something has been found
+        }
+
+        val autoNameInputs = (ethcfgAutoSpawnContracts in config).value
+
+        def createQuartetFull( full : SpawnInstruction.Full ) : (String, String, immutable.Seq[String], Abi ) = {
+          if ( full.seed.currentCompilation ) {
+            assert(
+              full.deploymentAlias == full.seed.contractName,
+              s"For current compilations, we expect deployment aliases and contract names to be identical! [deployment alias: ${full.deploymentAlias}, contract name: ${full.seed.contractName}]"
+            )
+            val compilation = currentCompilationsMap( full.seed.contractName ) // use the most recent compilation, in case source changed after the seed was cached
+            ( full.deploymentAlias, compilation.code, full.args, compilation.info.mbAbi.get ) // asserts that we've generated an ABI, but note that args may not be consistent with this latest ABI
+          }
+          else {
+            ( full.deploymentAlias, full.seed.codeHex, full.args, full.seed.abi )
+          }
+        }
+
+        def createQuartetUncompiled( uncompiledName : SpawnInstruction.UncompiledName ) : (String, String, immutable.Seq[String], Abi ) = {
+          val deploymentAlias = uncompiledName.name
+          val seed = anySourceFreshSeed( deploymentAlias ) // use the most recent compilation, in case source changed after the seed was cached
+          ( deploymentAlias, seed.codeHex, Nil, seed.abi ) // we can only handle uncompiled names if there are no constructor inputs
+        }
+
+        def createAutoQuartets() : immutable.Seq[(String, String, immutable.Seq[String], Abi )] = {
+          autoNameInputs.toList.map { nameAndArgs =>
+            val words = nameAndArgs.split("""\s+""")
+            require( words.length >= 1, s"Each element of 'ethcfgAutoSpawnContracts' must contain at least a contract name! [word length: ${words.length}")
+            val deploymentAlias = words.head
+            val args = words.tail.toList
+            val seed = anySourceFreshSeed( deploymentAlias )
+            ( deploymentAlias, seed.codeHex, args, seed.abi )
+          }
+        }
+
+        val instruction = parser.parsed
+        val quartets = {
+          instruction match {
+            case SpawnInstruction.Auto                        => createAutoQuartets()
+            case uncompiled : SpawnInstruction.UncompiledName => immutable.Seq( createQuartetUncompiled( uncompiled ) )
+            case full : SpawnInstruction.Full                 => immutable.Seq( createQuartetFull( full ) )
+          }
         }
 
         implicit val invokerContext = (xethInvokerContext in config).value
 
-        val f_out = {
-          for {
-            txnHash <- Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq )
-            mbReceipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, _ ) )
-          } yield {
-            log.info( s"Contract '${contractName}' deployed in transaction '0x${txnHash.hex}'." )
-            mbReceipt match {
-              case Some( receipt ) => {
-                receipt.contractAddress.foreach { ca =>
-                  log.info( s"Contract '${contractName}' has been assigned address '0x${ca.hex}'." )
+        def doSpawn( deploymentAlias : String, codeHex : String, inputs : immutable.Seq[String], abi : Abi ) : ( String, Either[EthHash,ClientTransactionReceipt] ) = {
 
-                  if (! ephemeralBlockchains.contains( blockchainId ) ) {
-                    val dbCheck = {
-                      import compilation.info._
-                      repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
-                    }
-                    if ( dbCheck.isFailed ) {
-                      dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
-                      log.warn("Could not insert information about deployed contract into the repository database. See 'sbt-ethereum.log' for more information.")
+          val inputsBytes = ethabi.constructorCallData( inputs, abi ).get // asserts that we've found a meaningful ABI, and can parse the constructor inputs
+          val inputsHex = inputsBytes.hex
+          val dataHex = codeHex ++ inputsHex
+
+          if ( inputsHex.nonEmpty ) {
+            log.debug( s"Contract constructor inputs encoded to the following hex: '${inputsHex}'" )
+          }
+
+          val f_out = {
+            for {
+              txnHash <- Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq )
+              mbReceipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, _ ) )
+            } yield {
+              log.info( s"Contract '${deploymentAlias}' deployed in transaction '0x${txnHash.hex}'." )
+              mbReceipt match {
+                case Some( receipt ) => {
+                  receipt.contractAddress.foreach { ca =>
+                    log.info( s"Contract '${deploymentAlias}' has been assigned address '0x${ca.hex}'." )
+
+                    if (! ephemeralBlockchains.contains( blockchainId ) ) {
+                      val dbCheck = {
+                        repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
+                      }
+                      if ( dbCheck.isFailed ) {
+                        dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
+                        log.warn("Could not insert information about deployed contract into the repository database. See 'sbt-ethereum.log' for more information.")
+                      }
                     }
                   }
+                  Right( receipt ) : Either[EthHash,ClientTransactionReceipt]
                 }
-                Right( receipt ) : Either[EthHash,ClientTransactionReceipt]
+                case None => Left( txnHash )
               }
-              case None => Left( txnHash )
             }
           }
+          val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
+          ( deploymentAlias, out )
         }
-        Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
+        quartets.map( (doSpawn _).tupled )
       }
     }
 
@@ -1398,8 +1427,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       ( blockchainId, mbAliases )
     }
 
-    def xethFindCacheOmitDupsCurrentCompilationsTask : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
-      (xethLoadCompilationsOmitDups in Compile).value
+    def xethFindCacheSeedsTask : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
+      (xethLoadSeeds in Compile).value
     }
 
     def xethFindCacheSessionSolidityCompilerKeysTask : Initialize[Task[immutable.Set[String]]] = Def.task {
@@ -1561,7 +1590,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       // Used for both Compile and Test
       val mbStubPackage = ethcfgScalaStubsPackage.?.value
-      val currentCompilations = (xethFindCacheOmitDupsCurrentCompilations in Compile).value
+      val currentCompilations = (xethLoadCurrentCompilationsOmitDups in Compile).value
       val namedAbis = (xethNamedAbis in Compile).value
       val dependencies = libraryDependencies.value
 
@@ -1755,33 +1784,35 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def xethLoadCompilationsKeepDupsTask : Initialize[Task[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]] = Def.task {
+
+    // when compilation aliases are done, add them here
+
+    def xethLoadSeedsTask : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
       val log = streams.value.log
 
-      val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
+      val currentCompilations          = xethLoadCurrentCompilationsOmitDupsTask.value
+      val currentCompilationsConverter = implicitly[MaybeSpawnable[Tuple2[String,jsonrpc.Compilation.Contract]]]
 
-      val dir = (ethcfgSolidityDestination in Compile).value
-
-      def addContracts( vec : immutable.Vector[(String,jsonrpc.Compilation.Contract)], name : String ) = {
-        val next = {
-          val file = new File( dir, name )
-          try {
-            borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc.Compilation.Contract]] )
-          } catch {
-            case e : Exception => {
-              log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
-              log.warn( s"  --> cause: ${e.toString}" )
-              Map.empty[String,jsonrpc.Compilation.Contract]
-            }
-          }
-        }
-        vec ++ next
+      val mbNamedSeeds = currentCompilations.map { cc =>
+        val seed = currentCompilationsConverter.mbSeed( cc )
+        if (seed.isEmpty) log.warn( s"Compilation missing name and/or ABI cannot be deployed: ${cc}" )
+        ( cc._1, seed )
       }
 
-      dir.list.filter( _.endsWith(".json") ).foldLeft( immutable.Vector.empty[(String,jsonrpc.Compilation.Contract)] )( addContracts )
+      mbNamedSeeds.filter( _._2.nonEmpty ).map ( tup => ( tup._1, tup._2.get ) )
     }
 
-    def xethLoadCompilationsOmitDupsTask : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
+
+    // often small, abstract contracts like "owned" get imported into multiple compilation units
+    // and compiled multiple times.
+
+    // the duplicates we omit represent literally the same EVM code (although the metadata hash suffixes may
+    // differ. we keep the shortest-source version that generates identical (pre-swarm-hash) EVM code
+
+    // we also omit any compilations whose EVM code differs but that have identical names, as there is
+    // no way to unambigous select one of these compilations to spawn
+
+    def xethLoadCurrentCompilationsOmitDupsTask : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
       val log = streams.value.log
 
       val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
@@ -1831,19 +1862,45 @@ object SbtEthereumPlugin extends AutoPlugin {
         ( addAllKeepShorterSource( addTo, next ), overlaps ++ realNewOverlaps )
       }
 
-      val ( rawCompilations, duplicates ) = dir.list.filter( _.endsWith( ".json" ) ).foldLeft( ( immutable.Map.empty[String,jsonrpc.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
-      if ( !duplicates.isEmpty ) {
-        val dupsStr = duplicates.mkString(", ")
+      val ( rawCompilations, duplicateNames ) = dir.list.filter( _.endsWith( ".json" ) ).foldLeft( ( immutable.Map.empty[String,jsonrpc.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
+      if ( !duplicateNames.isEmpty ) {
+        val dupsStr = duplicateNames.mkString(", ")
         log.warn( s"The project contains mutiple contracts and/or libraries that have identical names but compile to distinct code: $dupsStr" )
-        if ( duplicates.size > 1 ) {
+        if ( duplicateNames.size > 1 ) {
           log.warn( s"Units '$dupsStr' have been dropped from the deployable compilations list as references would be ambiguous." )
         } else {
           log.warn( s"Unit '$dupsStr' has been dropped from the deployable compilations list as references would be ambiguous." )
         }
-        rawCompilations -- duplicates
+        rawCompilations -- duplicateNames
       } else {
         rawCompilations
       }
+    }
+
+    def xethLoadCurrentCompilationsKeepDupsTask : Initialize[Task[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]] = Def.task {
+      val log = streams.value.log
+
+      val dummy = (ethSolidityCompile in Compile).value // ensure compilation has completed
+
+      val dir = (ethcfgSolidityDestination in Compile).value
+
+      def addContracts( vec : immutable.Vector[(String,jsonrpc.Compilation.Contract)], name : String ) = {
+        val next = {
+          val file = new File( dir, name )
+          try {
+            borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc.Compilation.Contract]] )
+          } catch {
+            case e : Exception => {
+              log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
+              log.warn( s"  --> cause: ${e.toString}" )
+              Map.empty[String,jsonrpc.Compilation.Contract]
+            }
+          }
+        }
+        vec ++ next
+      }
+
+      dir.list.filter( _.endsWith(".json") ).foldLeft( immutable.Vector.empty[(String,jsonrpc.Compilation.Contract)] )( addContracts )
     }
 
     def xethLoadWalletV3Task( config : Configuration ) : Initialize[Task[Option[wallet.V3]]] = Def.task {
@@ -1967,7 +2024,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def xethUpdateContractDatabaseTask( config : Configuration ) : Initialize[Task[Boolean]] = Def.task {
       val log          = streams.value.log
-      val compilations = (xethLoadCompilationsKeepDups in Compile).value // we want to "know" every contract we've seen, which might include contracts with multiple names
+      val compilations = (xethLoadCurrentCompilationsKeepDups in Compile).value // we want to "know" every contract we've seen, which might include contracts with multiple names
 
       repository.Database.updateContractDatabase( compilations ).get
     }

@@ -2,6 +2,7 @@
 
 * Condense ethContractSpawnOnly and ethContractSpawnAuto into ethContractSpawn
 * ethContractCompilationsAlias*
+* stub apply functions in terms of EthAddress.Source?
 * Make constructor arg hex acessible from repository deployments.
   -- then maybe remove verbosity about arg hex from ethContractSpawnOnly
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
