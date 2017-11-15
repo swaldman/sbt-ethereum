@@ -295,7 +295,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
 
-    val xethQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
+    val xethSqlQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
 
     val xethTriggerDirtyAliasCache = taskKey[Unit]("Indirectly provokes an update of the cache of aliases used for tab completions.")
 
@@ -303,7 +303,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts into the contract database. Returns true if changes were made.")
 
-    val xethUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
+    val xethSqlUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
 
     val xethUpdateSessionSolidityCompilers = taskKey[immutable.SortedMap[String,Compiler.Solidity]]("Finds and tests potential Solidity compilers to see which is available.")
 
@@ -332,15 +332,11 @@ object SbtEthereumPlugin extends AutoPlugin {
    */
   lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
 
-    // Settings
+    // settings
 
     ethcfgBlockchainId in Compile := MainnetIdentifier,
 
     ethcfgBlockchainId in Test := TestrpcIdentifier,
-
-    ethcfgTransactionReceiptPollPeriod := 3.seconds,
-
-    ethcfgTransactionReceiptTimeout := 2.minutes,
 
     ethcfgEntropySource := new java.security.SecureRandom,
 
@@ -374,11 +370,17 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgTargetDir in Compile := (target in Compile).value / "ethereum",
 
+    ethcfgTransactionReceiptPollPeriod := 3.seconds,
+
+    ethcfgTransactionReceiptTimeout := 2.minutes,
+
+    // xeth settings
+
+    xethcfgEphemeralBlockchains := immutable.Seq( TestrpcIdentifier ),
+
     xethcfgNamedAbiSource in Compile := (sourceDirectory in Compile).value / "ethabi",
 
     xethcfgTestingResourcesObjectName in Test := "Testing",
-
-    xethcfgEphemeralBlockchains := immutable.Seq( TestrpcIdentifier ),
 
     xethcfgWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
 
@@ -393,18 +395,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethcfgWalletV3ScryptP := wallet.V3.Default.Scrypt.P,
 
     // tasks
-
-    ethContractAbiForget in Compile := { ethContractAbiForgetTask( Compile ).evaluated },
-
-    ethContractAbiForget in Test := { ethContractAbiForgetTask( Test ).evaluated },
-
-    ethContractAbiList in Compile := { ethContractAbiListTask( Compile ).value },
-
-    ethContractAbiList in Test := { ethContractAbiListTask( Test ).value },
-
-    ethContractAbiMemorize in Compile := { ethContractAbiMemorizeTask( Compile ).value },
-
-    ethContractAbiMemorize in Test := { ethContractAbiMemorizeTask( Test ).value },
 
     ethAddressAliasDrop in Compile := { ethAddressAliasDropTask( Compile ).evaluated },
 
@@ -426,46 +416,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethAddressBalanceInWei in Test := { ethAddressBalanceInWeiTask( Test ).evaluated },
 
-    ethContractCompilationsCull := { ethContractCompilationsCullTask.value },
-
-    ethContractCompilationsInspect in Compile := { ethContractCompilationsInspectTask( Compile ).evaluated },
-
-    ethContractCompilationsInspect in Test := { ethContractCompilationsInspectTask( Test ).evaluated },
-
-    ethContractCompilationsList := { ethContractCompilationsListTask.value },
-
-    ethContractSpawn in Compile := { ethContractSpawnTask( Compile ).evaluated },
-
-    ethContractSpawn in Test := { ethContractSpawnTask( Test ).evaluated },
-
-    ethTransactionView in Compile := { ethTransactionViewTask( Compile ).evaluated },
-
-    ethTransactionView in Test := { ethTransactionViewTask( Test ).evaluated },
-
-    ethTransactionInvoke in Compile := { ethTransactionInvokeTask( Compile ).evaluated },
-
-    ethTransactionInvoke in Test := { ethTransactionInvokeTask( Test ).evaluated },
-
-    ethKeystoreWalletV3Create := { xethKeystoreWalletV3CreateScrypt.value },
-
-    ethKeystoreWalletV3Print in Compile := { ethKeystoreWalletV3PrintTask( Compile ).evaluated },
-
-    ethKeystoreWalletV3Print in Test := { ethKeystoreWalletV3PrintTask( Test ).evaluated },
-
-    ethKeystoreList in Compile := { ethKeystoreListTask( Compile ).value },
-
-    ethKeystoreList in Test := { ethKeystoreListTask( Test ).value },
-
-    ethKeystoreWalletV3Memorize := { ethKeystoreWalletV3MemorizeTask.value },
-
-    ethKeystorePrivateKeyReveal in Compile := { ethKeystorePrivateKeyRevealTask( Compile ).evaluated },
-
-    ethKeystorePrivateKeyReveal in Test := { ethKeystorePrivateKeyRevealTask( Test ).evaluated },
-
-    ethKeystoreWalletV3Validate in Compile := { ethKeystoreWalletV3ValidateTask( Compile ).evaluated },
-
-    ethKeystoreWalletV3Validate in Test := { ethKeystoreWalletV3ValidateTask( Test ).evaluated },
-
     ethAddressPing in Compile := { ethAddressPingTask( Compile ).evaluated },
 
     ethAddressPing in Test := { ethAddressPingTask( Test ).evaluated },
@@ -482,11 +432,68 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethAddressSenderOverridePrint in Test := { ethAddressSenderOverridePrintTask( Test ).value },
 
-    ethTransactionSend in Compile := { ethTransactionSendTask( Compile ).evaluated },
+    ethContractAbiForget in Compile := { ethContractAbiForgetTask( Compile ).evaluated },
 
-    ethTransactionSend in Test := { ethTransactionSendTask( Test ).evaluated },
+    ethContractAbiForget in Test := { ethContractAbiForgetTask( Test ).evaluated },
 
-    compileSolidity in Compile := { compileSolidityTask.value },
+    ethContractAbiList in Compile := { ethContractAbiListTask( Compile ).value },
+
+    ethContractAbiList in Test := { ethContractAbiListTask( Test ).value },
+
+    ethContractAbiMemorize in Compile := { ethContractAbiMemorizeTask( Compile ).value },
+
+    ethContractAbiMemorize in Test := { ethContractAbiMemorizeTask( Test ).value },
+
+    ethContractCompilationsCull := { ethContractCompilationsCullTask.value },
+
+    ethContractCompilationsInspect in Compile := { ethContractCompilationsInspectTask( Compile ).evaluated },
+
+    ethContractCompilationsInspect in Test := { ethContractCompilationsInspectTask( Test ).evaluated },
+
+    ethContractCompilationsList := { ethContractCompilationsListTask.value },
+
+    ethContractSpawn in Compile := { ethContractSpawnTask( Compile ).evaluated },
+
+    ethContractSpawn in Test := { ethContractSpawnTask( Test ).evaluated },
+
+    ethDebugTestrpcStart in Test := { ethDebugTestrpcStartTask.value },
+
+    ethDebugTestrpcStop in Test := { ethDebugTestrpcStopTask.value },
+
+    // we don't scope the gas override tasks for now
+    // since any gas override gets used in tests as well as other contexts
+    // we may bifurcate and scope this in the future
+    ethGasLimitOverrideSet := { ethGasLimitOverrideSetTask.evaluated },
+
+    ethGasLimitOverrideDrop := { ethGasLimitOverrideDropTask.value },
+
+    ethGasLimitOverridePrint := { ethGasLimitOverridePrintTask.value },
+
+    ethGasPriceOverrideSet := { ethGasPriceOverrideSetTask.evaluated },
+
+    ethGasPriceOverrideDrop := { ethGasPriceOverrideDropTask.value },
+
+    ethGasPriceOverridePrint := { ethGasPriceOverridePrintTask.value },
+
+    ethKeystoreList in Compile := { ethKeystoreListTask( Compile ).value },
+
+    ethKeystoreList in Test := { ethKeystoreListTask( Test ).value },
+
+    ethKeystorePrivateKeyReveal in Compile := { ethKeystorePrivateKeyRevealTask( Compile ).evaluated },
+
+    ethKeystorePrivateKeyReveal in Test := { ethKeystorePrivateKeyRevealTask( Test ).evaluated },
+
+    ethKeystoreWalletV3Create := { xethKeystoreWalletV3CreateScrypt.value },
+
+    ethKeystoreWalletV3Memorize := { ethKeystoreWalletV3MemorizeTask.value },
+
+    ethKeystoreWalletV3Print in Compile := { ethKeystoreWalletV3PrintTask( Compile ).evaluated },
+
+    ethKeystoreWalletV3Print in Test := { ethKeystoreWalletV3PrintTask( Test ).evaluated },
+
+    ethKeystoreWalletV3Validate in Compile := { ethKeystoreWalletV3ValidateTask( Compile ).evaluated },
+
+    ethKeystoreWalletV3Validate in Test := { ethKeystoreWalletV3ValidateTask( Test ).evaluated },
 
     ethSolidityCompilerSelect in Compile := { ethSolidityCompilerSelectTask.evaluated },
 
@@ -494,9 +501,19 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethSolidityCompilerPrint in Compile := { ethSolidityCompilerPrintTask.value },
 
-    ethDebugTestrpcStart in Test := { ethDebugTestrpcStartTask.value },
+    ethTransactionInvoke in Compile := { ethTransactionInvokeTask( Compile ).evaluated },
 
-    ethDebugTestrpcStop in Test := { ethDebugTestrpcStopTask.value },
+    ethTransactionInvoke in Test := { ethTransactionInvokeTask( Test ).evaluated },
+
+    ethTransactionSend in Compile := { ethTransactionSendTask( Compile ).evaluated },
+
+    ethTransactionSend in Test := { ethTransactionSendTask( Test ).evaluated },
+
+    ethTransactionView in Compile := { ethTransactionViewTask( Compile ).evaluated },
+
+    ethTransactionView in Test := { ethTransactionViewTask( Test ).evaluated },
+
+    // xeth tasks
 
     xethDefaultGasPrice in Compile := { xethDefaultGasPriceTask( Compile ).value },
 
@@ -505,8 +522,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethFindCacheAliasesIfAvailable in Compile := { (xethFindCacheAliasesIfAvailableTask( Compile ).storeAs( xethFindCacheAliasesIfAvailable in Compile ).triggeredBy( xethTriggerDirtyAliasCache )).value },
 
     xethFindCacheAliasesIfAvailable in Test := { (xethFindCacheAliasesIfAvailableTask( Test ).storeAs( xethFindCacheAliasesIfAvailable in Test ).triggeredBy( xethTriggerDirtyAliasCache )).value },
-
-    xethLoadSeeds in Compile := { xethLoadSeedsTask.value },
 
     xethFindCacheSeeds in Compile := { (xethFindCacheSeedsTask.storeAs( xethFindCacheSeeds in Compile ).triggeredBy( compileSolidity in Compile )).value },
 
@@ -518,24 +533,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethFindCurrentSolidityCompiler in Compile := { xethFindCurrentSolidityCompilerTask.value },
 
-    // we don't scope the gas override tasks for now
-    // since any gas override gets used in tests as well as other contexts
-    // we may bifurcate and scope this in the future
-    ethGasLimitOverrideSet := { ethGasLimitOverrideSetTask.evaluated },
-
-    ethGasLimitOverrideDrop := { ethGasLimitOverrideDropTask.value },
-
-    ethGasLimitOverridePrint := { ethGasLimitOverridePrintTask.value },
-
     xethGasPrice in Compile := { xethGasPriceTask( Compile ).value },
 
     xethGasPrice in Test := { xethGasPriceTask( Test ).value },
-
-    ethGasPriceOverrideSet := { ethGasPriceOverrideSetTask.evaluated },
-
-    ethGasPriceOverrideDrop := { ethGasPriceOverrideDropTask.value },
-
-    ethGasPriceOverridePrint := { ethGasPriceOverridePrintTask.value },
 
     xethGenKeyPair := { xethGenKeyPairTask.value }, // global config scope seems appropriate
 
@@ -563,6 +563,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethLoadCurrentCompilationsOmitDups in Compile := { xethLoadCurrentCompilationsOmitDupsTask.value },
 
+    xethLoadSeeds in Compile := { xethLoadSeedsTask.value },
+
     xethLoadWalletV3 in Compile := { xethLoadWalletV3Task( Compile ).value },
 
     xethLoadWalletV3 in Test := { xethLoadWalletV3Task( Test ).value },
@@ -577,7 +579,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethNextNonce in Test := { xethNextNonceTask( Test ).value },
 
-    xethQueryRepositoryDatabase := { xethQueryRepositoryDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
+    xethSqlQueryRepositoryDatabase := { xethSqlQueryRepositoryDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
+
+    xethSqlUpdateRepositoryDatabase := { xethSqlUpdateRepositoryDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
 
     // we leave triggers unscoped, not for any particular reason
     // (we haven't tried scoping them and seen a problem)
@@ -589,9 +593,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethUpdateContractDatabase in Test := { xethUpdateContractDatabaseTask( Test ).value },
 
-    xethUpdateRepositoryDatabase := { xethUpdateRepositoryDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
-
     xethUpdateSessionSolidityCompilers in Compile := { xethUpdateSessionSolidityCompilersTask.value },
+
+    compileSolidity in Compile := { compileSolidityTask.value },
 
     commands += ethDebugTestrpcRestartCommand,
 
@@ -1989,7 +1993,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     doGetTransactionCount( log, jsonRpcUrl, (xethFindCurrentSender in config).value.get , jsonrpc.Client.BlockNumber.Pending )
   }
 
-  def xethQueryRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
+  def xethSqlQueryRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log   = streams.value.log
     val query = DbQueryParser.parsed
 
@@ -2048,7 +2052,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     repository.Database.updateContractDatabase( compilations ).get
   }
 
-  def xethUpdateRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
+  def xethSqlUpdateRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log   = streams.value.log
     val update = DbQueryParser.parsed
 
