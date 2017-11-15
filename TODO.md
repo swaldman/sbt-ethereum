@@ -1,6 +1,5 @@
 # TODO
 
-* Condense ethContractSpawnOnly and ethContractSpawnAuto into ethContractSpawn
 * ethContractCompilationsAlias*
 * stub apply functions in terms of EthAddress.Source?
 * Make constructor arg hex acessible from repository deployments.
