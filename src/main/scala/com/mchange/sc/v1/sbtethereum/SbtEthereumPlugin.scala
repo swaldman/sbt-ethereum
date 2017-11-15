@@ -1033,7 +1033,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       def createAutoQuartets() : immutable.Seq[(String, String, immutable.Seq[String], Abi )] = {
         mbAutoNameInputs match {
           case None => {
-            log.warn("No 'ethcfgAutoSpawnContracts' set. No automatic contract to spawn.")
+            log.warn("No contract name or compilation alias provided. No 'ethcfgAutoSpawnContracts' set, so no automatic contracts to spawn.")
             Nil
           }
           case Some ( autoNameInputs ) => {

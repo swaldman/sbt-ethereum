@@ -128,32 +128,6 @@ object Parsers {
       case _ => throw new Exception( s"""Constructor overloading not supprted (or legal in solidity). Found multiple constructors: ${abi.constructors.mkString(", ")}""" )
     }
   }
-  /*
-  private def resultFromCompilation( contractName : String, compilation : jsonrpc.Compilation.Contract ) : Parser[ ( String, Option[ ( immutable.Seq[String], Abi, jsonrpc.Compilation.Contract ) ] ) ] = {
-    val mbAbi = compilation.info.mbAbi
-    mbAbi match {
-      case Some( abi ) => {
-        val ctor = constructorFromAbi( abi )
-        inputsParser( ctor.inputs, None ).map( seq => ( contractName, Some( ( seq, abi, compilation ) ) ) )
-      }
-      case None => failure( s"ABI not available for compilation of contract '$contractName'" )
-    }
-  }
-  private [sbtethereum] def genContractNamesConstructorInputsParser(
-    state : State,
-    mbContracts : Option[immutable.Map[String,jsonrpc.Compilation.Contract]]
-  ) : Parser[(String, Option[(immutable.Seq[String], Abi, jsonrpc.Compilation.Contract)])] = {
-    val contracts = mbContracts.getOrElse( immutable.Map.empty )
-    val contractNames = immutable.TreeSet( contracts.keys.toSeq : _* )( Ordering.comparatorToOrdering( String.CASE_INSENSITIVE_ORDER ) )
-    val exSet = if ( contractNames.isEmpty ) immutable.Set("<contract-name>", ZWSP) else contractNames // non-breaking space to prevent autocompletion to dummy example
-    Space.* ~> token( NotSpace examples exSet ).flatMap { name =>
-      contracts.get( name ) match {
-        case None                => success( Tuple2( name, None ) )
-        case Some( abi ) => resultFromCompilation( name, compilation )
-      }
-    }
-  }
-  */
 
   private def fullFromSeed( contractName : String, seed : MaybeSpawnable.Seed ) : Parser[SpawnInstruction.Full] = {
     val ctor = constructorFromAbi( seed.abi )
