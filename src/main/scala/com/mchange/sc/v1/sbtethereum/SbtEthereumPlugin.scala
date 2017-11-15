@@ -499,7 +499,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       xethLoadSeeds in Compile := { xethLoadSeedsTask.value },
 
-      xethFindCacheSeeds in Compile := { (xethFindCacheSeedsTask storeAs( xethFindCacheSeeds in Compile ) triggeredBy( ethSolidityCompile in Compile )).value },
+      xethFindCacheSeeds in Compile := { (xethFindCacheSeedsTask.storeAs( xethFindCacheSeeds in Compile ).triggeredBy( ethSolidityCompile in Compile )).value },
 
       xethFindCacheSessionSolidityCompilerKeys in Compile := { (xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList )).value },
 
@@ -897,7 +897,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val sender = (xethFindCurrentSender in config).value.get
         val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-        val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
+
+        // lazy so if we have nothing to sign, we don't bother to prompt for passcode
+        lazy val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
 
         // at the time of parsing, a compiled contract may not not available.
         // in that case, we force compilation now, but can't accept contructor arguments
@@ -923,7 +925,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           mbCurrentCompilationSeed.get // asserts that something has been found
         }
 
-        val autoNameInputs = (ethcfgAutoSpawnContracts in config).value
+        val mbAutoNameInputs = (ethcfgAutoSpawnContracts in config).?.value
 
         def createQuartetFull( full : SpawnInstruction.Full ) : (String, String, immutable.Seq[String], Abi ) = {
           if ( full.seed.currentCompilation ) {
@@ -946,13 +948,21 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
 
         def createAutoQuartets() : immutable.Seq[(String, String, immutable.Seq[String], Abi )] = {
-          autoNameInputs.toList.map { nameAndArgs =>
-            val words = nameAndArgs.split("""\s+""")
-            require( words.length >= 1, s"Each element of 'ethcfgAutoSpawnContracts' must contain at least a contract name! [word length: ${words.length}")
-            val deploymentAlias = words.head
-            val args = words.tail.toList
-            val seed = anySourceFreshSeed( deploymentAlias )
-            ( deploymentAlias, seed.codeHex, args, seed.abi )
+          mbAutoNameInputs match {
+            case None => {
+              log.warn("No 'ethcfgAutoSpawnContracts' set. No automatic contract to spawn.")
+              Nil
+            }
+            case Some ( autoNameInputs ) => {
+              autoNameInputs.toList.map { nameAndArgs =>
+                val words = nameAndArgs.split("""\s+""")
+                require( words.length >= 1, s"Each element of 'ethcfgAutoSpawnContracts' must contain at least a contract name! [word length: ${words.length}")
+                val deploymentAlias = words.head
+                val args = words.tail.toList
+                val seed = anySourceFreshSeed( deploymentAlias )
+                ( deploymentAlias, seed.codeHex, args, seed.abi )
+              }
+            }
           }
         }
 
