@@ -20,10 +20,6 @@ import java.net.URL
 
 object EthJsonRpc {
 
-  private val Zero256 = Unsigned256( 0 )
-  private val One256  = Unsigned256( 1 )
-
-
   private def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String, clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext )( operation : jsonrpc.Client => T ) : T = {
     try {
       borrow( clientFactory( jsonRpcUrl ) )( operation )
@@ -125,6 +121,7 @@ object EthJsonRpc {
     rounded(BigDecimal(rawEstimate) * BigDecimal(1 + markup)).toBigInt
   }
 
+  /*
   private [sbtethereum] def awaitTransactionReceipt(
     log : sbt.Logger,
     jsonRpcUrl : String,
@@ -154,39 +151,6 @@ object EthJsonRpc {
       doPoll( 0 )
     }
   }
-
-
-  private def decodeStatus( status : Option[Unsigned256] ) : String = status.fold( "Unknown" ){ swrapped =>
-    swrapped match {
-      case Zero256 => "FAILED"
-      case One256  => "SUCCEEDED"
-      case _       => s"Unexpected status ${swrapped.widen}"
-    }
-  }
-
-  // TODO: pretty up logs output
-  def prettyClientTransactionReceipt( ctr : ClientTransactionReceipt ) : String = {
-    s"""|Transaction Receipt:
-        |       Transaction Hash:    0x${ctr.transactionHash.hex}
-        |       Transaction Index:   ${ctr.transactionIndex.widen}
-        |       Transaction Status:  ${ decodeStatus( ctr.status ) }
-        |       Block Hash:          0x${ctr.blockHash.hex}
-        |       Block Number:        ${ctr.blockNumber.widen}
-        |       Cumulative Gas Used: ${ctr.cumulativeGasUsed.widen}
-        |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
-        |       Logs:                ${if (ctr.logs.isEmpty) "None" else ctr.logs.mkString(", ")}""".stripMargin     
-  }
-
-  def prettyPrintEval( log : sbt.Logger, ctr : ClientTransactionReceipt ) : ClientTransactionReceipt = {
-    log.info( prettyClientTransactionReceipt( ctr ) )
-    ctr
-  }
-
-  def prettyPrintEval( log : sbt.Logger, mbctr : Option[ClientTransactionReceipt] ) : Option[ClientTransactionReceipt] = {
-    mbctr.foreach { ctr =>
-      log.info( prettyClientTransactionReceipt( ctr ) )
-    }
-    mbctr
-  }
+   */ 
 
 }

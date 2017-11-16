@@ -11,6 +11,7 @@
    let ethContractAbiList show deployed as well as memorized ABIs
        ethAbiShow should dump JSON text
 * richer balances (multi-unit, fiat balances)
+* add type resriction to log / event Topic Seq, to limit length to four elements
 * xethEstimateGas
 * xethSendMessage
 * Prettify output of log items in client transactions

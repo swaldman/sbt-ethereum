@@ -30,7 +30,7 @@ import specification.Denominations
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
-import com.mchange.sc.v1.consuela.ethereum.ethabi.{DecodedReturnValue, Encoder, abiFunctionForFunctionNameAndArgs, callDataForAbiFunctionFromStringArgs, decodeReturnValuesForFunction}
+import com.mchange.sc.v1.consuela.ethereum.ethabi.{DecodedValue, Encoder, abiFunctionForFunctionNameAndArgs, callDataForAbiFunctionFromStringArgs, decodeReturnValuesForFunction}
 import com.mchange.sc.v1.consuela.ethereum.stub
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker
 import com.mchange.sc.v1.log.MLogger
@@ -249,7 +249,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethTransactionSend = inputKey[Option[ClientTransactionReceipt]]("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
 
-    val ethTransactionView = inputKey[(Abi.Function,immutable.Seq[DecodedReturnValue])]("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
+    val ethTransactionView = inputKey[(Abi.Function,immutable.Seq[DecodedValue])]("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
     // xeth tasks
 
@@ -1073,7 +1073,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val f_out = {
           for {
             txnHash <- Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq )
-            mbReceipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, _ ) )
+            mbReceipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), _ ) )
           } yield {
             log.info( s"Contract '${deploymentAlias}' deployed in transaction '0x${txnHash.hex}'." )
             mbReceipt match {
@@ -1373,7 +1373,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val f_out = Invoker.transaction.sendMessage( privateKey, contractAddress, Unsigned256( amount ), callData ) flatMap { txnHash =>
         log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei to address '0x${contractAddress.hex}' in transaction '0x${txnHash.hex}'.""" )
-        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, _ ) )
+        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi),  _ ) )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
     }
@@ -1387,23 +1387,22 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val is = interactionService.value
       val blockchainId = (ethcfgBlockchainId in config).value
-      val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
       val from = (xethFindCurrentSender in config).value.get
       val (to, amount) = parser.parsed
-      val nextNonce = (xethNextNonce in config).value
-      val markup = ethcfgGasLimitMarkup.value
-      val gasPrice = (xethGasPrice in config).value
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val gas = computeGas( log, jsonRpcUrl, Some(from), Some(to), Some(amount), Some( EmptyBytes ), jsonrpc.Client.BlockNumber.Pending, markup )
-      val unsigned = EthTransaction.Unsigned.Message( Unsigned256( nextNonce ), Unsigned256( gasPrice ), Unsigned256( gas ), to, Unsigned256( amount ), EmptyBytes )
       val privateKey = findCachePrivateKey( s, log, is, blockchainId, from, autoRelockSeconds, true )
-      val hash = doSignSendTransaction( log, jsonRpcUrl, privateKey, unsigned )
-      log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${hash.hex}'." )
-      awaitTransactionReceipt( log, jsonRpcUrl, hash, PollSeconds, PollAttempts )
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val f_out = Invoker.transaction.sendWei( privateKey, to, Unsigned256( amount ) ) flatMap { txnHash =>
+        log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${txnHash.hex}'." )
+        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None,  _ ) )
+      }
+      Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
     }
   }
 
-  def ethTransactionViewTask( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedReturnValue])]] = {
+  def ethTransactionViewTask( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedValue])]] = {
     val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
 
     Def.inputTask {
@@ -1443,7 +1442,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               log.info( s"The function '${abiFunction.name}' yields ${n} results." )
             }
 
-            def formatResult( idx : Int, result : DecodedReturnValue ) : String = {
+            def formatResult( idx : Int, result : DecodedValue ) : String = {
               val param = result.parameter
               val sb = new StringBuilder(256)
               sb.append( s" + Result ${idx} of type '${param.`type`}'")

@@ -1,15 +1,17 @@
 package com.mchange.sc.v1
 
 import com.mchange.sc.v1.log.MLevel._
+import com.mchange.sc.v2.failable._
 import com.mchange.sc.v1.consuela.ethereum._
-import com.mchange.sc.v1.log.MLogger
-import jsonrpc.{Abi,Compilation}
+import ethabi._
+import jsonrpc.{Abi,Compilation,ClientTransactionReceipt}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
+import specification.Types.Unsigned256
 import scala.collection._
 
 package object sbtethereum {
 
-  private implicit lazy val logger: MLogger = mlogger( "com.mchange.sc.v1.sbtethereum.package" )
+  private implicit lazy val logger = mlogger( "com.mchange.sc.v1.sbtethereum.package" )
 
   class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
 
@@ -25,6 +27,9 @@ package object sbtethereum {
   final case class EthValue( wei : BigInt, denomination : Denomination ) {
     lazy val denominated : BigDecimal = denomination.fromWei( wei ) 
   }
+
+  val Zero256 = Unsigned256( 0 )
+  val One256  = Unsigned256( 1 )
 
   val MainnetIdentifier = "mainnet"
   val TestrpcIdentifier = "testrpc"
@@ -89,6 +94,58 @@ package object sbtethereum {
   trait MaybeSpawnable[T] {
     def mbSeed( t : T ) : Option[MaybeSpawnable.Seed]
   }
+
+
+  private def decodeStatus( status : Option[Unsigned256] ) : String = status.fold( "Unknown" ){ swrapped =>
+    swrapped match {
+      case Zero256 => "FAILED"
+      case One256  => "SUCCEEDED"
+      case _       => s"Unexpected status ${swrapped.widen}"
+    }
+  }
+
+  // TODO: pretty up logs output
+  def prettyClientTransactionReceipt( mbabi : Option[Abi], ctr : ClientTransactionReceipt ) : String = {
+    val events = {
+      val seq_f_events = {
+        mbabi.fold( immutable.Seq.empty[Failable[SolidityEvent]] ){ abi =>
+          val interpretor = SolidityEvent.Interpretor( abi )
+          ctr.logs map { interpretor.interpret(_) }
+        }
+      }
+      val f_seq_events = {
+        Failable.sequence( seq_f_events ) recover { fail : Fail =>
+          WARNING.log( s"Failed to interpret events! Failure: $fail" )
+          Nil
+        }
+      }
+      f_seq_events.get
+    }
+
+    s"""|Transaction Receipt:
+        |       Transaction Hash:    0x${ctr.transactionHash.hex}
+        |       Transaction Index:   ${ctr.transactionIndex.widen}
+        |       Transaction Status:  ${ decodeStatus( ctr.status ) }
+        |       Block Hash:          0x${ctr.blockHash.hex}
+        |       Block Number:        ${ctr.blockNumber.widen}
+        |       Cumulative Gas Used: ${ctr.cumulativeGasUsed.widen}
+        |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
+        |       Logs:                ${if (ctr.logs.isEmpty) "None" else ctr.logs.mkString("\n                            ")}
+        |       Events:              ${if (events.isEmpty) "None" else events.mkString("\n                            ")}""".stripMargin     
+  }
+
+  def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], ctr : ClientTransactionReceipt ) : ClientTransactionReceipt = {
+    log.info( prettyClientTransactionReceipt( mbabi, ctr ) )
+    ctr
+  }
+
+  def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], mbctr : Option[ClientTransactionReceipt] ) : Option[ClientTransactionReceipt] = {
+    mbctr.foreach { ctr =>
+      log.info( prettyClientTransactionReceipt( mbabi, ctr ) )
+    }
+    mbctr
+  }
+
 }
 
 
