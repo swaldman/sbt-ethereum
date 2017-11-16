@@ -15,7 +15,7 @@
 * xethEstimateGas
 * xethSendMessage
 * Prettify output of log items in client transactions
-* event handling generally
+* event handling generally (some progress made)
 * ethAddressSenderEffective
 * ethNameService*
 * ethToken*

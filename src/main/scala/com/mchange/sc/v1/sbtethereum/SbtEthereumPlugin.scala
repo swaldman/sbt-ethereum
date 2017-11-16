@@ -116,195 +116,114 @@ object SbtEthereumPlugin extends AutoPlugin {
   java.lang.Runtime.getRuntime.addShutdownHook( TestrpcDestroyer )
 
 
-  object autoImport {// settings
-    val ethcfgAutoSpawnContracts = settingKey[Seq[String]]("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
+  object autoImport {
 
-    val ethcfgBlockchainId = settingKey[String]("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
+    // settings
+    val ethcfgAutoSpawnContracts           = settingKey[Seq[String]]  ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
+    val ethcfgBlockchainId                 = settingKey[String]       ("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
+    val ethcfgEntropySource                = settingKey[SecureRandom] ("The source of randomness that will be used for key generation")
+    val ethcfgGasLimitCap                  = settingKey[BigInt]       ("Maximum gas limit to use in transactions")
+    val ethcfgGasLimitFloor                = settingKey[BigInt]       ("Minimum gas limit to use in transactions (usually left unset)")
+    val ethcfgGasLimitMarkup               = settingKey[Double]       ("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
+    val ethcfgGasPriceCap                  = settingKey[BigInt]       ("Maximum gas limit to use in transactions")
+    val ethcfgGasPriceFloor                = settingKey[BigInt]       ("Minimum gas limit to use in transactions (usually left unset)")
+    val ethcfgGasPriceMarkup               = settingKey[Double]       ("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
+    val ethcfgIncludeLocations             = settingKey[Seq[String]]  ("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
+    val ethcfgJsonRpcUrl                   = settingKey[String]       ("URL of the Ethereum JSON-RPC service build should work with")
+    val ethcfgKeystoreAutoRelockSeconds    = settingKey[Int]          ("Number of seconds after which an unlocked private key should automatically relock")
+    val ethcfgKeystoreLocationsV3          = settingKey[Seq[File]]    ("Directories from which V3 wallets can be loaded")
+    val ethcfgNetcompileUrl                = settingKey[String]       ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
+    val ethcfgScalaStubsPackage            = settingKey[String]       ("Package into which Scala stubs of Solidity compilations should be generated")
+    val ethcfgSender                       = settingKey[String]       ("The address from which transactions will be sent")
+    val ethcfgSoliditySource               = settingKey[File]         ("Solidity source code directory")
+    val ethcfgSolidityDestination          = settingKey[File]         ("Location for compiled solidity code and metadata")
+    val ethcfgTargetDir                    = settingKey[File]         ("Location in target directory where ethereum artifacts will be placed")
+    val ethcfgTransactionReceiptPollPeriod = settingKey[Duration]     ("Length of period after which sbt-ethereum will poll and repoll for a ClientTransactionReceipt after a transaction")
+    val ethcfgTransactionReceiptTimeout    = settingKey[Duration]     ("Length of period after which sbt-ethereum will give up on polling for a ClientTransactionReceipt after a transaction")
 
-    val ethcfgEntropySource = settingKey[SecureRandom]("The source of randomness that will be used for key generation")
-
-    val xethcfgEphemeralBlockchains = settingKey[Seq[String]]("IDs of blockchains that should be considered ephemeral (so their deployments should not be retained).")
-
-    val ethcfgGasLimitCap = settingKey[BigInt]("Maximum gas limit to use in transactions")
-
-    val ethcfgGasLimitFloor = settingKey[BigInt]("Minimum gas limit to use in transactions (usually left unset)")
-
-    val ethcfgGasLimitMarkup = settingKey[Double]("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
-
-    val ethcfgGasPriceCap = settingKey[BigInt]("Maximum gas limit to use in transactions")
-
-    val ethcfgGasPriceFloor = settingKey[BigInt]("Minimum gas limit to use in transactions (usually left unset)")
-
-    val ethcfgGasPriceMarkup = settingKey[Double]("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
-
-    val ethcfgIncludeLocations = settingKey[Seq[String]]("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
-
-    val ethcfgJsonRpcUrl = settingKey[String]("URL of the Ethereum JSON-RPC service build should work with")
-
-    val ethcfgKeystoreAutoRelockSeconds = settingKey[Int]("Number of seconds after which an unlocked private key should automatically relock")
-
-    val ethcfgKeystoreLocationsV3 = settingKey[Seq[File]]("Directories from which V3 wallets can be loaded")
-
-    val ethcfgNetcompileUrl = settingKey[String]("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
-
-    val ethcfgScalaStubsPackage = settingKey[String]("Package into which Scala stubs of Solidity compilations should be generated")
-
-    val ethcfgSender = settingKey[String]("The address from which transactions will be sent")
-
-    val ethcfgSoliditySource = settingKey[File]("Solidity source code directory")
-
-    val ethcfgSolidityDestination = settingKey[File]("Location for compiled solidity code and metadata")
-
-    val ethcfgTargetDir = settingKey[File]("Location in target directory where ethereum artifacts will be placed")
-
-    val ethcfgTransactionReceiptPollPeriod = settingKey[Duration]("Length of period after which sbt-ethereum will poll and repoll for a ClientTransactionReceipt after a transaction")
-
-    val ethcfgTransactionReceiptTimeout = settingKey[Duration]("Length of period after which sbt-ethereum will give up on polling for a ClientTransactionReceipt after a transaction")
-
-    val xethcfgNamedAbiSource = settingKey[File]("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
-
-    val xethcfgTestingResourcesObjectName = settingKey[String]("The name of the Scala object that will be automatically generated with resources for tests.")
-
-    val xethcfgWalletV3ScryptDkLen = settingKey[Int]("The derived key length parameter used when generating Scrypt V3 wallets")
-
-    val xethcfgWalletV3ScryptN = settingKey[Int]("The value to use for parameter N when generating Scrypt V3 wallets")
-
-    val xethcfgWalletV3ScryptR = settingKey[Int]("The value to use for parameter R when generating Scrypt V3 wallets")
-
-    val xethcfgWalletV3ScryptP = settingKey[Int]("The value to use for parameter P when generating Scrypt V3 wallets")
-
-    val xethcfgWalletV3Pbkdf2DkLen = settingKey[Int]("The derived key length parameter used when generating pbkdf2 V3 wallets")
-
-    val xethcfgWalletV3Pbkdf2C = settingKey[Int]("The value to use for parameter C when generating pbkdf2 V3 wallets")
+    val xethcfgEphemeralBlockchains       = settingKey[Seq[String]] ("IDs of blockchains that should be considered ephemeral (so their deployments should not be retained).")
+    val xethcfgNamedAbiSource             = settingKey[File]        ("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
+    val xethcfgTestingResourcesObjectName = settingKey[String]      ("The name of the Scala object that will be automatically generated with resources for tests.")
+    val xethcfgWalletV3ScryptDkLen        = settingKey[Int]         ("The derived key length parameter used when generating Scrypt V3 wallets")
+    val xethcfgWalletV3ScryptN            = settingKey[Int]         ("The value to use for parameter N when generating Scrypt V3 wallets")
+    val xethcfgWalletV3ScryptR            = settingKey[Int]         ("The value to use for parameter R when generating Scrypt V3 wallets")
+    val xethcfgWalletV3ScryptP            = settingKey[Int]         ("The value to use for parameter P when generating Scrypt V3 wallets")
+    val xethcfgWalletV3Pbkdf2DkLen        = settingKey[Int]         ("The derived key length parameter used when generating pbkdf2 V3 wallets")
+    val xethcfgWalletV3Pbkdf2C            = settingKey[Int]         ("The value to use for parameter C when generating pbkdf2 V3 wallets")
 
     // tasks
 
-    val ethAddressAliasDrop = inputKey[Unit]("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
+    val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
+    val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
+    val ethAddressAliasSet            = inputKey[Unit]                             ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
+    val ethAddressBalance             = inputKey[BigDecimal]                       ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
+    val ethAddressBalanceInWei        = inputKey[BigInt]                           ("Computes the balance in wei of a given address, or of current sender if no address is supplied")
+    val ethAddressPing                = inputKey[Option[ClientTransactionReceipt]] ("Sends 0 ether from current sender to an address, by default the senser address itself")
+    val ethAddressSenderOverrideDrop  = taskKey [Unit]                             ("Removes any sender override, reverting to any 'ethcfgSender' or defaultSender that may be set.")
+    val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgSender' or defaultSender that may be set.")
+    val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
 
-    val ethAddressAliasList = taskKey[Unit]("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
+    val ethContractAbiForget           = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiMemorize")
+    val ethContractAbiList             = taskKey [Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationsList'")
+    val ethContractAbiMemorize         = taskKey [Unit] ("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
+    val ethContractCompilationsCull    = taskKey [Unit] ("Removes never-deployed compilations from the repository database.")
+    val ethContractCompilationsInspect = inputKey[Unit] ("Dumps to the console full information about a compilation, based on either a code hash or contract address")
+    val ethContractCompilationsList    = taskKey [Unit] ("Lists summary information about compilations known in the repository")
+    val ethContractSpawn               = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,ClientTransactionReceipt]]]](""""Spawns" (deploys) the specified named contract, or contracts via 'ethcfgAutoSpawnContracts'""")
 
-    val ethAddressAliasSet = inputKey[Unit]("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
+    val ethDebugTestrpcStart = taskKey[Unit] ("Starts a local testrpc environment (if the command 'testrpc' is in your PATH)")
+    val ethDebugTestrpcStop  = taskKey[Unit] ("Stops any local testrpc environment that may have been started previously")
 
-    val ethAddressBalance = inputKey[BigDecimal]("Computes the balance in ether of a given address, or of current sender if no address is supplied")
-
-    val ethAddressBalanceInWei = inputKey[BigInt]("Computes the balance in wei of a given address, or of current sender if no address is supplied")
-
-    val ethAddressPing = inputKey[Option[ClientTransactionReceipt]]("Sends 0 ether from current sender to an address, by default the senser address itself")
-
-    val ethAddressSenderOverrideDrop = taskKey[Unit]("Removes any sender override, reverting to any 'ethcfgSender' or defaultSender that may be set.")
-
-    val ethAddressSenderOverrideSet = inputKey[Unit]("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgSender' or defaultSender that may be set.")
-
-    val ethAddressSenderOverridePrint = taskKey[Unit]("Displays any sender override, if set.")
-
-    val ethContractAbiForget = inputKey[Unit]("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiMemorize")
-
-    val ethContractAbiList = taskKey[Unit]("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationsList'")
-
-    val ethContractAbiMemorize = taskKey[Unit]("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
-
-    val ethContractCompilationsCull = taskKey[Unit]("Removes never-deployed compilations from the repository database.")
-
-    val ethContractCompilationsInspect = inputKey[Unit]("Dumps to the console full information about a compilation, based on either a code hash or contract address")
-
-    val ethContractCompilationsList = taskKey[Unit]("Lists summary information about compilations known in the repository")
-
-    val ethContractSpawn = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,ClientTransactionReceipt]]]](""""Spawns" (deploys) the specified named contract, or contracts via 'ethcfgAutoSpawnContracts'""")
-
-    val ethDebugTestrpcStart = taskKey[Unit]("Starts a local testrpc environment (if the command 'testrpc' is in your PATH)")
-
-    val ethDebugTestrpcStop = taskKey[Unit]("Stops any local testrpc environment that may have been started previously")
-
-    val ethGasLimitOverrideSet = inputKey[Unit]("Defines a value which overrides the usual automatic marked-up estimation of gas required for a transaction.")
-
-    val ethGasLimitOverrideDrop = taskKey[Unit]("Removes any previously set gas override, reverting to the usual automatic marked-up estimation of gas required for a transaction.")
-
-    val ethGasLimitOverridePrint = taskKey[Unit]("Displays the current gas override, if set.")
-
-    val ethGasPriceOverrideSet = inputKey[Unit]("Defines a value which overrides the usual automatic marked-up default gas price that will be paid for a transaction.")
-
-    val ethGasPriceOverrideDrop = taskKey[Unit]("Removes any previously set gas price override, reverting to the usual automatic marked-up default.")
-
-    val ethGasPriceOverridePrint = taskKey[Unit]("Displays the current gas price override, if set.")
+    val ethGasLimitOverrideSet   = inputKey[Unit] ("Defines a value which overrides the usual automatic marked-up estimation of gas required for a transaction.")
+    val ethGasLimitOverrideDrop  = taskKey [Unit] ("Removes any previously set gas override, reverting to the usual automatic marked-up estimation of gas required for a transaction.")
+    val ethGasLimitOverridePrint = taskKey [Unit] ("Displays the current gas override, if set.")
+    val ethGasPriceOverrideSet   = inputKey[Unit] ("Defines a value which overrides the usual automatic marked-up default gas price that will be paid for a transaction.")
+    val ethGasPriceOverrideDrop  = taskKey [Unit] ("Removes any previously set gas price override, reverting to the usual automatic marked-up default.")
+    val ethGasPriceOverridePrint = taskKey [Unit] ("Displays the current gas price override, if set.")
 
     val ethKeystoreList = taskKey[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
+    val ethKeystorePrivateKeyReveal = inputKey[Unit]      ("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
+    val ethKeystoreWalletV3Create   = taskKey [wallet.V3] ("Generates a new V3 wallet, using ethcfgEntropySource as a source of randomness")
+    val ethKeystoreWalletV3Memorize = taskKey [Unit]      ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
+    val ethKeystoreWalletV3Print    = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
+    val ethKeystoreWalletV3Validate = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
-    val ethKeystorePrivateKeyReveal = inputKey[Unit]("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
+    val ethSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
+    val ethSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
+    val ethSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
 
-    val ethKeystoreWalletV3Create = taskKey[wallet.V3]("Generates a new V3 wallet, using ethcfgEntropySource as a source of randomness")
-
-    val ethKeystoreWalletV3Memorize = taskKey[Unit]("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
-
-    val ethKeystoreWalletV3Print = inputKey[Unit]("Prints V3 wallet as JSON to the console.")
-
-    val ethKeystoreWalletV3Validate = inputKey[Unit]("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
-
-    val ethSolidityCompilerInstall = inputKey[Unit]("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
-
-    val ethSolidityCompilerPrint = taskKey[Unit]("Displays currently active Solidity compiler")
-
-    val ethSolidityCompilerSelect = inputKey[Unit]("Manually select among solidity compilers available to this project")
-
-    val ethTransactionInvoke = inputKey[Option[ClientTransactionReceipt]]("Calls a function on a deployed smart contract")
-
-    val ethTransactionSend = inputKey[Option[ClientTransactionReceipt]]("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
-
-    val ethTransactionView = inputKey[(Abi.Function,immutable.Seq[DecodedValue])]("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
+    val ethTransactionInvoke = inputKey[Option[ClientTransactionReceipt]]           ("Calls a function on a deployed smart contract")
+    val ethTransactionSend   = inputKey[Option[ClientTransactionReceipt]]           ("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
+    val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[DecodedValue])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
     // xeth tasks
 
     val xethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
-
     val xethFindCacheAliasesIfAvailable = taskKey[Tuple2[String,Option[immutable.SortedMap[String,EthAddress]]]]("Finds and caches aliases for use by address parsers")
-
     val xethFindCacheSessionSolidityCompilerKeys = taskKey[immutable.Set[String]]("Finds and caches keys for available compilers for use by the parser for ethSolidityCompilerSelect")
-
     val xethFindCacheSeeds = taskKey[immutable.Map[String,MaybeSpawnable.Seed]]("Finds and caches compiled, deployable contracts, omitting ambiguous duplicates. Triggered by compileSolidity")
-
     val xethFindCurrentSender = taskKey[Failable[EthAddress]]("Finds the address that should be used to send ether or messages")
-
     val xethFindCurrentSolidityCompiler = taskKey[Compiler.Solidity]("Finds and caches keys for available compilers for use parser for ethSolidityCompilerSelect")
-
     val xethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
-
     val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethcfgEntropySource as a source of randomness")
-
     val xethGenScalaStubsAndTestingResources = taskKey[immutable.Seq[File]]("Generates stubs for compiled Solidity contracts, and resources helpful in testing them.")
-
     val xethKeystoreWalletV3CreatePbkdf2 = taskKey[wallet.V3]("Generates a new pbkdf2 V3 wallet, using ethcfgEntropySource as a source of randomness")
-
     val xethKeystoreWalletV3CreateScrypt = taskKey[wallet.V3]("Generates a new scrypt V3 wallet, using ethcfgEntropySource as a source of randomness")
-
     val xethInvokeData = inputKey[immutable.Seq[Byte]]("Prints the data portion that would be sent in a message invoking a function and its arguments on a deployed smart contract")
-
     val xethInvokerContext = taskKey[Invoker.Context]("Puts together gas and jsonrpc configuration to generate a context for transaction invocation.")
-
     val xethLoadAbiFor = inputKey[Abi]("Finds the ABI for a contract address, if known")
-
     val xethLoadCurrentCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
-
     val xethLoadCurrentCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
-
     val xethLoadSeeds = taskKey[immutable.Map[String,MaybeSpawnable.Seed]]("""Loads compilations available for deployment (or "spawning"), which may include both current and archived compilations""")
-
     val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
-
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
-
     val xethNamedAbis = taskKey[immutable.Map[String,Abi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
-
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
-
     val xethSqlQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
-
-    val xethTriggerDirtyAliasCache = taskKey[Unit]("Indirectly provokes an update of the cache of aliases used for tab completions.")
-
-    val xethTriggerDirtySolidityCompilerList = taskKey[Unit]("Indirectly provokes an update of the cache of aavailable solidity compilers used for tab completions.")
-
-    val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts into the contract database. Returns true if changes were made.")
-
     val xethSqlUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
-
+    val xethTriggerDirtyAliasCache = taskKey[Unit]("Indirectly provokes an update of the cache of aliases used for tab completions.")
+    val xethTriggerDirtySolidityCompilerList = taskKey[Unit]("Indirectly provokes an update of the cache of aavailable solidity compilers used for tab completions.")
+    val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts into the contract database. Returns true if changes were made.")
     val xethUpdateSessionSolidityCompilers = taskKey[immutable.SortedMap[String,Compiler.Solidity]]("Finds and tests potential Solidity compilers to see which is available.")
 
     // unprefixed keys
