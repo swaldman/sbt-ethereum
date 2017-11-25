@@ -14,7 +14,7 @@ import com.mchange.sc.v2.failable._
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
-import jsonrpc.{Abi, Doc}
+import jsonrpc.{Abi, Compilation}
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 import play.api.libs.json.Json
@@ -55,8 +55,8 @@ object Database {
             mbCompilerVersion,
             mbCompilerOptions,
             mbAbi.map( abiStr => Json.parse( abiStr ).as[Abi] ),
-            mbUserDoc.map( userDoc => Json.parse( userDoc ).as[Doc.User] ),
-            mbDeveloperDoc.map( developerDoc => Json.parse( developerDoc ).as[Doc.Developer] ),
+            mbUserDoc.map( userDoc => Json.parse( userDoc ).as[Compilation.Doc.User] ),
+            mbDeveloperDoc.map( developerDoc => Json.parse( developerDoc ).as[Compilation.Doc.Developer] ),
             mbMetadata
           )
         }
@@ -189,8 +189,8 @@ object Database {
     mbCompilerVersion   : Option[String],
     mbCompilerOptions   : Option[String],
     mbAbi               : Option[Abi],
-    mbUserDoc           : Option[Doc.User],
-    mbDeveloperDoc      : Option[Doc.Developer],
+    mbUserDoc           : Option[Compilation.Doc.User],
+    mbDeveloperDoc      : Option[Compilation.Doc.Developer],
     mbMetadata          : Option[String]
   )
 
@@ -239,8 +239,8 @@ object Database {
     mbCompilerVersion : Option[String],
     mbCompilerOptions : Option[String],
     mbAbi             : Option[Abi],
-    mbUserDoc         : Option[Doc.User],
-    mbDeveloperDoc    : Option[Doc.Developer],
+    mbUserDoc         : Option[Compilation.Doc.User],
+    mbDeveloperDoc    : Option[Compilation.Doc.Developer],
     mbMetadata        : Option[String]
   )
 

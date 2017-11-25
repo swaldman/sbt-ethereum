@@ -232,11 +232,11 @@ object Compiler {
           }
         }
 
-        val compilerOptions: Option[String]     = map.get("settings").map( Json.stringify )
-        val omap: Option[Map[String, JsValue]]  = map.get("output").map( _.as[JsObject].value )
-        val abi: Option[Abi]                    = omap.flatMap( _.get("abi").map( _.as[Abi] ) )
-        val userDoc: Option[Doc.User]           = omap.flatMap( _.get("userdoc").map( _.as[Doc.User] ) )
-        val developerDoc: Option[Doc.Developer] = omap.flatMap( _.get("devdoc").map( _.as[Doc.Developer] ) )
+        val compilerOptions: Option[String]                 = map.get("settings").map( Json.stringify )
+        val omap: Option[Map[String, JsValue]]              = map.get("output").map( _.as[JsObject].value )
+        val abi: Option[Abi]                                = omap.flatMap( _.get("abi").map( _.as[Abi] ) )
+        val userDoc: Option[Compilation.Doc.User]           = omap.flatMap( _.get("userdoc").map( _.as[Compilation.Doc.User] ) )
+        val developerDoc: Option[Compilation.Doc.Developer] = omap.flatMap( _.get("devdoc").map( _.as[Compilation.Doc.Developer] ) )
 
         val info: Compilation.Contract.Info = {
           Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abi, userDoc, developerDoc, Some( metadata ) )

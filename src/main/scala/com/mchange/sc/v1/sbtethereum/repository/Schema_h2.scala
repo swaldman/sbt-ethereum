@@ -12,13 +12,12 @@ import com.mchange.sc.v1.reconcile.{CantReconcileException, Reconcilable}
 import java.io.StringReader
 import java.sql.{Connection, PreparedStatement, ResultSet, Timestamp, Types}
 import javax.sql.DataSource
-import com.mchange.sc.v1.log.MLogger
 import scala.annotation.tailrec
 import scala.collection._
 import play.api.libs.json._
 
 object Schema_h2 {
-  private implicit lazy val logger: MLogger = mlogger( this )
+  private implicit lazy val logger = mlogger( this )
 
   def setClob( ps : PreparedStatement, i : Int, str : String ): Unit = {
     ps.setClob( i, new StringReader( str ) )
@@ -296,8 +295,8 @@ object Schema_h2 {
         mbCompilerVersion : Option[String],
         mbCompilerOptions : Option[String],
         mbAbi             : Option[Abi],
-        mbUserDoc         : Option[Doc.User],
-        mbDeveloperDoc    : Option[Doc.Developer],
+        mbUserDoc         : Option[Compilation.Doc.User],
+        mbDeveloperDoc    : Option[Compilation.Doc.Developer],
         mbMetadata        : Option[String]
       ) extends Reconcilable[KnownCompilation] {
         import Reconcilable._
@@ -354,8 +353,8 @@ object Schema_h2 {
             mbCompilerVersion = Option( rs.getString("compiler_version") ),
             mbCompilerOptions = Option( rs.getString("compiler_options") ),
             mbAbi   = Option( rs.getString("abi_definition") ).map( parse ).map( _.as[Abi] ),
-            mbUserDoc         = Option( rs.getString("user_doc") ).map( parse ).map( _.as[Doc.User] ),
-            mbDeveloperDoc    = Option( rs.getString("developer_doc") ).map( parse ).map( _.as[Doc.Developer] ),
+            mbUserDoc         = Option( rs.getString("user_doc") ).map( parse ).map( _.as[Compilation.Doc.User] ),
+            mbDeveloperDoc    = Option( rs.getString("developer_doc") ).map( parse ).map( _.as[Compilation.Doc.Developer] ),
             mbMetadata        = Option( rs.getString("metadata") )
           )
         }
@@ -378,8 +377,8 @@ object Schema_h2 {
         mbCompilerVersion : Option[String],
         mbCompilerOptions : Option[String],
         mbAbi   : Option[Abi],
-        mbUserDoc         : Option[Doc.User],
-        mbDeveloperDoc    : Option[Doc.Developer],
+        mbUserDoc         : Option[Compilation.Doc.User],
+        mbDeveloperDoc    : Option[Compilation.Doc.Developer],
         mbMetadata        : Option[String]
       ) : Unit = {
         import Json.{toJson,stringify}
