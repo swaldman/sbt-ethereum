@@ -25,7 +25,7 @@ import com.mchange.sc.v2.util.Platform
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
-import jsonrpc.{Abi, ClientTransactionReceipt, MapStringCompilationContractFormat}
+import jsonrpc.{Abi,Client,MapStringCompilationContractFormat}
 import specification.Denominations
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
@@ -138,8 +138,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgSoliditySource               = settingKey[File]         ("Solidity source code directory")
     val ethcfgSolidityDestination          = settingKey[File]         ("Location for compiled solidity code and metadata")
     val ethcfgTargetDir                    = settingKey[File]         ("Location in target directory where ethereum artifacts will be placed")
-    val ethcfgTransactionReceiptPollPeriod = settingKey[Duration]     ("Length of period after which sbt-ethereum will poll and repoll for a ClientTransactionReceipt after a transaction")
-    val ethcfgTransactionReceiptTimeout    = settingKey[Duration]     ("Length of period after which sbt-ethereum will give up on polling for a ClientTransactionReceipt after a transaction")
+    val ethcfgTransactionReceiptPollPeriod = settingKey[Duration]     ("Length of period after which sbt-ethereum will poll and repoll for a Client.TransactionReceipt after a transaction")
+    val ethcfgTransactionReceiptTimeout    = settingKey[Duration]     ("Length of period after which sbt-ethereum will give up on polling for a Client.TransactionReceipt after a transaction")
 
     val xethcfgEphemeralBlockchains       = settingKey[Seq[String]] ("IDs of blockchains that should be considered ephemeral (so their deployments should not be retained).")
     val xethcfgNamedAbiSource             = settingKey[File]        ("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
@@ -158,7 +158,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressAliasSet            = inputKey[Unit]                             ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
     val ethAddressBalance             = inputKey[BigDecimal]                       ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
     val ethAddressBalanceInWei        = inputKey[BigInt]                           ("Computes the balance in wei of a given address, or of current sender if no address is supplied")
-    val ethAddressPing                = inputKey[Option[ClientTransactionReceipt]] ("Sends 0 ether from current sender to an address, by default the senser address itself")
+    val ethAddressPing                = inputKey[Option[Client.TransactionReceipt]] ("Sends 0 ether from current sender to an address, by default the senser address itself")
     val ethAddressSenderOverrideDrop  = taskKey [Unit]                             ("Removes any sender override, reverting to any 'ethcfgSender' or defaultSender that may be set.")
     val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgSender' or defaultSender that may be set.")
     val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
@@ -169,7 +169,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractCompilationsCull    = taskKey [Unit] ("Removes never-deployed compilations from the repository database.")
     val ethContractCompilationsInspect = inputKey[Unit] ("Dumps to the console full information about a compilation, based on either a code hash or contract address")
     val ethContractCompilationsList    = taskKey [Unit] ("Lists summary information about compilations known in the repository")
-    val ethContractSpawn               = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,ClientTransactionReceipt]]]](""""Spawns" (deploys) the specified named contract, or contracts via 'ethcfgAutoSpawnContracts'""")
+    val ethContractSpawn               = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]](""""Spawns" (deploys) the specified named contract, or contracts via 'ethcfgAutoSpawnContracts'""")
 
     val ethDebugTestrpcStart = taskKey[Unit] ("Starts a local testrpc environment (if the command 'testrpc' is in your PATH)")
     val ethDebugTestrpcStop  = taskKey[Unit] ("Stops any local testrpc environment that may have been started previously")
@@ -192,8 +192,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
     val ethSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
 
-    val ethTransactionInvoke = inputKey[Option[ClientTransactionReceipt]]           ("Calls a function on a deployed smart contract")
-    val ethTransactionSend   = inputKey[Option[ClientTransactionReceipt]]           ("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
+    val ethTransactionInvoke = inputKey[Option[Client.TransactionReceipt]]           ("Calls a function on a deployed smart contract")
+    val ethTransactionSend   = inputKey[Option[Client.TransactionReceipt]]           ("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
     val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[DecodedValue])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
     // xeth tasks
@@ -648,7 +648,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def ethAddressPingTask( config : Configuration ) : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+  def ethAddressPingTask( config : Configuration ) : Initialize[InputTask[Option[Client.TransactionReceipt]]] = {
     val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genOptionalGenericAddressParser )
 
     Def.inputTask {
@@ -887,7 +887,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     println( cap )
   }
 
-  def ethContractSpawnTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Tuple2[String,Either[EthHash,ClientTransactionReceipt]]]]] = {
+  def ethContractSpawnTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]] = {
     val parser = Defaults.loadForParser(xethFindCacheSeeds)( genContractSpawnParser )
 
     Def.inputTask {
@@ -979,7 +979,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
-      def doSpawn( deploymentAlias : String, codeHex : String, inputs : immutable.Seq[String], abi : Abi ) : ( String, Either[EthHash,ClientTransactionReceipt] ) = {
+      def doSpawn( deploymentAlias : String, codeHex : String, inputs : immutable.Seq[String], abi : Abi ) : ( String, Either[EthHash,Client.TransactionReceipt] ) = {
 
         val inputsBytes = ethabi.constructorCallData( inputs, abi ).get // asserts that we've found a meaningful ABI, and can parse the constructor inputs
         val inputsHex = inputsBytes.hex
@@ -1010,7 +1010,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                     }
                   }
                 }
-                Right( receipt ) : Either[EthHash,ClientTransactionReceipt]
+                Right( receipt ) : Either[EthHash,Client.TransactionReceipt]
               }
               case None => Left( txnHash )
             }
@@ -1270,7 +1270,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def ethTransactionInvokeTask( config : Configuration ) : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+  def ethTransactionInvokeTask( config : Configuration ) : Initialize[InputTask[Option[Client.TransactionReceipt]]] = {
     val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
 
     Def.inputTask {
@@ -1298,7 +1298,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def ethTransactionSendTask( config : Configuration ) : Initialize[InputTask[Option[ClientTransactionReceipt]]] = {
+  def ethTransactionSendTask( config : Configuration ) : Initialize[InputTask[Option[Client.TransactionReceipt]]] = {
     val parser = Defaults.loadForParser( xethFindCacheAliasesIfAvailable in config )( genEthSendEtherParser )
 
     Def.inputTask {

@@ -16,6 +16,7 @@
 * xethSendMessage
 * Prettify output of log items in client transactions
 * event handling generally (some progress made)
+* Excise Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
 * ethAddressSenderEffective
 * ethNameService*
 * ethToken*

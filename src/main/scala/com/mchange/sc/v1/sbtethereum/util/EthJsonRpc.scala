@@ -12,7 +12,7 @@ import repository.TransactionLog
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc, specification, EthAddress, EthHash, EthPrivateKey, EthTransaction}
-import jsonrpc.{Compilation, ClientTransactionReceipt}
+import jsonrpc.{Compilation, Client}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 import specification.Types.Unsigned256
 
@@ -128,9 +128,9 @@ object EthJsonRpc {
     transactionHash : EthHash,
     pollSeconds : Int,
     maxPollAttempts : Int
-  )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : Option[ClientTransactionReceipt] = {
+  )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : Option[Client.TransactionReceipt] = {
     doWithJsonClient( log, jsonRpcUrl, clientFactory, ec ){ client =>
-      def doPoll( attemptNum : Int ) : Option[ClientTransactionReceipt] = {
+      def doPoll( attemptNum : Int ) : Option[Client.TransactionReceipt] = {
         val mbReceipt = Await.result( client.eth.getTransactionReceipt( transactionHash ), Duration.Inf )
         ( mbReceipt, attemptNum ) match {
           case ( None, num ) if ( num < maxPollAttempts ) => {

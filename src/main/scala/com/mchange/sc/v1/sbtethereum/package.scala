@@ -4,7 +4,7 @@ import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v1.consuela.ethereum._
 import ethabi._
-import jsonrpc.{Abi,Compilation,ClientTransactionReceipt}
+import jsonrpc.{Abi,Compilation,Client}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 import specification.Types.Unsigned256
 import scala.collection._
@@ -105,7 +105,7 @@ package object sbtethereum {
   }
 
   // TODO: pretty up logs output
-  def prettyClientTransactionReceipt( mbabi : Option[Abi], ctr : ClientTransactionReceipt ) : String = {
+  def prettyClientTransactionReceipt( mbabi : Option[Abi], ctr : Client.TransactionReceipt ) : String = {
     val events = {
       val seq_f_events = {
         mbabi.fold( immutable.Seq.empty[Failable[SolidityEvent]] ){ abi =>
@@ -134,12 +134,12 @@ package object sbtethereum {
         |       Events:              ${if (events.isEmpty) "None" else events.mkString("\n                            ")}""".stripMargin     
   }
 
-  def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], ctr : ClientTransactionReceipt ) : ClientTransactionReceipt = {
+  def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], ctr : Client.TransactionReceipt ) : Client.TransactionReceipt = {
     log.info( prettyClientTransactionReceipt( mbabi, ctr ) )
     ctr
   }
 
-  def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], mbctr : Option[ClientTransactionReceipt] ) : Option[ClientTransactionReceipt] = {
+  def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], mbctr : Option[Client.TransactionReceipt] ) : Option[Client.TransactionReceipt] = {
     mbctr.foreach { ctr =>
       log.info( prettyClientTransactionReceipt( mbabi, ctr ) )
     }
