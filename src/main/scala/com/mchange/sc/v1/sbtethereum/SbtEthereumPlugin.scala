@@ -30,7 +30,7 @@ import specification.Denominations
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
-import com.mchange.sc.v1.consuela.ethereum.ethabi.{DecodedValue, Encoder, abiFunctionForFunctionNameAndArgs, callDataForAbiFunctionFromStringArgs, decodeReturnValuesForFunction}
+import com.mchange.sc.v1.consuela.ethereum.ethabi.{Decoded, Encoder, abiFunctionForFunctionNameAndArgs, callDataForAbiFunctionFromStringArgs, decodeReturnValuesForFunction}
 import com.mchange.sc.v1.consuela.ethereum.stub
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker
 import com.mchange.sc.v1.log.MLogger
@@ -194,7 +194,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethTransactionInvoke = inputKey[Option[Client.TransactionReceipt]]           ("Calls a function on a deployed smart contract")
     val ethTransactionSend   = inputKey[Option[Client.TransactionReceipt]]           ("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
-    val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[DecodedValue])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
+    val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
     // xeth tasks
 
@@ -1321,7 +1321,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def ethTransactionViewTask( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[DecodedValue])]] = {
+  def ethTransactionViewTask( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[Decoded.Value])]] = {
     val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
 
     Def.inputTask {
@@ -1361,7 +1361,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               log.info( s"The function '${abiFunction.name}' yields ${n} results." )
             }
 
-            def formatResult( idx : Int, result : DecodedValue ) : String = {
+            def formatResult( idx : Int, result : Decoded.Value ) : String = {
               val param = result.parameter
               val sb = new StringBuilder(256)
               sb.append( s" + Result ${idx} of type '${param.`type`}'")
@@ -1574,24 +1574,19 @@ object SbtEthereumPlugin extends AutoPlugin {
               val stubsDir = new File( scalaStubsTarget, stubsDirFilePath )
               stubsDir.mkdirs()
               if ( config != Test ) {
-                val mbFiles = allMbAbis flatMap { case ( className, mbAbi ) =>
-                  def genFile( async : Boolean ) : Option[File] = {
-                    mbAbi match {
-                      case Some( abi ) => {
-                        val ( stubClassName, gensrc ) = stub.Generator.generateContractStub( className, abi, async, stubPackage )
-                        val srcFile = new File( stubsDir, s"${stubClassName}.scala" )
-                        srcFile.replaceContents( gensrc, scala.io.Codec.UTF8 )
-                        Some( srcFile )
-                      }
-                      case None => {
-                        log.warn( s"No ABI definition found for contract '${className}'. Skipping Scala stub generation." )
-                        None
-                      }
+                val mbFileSets = allMbAbis map { case ( className, mbAbi ) =>
+                  mbAbi map { abi =>
+                    stub.Generator.generateStubClasses( className, abi, stubPackage ) map { generated =>
+                      val srcFile = new File( stubsDir, s"${generated.className}.scala" )
+                      srcFile.replaceContents( generated.sourceCode, scala.io.Codec.UTF8 )
+                      srcFile
                     }
+                  } orElse {
+                    log.warn( s"No ABI definition found for contract '${className}'. Skipping Scala stub generation." )
+                    None
                   }
-                  genFile( false ) :: genFile( true ) :: Nil
                 }
-                mbFiles.filter( _ != None ).map( _.get ).toVector
+                mbFileSets.filter( _.nonEmpty ).map( _.get ).foldLeft( Vector.empty[File])( _ ++ _ )
               } else {
                 if ( allMbAbis.contains( testingResourcesObjectName ) ) { // TODO: A case insensitive check
                   log.warn( s"The name of the requested testing resources object '${testingResourcesObjectName}' conflicts with the name of a contract." )
