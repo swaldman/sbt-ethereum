@@ -36,7 +36,7 @@ publishTo := version {
   }
 }.value
 
-libraryDependencies += sbtCoreNext.value
+// libraryDependencies += sbtCoreNext.value
 
 libraryDependencies ++= Seq(
   "com.mchange"    %% "consuela"              % "0.0.4-SNAPSHOT" changing(),
