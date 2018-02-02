@@ -2,10 +2,6 @@ val nexus = "https://oss.sonatype.org/"
 val nexusSnapshots = nexus + "content/repositories/snapshots"
 val nexusReleases = nexus + "service/local/staging/deploy/maven2"
 
-val sbtCoreNext = Def.setting {
-  Defaults.sbtPluginExtra("org.scala-sbt" % "sbt-core-next" % "0.1.1", sbtBinaryVersion.value, scalaBinaryVersion.value)
-}
-
 organization := "com.mchange"
 
 name := "sbt-ethereum"
@@ -35,8 +31,6 @@ publishTo := version {
       Some("releases"  at nexusReleases )
   }
 }.value
-
-// libraryDependencies += sbtCoreNext.value
 
 libraryDependencies ++= Seq(
   "com.mchange"    %% "consuela"              % "0.0.4",
