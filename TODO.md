@@ -1,6 +1,5 @@
 # TODO
 
-* sbt 1.0
 * ethContractCompilationsAlias*
 * Make constructor arg hex acessible from repository deployments.
   -- then maybe remove verbosity about arg hex from ethContractSpawnOnly
