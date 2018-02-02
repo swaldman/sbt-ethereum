@@ -77,7 +77,7 @@ object SourceFile {
         val lastMod = urlConn.getLastModified
         val contents = {
           def gensrc = Source.fromInputStream( new BufferedInputStream( urlConn.getInputStream ) )(Codec.UTF8)
-          borrow( gensrc )( _.close )( _.foldLeft("")( _ + _ ) )
+          borrow( gensrc )( _.foldLeft("")( _ + _ ) )
         }
         val immediateParent = {
           val spec = fullUrl.toExternalForm
@@ -139,7 +139,7 @@ object SourceFile {
   val oldAndEmpty = SourceFile(Location.Empty, "", Long.MinValue)
 
   def fileToString( srcFile : File ) : String = {
-    borrow( Source.fromFile( srcFile )(Codec.UTF8) )( _.close() ){ _.foldLeft("")( _ + _ ) }
+    borrow( Source.fromFile( srcFile )(Codec.UTF8) ){ _.foldLeft("")( _ + _ ) }
   }
 }
 

@@ -1,17 +1,19 @@
 package com.mchange.sc.v1.sbtethereum
 
+import sbt._
+import sbt.Keys._
+import sbt.plugins.JvmPlugin
+import sbt.Def.Initialize
+
+import sjsonnew._
+import BasicJsonProtocol._
+
 import util.BaseCodeAndSuffix
 import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstaller, SourceFile}
 import util.EthJsonRpc._
 import util.Parsers._
-import util.SBinaryFormats._
-import sbt._
-import sbt.Keys._
-import sbt.plugins.{InteractionServicePlugin, JvmPlugin}
-import sbt.Def.Initialize
-import sbt.InteractionServiceKeys.interactionService
-import sbinary._
-import sbinary.DefaultProtocol._
+import util.SJsonNewFormats._
+
 import java.io.{BufferedInputStream, File, FileInputStream, FilenameFilter}
 import java.nio.file.Files
 import java.security.SecureRandom
@@ -1870,7 +1872,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         def toTuple( f : File ) : ( String, Abi ) = {
           val filename = f.getName()
           val name = filename.take( filename.length - JsonFilter.DotSuffix.length ) // the filter ensures they do have the suffix
-          val json = borrow ( Source.fromFile( f ) )( _.close )( _.mkString ) // is there a better way
+          val json = borrow ( Source.fromFile( f ) )( _.mkString ) // is there a better way
           ( name, Json.parse( json ).as[Abi] )
         }
 
@@ -2243,7 +2245,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // very important to ensure the ordering of settings,
   // so that compile actually gets overridden
-  override def requires = JvmPlugin && InteractionServicePlugin
+  override def requires = JvmPlugin
 
   override def trigger = allRequirements
 

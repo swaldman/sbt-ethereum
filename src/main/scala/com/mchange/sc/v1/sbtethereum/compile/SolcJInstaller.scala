@@ -58,7 +58,7 @@ object SolcJInstaller {
 
   private def findSolcFileNames( cl : URLClassLoader ) : immutable.Seq[String] = {
     val fileListUrl = cl.findResource( FileListResource )
-    borrow( Source.fromURL( fileListUrl ) )( _.close )( _.getLines().toList )
+    borrow( Source.fromURL( fileListUrl ) )( _.getLines().toList )
   }
 
   private def fileNameToLocalFile( rootLocalCompilerDir : Path, version : String, fileName : String, cl : URLClassLoader ) : Unit = {
