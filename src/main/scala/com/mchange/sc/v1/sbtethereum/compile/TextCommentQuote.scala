@@ -39,7 +39,7 @@ object TextCommentQuote {
         case _ => {
           val next = input( index )
           ( state, next ) match {
-            case ( InText,               '\042' ) => _parse( index + 1,              InQuote, line    , col + 1,        index, addText(accum, sectionBegin, index) )
+            case ( InText,                  '"' ) => _parse( index + 1,              InQuote, line    , col + 1,        index, addText(accum, sectionBegin, index) )
             case ( InText,                  '/' ) => _parse( index + 1,           AfterSlash, line    , col + 1, sectionBegin, accum )
             case ( InText,                 '\n' ) => _parse( index + 1,               InText, line + 1,       1, sectionBegin, accum )
             case ( InText,                    _ ) => _parse( index + 1,               InText, line    , col + 1, sectionBegin, accum )
@@ -47,7 +47,7 @@ object TextCommentQuote {
             case ( AfterSlash,              '*' ) => _parse( index + 1,      InCStyleComment, line    , col + 1,    index - 1, addText( accum, sectionBegin, index - 1) )
             case ( AfterSlash,             '\n' ) => _parse( index + 1,               InText, line + 1,       1, sectionBegin, accum )
             case ( AfterSlash,                _ ) => _parse( index + 1,               InText, line    , col + 1, sectionBegin, accum )
-            case ( InQuote,              '\042' ) => _parse( index + 1,               InText, line    , col + 1,    index + 1, addQuote( accum, sectionBegin, index + 1) )
+            case ( InQuote,                 '"' ) => _parse( index + 1,               InText, line    , col + 1,    index + 1, addQuote( accum, sectionBegin, index + 1) )
             case ( InQuote,                '\n' ) => throw new UnparsableFileException("Unterminated quote", line, col)
             case ( InQuote,                '\\' ) => _parse( index + 1,     InQuoteBackslash, line    , col + 1, sectionBegin, accum )
             case ( InQuote,                   _ ) => _parse( index + 1,              InQuote, line    , col + 1, sectionBegin, accum )

@@ -10,7 +10,7 @@ organization := "com.mchange"
 
 name := "sbt-ethereum"
 
-version := "0.0.3"
+version := "0.1.0-SNAPSHOT" // 0.0.x is for sbt-0.13 versions
 
 sbtPlugin := true
 
@@ -36,7 +36,7 @@ publishTo := version {
   }
 }.value
 
-libraryDependencies += sbtCoreNext.value
+// libraryDependencies += sbtCoreNext.value
 
 libraryDependencies ++= Seq(
   "com.mchange"    %% "consuela"              % "0.0.4",
