@@ -744,14 +744,17 @@ object SbtEthereumPlugin extends AutoPlugin {
     val blockchainId = (ethcfgBlockchainId in config).value
     val log = streams.value.log
 
-    val addresses = repository.Database.getMemorizedContractAbiAddresses( blockchainId ).get
+    val memorizedAddresses = repository.Database.getMemorizedContractAbiAddresses( blockchainId ).get
+    val deployedContracts = repository.Database.allDeployedContractInfosForBlockchainId( blockchainId ).get
+    val deployedAbiAddresses = deployedContracts.filter( _.mbAbi.nonEmpty ).map( _.contractAddress )
+    val allAddresses = memorizedAddresses ++ deployedAbiAddresses
 
     val cap = "+" + span(44) + "+"
-    val header = "Contracts with Memorized ABIs"
+    val header = "Contracts with Known ABIs"
     println( cap )
     println( f"| $header%-42s |" )
     println( cap )
-    addresses.foreach { address =>
+    allAddresses.foreach { address =>
       val ka = s"0x${address.hex}"
       val aliasesArrow = leftwardAliasesArrowOrEmpty( blockchainId, address ).get
       println( f"| $ka%-42s |" +  aliasesArrow )

@@ -516,6 +516,11 @@ object Schema_h2 {
            |FROM deployed_compilations
            |WHERE full_code_hash = ?""".stripMargin
       }
+      val AllAddressesForBlockchainIdSql: String = {
+        """|SELECT contract_address
+           |FROM deployed_compilations
+           |WHERE blockchain_id = ?""".stripMargin
+      }
 
       final case class DeployedCompilation (
         blockchainId        : String,
@@ -546,6 +551,17 @@ object Schema_h2 {
           ps.setString(1, blockchainId)
           ps.setString(2, contractAddress.hex)
           borrow( ps.executeQuery() )( getMaybeSingleValue( extract ) )
+        }
+      }
+
+      def allAddressesForBlockchainIdSeq( conn : Connection, blockchainId : String ) : immutable.Seq[EthAddress] = {
+        borrow( conn.prepareStatement( AllAddressesForBlockchainIdSql ) ) { ps =>
+          ps.setString(1, blockchainId)
+          borrow( ps.executeQuery() ) { rs =>
+            var out = List.empty[EthAddress]
+            while ( rs.next() ) out = EthAddress( rs.getString( "contract_address" ) ) :: out
+            out
+          }
         }
       }
 

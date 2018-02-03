@@ -229,6 +229,21 @@ object Database {
     }
   }
 
+  def allDeployedContractInfosForBlockchainId( blockchainId : String ) : Failable[immutable.Seq[DeployedContractInfo]] = {
+
+    def deployedContractInfosForAddresses( addresses : immutable.Seq[EthAddress] ) : Failable[immutable.Seq[DeployedContractInfo]] = {
+      Failable.sequence( addresses.map( deployedContractInfoForAddress( blockchainId, _ ) ) ).map( optSeq => optSeq.map( opt => opt.get ) ) // asserts that all deploymens are known compilations
+    }
+
+    DataSource.flatMap { ds =>
+      borrow( ds.getConnection ) { conn =>
+        Failable( Table.DeployedCompilations.allAddressesForBlockchainIdSeq( conn, blockchainId ) ) flatMap { addresses =>
+          deployedContractInfosForAddresses( addresses )
+        }
+      }
+    }
+  }
+
   case class CompilationInfo (
     codeHash          : EthHash,
     code              : String,
