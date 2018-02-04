@@ -40,19 +40,19 @@ package object sbtethereum {
 
   def rounded( bd : BigDecimal ): BigDecimal = bd.round( bd.mc ) // work around absence of default rounded method in scala 2.10 BigDecimal
 
-  def abiForAddress( blockchainId : String, address : EthAddress, defaultNotInDatabase : => Abi ) : Abi = {
+  def mbAbiForAddress( blockchainId : String, address : EthAddress ) : Option[Abi] = {
     def findMemorizedAbi = {
-      val mbAbi = repository.Database.getMemorizedContractAbi( blockchainId, address ).get // again, throw if database problem
-      mbAbi.getOrElse( defaultNotInDatabase )
+      repository.Database.getMemorizedContractAbi( blockchainId, address ).get // again, throw if database problem
     }
 
     val mbDeployedContractInfo = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw an Exception if there's a database problem
     mbDeployedContractInfo.fold( findMemorizedAbi ) { deployedContractInfo =>
-      deployedContractInfo.mbAbi match {
-        case Some( abi ) => abi
-        case None        => findMemorizedAbi
-      }
+      deployedContractInfo.mbAbi orElse findMemorizedAbi
     }
+  }
+
+  def abiForAddress( blockchainId : String, address : EthAddress, defaultNotInDatabase : => Abi ) : Abi = {
+    mbAbiForAddress( blockchainId, address ).getOrElse( defaultNotInDatabase )
   }
 
   def abiForAddress( blockchainId : String, address : EthAddress ) : Abi = {

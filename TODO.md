@@ -6,9 +6,6 @@
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
   * also for stubs and testing resources
-* Richer ABI management
-   let ethContractAbiList show deployed as well as memorized ABIs
-       ethAbiShow should dump JSON text
 * richer balances (multi-unit, fiat balances)
 * add type resriction to log / event Topic Seq, to limit length to four elements
 * xethEstimateGas

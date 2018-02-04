@@ -169,6 +169,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiForget           = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiMemorize")
     val ethContractAbiList             = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationsList'")
     val ethContractAbiMemorize         = taskKey [Unit] ("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
+    val ethContractAbiPrint            = inputKey[Unit] ("Prints the contract ABI associated with a provided address, if known.")
+    val ethContractAbiPrintPretty      = inputKey[Unit] ("Pretty prints the contract ABI associated with a provided address, if known.")
+    val ethContractAbiPrintCompact     = inputKey[Unit] ("Compactly prints the contract ABI associated with a provided address, if known.")
     val ethContractCompilationsCull    = taskKey [Unit] ("Removes never-deployed compilations from the repository database.")
     val ethContractCompilationsInspect = inputKey[Unit] ("Dumps to the console full information about a compilation, based on either a code hash or contract address")
     val ethContractCompilationsList    = taskKey [Unit] ("Lists summary information about compilations known in the repository")
@@ -365,6 +368,18 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethContractAbiMemorize in Compile := { ethContractAbiMemorizeTask( Compile ).value },
 
     ethContractAbiMemorize in Test := { ethContractAbiMemorizeTask( Test ).value },
+
+    ethContractAbiPrint in Compile := { ethContractAbiPrintTask( Compile ).evaluated },
+
+    ethContractAbiPrint in Test := { ethContractAbiPrintTask( Test ).evaluated },
+
+    ethContractAbiPrintCompact in Compile := { ethContractAbiPrintCompactTask( Compile ).evaluated },
+
+    ethContractAbiPrintCompact in Test := { ethContractAbiPrintCompactTask( Test ).evaluated },
+
+    ethContractAbiPrintPretty in Compile := { ethContractAbiPrintPrettyTask( Compile ).evaluated },
+
+    ethContractAbiPrintPretty in Test := { ethContractAbiPrintPrettyTask( Test ).evaluated },
 
     ethContractCompilationsCull := { ethContractCompilationsCullTask.value },
 
@@ -740,6 +755,29 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
   }
+
+  def ethContractAbiAnyPrintTask( pretty : Boolean )( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable)( genGenericAddressParser )
+
+    Def.inputTask {
+      val blockchainId = (ethcfgBlockchainId in config).value
+      val log = streams.value.log
+      val address = parser.parsed
+      val mbAbi = mbAbiForAddress( blockchainId, address )
+      mbAbi match {
+        case None        => println( s"No contract ABI known for address '0x${address.hex}'." )
+        case Some( abi ) => {
+          println( s"Contract ABI for address '0x${address.hex}':" )
+          val json = Json.toJson( abi )
+          println( if ( pretty ) Json.prettyPrint( json ) else  Json.stringify( json ) )
+        }
+      }
+    }
+  }
+
+  def ethContractAbiPrintTask( config : Configuration ) : Initialize[InputTask[Unit]] = ethContractAbiAnyPrintTask( pretty = false )( config ) 
+  def ethContractAbiPrintPrettyTask( config : Configuration ) : Initialize[InputTask[Unit]] = ethContractAbiAnyPrintTask( pretty = true )( config ) 
+  def ethContractAbiPrintCompactTask( config : Configuration ) : Initialize[InputTask[Unit]] = ethContractAbiAnyPrintTask( pretty = false )( config ) 
 
   private final object AbiListRecord {
     trait Source
