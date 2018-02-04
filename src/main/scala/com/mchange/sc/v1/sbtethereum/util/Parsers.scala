@@ -18,6 +18,8 @@ import com.mchange.sc.v1.log.MLevel._
 
 import scala.collection._
 
+import scala.util.matching.Regex
+
 import play.api.libs.json._
 
 object Parsers {
@@ -119,6 +121,27 @@ object Parsers {
   }
 
   private [sbtethereum] val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
+
+  // XXX: We add case-insensitive flags only to "naive" regexs when defaultToCaseInsensitive is true.
+  //      The intent is that users who explicitly set flags should have them unmolested. But we don't
+  //      actually test for setting flags. We test for th presence of "(?", which would include flag-setting,
+  //      but also non-capturing groups and other constructs.
+  //
+  //      We should clean this up, and carefully check for the setting of flags to decide whether or not 
+  //      it is safe for us to set our own flags.
+  
+  private [sbtethereum] def regexParser( defaultToCaseInsensitive : Boolean ) : Parser[Option[Regex]] = {
+    def normalizeStr( s : String ) : Option[Regex] = {
+      val trimmed = s.trim
+      val out = {
+        if ( defaultToCaseInsensitive && trimmed.indexOf( "(?" ) < 0 ) "(?i)" + trimmed else trimmed
+      }
+      if ( out.isEmpty ) None else Some( out.r )
+    }
+    def normalize( ss : Seq[Char] ) : Option[Regex] = normalizeStr( ss.mkString )
+
+    token( (any.*).map( normalize ) ).examples( "[<regular expression or simple substring to filter>]" )
+  }
 
   // delayed parsers
   private def constructorFromAbi( abi : Abi ) : Abi.Constructor = {

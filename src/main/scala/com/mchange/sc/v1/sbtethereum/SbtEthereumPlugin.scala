@@ -41,6 +41,7 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.sys.process.{Process, ProcessLogger}
 import scala.io.Source
+import scala.util.matching.Regex
 
 import scala.concurrent.ExecutionContext
 import com.mchange.sc.v2.jsonrpc.Exchanger.Factory.Default
@@ -166,7 +167,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
 
     val ethContractAbiForget           = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiMemorize")
-    val ethContractAbiList             = taskKey [Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationsList'")
+    val ethContractAbiList             = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationsList'")
     val ethContractAbiMemorize         = taskKey [Unit] ("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
     val ethContractCompilationsCull    = taskKey [Unit] ("Removes never-deployed compilations from the repository database.")
     val ethContractCompilationsInspect = inputKey[Unit] ("Dumps to the console full information about a compilation, based on either a code hash or contract address")
@@ -357,9 +358,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractAbiForget in Test := { ethContractAbiForgetTask( Test ).evaluated },
 
-    ethContractAbiList in Compile := { ethContractAbiListTask( Compile ).value },
+    ethContractAbiList in Compile := { ethContractAbiListTask( Compile ).evaluated },
 
-    ethContractAbiList in Test := { ethContractAbiListTask( Test ).value },
+    ethContractAbiList in Test := { ethContractAbiListTask( Test ).evaluated },
 
     ethContractAbiMemorize in Compile := { ethContractAbiMemorizeTask( Compile ).value },
 
@@ -745,11 +746,19 @@ object SbtEthereumPlugin extends AutoPlugin {
     case object Memorized extends Source
     case class Deployed( mbContractName : Option[String] ) extends Source
   }
-  private final case class AbiListRecord( address : EthAddress, source : AbiListRecord.Source, aliases : immutable.Seq[String] )
+  private final case class AbiListRecord( address : EthAddress, source : AbiListRecord.Source, aliases : immutable.Seq[String] ) {
+    def matches( regex : Regex ) = {
+      aliases.exists( alias => regex.findFirstIn( alias ) != None ) ||
+      regex.findFirstIn( s"0x${address.hex}" ) != None ||
+      ( source.isInstanceOf[AbiListRecord.Deployed] && source.asInstanceOf[AbiListRecord.Deployed].mbContractName.exists( contractName => regex.findFirstIn( contractName ) != None ) )
+    }
+  }
 
-  def ethContractAbiListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+  def ethContractAbiListTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val blockchainId = (ethcfgBlockchainId in config).value
     val log = streams.value.log
+
+    val mbRegex = regexParser( defaultToCaseInsensitive = true ).parsed
 
     val memorizedAddresses = repository.Database.getMemorizedContractAbiAddresses( blockchainId ).get
     val deployedContracts = repository.Database.allDeployedContractInfosForBlockchainId( blockchainId ).get
@@ -764,13 +773,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       memorizedRecords ++ deployedRecords
     }
 
+    val filteredRecords = mbRegex.fold( allRecords )( regex => allRecords.filter( _.matches( regex ) ) )
+
     val cap = "+" + span(44) + "+" + span(11) + "+"
     val addressHeader = "Address"
     val sourceHeader = "Source"
     println( cap )
     println( f"| $addressHeader%-42s | $sourceHeader%-9s |" )
     println( cap )
-    allRecords.foreach { record =>
+    filteredRecords.foreach { record =>
       val ka = s"0x${record.address.hex}"
       val source = if ( record.source == AbiListRecord.Memorized ) "Memorized" else "Spawned"
       val aliasesPart = {
