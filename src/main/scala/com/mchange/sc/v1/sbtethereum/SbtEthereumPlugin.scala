@@ -740,24 +740,58 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private final object AbiListRecord {
+    trait Source
+    case object Memorized extends Source
+    case class Deployed( mbContractName : Option[String] ) extends Source
+  }
+  private final case class AbiListRecord( address : EthAddress, source : AbiListRecord.Source, aliases : immutable.Seq[String] )
+
   def ethContractAbiListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val blockchainId = (ethcfgBlockchainId in config).value
     val log = streams.value.log
 
     val memorizedAddresses = repository.Database.getMemorizedContractAbiAddresses( blockchainId ).get
     val deployedContracts = repository.Database.allDeployedContractInfosForBlockchainId( blockchainId ).get
-    val deployedAbiAddresses = deployedContracts.filter( _.mbAbi.nonEmpty ).map( _.contractAddress )
-    val allAddresses = memorizedAddresses ++ deployedAbiAddresses
 
-    val cap = "+" + span(44) + "+"
-    val header = "Contracts with Known ABIs"
+    val allRecords = {
+      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Memorized, repository.Database.findAliasesByAddress( blockchainId, address ).get ) )
+      val deployedRecords  = {
+        deployedContracts
+          .filter( _.mbAbi.nonEmpty )
+          .map( dci => AbiListRecord( dci.contractAddress, AbiListRecord.Deployed( dci.mbName ), repository.Database.findAliasesByAddress( blockchainId, dci.contractAddress ).get ) )
+      }
+      memorizedRecords ++ deployedRecords
+    }
+
+    val cap = "+" + span(44) + "+" + span(11) + "+"
+    val addressHeader = "Address"
+    val sourceHeader = "Source"
     println( cap )
-    println( f"| $header%-42s |" )
+    println( f"| $addressHeader%-42s | $sourceHeader%-9s |" )
     println( cap )
-    allAddresses.foreach { address =>
-      val ka = s"0x${address.hex}"
-      val aliasesArrow = leftwardAliasesArrowOrEmpty( blockchainId, address ).get
-      println( f"| $ka%-42s |" +  aliasesArrow )
+    allRecords.foreach { record =>
+      val ka = s"0x${record.address.hex}"
+      val source = if ( record.source == AbiListRecord.Memorized ) "Memorized" else "Spawned"
+      val aliasesPart = {
+        record.aliases match {
+          case Seq( alias ) => s"""alias "${alias}""""
+          case Seq()        => ""
+          case aliases      => {
+            val quoted = aliases.map( "\"" + _ + "\"" )
+            s"""aliases ${quoted.mkString(", ")}"""
+          }
+        }
+      }
+      val annotation = record match {
+        case AbiListRecord( address, AbiListRecord.Memorized, aliases ) if aliases.isEmpty                => ""
+        case AbiListRecord( address, AbiListRecord.Memorized, aliases )                                   => s""" <-- ${aliasesPart}"""
+        case AbiListRecord( address, AbiListRecord.Deployed( None ), aliases ) if aliases.isEmpty         => ""
+        case AbiListRecord( address, AbiListRecord.Deployed( None ), aliases )                            => s""" <-- ${aliasesPart}"""
+        case AbiListRecord( address, AbiListRecord.Deployed( Some( name ) ), aliases ) if aliases.isEmpty => s""" <-- contract name "${name}""""
+        case AbiListRecord( address, AbiListRecord.Deployed( Some( name ) ), aliases )                    => s""" <-- contract name "${name}", ${aliasesPart}"""
+      }
+      println( f"| $ka%-42s | $source%-9s |" +  annotation )
     }
     println( cap )
 
