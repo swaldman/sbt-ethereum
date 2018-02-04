@@ -33,7 +33,7 @@ publishTo := version {
 }.value
 
 libraryDependencies ++= Seq(
-  "com.mchange"    %% "consuela"              % "0.0.4",
+  "com.mchange"    %% "consuela"              % "0.0.5-SNAPSHOT" changing(),
   "com.mchange"    %% "mchange-commons-scala" % "0.4.4",
   "com.mchange"    %% "mlog-scala"            % "0.3.10",
   "com.mchange"    %% "literal"               % "0.0.2",
