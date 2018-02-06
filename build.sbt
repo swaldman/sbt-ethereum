@@ -32,8 +32,10 @@ publishTo := version {
   }
 }.value
 
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.5-SNAPSHOT" changing()
+
 libraryDependencies ++= Seq(
-  "com.mchange"    %% "consuela"              % "0.0.5-SNAPSHOT" changing(),
+  consuelaArtifact,
   "com.mchange"    %% "mchange-commons-scala" % "0.4.4",
   "com.mchange"    %% "mlog-scala"            % "0.3.10",
   "com.mchange"    %% "literal"               % "0.0.2",
@@ -42,6 +44,46 @@ libraryDependencies ++= Seq(
   "com.h2database" %  "h2"                    % "1.4.192",
   "ch.qos.logback" %  "logback-classic"       % "1.1.7"
 )
+
+val generatedCodePackageDir = Vector( "com", "mchange", "sc", "v1", "sbtethereum", "generated" )
+
+// embed build-time information into a package object for com.mchange.sc.v1.sbtethereum.generated
+
+sourceGenerators in Compile += Def.task{
+  import java.io._
+  import java.nio.file.Files
+
+  import scala.io.Codec
+
+  val srcManaged    = (sourceManaged in Compile).value
+  val sbtEthVersion = version.value
+
+  val consuelaOrg           = consuelaArtifact.organization
+  val consuelaName          = consuelaArtifact.name
+  val consuelaVersion       = consuelaArtifact.revision
+  val consuelaMaybeChanging = if (consuelaVersion.endsWith("SNAPSHOT")) " changing()" else ""
+
+  val sep = File.separator
+  val outDir = new File( srcManaged, generatedCodePackageDir.mkString( sep ) )
+  val outFile = new File( outDir, "package.scala" )
+  val contents = {
+    s"""|package ${generatedCodePackageDir.init.mkString(".")}
+        |
+        |package object ${generatedCodePackageDir.last} {
+        |  final object SbtEthereum {
+        |    val Version        = "${sbtEthVersion}"
+        |    val BuildTimestamp = "${java.time.Instant.now}"
+        |  }
+        |  final object Consuela {
+        |    import sbt._
+        |    val ModuleID = "${consuelaOrg}" %% "${consuelaName}" % "${consuelaVersion}"${consuelaMaybeChanging}
+        |  }
+        |}""".stripMargin
+  }
+  outDir.mkdirs()
+  Files.write( outFile.toPath, contents.getBytes( Codec.UTF8.charSet ) )
+  outFile :: Nil
+}
 
 pomExtra := {
     <url>https://github.com/swaldman/{name.value}</url>
