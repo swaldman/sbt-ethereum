@@ -1,15 +1,16 @@
 # TODO
 
-* ethContractCompilationsAlias*
+* let plugin add appropriate consuela version to libraryDependencies automatically if a stub package is defined
 * Make constructor arg hex acessible from repository deployments.
   -- then maybe remove verbosity about arg hex from ethContractSpawnOnly
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
   * also for stubs and testing resources
 * richer balances (multi-unit, fiat balances)
-* add type resriction to log / event Topic Seq, to limit length to four elements
+* ethContractCompilationsAlias*
 * xethEstimateGas
 * xethSendMessage
+* add type resriction to log / event Topic Seq, to limit length to four elements
 * Prettify output of log items in client transactions
 * Excise Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
 * ethAddressSenderEffective
