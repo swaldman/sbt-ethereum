@@ -13,6 +13,7 @@ import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstalle
 import util.EthJsonRpc._
 import util.Parsers._
 import util.SJsonNewFormats._
+import generated._
 
 import java.io.{BufferedInputStream, File, FileInputStream, FilenameFilter}
 import java.nio.file.Files
@@ -535,6 +536,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     compileSolidity in Compile := { compileSolidityTask.value },
 
     commands += ethDebugTestrpcRestartCommand,
+
+    libraryDependencies ++= {
+      ethcfgScalaStubsPackage.?.value.fold( Nil : Seq[ModuleID] )( _ => Consuela.ModuleID :: Nil )
+    },
 
     Keys.compile in Compile := { (Keys.compile in Compile).dependsOn(compileSolidity in Compile).value },
 
@@ -1630,7 +1635,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def skipNoPackage : immutable.Seq[File] = {
       log.info("No Scala stubs will be generated as the setting 'ethcfgScalaStubsPackage' has not ben set.")
-      log.info("""If you'd like Scala stubs to be generated, please define 'ethcfgScalaStubsPackage' and be sure to include a recent version of "com.mchange" %% "consuela"  in libraryDependencies.""")
+      log.info("""If you'd like Scala stubs to be generated, please define 'ethcfgScalaStubsPackage'.""")
       immutable.Seq.empty[File]
     }
 
@@ -1647,7 +1652,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           shortMessage + ", a dependency required by stubs."
         }
         log.error( shortMessage + '.' )
-        log.error( """Please add a recent version of "com.mchange" %% "consuela" to 'libraryDependencies'.""" )
+        log.error( """This ought to have been added automatically, but you might try adding a recent version of "com.mchange" %% "consuela" to 'libraryDependencies' (and reporting a bug!).""" )
 
         throw new SbtEthereumException( fullMessage )
       }
