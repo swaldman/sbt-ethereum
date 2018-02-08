@@ -541,6 +541,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethcfgScalaStubsPackage.?.value.fold( Nil : Seq[ModuleID] )( _ => Consuela.ModuleID :: Nil )
     },
 
+    autoStartServer := false,
+
     Keys.compile in Compile := { (Keys.compile in Compile).dependsOn(compileSolidity in Compile).value },
 
     onLoad in Global := {
