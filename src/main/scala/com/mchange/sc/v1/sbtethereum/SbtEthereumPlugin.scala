@@ -36,6 +36,7 @@ import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
 import com.mchange.sc.v1.consuela.ethereum.ethabi.{Decoded, Encoder, abiFunctionForFunctionNameAndArgs, callDataForAbiFunctionFromStringArgs, decodeReturnValuesForFunction}
 import com.mchange.sc.v1.consuela.ethereum.stub
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker
+import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.log.MLogger
 import scala.collection._
 import scala.concurrent.Await
@@ -136,6 +137,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgJsonRpcUrl                   = settingKey[String]       ("URL of the Ethereum JSON-RPC service build should work with")
     val ethcfgKeystoreAutoRelockSeconds    = settingKey[Int]          ("Number of seconds after which an unlocked private key should automatically relock")
     val ethcfgKeystoreLocationsV3          = settingKey[Seq[File]]    ("Directories from which V3 wallets can be loaded")
+    val ethcfgNameServiceAddress           = settingKey[EthAddress]   ("The address of the ENS name service smart contract")
+    val ethcfgNameServiceTld               = settingKey[String]       ("The top-level domain associated with the ENS name service smart contract at 'ethcfgNameServiceAddress'.")
+    val ethcfgNameServiceReverseTld        = settingKey[String]       ("The top-level domain under which reverse lookups are supported in the ENS name service smart contract at 'ethcfgNameServiceAddress'.")
     val ethcfgNetcompileUrl                = settingKey[String]       ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
     val ethcfgScalaStubsPackage            = settingKey[String]       ("Package into which Scala stubs of Solidity compilations should be generated")
     val ethcfgSender                       = settingKey[String]       ("The address from which transactions will be sent")
@@ -194,6 +198,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreWalletV3Memorize = taskKey [Unit]      ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
     val ethKeystoreWalletV3Print    = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
     val ethKeystoreWalletV3Validate = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
+
+    val ethNameServiceOwnerPrint = inputKey[Unit] ("Prints the address of the owner of a given name, if the address has an owner.")
 
     val ethSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
     val ethSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
@@ -289,6 +295,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
       listify( repository.Keystore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
     },
+
+    ethcfgNameServiceAddress := ens.StandardNameServiceAddress,
+
+    ethcfgNameServiceTld := ens.StandardNameServiceTld,
+
+    ethcfgNameServiceReverseTld := ens.StandardNameServiceReverseTld,
 
     ethcfgSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
 
@@ -432,6 +444,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethKeystoreWalletV3Validate in Compile := { ethKeystoreWalletV3ValidateTask( Compile ).evaluated },
 
     ethKeystoreWalletV3Validate in Test := { ethKeystoreWalletV3ValidateTask( Test ).evaluated },
+
+    ethNameServiceOwnerPrint in Compile := { ethNameServiceOwnerPrintTask( Compile ).evaluated },
+
+    ethNameServiceOwnerPrint in Test := { ethNameServiceOwnerPrintTask( Test ).evaluated },
 
     ethSolidityCompilerSelect in Compile := { ethSolidityCompilerSelectTask.evaluated },
 
@@ -1303,6 +1319,23 @@ object SbtEthereumPlugin extends AutoPlugin {
         )
       }
       log.info( s"A wallet for address '0x${derivedAddress.hex}' is valid and decodable with the credential supplied." )
+    }
+  }
+
+  def ethNameServiceOwnerPrintTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+    val name = EnsNameParser.parsed
+
+    val nameServiceAddress = ethcfgNameServiceAddress.value
+    val tld                = ethcfgNameServiceTld.value
+    val reverseTld         = ethcfgNameServiceReverseTld.value
+
+    implicit val icontext = (xethInvokerContext in config).value
+
+    val ensClient = new ens.Client( nameServiceAddress, tld, reverseTld )
+
+    ensClient.owner( name ) match {
+      case Some( address ) => println( s"The name '${name}' is owned by address '0x${address.hex}'." )
+      case None            => println( s"No owner has been assigned to the name '${name}'." )
     }
   }
 

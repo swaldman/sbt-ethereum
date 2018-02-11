@@ -75,6 +75,10 @@ object Parsers {
     Space.* ~> token(mandatory.?)
   }
 
+  private [sbtethereum] val RawEnsNameParser : Parser[String] = NotSpace
+
+  private [sbtethereum] val EnsNameParser : Parser[String] = Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" )
+
   private [sbtethereum] def functionParser( abi : Abi, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
 
