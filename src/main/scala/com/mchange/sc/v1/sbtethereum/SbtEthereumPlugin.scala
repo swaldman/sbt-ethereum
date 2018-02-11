@@ -1756,7 +1756,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    Invoker.Context( jsonRpcUrl, gasPriceTweak, gasLimitTweak, pollPeriod, timeout )
+    Invoker.Context.fromUrl( jsonRpcUrl, gasPriceTweak, gasLimitTweak, pollPeriod, timeout )
   }
 
   def xethKeystoreWalletV3CreatePbkdf2Task : Initialize[Task[wallet.V3]] = Def.task {
