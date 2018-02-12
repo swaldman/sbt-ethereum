@@ -199,7 +199,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreWalletV3Print    = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
     val ethKeystoreWalletV3Validate = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
-    val ethNameServiceOwnerPrint = inputKey[Unit] ("Prints the address of the owner of a given name, if the address has an owner.")
+    val ethNameServiceOwnerLookup = inputKey[Unit] ("Prints the address of the owner of a given name, if the address has an owner.")
 
     val ethSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
     val ethSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
@@ -445,9 +445,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethKeystoreWalletV3Validate in Test := { ethKeystoreWalletV3ValidateTask( Test ).evaluated },
 
-    ethNameServiceOwnerPrint in Compile := { ethNameServiceOwnerPrintTask( Compile ).evaluated },
+    ethNameServiceOwnerLookup in Compile := { ethNameServiceOwnerLookupTask( Compile ).evaluated },
 
-    ethNameServiceOwnerPrint in Test := { ethNameServiceOwnerPrintTask( Test ).evaluated },
+    ethNameServiceOwnerLookup in Test := { ethNameServiceOwnerLookupTask( Test ).evaluated },
 
     ethSolidityCompilerSelect in Compile := { ethSolidityCompilerSelectTask.evaluated },
 
@@ -1322,7 +1322,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def ethNameServiceOwnerPrintTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+  def ethNameServiceOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val name = EnsNameParser.parsed
 
     val nameServiceAddress = ethcfgNameServiceAddress.value
