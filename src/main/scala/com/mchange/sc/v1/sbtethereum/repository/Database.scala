@@ -15,6 +15,7 @@ import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
 import jsonrpc.{Abi, Compilation}
+import com.mchange.sc.v2.ens.{Bid,BidStore}
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 import play.api.libs.json.Json
@@ -367,6 +368,71 @@ object Database {
   def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
   }
+
+  def ensStoreBid( blockchainId : String, bid : Bid ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.insert( _, blockchainId, bid.bidHash, bid.simpleName, bid.bidderAddress, bid.valueInWei, bid.salt ) ) )
+  }
+
+  def ensRemoveBid( blockchainId : String, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markRemoved( _, blockchainId, bidHash ) ) )
+  }
+
+  def ensMarkAccepted( blockchainId : String, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markAccepted( _, blockchainId, bidHash ) ) )
+  }
+
+  def ensMarkRevealed( blockchainId : String, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markRevealed( _, blockchainId, bidHash ) ) )
+  }
+
+  private def ensBidStateFromRawBid( rawBid : Table.EnsBidStore.RawBid ) : BidStore.State = {
+    ( rawBid.accepted, rawBid.revealed ) match {
+      case ( _, true )     => BidStore.State.Revealed
+      case ( true, false ) => BidStore.State.Accepted
+      case _               => BidStore.State.Created
+    }
+  }
+
+  private def ensBidBidStateTupleFromRawBid( rawBid  : Table.EnsBidStore.RawBid ) : Tuple2[ Bid, BidStore.State ] = {
+    Tuple2( Bid( rawBid.bidHash, rawBid.simpleName, rawBid.bidderAddress, rawBid.valueInWei, rawBid.salt ), ensBidStateFromRawBid( rawBid ) )
+  }
+
+  def ensFindByHash( blockchainId : String, bidHash : EthHash ) : Failable[( Bid, BidStore.State )] = DataSource.flatMap { ds =>
+    Failable {
+      borrow( ds.getConnection() ) { conn =>
+        val mbRaw = Table.EnsBidStore.selectByBidHash( conn, blockchainId, bidHash )
+        mbRaw.fold( fail( s"Bid hash '0x${bidHash.hex} does not exist in the database." ) : Failable[( Bid, BidStore.State )] ) { rawBid =>
+          if ( rawBid.removed ) {
+            fail( s"Bid hash '0x${bidHash.hex} did exist in the database, but it has been removed.")
+          }
+          else {
+            succeed( ensBidBidStateTupleFromRawBid( rawBid ) )
+          }
+        }
+      }
+    }.flatten
+  }
+
+  def ensFindByNameBidderAddress( blockchainId : String, simpleName : String, bidderAddress : EthAddress ) : Failable[immutable.Seq[(Bid, BidStore.State)]] = DataSource.flatMap { ds =>
+    Failable {
+      borrow( ds.getConnection() ) { conn =>
+        val rawBids = Table.EnsBidStore.selectByNameBidderAddress( conn, blockchainId, simpleName, bidderAddress )
+        rawBids.filterNot( _.removed ).map( ensBidBidStateTupleFromRawBid )
+      }
+    }
+  }
+
+  def ensBidStore( blockchainId : String ) = new BidStore {
+    def store( bid : Bid ) : Unit = ensStoreBid( blockchainId, bid ).get
+    def remove( bid : Bid ) : Unit = ensRemoveBid( blockchainId, bid.bidHash ).get
+    def markAccepted( bidHash : EthHash ) : Unit = ensMarkAccepted( blockchainId, bidHash ).get
+    def markRevealed( bidHash : EthHash ) : Unit = ensMarkRevealed( blockchainId, bidHash ).get
+    def findByHash( bidHash : EthHash ) : ( Bid, BidStore.State ) = ensFindByHash( blockchainId, bidHash ).get
+    def findByNameBidderAddress( simpleName : String, bidderAddress : EthAddress ) : immutable.Seq[( Bid, BidStore.State )] = {
+      ensFindByNameBidderAddress( blockchainId, simpleName, bidderAddress ).get
+    }
+  }
+
 
   lazy val DataSource          : Failable[DataSource] = h2.initializeDataSource( true )
   lazy val UncheckedDataSource : Failable[DataSource] = h2.initializeDataSource( false )

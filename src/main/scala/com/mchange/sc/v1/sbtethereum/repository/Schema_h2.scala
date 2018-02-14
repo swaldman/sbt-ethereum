@@ -821,17 +821,17 @@ object Schema_h2 {
         }
       }
 
-      private def markTrue( field : String )( conn : Connection, bidHash : EthHash ) : Unit = {
-        borrow( conn.prepareStatement( s"UPDATE ens_bid_store SET ${field} = TRUE WHERE bid_hash = ?" ) ) { ps =>
+      private def markTrue( field : String )( conn : Connection, blockchainId : String, bidHash : EthHash ) : Unit = {
+        borrow( conn.prepareStatement( s"UPDATE ens_bid_store SET ${field} = TRUE WHERE blockchainId = ? AND bid_hash = ?" ) ) { ps =>
           ps.setString( 1, bidHash.hex )
           ps.executeUpdate()
         }
       }
 
       // only sets a "removed" flag. out of neuroticism, we never physically remove bids
-      def markRemoved ( conn : Connection, bidHash : EthHash ) : Unit = markTrue( "removed"  )( conn, bidHash )
-      def markAccepted( conn : Connection, bidHash : EthHash ) : Unit = markTrue( "accepted" )( conn, bidHash )
-      def markRevealed( conn : Connection, bidHash : EthHash ) : Unit = markTrue( "revealed" )( conn, bidHash )
+      def markRemoved ( conn : Connection, blockchainId : String, bidHash : EthHash ) : Unit = markTrue( "removed"  )( conn, blockchainId, bidHash )
+      def markAccepted( conn : Connection, blockchainId : String, bidHash : EthHash ) : Unit = markTrue( "accepted" )( conn, blockchainId, bidHash )
+      def markRevealed( conn : Connection, blockchainId : String, bidHash : EthHash ) : Unit = markTrue( "revealed" )( conn, blockchainId, bidHash )
 
       case class RawBid(
         blockchainId : String,
