@@ -231,6 +231,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
     val xethNamedAbis = taskKey[immutable.Map[String,Abi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
+    val xethNameServiceClient = taskKey[ens.Client]("Loads an ENS client instance.")
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
     val xethSqlQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
     val xethSqlUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
@@ -528,6 +529,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethLoadWalletV3For in Test := { xethLoadWalletV3ForTask( Test ).evaluated },
 
     xethNamedAbis in Compile := { xethNamedAbisTask.value },
+
+    xethNameServiceClient in Compile := { xethNameServiceClientTask( Compile ).value },
+
+    xethNameServiceClient in Test := { xethNameServiceClientTask( Test ).value },
 
     xethNextNonce in Compile := { xethNextNonceTask( Compile ).value },
 
@@ -1325,13 +1330,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   def ethNameServiceOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val name = EnsNameParser.parsed
 
-    val nameServiceAddress = ethcfgNameServiceAddress.value
-    val tld                = ethcfgNameServiceTld.value
-    val reverseTld         = ethcfgNameServiceReverseTld.value
-
-    implicit val icontext = (xethInvokerContext in config).value
-
-    val ensClient = new ens.Client( nameServiceAddress, tld, reverseTld )
+    val ensClient = ( config / xethNameServiceClient).value
 
     ensClient.owner( name ) match {
       case Some( address ) => println( s"The name '${name}' is owned by address '0x${address.hex}'." )
@@ -2010,6 +2009,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     } else {
       empty
     }
+  }
+
+  def xethNameServiceClientTask( config : Configuration ) : Initialize[Task[ens.Client]] = Def.task {
+    val nameServiceAddress = ethcfgNameServiceAddress.value
+    val tld                = ethcfgNameServiceTld.value
+    val reverseTld         = ethcfgNameServiceReverseTld.value
+
+    implicit val icontext = (xethInvokerContext in config).value
+
+    new ens.Client( nameServiceAddress, tld, reverseTld )
   }
 
   def xethNextNonceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
