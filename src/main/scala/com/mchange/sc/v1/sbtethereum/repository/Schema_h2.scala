@@ -45,6 +45,8 @@ object Schema_h2 {
         stmt.executeUpdate( Table.MemorizedAbis.CreateSql )
         stmt.executeUpdate( Table.AddressAliases.CreateSql )
         stmt.executeUpdate( Table.AddressAliases.CreateIndex )
+        stmt.executeUpdate( Table.EnsBidStore.CreateSql )
+        stmt.executeUpdate( Table.EnsBidStore.CreateIndex )
       }
       Table.Metadata.ensureSchemaVersion( conn )
       Table.AddressAliases.attemptInsertTestrpcFaucetDefaultSender( conn )
@@ -763,6 +765,123 @@ object Schema_h2 {
             true
           }
           case _ => false
+        }
+      }
+    }
+    final object EnsBidStore {
+      val CreateSql = {
+        """|CREATE TABLE IF NOT EXISTS ens_bid_store (
+           |   blockchain_id  VARCHAR(64),
+           |   bid_hash       CHAR(64),
+           |   simple_name    VARCHAR(256),
+           |   bidder_address CHAR(40) NOT NULL,
+           |   value_in_wei   VARCHAR(256),
+           |   salt           CHAR(64),
+           |   when_bid       TIMESTAMP,
+           |   accepted       BOOLEAN DEFAULT FALSE,
+           |   revealed       BOOLEAN DEFAULT FALSE,
+           |   removed        BOOLEAN DEFAULT FALSE,
+           |   PRIMARY KEY ( blockchain_id, bid_hash )
+           |)""".stripMargin
+      }
+
+      val CreateIndex = "CREATE INDEX IF NOT EXISTS ens_bid_store_simple_name_bidder_address_idx ON ens_bid_store( simple_name, bidder_address )"
+
+      val BaseSelect = {
+        """|SELECT
+           |   blockchain_id,
+           |   bid_hash,
+           |   simple_name,
+           |   bidder_address,
+           |   value_in_wei,
+           |   salt,
+           |   when_bid,
+           |   accepted,
+           |   revealed,
+           |   removed
+           |FROM ens_bid_store
+           |""".stripMargin // keep the newline
+      }
+
+      def insert( conn : Connection, blockchainId : String, bidHash : EthHash, simpleName : String, bidderAddress : EthAddress, valueInWei : BigInt, salt : immutable.Seq[Byte] ) : Unit = {
+        val bidHashStr       = bidHash.hex
+        val bidderAddressStr = bidderAddress.hex
+        val valueInWeiStr    = valueInWei.toString
+        val saltStr          = salt.hex
+
+        borrow( conn.prepareStatement( "INSERT INTO ens_bid_store ( blockchain_id, bid_hash, simple_name, bidder_address, value_in_wei, salt, when_bid ) VALUES ( ?, ?, ?, ?, ?, ?, ? )" ) ) { ps =>
+          ps.setString( 1, blockchainId )
+          ps.setString( 2, bidHashStr )
+          ps.setString( 3, simpleName )
+          ps.setString( 4, bidderAddressStr )
+          ps.setString( 5, valueInWeiStr )
+          ps.setString( 6, saltStr )
+          ps.setTimestamp( 7, new Timestamp( System.currentTimeMillis() ) )
+          ps.executeUpdate()
+        }
+      }
+
+      private def markTrue( field : String )( conn : Connection, bidHash : EthHash ) : Unit = {
+        borrow( conn.prepareStatement( s"UPDATE ens_bid_store SET ${field} = TRUE WHERE bid_hash = ?" ) ) { ps =>
+          ps.setString( 1, bidHash.hex )
+          ps.executeUpdate()
+        }
+      }
+
+      // only sets a "removed" flag. out of neuroticism, we never physically remove bids
+      def markRemoved ( conn : Connection, bidHash : EthHash ) : Unit = markTrue( "removed"  )( conn, bidHash )
+      def markAccepted( conn : Connection, bidHash : EthHash ) : Unit = markTrue( "accepted" )( conn, bidHash )
+      def markRevealed( conn : Connection, bidHash : EthHash ) : Unit = markTrue( "revealed" )( conn, bidHash )
+
+      case class RawBid(
+        blockchainId : String,
+        bidHash : EthHash,
+        simpleName : String,
+        bidderAddress : EthAddress,
+        valueInWei : BigInt,
+        salt : immutable.Seq[Byte],
+        whenBid : Long,
+        accepted : Boolean,
+        revealed : Boolean,
+        removed : Boolean
+      )
+
+      val extract : ResultSet => RawBid = { rs =>
+        RawBid (
+          blockchainId  = rs.getString( "blockchain_id" ),
+          bidHash       = EthHash.withBytes( rs.getString( "bid_hash" ).decodeHex ),
+          simpleName    = rs.getString( "simple_name" ),
+          bidderAddress = EthAddress( rs.getString( "bidder_address" ) ),
+          valueInWei    = BigInt( rs.getString( "value_in_wei" ) ),
+          salt          = rs.getString( "salt" ).decodeHexAsSeq,
+          whenBid       = rs.getTimestamp( "when_bid" ).getTime(),
+          accepted      = rs.getBoolean( "accepted" ),
+          revealed      = rs.getBoolean( "revealed" ),
+          removed       = rs.getBoolean( "removed" )
+        )
+      }
+
+      def selectByBidHash( conn : Connection, blockchainId : String, bidHash : EthHash ) : Option[RawBid] = {
+        borrow( conn.prepareStatement( BaseSelect + "WHERE blockchain_id = ? AND bid_hash = ?" ) ) { ps =>
+          ps.setString(1, blockchainId)
+          ps.setString(2, bidHash.hex)
+          borrow( ps.executeQuery() )( getMaybeSingleValue( extract ) )
+        }
+      }
+
+      def selectByNameBidderAddress( conn : Connection, blockchainId : String, simpleName : String, bidderAddress : EthAddress ) : immutable.Seq[RawBid] = {
+        borrow( conn.prepareStatement( BaseSelect + "WHERE blockchain_id = ? AND simple_name = ? AND bidder_address = ?" ) ) { ps =>
+          ps.setString(1, blockchainId)
+          ps.setString(2, simpleName)
+          ps.setString(3, bidderAddress.hex)
+          borrow( ps.executeQuery() ){ rs =>
+            @tailrec
+            def build( accum : List[RawBid] ) : List[RawBid] = {
+              if( rs.next() ) build( extract(rs) :: accum )
+              else accum
+            }
+            build( Nil )
+          }
         }
       }
     }
