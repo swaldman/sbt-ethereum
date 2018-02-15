@@ -822,7 +822,7 @@ object Schema_h2 {
       }
 
       private def markTrue( field : String )( conn : Connection, blockchainId : String, bidHash : EthHash ) : Unit = {
-        borrow( conn.prepareStatement( s"UPDATE ens_bid_store SET ${field} = TRUE WHERE blockchainId = ? AND bid_hash = ?" ) ) { ps =>
+        borrow( conn.prepareStatement( s"UPDATE ens_bid_store SET ${field} = TRUE WHERE blockchain_id = ? AND bid_hash = ?" ) ) { ps =>
           ps.setString( 1, bidHash.hex )
           ps.executeUpdate()
         }

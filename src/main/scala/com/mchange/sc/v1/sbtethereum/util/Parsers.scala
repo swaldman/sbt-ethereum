@@ -66,9 +66,9 @@ object Parsers {
     Space.* ~> token(literal(w) | literal(gw) | literal(s) | literal(f) | literal(e))
   }
 
-  private [sbtethereum] def toValueInWei( amount : BigDecimal, unit : String ) = rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt
+  private [sbtethereum] def toValueInWei( amount : BigDecimal, unit : String ) : BigInt = rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt
 
-  private [sbtethereum] def valueInWeiParser( tabHelp : String ) = {
+  private [sbtethereum] def valueInWeiParser( tabHelp : String ) : Parser[BigInt] = {
     (amountParser( tabHelp ) ~ UnitParser).map { case ( amount, unit ) => toValueInWei( amount, unit ) }
   }
 
@@ -82,7 +82,12 @@ object Parsers {
   private [sbtethereum] val EnsNameParser : Parser[String] = Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" )
 
   private [sbtethereum] val EnsNameNumDiversionParser : Parser[(String, Option[Int])] = {
-    Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" ) ~ (Space.+ ~> token( RawIntParser.? ).examples("[<optional number of diversion auctions]"))
+    Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" ) ~ ( token( Space.+ ) ~> token(RawIntParser).examples("[<optional number of diversion auctions]") ).?
+  }
+
+  private [sbtethereum] val EnsPlaceNewBidParser : Parser[(String, BigInt, Option[BigInt])] = {
+    val baseParser = Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" ) ~ ( Space.+ ~> valueInWeiParser( "<amount to bid>" ) ) ~ ( Space.* ~> valueInWeiParser( "[<optional-overpayment-amount>]" ).? )
+    baseParser.map { case ( (name, amount), mbOverpayment ) => ( name, amount, mbOverpayment ) }
   }
 
   private [sbtethereum] def functionParser( abi : Abi, restrictToConstants : Boolean ) : Parser[Abi.Function] = {

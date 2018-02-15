@@ -2,12 +2,15 @@ package com.mchange.sc.v1
 
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v2.failable._
+import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.consuela.ethereum._
 import ethabi._
 import jsonrpc.{Abi,Compilation,Client}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 import specification.Types.Unsigned256
 import scala.collection._
+import java.time.{Instant, ZoneId}
+import java.time.format.DateTimeFormatter
 
 package object sbtethereum {
 
@@ -22,6 +25,8 @@ package object sbtethereum {
   final class RepositoryException( msg : String )         extends SbtEthereumException( msg )
   final class CompilationFailedException( msg : String )  extends SbtEthereumException( msg )
   final class SenderNotAvailableException( msg : String ) extends SbtEthereumException( msg )
+
+  final class NotCurrentlyUnderAuctionException( name : String, status : ens.NameStatus ) extends SbtEthereumException( s"ENS name '${name}' is not currently under auction. Its status is '${status}'." )
 
 
   final case class EthValue( wei : BigInt, denomination : Denomination ) {
@@ -146,6 +151,9 @@ package object sbtethereum {
     mbctr
   }
 
+  private val InstantFormatter = DateTimeFormatter.RFC_1123_DATE_TIME.withZone( ZoneId.systemDefault() )
+
+  def formatInstant( instant : Instant ) : String = InstantFormatter.format( instant )
 }
 
 

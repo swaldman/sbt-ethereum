@@ -1,5 +1,6 @@
 # TODO
 
+* Invoker.{GasApprover => Approver}, set it in the InvocationContext
 * let plugin add appropriate consuela version to libraryDependencies automatically if a stub package is defined
 * Make constructor arg hex acessible from repository deployments.
   -- then maybe remove verbosity about arg hex from ethContractSpawnOnly

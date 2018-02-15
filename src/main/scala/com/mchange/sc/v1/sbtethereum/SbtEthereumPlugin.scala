@@ -199,9 +199,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreWalletV3Print    = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
     val ethKeystoreWalletV3Validate = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
-    val ethNameServiceAuctionStart = inputKey[Unit]             ("Starts an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
-    val ethNameServiceNameStatus = inputKey[ens.NameStatus]     ("Prints the current status of a given name.")
-    val ethNameServiceOwnerLookup = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the address has an owner.")
+    val ethNameServiceAuctionStart    = inputKey[Unit]              ("Starts an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
+    val ethNameServiceAuctionBidPlace = inputKey[Unit]              ("Places a bid in an currently running auction.")
+    val ethNameServiceNameStatus      = inputKey[ens.NameStatus]    ("Prints the current status of a given name.")
+    val ethNameServiceOwnerLookup     = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the address has an owner.")
 
     val ethSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
     val ethSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
@@ -448,6 +449,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethKeystoreWalletV3Validate in Test := { ethKeystoreWalletV3ValidateTask( Test ).evaluated },
 
+    ethNameServiceAuctionBidPlace in Compile := { ethNameServiceAuctionBidPlaceTask( Compile ).evaluated },
+
+    ethNameServiceAuctionBidPlace in Test := { ethNameServiceAuctionBidPlaceTask( Test ).evaluated },
+
     ethNameServiceAuctionStart in Compile := { ethNameServiceAuctionStartTask( Compile ).evaluated },
 
     ethNameServiceAuctionStart in Test := { ethNameServiceAuctionStartTask( Test ).evaluated },
@@ -625,6 +630,18 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   val ethDebugTestrpcRestartCommand = Command.command( "ethDebugTestrpcRestart" ) { state =>
     "ethDebugTestrpcStop" :: "ethDebugTestrpcStart" :: state
+  }
+
+  // private, internal task definitions
+
+  private def findPrivateKeyTask( config : Configuration ) = Def.task {
+    val s = state.value
+    val log = streams.value.log
+    val is = interactionService.value
+    val blockchainId = (ethcfgBlockchainId in config).value
+    val caller = (xethFindCurrentSender in config).value.get
+    val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
+    findCachePrivateKey(s, log, is, blockchainId, caller, autoRelockSeconds, true )
   }
 
   // task definitions
@@ -1337,15 +1354,50 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  def ethNameServiceAuctionBidPlaceTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+    val log = streams.value.log
+    val blockchainId = (config / ethcfgBlockchainId).value
+    val ensClient = ( config / xethNameServiceClient).value
+    val privateKey = findPrivateKeyTask( config ).value
+
+    implicit val bidStore = repository.Database.ensBidStore( blockchainId )
+
+    val ( name, valueInWei, mbOverpaymentInWei ) = EnsPlaceNewBidParser.parsed
+
+    val status = ensClient.nameStatus( name )
+    if ( status != ens.NameStatus.Auction ) {
+      throw new NotCurrentlyUnderAuctionException( name, status )
+    }
+    else {
+      // during auction, these should be available
+      val revealStart = ensClient.revealStart( name ).get
+      val auctionFinalized = ensClient.auctionEnd( name ).get
+
+      val ( bid, transactionInfo ) = {
+        mbOverpaymentInWei match {
+          case Some( overpaymentInWei ) => ensClient.placeNewBid( privateKey, name, valueInWei, overpaymentInWei )
+          case None                     => ensClient.placeNewBid( privateKey, name, valueInWei )
+        }
+      }
+
+      log.warn( s"A bid has been placed on name '${name}' for ${valueInWei} wei." )
+      mbOverpaymentInWei.foreach( opw => log.warn( s"An additional ${opw} wei was transmitted to obscure the value of your bid." ) )
+      log.warn( s"YOU MUST REVEAL THIS BID BETWEEN ${ formatInstant(revealStart) } AND ${ formatInstant(auctionFinalized) }. IF YOU DO NOT, YOUR FUNDS WILL BE LOST!" )
+      log.warn(  "Bid details, which are required to reveal, have been automatically stored in the sbt-ethereum repository," )
+      log.warn( s"and will be provided automatically if revealed by this client, configured with blockchain ID '${blockchainId}'." )
+      log.warn(  "However, it never hurts to be neurotic. You may wish to note:" )
+      log.warn( s"    Simple Name:      ${bid.simpleName}" )
+      log.warn( s"    Simple Name Hash: 0x${ ens.hash( bid.simpleName ).bytes.hex }" )
+      log.warn( s"    Bidder Address:   0x${bid.bidderAddress.hex}}" )
+      log.warn( s"    Value In Wei:     ${ bid.valueInWei }" )
+      log.warn( s"    Salt:             0x${bid.salt.hex}" )
+      log.warn( s"    Full Bid Hash:    0x${bid.bidHash.hex}" )
+    }
+  }
+
   def ethNameServiceAuctionStartTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
 
-    val s = state.value
-    val log = streams.value.log
-    val is = interactionService.value
-    val blockchainId = (ethcfgBlockchainId in config).value
-    val caller = (xethFindCurrentSender in config).value.get
-    val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-    val privateKey = findCachePrivateKey(s, log, is, blockchainId, caller, autoRelockSeconds, true )
+    val privateKey = findPrivateKeyTask( config ).value
     
     val ( name, mbNumDiversions ) = EnsNameNumDiversionParser.parsed
 
@@ -1354,11 +1406,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     mbNumDiversions match {
       case Some( numDiversions ) => {
         ensClient.startAuction( privateKey, name, numDiversions )
-        println( "Auction started for name '${name}', along with ${numDiversions} diversion auctions." )
+        println( s"Auction started for name '${name}', along with ${numDiversions} diversion auctions." )
       }
       case None => {
         ensClient.startAuction( privateKey, name )
-        println( "Auction started for name '${name}'." )
+        println( s"Auction started for name '${name}'." )
       }
     }
   }
@@ -1386,6 +1438,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     val status = ensClient.nameStatus( name )
 
     println( s"The current status of ENS name '${name}' is '${status}'." )
+
+    for {
+      auctionFinalized <- ensClient.auctionEnd( name )
+      revealStart <- ensClient.revealStart( name )
+    } {
+      println( s"Bidding ends, and the reveal phase will begin on ${formatInstant(revealStart)}." )
+      println( s"The auction will be finalized on ${formatInstant(auctionFinalized)}." )
+    }
 
     status
   }
