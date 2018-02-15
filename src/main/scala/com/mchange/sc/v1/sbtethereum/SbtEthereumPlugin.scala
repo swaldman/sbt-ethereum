@@ -166,7 +166,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressAliasSet            = inputKey[Unit]                             ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
     val ethAddressBalance             = inputKey[BigDecimal]                       ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
     val ethAddressBalanceInWei        = inputKey[BigInt]                           ("Computes the balance in wei of a given address, or of current sender if no address is supplied")
-    val ethAddressPing                = inputKey[Option[Client.TransactionReceipt]] ("Sends 0 ether from current sender to an address, by default the senser address itself")
+    val ethAddressPing                = inputKey[Option[Client.TransactionReceipt]]("Sends 0 ether from current sender to an address, by default the senser address itself")
     val ethAddressSenderOverrideDrop  = taskKey [Unit]                             ("Removes any sender override, reverting to any 'ethcfgSender' or defaultSender that may be set.")
     val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgSender' or defaultSender that may be set.")
     val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
@@ -199,7 +199,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreWalletV3Print    = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
     val ethKeystoreWalletV3Validate = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
-    val ethNameServiceOwnerLookup = inputKey[Unit] ("Prints the address of the owner of a given name, if the address has an owner.")
+    val ethNameServiceAuctionStart = inputKey[Unit]             ("Starts an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
+    val ethNameServiceNameStatus = inputKey[ens.NameStatus]     ("Prints the current status of a given name.")
+    val ethNameServiceOwnerLookup = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the address has an owner.")
 
     val ethSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
     val ethSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
@@ -446,9 +448,17 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethKeystoreWalletV3Validate in Test := { ethKeystoreWalletV3ValidateTask( Test ).evaluated },
 
+    ethNameServiceAuctionStart in Compile := { ethNameServiceAuctionStartTask( Compile ).evaluated },
+
+    ethNameServiceAuctionStart in Test := { ethNameServiceAuctionStartTask( Test ).evaluated },
+
     ethNameServiceOwnerLookup in Compile := { ethNameServiceOwnerLookupTask( Compile ).evaluated },
 
     ethNameServiceOwnerLookup in Test := { ethNameServiceOwnerLookupTask( Test ).evaluated },
+
+    ethNameServiceNameStatus in Compile := { ethNameServiceNameStatusTask( Compile ).evaluated },
+
+    ethNameServiceNameStatus in Test := { ethNameServiceNameStatusTask( Test ).evaluated },
 
     ethSolidityCompilerSelect in Compile := { ethSolidityCompilerSelectTask.evaluated },
 
@@ -1194,7 +1204,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   def ethGasLimitOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
-    val amount = integerParser("<gas override>").parsed
+    val amount = bigIntParser("<gas override>").parsed
     GasLimitOverride.set( Some( amount ) )
     log.info( s"Gas override set to ${amount}." )
   }
@@ -1327,15 +1337,57 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def ethNameServiceOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+  def ethNameServiceAuctionStartTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+
+    val s = state.value
+    val log = streams.value.log
+    val is = interactionService.value
+    val blockchainId = (ethcfgBlockchainId in config).value
+    val caller = (xethFindCurrentSender in config).value.get
+    val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
+    val privateKey = findCachePrivateKey(s, log, is, blockchainId, caller, autoRelockSeconds, true )
+    
+    val ( name, mbNumDiversions ) = EnsNameNumDiversionParser.parsed
+
+    val ensClient = ( config / xethNameServiceClient).value
+
+    mbNumDiversions match {
+      case Some( numDiversions ) => {
+        ensClient.startAuction( privateKey, name, numDiversions )
+        println( "Auction started for name '${name}', along with ${numDiversions} diversion auctions." )
+      }
+      case None => {
+        ensClient.startAuction( privateKey, name )
+        println( "Auction started for name '${name}'." )
+      }
+    }
+  }
+
+  def ethNameServiceOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
     val name = EnsNameParser.parsed
 
     val ensClient = ( config / xethNameServiceClient).value
 
-    ensClient.owner( name ) match {
+    val mbOwner = ensClient.owner( name )
+
+    mbOwner match {
       case Some( address ) => println( s"The name '${name}' is owned by address '0x${address.hex}'." )
       case None            => println( s"No owner has been assigned to the name '${name}'." )
     }
+
+    mbOwner
+  }
+
+  def ethNameServiceNameStatusTask( config : Configuration ) : Initialize[InputTask[ens.NameStatus]] = Def.inputTask {
+    val name = EnsNameParser.parsed
+
+    val ensClient = ( config / xethNameServiceClient).value
+
+    val status = ensClient.nameStatus( name )
+
+    println( s"The current status of ENS name '${name}' is '${status}'." )
+
+    status
   }
 
   def ethSolidityCompilerInstallTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {

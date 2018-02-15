@@ -50,9 +50,11 @@ object Parsers {
 
   private [sbtethereum] val NewAliasParser = token(Space.* ~> ID, "<alias>") ~ createSimpleAddressParser("<hex-address>")
 
-  private [sbtethereum] val RawIntegerParser = (Digit.+).map( chars => BigInt( chars.mkString ) )
+  private [sbtethereum] val RawIntParser = (Digit.+).map( chars => chars.mkString.toInt )
 
-  private [sbtethereum] def integerParser( tabHelp : String ) = token(Space.* ~> RawIntegerParser, tabHelp)
+  private [sbtethereum] val RawBigIntParser = (Digit.+).map( chars => BigInt( chars.mkString ) )
+
+  private [sbtethereum] def bigIntParser( tabHelp : String ) = token(Space.* ~> RawBigIntParser, tabHelp)
 
   private [sbtethereum] val RawAmountParser = ((Digit|literal('.')).+).map( chars => BigDecimal( chars.mkString ) )
 
@@ -78,6 +80,10 @@ object Parsers {
   private [sbtethereum] val RawEnsNameParser : Parser[String] = NotSpace
 
   private [sbtethereum] val EnsNameParser : Parser[String] = Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" )
+
+  private [sbtethereum] val EnsNameNumDiversionParser : Parser[(String, Option[Int])] = {
+    Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" ) ~ (Space.+ ~> token( RawIntParser.? ).examples("[<optional number of diversion auctions]"))
+  }
 
   private [sbtethereum] def functionParser( abi : Abi, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
