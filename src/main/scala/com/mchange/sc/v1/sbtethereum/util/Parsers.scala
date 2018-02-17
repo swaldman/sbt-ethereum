@@ -79,7 +79,7 @@ object Parsers {
 
   private [sbtethereum] val RawEnsNameParser : Parser[String] = NotSpace
 
-  private [sbtethereum] val EnsNameParser : Parser[String] = Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" )
+  private [sbtethereum] val EnsNameParser : Parser[String] = token( Space.* ~> RawEnsNameParser ).examples( "<ens-name>.eth" )
 
   private [sbtethereum] val EnsNameNumDiversionParser : Parser[(String, Option[Int])] = {
     Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" ) ~ ( token( Space.+ ) ~> token(RawIntParser).examples("[<optional number of diversion auctions]") ).?
@@ -88,6 +88,12 @@ object Parsers {
   private [sbtethereum] val EnsPlaceNewBidParser : Parser[(String, BigInt, Option[BigInt])] = {
     val baseParser = Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" ) ~ ( Space.+ ~> valueInWeiParser( "<amount to bid>" ) ) ~ ( Space.* ~> valueInWeiParser( "[<optional-overpayment-amount>]" ).? )
     baseParser.map { case ( (name, amount), mbOverpayment ) => ( name, amount, mbOverpayment ) }
+  }
+
+  private [sbtethereum] def ethHashParser( exampleStr : String ) : Parser[EthHash] = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), exampleStr).map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
+
+  private [sbtethereum] def BidHashOrNameParser : Parser[Either[EthHash,String]] = {
+    ethHashParser("<bid-hash").map( hash => (Left(hash) : Either[EthHash,String]) ) | EnsNameParser.map( name => (Right(name) : Either[EthHash,String]) )
   }
 
   private [sbtethereum] def functionParser( abi : Abi, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
@@ -256,7 +262,7 @@ object Parsers {
     state : State,
     mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
   ) : Parser[Either[EthAddress,EthHash]] = {
-    val chp = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), "<contract-code-hash>").map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
+    val chp = ethHashParser( "<contract-code-hash>" )
     genGenericAddressParser( state, mbIdAndMbAliases ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
   }
 
