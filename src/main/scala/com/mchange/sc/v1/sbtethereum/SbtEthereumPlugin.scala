@@ -1432,7 +1432,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val bidderAddress = privateKey.address
         val bidBidStates = bidStore.findByNameBidderAddress( simpleName, bidderAddress )
         bidBidStates.length match {
-          case 0 => println( s"No bids were found to reveal with name '${name}'." )
+          case 0 => println( s"No bids were found to reveal with name '${name}' from address 0x${bidderAddress.hex}." )
           case 1 => {
             val ( bid, _ ) = bidBidStates.head
             revealBidForHash( bid.bidHash )

@@ -93,7 +93,7 @@ object Parsers {
   private [sbtethereum] def ethHashParser( exampleStr : String ) : Parser[EthHash] = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), exampleStr).map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
 
   private [sbtethereum] def BidHashOrNameParser : Parser[Either[EthHash,String]] = {
-    ethHashParser("<bid-hash").map( hash => (Left(hash) : Either[EthHash,String]) ) | EnsNameParser.map( name => (Right(name) : Either[EthHash,String]) )
+    ethHashParser("<ens-name or bid-hash>").map( hash => (Left(hash) : Either[EthHash,String]) ) | EnsNameParser.map( name => (Right(name) : Either[EthHash,String]) )
   }
 
   private [sbtethereum] def functionParser( abi : Abi, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
