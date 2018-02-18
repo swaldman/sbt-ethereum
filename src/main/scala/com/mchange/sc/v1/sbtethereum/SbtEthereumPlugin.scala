@@ -199,6 +199,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreWalletV3Print    = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
     val ethKeystoreWalletV3Validate = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
+    val ethNameServiceAuctionFinalize  = inputKey[Unit]              ("Finalizes an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
     val ethNameServiceAuctionStart     = inputKey[Unit]              ("Starts an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
     val ethNameServiceAuctionBidPlace  = inputKey[Unit]              ("Places a bid in an currently running auction.")
     val ethNameServiceAuctionBidReveal = inputKey[Unit]              ("Reveals a bid in an currently running auction.")
@@ -457,6 +458,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethNameServiceAuctionBidReveal in Compile := { ethNameServiceAuctionBidRevealTask( Compile ).evaluated },
 
     ethNameServiceAuctionBidReveal in Test := { ethNameServiceAuctionBidRevealTask( Test ).evaluated },
+
+    ethNameServiceAuctionFinalize in Compile := { ethNameServiceAuctionFinalizeTask( Compile ).evaluated },
+
+    ethNameServiceAuctionFinalize in Test := { ethNameServiceAuctionFinalizeTask( Test ).evaluated },
 
     ethNameServiceAuctionStart in Compile := { ethNameServiceAuctionStartTask( Compile ).evaluated },
 
@@ -1460,6 +1465,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
     }
+  }
+
+  def ethNameServiceAuctionFinalizeTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+    val privateKey = findPrivateKeyTask( config ).value
+    val name       = EnsNameParser.parsed
+    val ensClient  = ( config / xethNameServiceClient).value
+    ensClient.finalizeAuction( privateKey, name )
   }
 
   def ethNameServiceAuctionStartTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
