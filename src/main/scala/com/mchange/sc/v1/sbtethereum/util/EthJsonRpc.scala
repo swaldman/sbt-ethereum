@@ -6,6 +6,7 @@ import scala.concurrent.duration.Duration
 import scala.collection._
 
 import com.mchange.sc.v2.lang.borrow
+import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.sbtethereum._
 import repository.TransactionLog
@@ -19,6 +20,8 @@ import specification.Types.Unsigned256
 import java.net.URL
 
 object EthJsonRpc {
+
+  private implicit lazy val logger = mlogger( this )
 
   private def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String, clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext )( operation : jsonrpc.Client => T ) : T = {
     try {
@@ -102,7 +105,7 @@ object EthJsonRpc {
     doWithJsonClient( log, jsonRpcUrl, clientFactory, ec ){ client =>
       val signed = unsigned.sign( signer )
       val hash = Await.result( client.eth.sendSignedTransaction( signed ), Duration.Inf )
-      TransactionLog.logTransaction( signed, hash )
+      TransactionLog.logTransaction( signed, hash ).xwarn("Failed to append the transaction to the transaction log!")
       hash
     }
   }
