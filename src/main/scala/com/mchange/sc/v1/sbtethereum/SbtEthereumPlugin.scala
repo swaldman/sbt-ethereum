@@ -1390,6 +1390,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
 
+      repository.BidLog.logBid( bid, blockchainId, ensClient.tld, ensClient.nameServiceAddress )
+
       log.warn( s"A bid has been placed on name '${name}' for ${valueInWei} wei." )
       mbOverpaymentInWei.foreach( opw => log.warn( s"An additional ${opw} wei was transmitted to obscure the value of your bid." ) )
       log.warn( s"YOU MUST REVEAL THIS BID BETWEEN ${ formatInstant(revealStart) } AND ${ formatInstant(auctionFinalized) }. IF YOU DO NOT, YOUR FUNDS WILL BE LOST!" )
@@ -1397,7 +1399,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.warn( s"and will be provided automatically if revealed by this client, configured with blockchain ID '${blockchainId}'." )
       log.warn(  "However, it never hurts to be neurotic. You may wish to note:" )
       log.warn( s"    Simple Name:      ${bid.simpleName}" )
-      log.warn( s"    Simple Name Hash: 0x${ ens.hash( bid.simpleName ).bytes.hex }" )
+      log.warn( s"    Simple Name Hash: 0x${ ens.componentHash( bid.simpleName ).hex }" )
       log.warn( s"    Bidder Address:   0x${bid.bidderAddress.hex}}" )
       log.warn( s"    Value In Wei:     ${ bid.valueInWei }" )
       log.warn( s"    Salt:             0x${bid.salt.hex}" )
@@ -1510,6 +1512,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   def ethNameServiceNameStatusTask( config : Configuration ) : Initialize[InputTask[ens.NameStatus]] = Def.inputTask {
+    import ens.NameStatus._
+
     val name = EnsNameParser.parsed
 
     val ensClient = ( config / xethNameServiceClient).value
@@ -1518,12 +1522,25 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     println( s"The current status of ENS name '${name}' is '${status}'." )
 
-    for {
-      auctionFinalized <- ensClient.auctionEnd( name )
-      revealStart <- ensClient.revealStart( name )
-    } {
-      println( s"Bidding ends, and the reveal phase will begin on ${formatInstant(revealStart)}." )
-      println( s"The auction will be finalized on ${formatInstant(auctionFinalized)}." )
+    status match {
+      case Auction | Reveal => {
+        for {
+          auctionEnd <- ensClient.auctionEnd( name )
+          revealStart <- ensClient.revealStart( name )
+        } {
+          if ( status == Auction ) {
+            println( s"Bidding ends, and the reveal phase will begin on ${formatInstant(revealStart)}." )
+          }
+          println( s"The reveal phase will end, and the auction can be finalized on ${formatInstant(auctionEnd)}." )
+        }
+      }
+      case Owned => {
+        ensClient.owner( name ) match {
+          case Some( address ) => println( s"The owner is '0x${address.hex}'." )
+          case None            => println(  "However, the completed auction has not yet been finalized, so no owner is set." )
+        }
+      }
+      case _ => /* ignore, no special messages */
     }
 
     status
