@@ -124,6 +124,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   object autoImport {
 
     // settings
+    val enscfgNameServiceAddress           = settingKey[EthAddress]   ("The address of the ENS name service smart contract")
+    val enscfgNameServiceTld               = settingKey[String]       ("The top-level domain associated with the ENS name service smart contract at 'enscfgNameServiceAddress'.")
+    val enscfgNameServiceReverseTld        = settingKey[String]       ("The top-level domain under which reverse lookups are supported in the ENS name service smart contract at 'enscfgNameServiceAddress'.")
+
     val ethcfgAutoSpawnContracts           = settingKey[Seq[String]]  ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
     val ethcfgBlockchainId                 = settingKey[String]       ("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
     val ethcfgEntropySource                = settingKey[SecureRandom] ("The source of randomness that will be used for key generation")
@@ -137,9 +141,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgJsonRpcUrl                   = settingKey[String]       ("URL of the Ethereum JSON-RPC service build should work with")
     val ethcfgKeystoreAutoRelockSeconds    = settingKey[Int]          ("Number of seconds after which an unlocked private key should automatically relock")
     val ethcfgKeystoreLocationsV3          = settingKey[Seq[File]]    ("Directories from which V3 wallets can be loaded")
-    val ethcfgNameServiceAddress           = settingKey[EthAddress]   ("The address of the ENS name service smart contract")
-    val ethcfgNameServiceTld               = settingKey[String]       ("The top-level domain associated with the ENS name service smart contract at 'ethcfgNameServiceAddress'.")
-    val ethcfgNameServiceReverseTld        = settingKey[String]       ("The top-level domain under which reverse lookups are supported in the ENS name service smart contract at 'ethcfgNameServiceAddress'.")
     val ethcfgNetcompileUrl                = settingKey[String]       ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
     val ethcfgScalaStubsPackage            = settingKey[String]       ("Package into which Scala stubs of Solidity compilations should be generated")
     val ethcfgSender                       = settingKey[String]       ("The address from which transactions will be sent")
@@ -160,6 +161,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethcfgWalletV3Pbkdf2C            = settingKey[Int]         ("The value to use for parameter C when generating pbkdf2 V3 wallets")
 
     // tasks
+
+    val ensAuctionFinalize  = inputKey[Unit]              ("Finalizes an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
+    val ensAuctionStart     = inputKey[Unit]              ("Starts an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
+    val ensAuctionBidPlace  = inputKey[Unit]              ("Places a bid in an currently running auction.")
+    val ensAuctionBidReveal = inputKey[Unit]              ("Reveals a bid in an currently running auction.")
+    val ensNameStatus       = inputKey[ens.NameStatus]    ("Prints the current status of a given name.")
+    val ensOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the address has an owner.")
 
     val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
     val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
@@ -199,13 +207,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreWalletV3Print    = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
     val ethKeystoreWalletV3Validate = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
-    val ethNameServiceAuctionFinalize  = inputKey[Unit]              ("Finalizes an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
-    val ethNameServiceAuctionStart     = inputKey[Unit]              ("Starts an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
-    val ethNameServiceAuctionBidPlace  = inputKey[Unit]              ("Places a bid in an currently running auction.")
-    val ethNameServiceAuctionBidReveal = inputKey[Unit]              ("Reveals a bid in an currently running auction.")
-    val ethNameServiceNameStatus       = inputKey[ens.NameStatus]    ("Prints the current status of a given name.")
-    val ethNameServiceOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the address has an owner.")
-
     val ethSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
     val ethSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
     val ethSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
@@ -236,7 +237,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
     val xethNamedAbis = taskKey[immutable.Map[String,Abi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
-    val xethNameServiceClient = taskKey[ens.Client]("Loads an ENS client instance.")
+    val xensClient = taskKey[ens.Client]("Loads an ENS client instance.")
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
     val xethSqlQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
     val xethSqlUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
@@ -270,7 +271,15 @@ object SbtEthereumPlugin extends AutoPlugin {
    */
   lazy val ethDefaults : Seq[sbt.Def.Setting[_]] = Seq(
 
-    // settings
+    // enscfg settings
+
+    enscfgNameServiceAddress in Compile := ens.StandardNameServiceAddress,
+
+    enscfgNameServiceTld in Compile := ens.StandardNameServiceTld,
+
+    enscfgNameServiceReverseTld in Compile := ens.StandardNameServiceReverseTld,
+
+    // ethcfg settings
 
     ethcfgBlockchainId in Compile := MainnetIdentifier,
 
@@ -301,12 +310,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
       listify( repository.Keystore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
     },
-
-    ethcfgNameServiceAddress in Compile := ens.StandardNameServiceAddress,
-
-    ethcfgNameServiceTld in Compile := ens.StandardNameServiceTld,
-
-    ethcfgNameServiceReverseTld in Compile := ens.StandardNameServiceReverseTld,
 
     ethcfgSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
 
@@ -339,6 +342,30 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethcfgWalletV3ScryptP := wallet.V3.Default.Scrypt.P,
 
     // tasks
+
+    ensAuctionBidPlace in Compile := { ensAuctionBidPlaceTask( Compile ).evaluated },
+
+    ensAuctionBidPlace in Test := { ensAuctionBidPlaceTask( Test ).evaluated },
+
+    ensAuctionBidReveal in Compile := { ensAuctionBidRevealTask( Compile ).evaluated },
+
+    ensAuctionBidReveal in Test := { ensAuctionBidRevealTask( Test ).evaluated },
+
+    ensAuctionFinalize in Compile := { ensAuctionFinalizeTask( Compile ).evaluated },
+
+    ensAuctionFinalize in Test := { ensAuctionFinalizeTask( Test ).evaluated },
+
+    ensAuctionStart in Compile := { ensAuctionStartTask( Compile ).evaluated },
+
+    ensAuctionStart in Test := { ensAuctionStartTask( Test ).evaluated },
+
+    ensNameStatus in Compile := { ensNameStatusTask( Compile ).evaluated },
+
+    ensNameStatus in Test := { ensNameStatusTask( Test ).evaluated },
+
+    ensOwnerLookup in Compile := { ensOwnerLookupTask( Compile ).evaluated },
+
+    ensOwnerLookup in Test := { ensOwnerLookupTask( Test ).evaluated },
 
     ethAddressAliasDrop in Compile := { ethAddressAliasDropTask( Compile ).evaluated },
 
@@ -451,30 +478,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethKeystoreWalletV3Validate in Test := { ethKeystoreWalletV3ValidateTask( Test ).evaluated },
 
-    ethNameServiceAuctionBidPlace in Compile := { ethNameServiceAuctionBidPlaceTask( Compile ).evaluated },
-
-    ethNameServiceAuctionBidPlace in Test := { ethNameServiceAuctionBidPlaceTask( Test ).evaluated },
-
-    ethNameServiceAuctionBidReveal in Compile := { ethNameServiceAuctionBidRevealTask( Compile ).evaluated },
-
-    ethNameServiceAuctionBidReveal in Test := { ethNameServiceAuctionBidRevealTask( Test ).evaluated },
-
-    ethNameServiceAuctionFinalize in Compile := { ethNameServiceAuctionFinalizeTask( Compile ).evaluated },
-
-    ethNameServiceAuctionFinalize in Test := { ethNameServiceAuctionFinalizeTask( Test ).evaluated },
-
-    ethNameServiceAuctionStart in Compile := { ethNameServiceAuctionStartTask( Compile ).evaluated },
-
-    ethNameServiceAuctionStart in Test := { ethNameServiceAuctionStartTask( Test ).evaluated },
-
-    ethNameServiceOwnerLookup in Compile := { ethNameServiceOwnerLookupTask( Compile ).evaluated },
-
-    ethNameServiceOwnerLookup in Test := { ethNameServiceOwnerLookupTask( Test ).evaluated },
-
-    ethNameServiceNameStatus in Compile := { ethNameServiceNameStatusTask( Compile ).evaluated },
-
-    ethNameServiceNameStatus in Test := { ethNameServiceNameStatusTask( Test ).evaluated },
-
     ethSolidityCompilerSelect in Compile := { ethSolidityCompilerSelectTask.evaluated },
 
     ethSolidityCompilerInstall in Compile := { ethSolidityCompilerInstallTask.evaluated },
@@ -492,6 +495,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionView in Compile := { ethTransactionViewTask( Compile ).evaluated },
 
     ethTransactionView in Test := { ethTransactionViewTask( Test ).evaluated },
+
+    // xens tasks
+
+    xensClient in Compile := { xensClientTask( Compile ).value },
+
+    xensClient in Test := { xensClientTask( Test ).value },
 
     // xeth tasks
 
@@ -554,10 +563,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethLoadWalletV3For in Test := { xethLoadWalletV3ForTask( Test ).evaluated },
 
     xethNamedAbis in Compile := { xethNamedAbisTask.value },
-
-    xethNameServiceClient in Compile := { xethNameServiceClientTask( Compile ).value },
-
-    xethNameServiceClient in Test := { xethNameServiceClientTask( Test ).value },
 
     xethNextNonce in Compile := { xethNextNonceTask( Compile ).value },
 
@@ -655,6 +660,192 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   // task definitions
+
+  // ens tasks
+
+  def ensAuctionBidPlaceTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+    val log = streams.value.log
+    val blockchainId = (config / ethcfgBlockchainId).value
+    val ensClient = ( config / xensClient).value
+    val privateKey = findPrivateKeyTask( config ).value
+
+    implicit val bidStore = repository.Database.ensBidStore( blockchainId )
+
+    val ( name, valueInWei, mbOverpaymentInWei ) = EnsPlaceNewBidParser.parsed
+
+    val status = ensClient.nameStatus( name )
+    if ( status != ens.NameStatus.Auction ) {
+      throw new NotCurrentlyUnderAuctionException( name, status )
+    }
+    else {
+      // during auction, these should be available
+      val revealStart = ensClient.revealStart( name ).get
+      val auctionFinalized = ensClient.auctionEnd( name ).get
+
+      val ( bid, transactionInfo ) = {
+        mbOverpaymentInWei match {
+          case Some( overpaymentInWei ) => ensClient.placeNewBid( privateKey, name, valueInWei, overpaymentInWei )
+          case None                     => ensClient.placeNewBid( privateKey, name, valueInWei )
+        }
+      }
+
+      repository.BidLog.logBid( bid, blockchainId, ensClient.tld, ensClient.nameServiceAddress )
+
+      log.warn( s"A bid has been placed on name '${name}' for ${valueInWei} wei." )
+      mbOverpaymentInWei.foreach( opw => log.warn( s"An additional ${opw} wei was transmitted to obscure the value of your bid." ) )
+      log.warn( s"YOU MUST REVEAL THIS BID BETWEEN ${ formatInstant(revealStart) } AND ${ formatInstant(auctionFinalized) }. IF YOU DO NOT, YOUR FUNDS WILL BE LOST!" )
+      log.warn(  "Bid details, which are required to reveal, have been automatically stored in the sbt-ethereum repository," )
+      log.warn( s"and will be provided automatically if revealed by this client, configured with blockchain ID '${blockchainId}'." )
+      log.warn(  "However, it never hurts to be neurotic. You may wish to note:" )
+      log.warn( s"    Simple Name:      ${bid.simpleName}" )
+      log.warn( s"    Simple Name Hash: 0x${ ens.componentHash( bid.simpleName ).hex }" )
+      log.warn( s"    Bidder Address:   0x${bid.bidderAddress.hex}}" )
+      log.warn( s"    Value In Wei:     ${ bid.valueInWei }" )
+      log.warn( s"    Salt:             0x${bid.salt.hex}" )
+      log.warn( s"    Full Bid Hash:    0x${bid.bidHash.hex}" )
+    }
+  }
+
+  def ensAuctionBidRevealTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+    val log = streams.value.log
+    val blockchainId = (config / ethcfgBlockchainId).value
+    val ensClient = ( config / xensClient).value
+    val privateKey = findPrivateKeyTask( config ).value
+    val tld = ( config / enscfgNameServiceTld).value
+    val is = interactionService.value
+
+    implicit val bidStore = repository.Database.ensBidStore( blockchainId )
+
+    def revealBidForHash( hash : EthHash ) : Unit = {
+      try { ensClient.revealBid( privateKey, hash, force=false ) }
+      catch {
+        case e : ens.EnsException => {
+          log.info( s"Initial attempt to reveal bid failed: ${e}. Retrying with 'force' flag set." )
+          ensClient.revealBid( privateKey, hash, force=true )
+        }
+      }
+    }
+
+    val hashOrName = BidHashOrNameParser.parsed
+
+    hashOrName match {
+      case Left( hash ) => {
+        revealBidForHash( hash )
+        log.info( s"Bid with hash 0x${hash.hex} was successfully revealed." )
+      }
+      case Right( name ) => {
+        val simpleName = ens.normalizeNameForTld( name, tld )
+        val bidderAddress = privateKey.address
+        val bidBidStates = bidStore.findByNameBidderAddress( simpleName, bidderAddress )
+        bidBidStates.length match {
+          case 0 => println( s"No bids were found to reveal with name '${name}' from address 0x${bidderAddress.hex}." )
+          case 1 => {
+            val ( bid, _ ) = bidBidStates.head
+            revealBidForHash( bid.bidHash )
+            log.info( s"Bid with name '${name}' was successfully revealed." )
+          }
+          case _ => {
+            log.warn( s"Found multiple bids with name '${name}':" )
+            bidBidStates.foreach { case ( bid, bidState ) =>
+              log.warn( s"  Bid Hash: 0x${bid.bidHash.hex}, Bid State: ${bidState}" )
+            }
+            val revealAll = is.readLine(s"Reveal all bids? ", mask = false).getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get an answer
+            revealAll.toUpperCase match {
+              case "Y"| "YES" => {
+                bidBidStates.foreach { case ( bid, _ ) =>
+                  try { revealBidForHash( bid.bidHash ) }
+                  catch {
+                    case e : Exception => log.warn( s"Failed to reveal bid with hash 0x${bid.bidHash.hex}: ${e}" )
+                  }
+                }
+                log.info( s"Bids with name '${name}' were successfully revealed." )
+              }
+              case _ => log.warn("Aborted. NO BIDS WERE REVEALED.")
+            }
+          }
+        }
+      }
+    }
+  }
+
+  def ensAuctionFinalizeTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+    val privateKey = findPrivateKeyTask( config ).value
+    val name       = EnsNameParser.parsed
+    val ensClient  = ( config / xensClient).value
+    ensClient.finalizeAuction( privateKey, name )
+  }
+
+  def ensAuctionStartTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+
+    val privateKey = findPrivateKeyTask( config ).value
+    
+    val ( name, mbNumDiversions ) = EnsNameNumDiversionParser.parsed
+
+    val ensClient = ( config / xensClient).value
+
+    mbNumDiversions match {
+      case Some( numDiversions ) => {
+        ensClient.startAuction( privateKey, name, numDiversions )
+        println( s"Auction started for name '${name}', along with ${numDiversions} diversion auctions." )
+      }
+      case None => {
+        ensClient.startAuction( privateKey, name )
+        println( s"Auction started for name '${name}'." )
+      }
+    }
+  }
+
+  def ensOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
+    val name = EnsNameParser.parsed
+
+    val ensClient = ( config / xensClient).value
+
+    val mbOwner = ensClient.owner( name )
+
+    mbOwner match {
+      case Some( address ) => println( s"The name '${name}' is owned by address '0x${address.hex}'." )
+      case None            => println( s"No owner has been assigned to the name '${name}'." )
+    }
+
+    mbOwner
+  }
+
+  def ensNameStatusTask( config : Configuration ) : Initialize[InputTask[ens.NameStatus]] = Def.inputTask {
+    import ens.NameStatus._
+
+    val name = EnsNameParser.parsed
+
+    val ensClient = ( config / xensClient).value
+
+    val status = ensClient.nameStatus( name )
+
+    println( s"The current status of ENS name '${name}' is '${status}'." )
+
+    status match {
+      case Auction | Reveal => {
+        for {
+          auctionEnd <- ensClient.auctionEnd( name )
+          revealStart <- ensClient.revealStart( name )
+        } {
+          if ( status == Auction ) {
+            println( s"Bidding ends, and the reveal phase will begin on ${formatInstant(revealStart)}." )
+          }
+          println( s"The reveal phase will end, and the auction can be finalized on ${formatInstant(auctionEnd)}." )
+        }
+      }
+      case Owned => {
+        ensClient.owner( name ) match {
+          case Some( address ) => println( s"The owner is '0x${address.hex}'." )
+          case None            => println(  "However, the completed auction has not yet been finalized, so no owner is set." )
+        }
+      }
+      case _ => /* ignore, no special messages */
+    }
+
+    status
+  }
+
+  // eth tasks
 
   def ethAddressAliasDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genAliasParser )
@@ -1364,188 +1555,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def ethNameServiceAuctionBidPlaceTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
-    val log = streams.value.log
-    val blockchainId = (config / ethcfgBlockchainId).value
-    val ensClient = ( config / xethNameServiceClient).value
-    val privateKey = findPrivateKeyTask( config ).value
-
-    implicit val bidStore = repository.Database.ensBidStore( blockchainId )
-
-    val ( name, valueInWei, mbOverpaymentInWei ) = EnsPlaceNewBidParser.parsed
-
-    val status = ensClient.nameStatus( name )
-    if ( status != ens.NameStatus.Auction ) {
-      throw new NotCurrentlyUnderAuctionException( name, status )
-    }
-    else {
-      // during auction, these should be available
-      val revealStart = ensClient.revealStart( name ).get
-      val auctionFinalized = ensClient.auctionEnd( name ).get
-
-      val ( bid, transactionInfo ) = {
-        mbOverpaymentInWei match {
-          case Some( overpaymentInWei ) => ensClient.placeNewBid( privateKey, name, valueInWei, overpaymentInWei )
-          case None                     => ensClient.placeNewBid( privateKey, name, valueInWei )
-        }
-      }
-
-      repository.BidLog.logBid( bid, blockchainId, ensClient.tld, ensClient.nameServiceAddress )
-
-      log.warn( s"A bid has been placed on name '${name}' for ${valueInWei} wei." )
-      mbOverpaymentInWei.foreach( opw => log.warn( s"An additional ${opw} wei was transmitted to obscure the value of your bid." ) )
-      log.warn( s"YOU MUST REVEAL THIS BID BETWEEN ${ formatInstant(revealStart) } AND ${ formatInstant(auctionFinalized) }. IF YOU DO NOT, YOUR FUNDS WILL BE LOST!" )
-      log.warn(  "Bid details, which are required to reveal, have been automatically stored in the sbt-ethereum repository," )
-      log.warn( s"and will be provided automatically if revealed by this client, configured with blockchain ID '${blockchainId}'." )
-      log.warn(  "However, it never hurts to be neurotic. You may wish to note:" )
-      log.warn( s"    Simple Name:      ${bid.simpleName}" )
-      log.warn( s"    Simple Name Hash: 0x${ ens.componentHash( bid.simpleName ).hex }" )
-      log.warn( s"    Bidder Address:   0x${bid.bidderAddress.hex}}" )
-      log.warn( s"    Value In Wei:     ${ bid.valueInWei }" )
-      log.warn( s"    Salt:             0x${bid.salt.hex}" )
-      log.warn( s"    Full Bid Hash:    0x${bid.bidHash.hex}" )
-    }
-  }
-
-  def ethNameServiceAuctionBidRevealTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
-    val log = streams.value.log
-    val blockchainId = (config / ethcfgBlockchainId).value
-    val ensClient = ( config / xethNameServiceClient).value
-    val privateKey = findPrivateKeyTask( config ).value
-    val tld = ( config / ethcfgNameServiceTld).value
-    val is = interactionService.value
-
-    implicit val bidStore = repository.Database.ensBidStore( blockchainId )
-
-    def revealBidForHash( hash : EthHash ) : Unit = {
-      try { ensClient.revealBid( privateKey, hash, force=false ) }
-      catch {
-        case e : ens.EnsException => {
-          log.info( s"Initial attempt to reveal bid failed: ${e}. Retrying with 'force' flag set." )
-          ensClient.revealBid( privateKey, hash, force=true )
-        }
-      }
-    }
-
-    val hashOrName = BidHashOrNameParser.parsed
-
-    hashOrName match {
-      case Left( hash ) => {
-        revealBidForHash( hash )
-        log.info( s"Bid with hash 0x${hash.hex} was successfully revealed." )
-      }
-      case Right( name ) => {
-        val simpleName = ens.normalizeNameForTld( name, tld )
-        val bidderAddress = privateKey.address
-        val bidBidStates = bidStore.findByNameBidderAddress( simpleName, bidderAddress )
-        bidBidStates.length match {
-          case 0 => println( s"No bids were found to reveal with name '${name}' from address 0x${bidderAddress.hex}." )
-          case 1 => {
-            val ( bid, _ ) = bidBidStates.head
-            revealBidForHash( bid.bidHash )
-            log.info( s"Bid with name '${name}' was successfully revealed." )
-          }
-          case _ => {
-            log.warn( s"Found multiple bids with name '${name}':" )
-            bidBidStates.foreach { case ( bid, bidState ) =>
-              log.warn( s"  Bid Hash: 0x${bid.bidHash.hex}, Bid State: ${bidState}" )
-            }
-            val revealAll = is.readLine(s"Reveal all bids? ", mask = false).getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get an answer
-            revealAll.toUpperCase match {
-              case "Y"| "YES" => {
-                bidBidStates.foreach { case ( bid, _ ) =>
-                  try { revealBidForHash( bid.bidHash ) }
-                  catch {
-                    case e : Exception => log.warn( s"Failed to reveal bid with hash 0x${bid.bidHash.hex}: ${e}" )
-                  }
-                }
-                log.info( s"Bids with name '${name}' were successfully revealed." )
-              }
-              case _ => log.warn("Aborted. NO BIDS WERE REVEALED.")
-            }
-          }
-        }
-      }
-    }
-  }
-
-  def ethNameServiceAuctionFinalizeTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
-    val privateKey = findPrivateKeyTask( config ).value
-    val name       = EnsNameParser.parsed
-    val ensClient  = ( config / xethNameServiceClient).value
-    ensClient.finalizeAuction( privateKey, name )
-  }
-
-  def ethNameServiceAuctionStartTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
-
-    val privateKey = findPrivateKeyTask( config ).value
-    
-    val ( name, mbNumDiversions ) = EnsNameNumDiversionParser.parsed
-
-    val ensClient = ( config / xethNameServiceClient).value
-
-    mbNumDiversions match {
-      case Some( numDiversions ) => {
-        ensClient.startAuction( privateKey, name, numDiversions )
-        println( s"Auction started for name '${name}', along with ${numDiversions} diversion auctions." )
-      }
-      case None => {
-        ensClient.startAuction( privateKey, name )
-        println( s"Auction started for name '${name}'." )
-      }
-    }
-  }
-
-  def ethNameServiceOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
-    val name = EnsNameParser.parsed
-
-    val ensClient = ( config / xethNameServiceClient).value
-
-    val mbOwner = ensClient.owner( name )
-
-    mbOwner match {
-      case Some( address ) => println( s"The name '${name}' is owned by address '0x${address.hex}'." )
-      case None            => println( s"No owner has been assigned to the name '${name}'." )
-    }
-
-    mbOwner
-  }
-
-  def ethNameServiceNameStatusTask( config : Configuration ) : Initialize[InputTask[ens.NameStatus]] = Def.inputTask {
-    import ens.NameStatus._
-
-    val name = EnsNameParser.parsed
-
-    val ensClient = ( config / xethNameServiceClient).value
-
-    val status = ensClient.nameStatus( name )
-
-    println( s"The current status of ENS name '${name}' is '${status}'." )
-
-    status match {
-      case Auction | Reveal => {
-        for {
-          auctionEnd <- ensClient.auctionEnd( name )
-          revealStart <- ensClient.revealStart( name )
-        } {
-          if ( status == Auction ) {
-            println( s"Bidding ends, and the reveal phase will begin on ${formatInstant(revealStart)}." )
-          }
-          println( s"The reveal phase will end, and the auction can be finalized on ${formatInstant(auctionEnd)}." )
-        }
-      }
-      case Owned => {
-        ensClient.owner( name ) match {
-          case Some( address ) => println( s"The owner is '0x${address.hex}'." )
-          case None            => println(  "However, the completed auction has not yet been finalized, so no owner is set." )
-        }
-      }
-      case _ => /* ignore, no special messages */
-    }
-
-    status
-  }
-
   def ethSolidityCompilerInstallTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
     val log = streams.value.log
 
@@ -1714,6 +1723,18 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       Await.result( f_out, Duration.Inf )
     }
+  }
+
+  // xens task definitions
+
+  def xensClientTask( config : Configuration ) : Initialize[Task[ens.Client]] = Def.task {
+    val nameServiceAddress = (config / enscfgNameServiceAddress).value
+    val tld                = (config / enscfgNameServiceTld).value
+    val reverseTld         = (config / enscfgNameServiceReverseTld).value
+
+    implicit val icontext = (xethInvokerContext in config).value
+
+    new ens.Client( nameServiceAddress, tld, reverseTld )
   }
 
   // xeth task definitions
@@ -2217,16 +2238,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     } else {
       empty
     }
-  }
-
-  def xethNameServiceClientTask( config : Configuration ) : Initialize[Task[ens.Client]] = Def.task {
-    val nameServiceAddress = (config / ethcfgNameServiceAddress).value
-    val tld                = (config / ethcfgNameServiceTld).value
-    val reverseTld         = (config / ethcfgNameServiceReverseTld).value
-
-    implicit val icontext = (xethInvokerContext in config).value
-
-    new ens.Client( nameServiceAddress, tld, reverseTld )
   }
 
   def xethNextNonceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
