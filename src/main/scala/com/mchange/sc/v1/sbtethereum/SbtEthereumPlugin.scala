@@ -649,7 +649,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // private, internal task definitions
 
-  private def findPrivateKeyTask( config : Configuration ) = Def.task {
+  private def findPrivateKeyTask( config : Configuration ) : Initialize[Task[EthPrivateKey]] = Def.task {
     val s = state.value
     val log = streams.value.log
     val is = interactionService.value
