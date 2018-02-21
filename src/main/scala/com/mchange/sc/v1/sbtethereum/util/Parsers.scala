@@ -82,7 +82,7 @@ object Parsers {
   private [sbtethereum] val EnsNameParser : Parser[String] = token( Space.* ) ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" )
 
   private [sbtethereum] val EnsNameNumDiversionParser : Parser[(String, Option[Int])] = {
-    Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" ) ~ ( token( Space.+ ) ~> token(RawIntParser).examples("[<optional number of diversion auctions]") ).?
+    token( Space.* ) ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" ) ~ ( token( Space.+ ) ~> token(RawIntParser).examples("[<optional number of diversion auctions]") ).?
   }
 
   private [sbtethereum] val EnsPlaceNewBidParser : Parser[(String, BigInt, Option[BigInt])] = {

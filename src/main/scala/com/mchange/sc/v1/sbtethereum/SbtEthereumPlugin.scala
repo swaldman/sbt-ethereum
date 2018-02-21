@@ -699,7 +699,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.warn(  "However, it never hurts to be neurotic. You may wish to note:" )
       log.warn( s"    Simple Name:      ${bid.simpleName}" )
       log.warn( s"    Simple Name Hash: 0x${ ens.componentHash( bid.simpleName ).hex }" )
-      log.warn( s"    Bidder Address:   0x${bid.bidderAddress.hex}}" )
+      log.warn( s"    Bidder Address:   0x${bid.bidderAddress.hex}" )
       log.warn( s"    Value In Wei:     ${ bid.valueInWei }" )
       log.warn( s"    Salt:             0x${bid.salt.hex}" )
       log.warn( s"    Full Bid Hash:    0x${bid.bidHash.hex}" )
