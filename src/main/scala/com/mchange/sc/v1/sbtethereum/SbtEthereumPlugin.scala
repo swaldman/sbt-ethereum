@@ -1732,7 +1732,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     val tld                = (config / enscfgNameServiceTld).value
     val reverseTld         = (config / enscfgNameServiceReverseTld).value
 
-    implicit val icontext = (xethInvokerContext in config).value
+    val icontext = (xethInvokerContext in config).value
+
+    // for now, we'll hard-code the stub context defaults 
+    // we can make this stuff configurable someday if it seems useful
+    implicit val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, stub.Context.Default.Scheduler )
 
     new ens.Client( nameServiceAddress, tld, reverseTld )
   }
