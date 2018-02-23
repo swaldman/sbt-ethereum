@@ -1,9 +1,5 @@
 # TODO
 
-* Invoker.{GasApprover => Approver}, set it in the InvocationContext
-* Unify all required invoker implicits into InvocationContext
-* Add TransactionLogger (typedef of a function) to InvocationContext
-* let plugin add appropriate consuela version to libraryDependencies automatically if a stub package is defined
 * Make constructor arg hex acessible from repository deployments.
   -- then maybe remove verbosity about arg hex from ethContractSpawnOnly
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
@@ -16,8 +12,6 @@
 * add type resriction to log / event Topic Seq, to limit length to four elements
 * Prettify output of log items in client transactions
 * Excise Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
-* ethAddressSenderEffective
-* ethNameService*
 * ethToken*
 * Make stub compilation incremental
 * Uncloseable wrappers for default Poller (done!), Exchanger.Factory, jsonrpc.Client.Factory
