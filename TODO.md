@@ -15,7 +15,6 @@
 * ethToken*
 * Make stub compilation incremental
 * Uncloseable wrappers for default Poller (done!), Exchanger.Factory, jsonrpc.Client.Factory
-* Load-balancing exchanger / invoker / stub
 * built-in solcJ-based eth-netcompile
 * Integrate keystore into database? (?)
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup!
@@ -27,3 +26,4 @@
 * Hide keystore stuff behind a facade, maybe incorporate local keystore in DB (only after revision of consuela keystore stuff)
 * Incorporate transaction log in DB (?)
 * Generate Java stubs
+* Redo Failable

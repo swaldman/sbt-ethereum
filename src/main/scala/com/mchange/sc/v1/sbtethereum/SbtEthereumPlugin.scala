@@ -992,7 +992,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val blockchainId = (ethcfgBlockchainId in config).value
         val address = parser.parsed
-        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases '$str')" ) )
+        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases $str)" ) )
 
         configSenderOverride.set( Some( ( blockchainId, address ) ) )
 
@@ -2534,7 +2534,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       // it also slows down automated attempts to guess passwords, i guess...
       Thread.sleep(1000)
 
-      val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( commasep => s", aliases '$commasep'" ) )
+      val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( commasep => s", aliases $commasep" ) )
 
       log.info( s"Unlocking address '0x${address.hex}' (on blockchain '$blockchainId'$aliasesPart)" )
 
@@ -2554,7 +2554,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val now = System.currentTimeMillis
       CurrentAddress.get match {
         case UnlockedAddress( BlockchainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if blockchainId and/or ethcfgSender has changed, this will no longer match
-          val aliasesPart = commaSepAliasesForAddress( BlockchainId, Address ).fold( _ => "", _.fold("")( commasep => s", aliases '$commasep'" ) )
+          val aliasesPart = commaSepAliasesForAddress( BlockchainId, Address ).fold( _ => "", _.fold("")( commasep => s", aliases $commasep" ) )
           val ok = {
             if ( userValidateIfCached ) {
               is.readLine( s"Using sender address '0x${address.hex}' (on blockchain '${blockchainId}'${aliasesPart}). OK? [y/n] ", false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
