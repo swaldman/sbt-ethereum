@@ -38,6 +38,7 @@ import com.mchange.sc.v1.consuela.ethereum.stub
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.log.MLogger
+import com.mchange.sc.v1.texttable
 import scala.collection._
 import scala.concurrent.Await
 import scala.concurrent.duration._
@@ -164,6 +165,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ensAuctionFinalize  = inputKey[Unit]              ("Finalizes an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
     val ensAuctionStart     = inputKey[Unit]              ("Starts an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
+    val ensAuctionBidList   = taskKey[Unit]               ("Places a bid in an currently running auction.")
     val ensAuctionBidPlace  = inputKey[Unit]              ("Places a bid in an currently running auction.")
     val ensAuctionBidReveal = inputKey[Unit]              ("Reveals a bid in an currently running auction.")
     val ensNameStatus       = inputKey[ens.NameStatus]    ("Prints the current status of a given name.")
@@ -351,6 +353,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensAuctionBidReveal in Compile := { ensAuctionBidRevealTask( Compile ).evaluated },
 
     ensAuctionBidReveal in Test := { ensAuctionBidRevealTask( Test ).evaluated },
+
+    ensAuctionBidList in Compile := { ensAuctionBidListTask( Compile ).value },
+
+    ensAuctionBidList in Test := { ensAuctionBidListTask( Test ).value },
 
     ensAuctionFinalize in Compile := { ensAuctionFinalizeTask( Compile ).evaluated },
 
@@ -667,6 +673,28 @@ object SbtEthereumPlugin extends AutoPlugin {
   // task definitions
 
   // ens tasks
+
+  def ensAuctionBidListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    import repository.Schema_h2.Table.EnsBidStore.RawBid
+
+    val blockchainId = (ethcfgBlockchainId in config).value
+    val rawBids = repository.Database.ensAllRawBidsForBlockchainId( blockchainId ).get
+    val columns = immutable.Vector( "Bid Hash", "Simple Name", "Bidder Address", "ETH", "Salt", "Timestamp", "Accepted", "Revealed", "Removed" ).map( texttable.Column.apply( _ ) )
+
+    def extract( rawBid : RawBid ) : Seq[String] = immutable.Vector(
+      hexString( rawBid.bidHash ),
+      rawBid.simpleName,
+      hexString( rawBid.bidderAddress ),
+      Denominations.Ether.fromWei( rawBid.valueInWei ).toString,
+      hexString( rawBid.salt ),
+      formatInstant( rawBid.whenBid ),
+      rawBid.accepted.toString,
+      rawBid.revealed.toString,
+      rawBid.removed.toString
+    )
+      
+    texttable.printTable( columns, extract )( rawBids.map( rb => texttable.Row(rb) ) )
+  }
 
   def ensAuctionBidPlaceTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
@@ -2644,6 +2672,11 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def emptyOrHex( str : String ) = if (str == null) "" else s"0x$str"
   private def blankNull( str : String ) = if (str == null) "" else str
   private def span( len : Int ) = (0 until len).map(_ => "-").mkString
+
+  private def hexString( bytes : Seq[Byte]    ) = s"0x${bytes.hex}"
+  private def hexString( bytes : Array[Byte]  ) = s"0x${bytes.hex}"
+  private def hexString( address : EthAddress ) = s"0x${address.hex}"
+  private def hexString( hash : EthHash )       = s"0x${hash.hex}"
 
   private def commaSepAliasesForAddress( blockchainId : String, address : EthAddress ) : Failable[Option[String]] = {
     repository.Database.findAliasesByAddress( blockchainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )

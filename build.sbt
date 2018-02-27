@@ -40,6 +40,7 @@ libraryDependencies ++= Seq(
   "com.mchange"    %% "literal"               % "0.0.2",
   "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
   "com.mchange"    %% "ens-scala"             % "0.0.2-SNAPSHOT" changing(),
+  "com.mchange"    %% "texttable"             % "0.0.1-SNAPSHOT" changing(),
   "com.mchange"    %  "c3p0"                  % "0.9.5.2",
   "com.h2database" %  "h2"                    % "1.4.192",
   "ch.qos.logback" %  "logback-classic"       % "1.1.7"

@@ -154,6 +154,8 @@ package object sbtethereum {
   private val InstantFormatter = DateTimeFormatter.RFC_1123_DATE_TIME.withZone( ZoneId.systemDefault() )
 
   def formatInstant( instant : Instant ) : String = InstantFormatter.format( instant )
+
+  def formatInstant( l : Long ) : String = formatInstant( Instant.ofEpochMilli( l ) )
 }
 
 

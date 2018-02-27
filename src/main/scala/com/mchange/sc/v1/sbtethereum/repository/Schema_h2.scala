@@ -885,6 +885,19 @@ object Schema_h2 {
           }
         }
       }
+      def selectAllForBlockchainId( conn : Connection, blockchainId : String ) : immutable.Seq[RawBid] = {
+        borrow( conn.prepareStatement( BaseSelect + "WHERE blockchain_id = ?" ) ) { ps =>
+          ps.setString(1, blockchainId)
+          borrow( ps.executeQuery() ){ rs =>
+            @tailrec
+            def build( accum : List[RawBid] ) : List[RawBid] = {
+              if( rs.next() ) build( extract(rs) :: accum )
+              else accum
+            }
+            build( Nil )
+          }
+        }
+      }
     }
   }
 }

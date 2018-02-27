@@ -422,6 +422,14 @@ object Database {
     }
   }
 
+  def ensAllRawBidsForBlockchainId( blockchainId : String ) : Failable[immutable.Seq[Table.EnsBidStore.RawBid]] = DataSource.flatMap { ds =>
+    Failable {
+      borrow( ds.getConnection() ) { conn =>
+        Table.EnsBidStore.selectAllForBlockchainId( conn, blockchainId )
+      }
+    }
+  }
+
   def ensBidStore( blockchainId : String ) = new BidStore {
     def store( bid : Bid ) : Unit = ensStoreBid( blockchainId, bid ).get
     def remove( bid : Bid ) : Unit = ensRemoveBid( blockchainId, bid.bidHash ).get
