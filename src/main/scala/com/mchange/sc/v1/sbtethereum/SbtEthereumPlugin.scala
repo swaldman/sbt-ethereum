@@ -57,7 +57,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // not lazy. make sure the initialization banner is emitted before any tasks are executed
   // still, generally we should try to log through sbt loggers
-  private implicit val logger: MLogger = mlogger( this )
+  private implicit val logger = mlogger( this )
 
   private trait AddressInfo
   private final case object NoAddress                                                                                                         extends AddressInfo
