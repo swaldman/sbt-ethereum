@@ -32,7 +32,9 @@ object Schema_h2 {
     mbl.fold( ps.setNull( i, Types.TIMESTAMP ) ){ l =>  ps.setTimestamp( i, new Timestamp(l) ) }
   }
 
-  val SchemaVersion = 3
+  // Increment this value and add a migration to migrateUpOne(...)
+  // to modify the schema
+  val SchemaVersion = 4
 
   // should be executed in a transaction, although it looks like in h2 DDL commands autocommit anyway :(
   def ensureSchema( dataSource : DataSource ): Boolean = {
@@ -103,6 +105,22 @@ object Schema_h2 {
                 |FROM address_aliases_v2""".stripMargin
           )
           stmt.executeUpdate("DROP TABLE address_aliases_v2")
+        }
+      }
+      case 3 => {
+        /* Schema version 4 was identical to schema version 3, except we generalized ens_bid_store to handle
+         * the possibility of multiple ENS contracts / tlds (more likely on different chains but not necessarily)
+         * Also made sure fields expected always to be present are marked NOT NULL
+         */
+        borrow( conn.createStatement() ) { stmt =>
+          stmt.executeUpdate("ALTER TABLE ens_bid_store RENAME TO ens_bid_store_v3")
+          stmt.executeUpdate( Table.EnsBidStore.V4.CreateSql )
+          stmt.executeUpdate(
+            s"""|INSERT INTO ens_bid_store ( blockchain_id, bid_hash, simple_name, bidder_address, value_in_wei, salt, when_bid, tld, ens_address, accepted, revealed, removed )
+                |SELECT blockchain_id, bid_hash, simple_name, bidder_address, value_in_wei, salt, when_bid, 'eth', '314159265dd8dbb310642f98f50c066173c1259b', accepted, revealed, removed
+                |FROM ens_bid_store_v3""".stripMargin
+          )
+          stmt.executeUpdate("DROP TABLE ens_bid_store_v3")
         }
       }
       case unknown => throw new SchemaVersionException( s"Cannot migrate from unknown schema version $unknown." )
@@ -769,21 +787,43 @@ object Schema_h2 {
       }
     }
     final object EnsBidStore {
-      val CreateSql = {
-        """|CREATE TABLE IF NOT EXISTS ens_bid_store (
-           |   blockchain_id  VARCHAR(64),
-           |   bid_hash       CHAR(64),
-           |   simple_name    VARCHAR(256),
-           |   bidder_address CHAR(40) NOT NULL,
-           |   value_in_wei   VARCHAR(256),
-           |   salt           CHAR(64),
-           |   when_bid       TIMESTAMP,
-           |   accepted       BOOLEAN DEFAULT FALSE,
-           |   revealed       BOOLEAN DEFAULT FALSE,
-           |   removed        BOOLEAN DEFAULT FALSE,
-           |   PRIMARY KEY ( blockchain_id, bid_hash )
-           |)""".stripMargin
+      final object V3 {
+        val CreateSql = {
+          """|CREATE TABLE IF NOT EXISTS ens_bid_store (
+             |   blockchain_id  VARCHAR(64),
+             |   bid_hash       CHAR(64),
+             |   simple_name    VARCHAR(256),
+             |   bidder_address CHAR(40) NOT NULL,
+             |   value_in_wei   VARCHAR(256),
+             |   salt           CHAR(64),
+             |   when_bid       TIMESTAMP,
+             |   accepted       BOOLEAN DEFAULT FALSE,
+             |   revealed       BOOLEAN DEFAULT FALSE,
+             |   removed        BOOLEAN DEFAULT FALSE,
+             |   PRIMARY KEY ( blockchain_id, bid_hash )
+             |)""".stripMargin
+        }
       }
+      final object V4 {
+        val CreateSql = {
+          """|CREATE TABLE IF NOT EXISTS ens_bid_store (
+             |   blockchain_id  VARCHAR(64),
+             |   bid_hash       CHAR(64),
+             |   simple_name    VARCHAR(256) NOT NULL,
+             |   bidder_address CHAR(40)     NOT NULL,
+             |   value_in_wei   VARCHAR(256) NOT NULL,
+             |   salt           CHAR(64)     NOT NULL,
+             |   when_bid       TIMESTAMP    NOT NULL,
+             |   tld            VARCHAR(32)  NOT NULL,
+             |   ens_address    VARCHAR(40)  NOT NULL,
+             |   accepted       BOOLEAN      NOT NULL DEFAULT FALSE,
+             |   revealed       BOOLEAN      NOT NULL DEFAULT FALSE,
+             |   removed        BOOLEAN      NOT NULL DEFAULT FALSE,
+             |   PRIMARY KEY ( blockchain_id, bid_hash )
+             |)""".stripMargin
+        }
+      }
+      val CreateSql = V4.CreateSql
 
       val CreateIndex = "CREATE INDEX IF NOT EXISTS ens_bid_store_simple_name_bidder_address_idx ON ens_bid_store( simple_name, bidder_address )"
 
@@ -796,6 +836,8 @@ object Schema_h2 {
            |   value_in_wei,
            |   salt,
            |   when_bid,
+           |   tld,
+           |   ens_address,
            |   accepted,
            |   revealed,
            |   removed
@@ -803,13 +845,14 @@ object Schema_h2 {
            |""".stripMargin // keep the newline
       }
 
-      def insert( conn : Connection, blockchainId : String, bidHash : EthHash, simpleName : String, bidderAddress : EthAddress, valueInWei : BigInt, salt : immutable.Seq[Byte] ) : Unit = {
+      def insert( conn : Connection, blockchainId : String, bidHash : EthHash, simpleName : String, bidderAddress : EthAddress, valueInWei : BigInt, salt : immutable.Seq[Byte], tld : String, ensAddress : EthAddress ) : Unit = {
         val bidHashStr       = bidHash.hex
         val bidderAddressStr = bidderAddress.hex
         val valueInWeiStr    = valueInWei.toString
         val saltStr          = salt.hex
+        val ensAddressStr    = ensAddress.hex
 
-        borrow( conn.prepareStatement( "INSERT INTO ens_bid_store ( blockchain_id, bid_hash, simple_name, bidder_address, value_in_wei, salt, when_bid ) VALUES ( ?, ?, ?, ?, ?, ?, ? )" ) ) { ps =>
+        borrow( conn.prepareStatement( "INSERT INTO ens_bid_store ( blockchain_id, bid_hash, simple_name, bidder_address, value_in_wei, salt, when_bid, tld, ens_address ) VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ? )" ) ) { ps =>
           ps.setString( 1, blockchainId )
           ps.setString( 2, bidHashStr )
           ps.setString( 3, simpleName )
@@ -817,6 +860,8 @@ object Schema_h2 {
           ps.setString( 5, valueInWeiStr )
           ps.setString( 6, saltStr )
           ps.setTimestamp( 7, new Timestamp( System.currentTimeMillis() ) )
+          ps.setString( 8, tld )
+          ps.setString( 9, ensAddressStr )
           ps.executeUpdate()
         }
       }
@@ -842,6 +887,8 @@ object Schema_h2 {
         valueInWei : BigInt,
         salt : immutable.Seq[Byte],
         whenBid : Long,
+        tld : String,
+        ensAddress : EthAddress,
         accepted : Boolean,
         revealed : Boolean,
         removed : Boolean
@@ -856,6 +903,8 @@ object Schema_h2 {
           valueInWei    = BigInt( rs.getString( "value_in_wei" ) ),
           salt          = rs.getString( "salt" ).decodeHexAsSeq,
           whenBid       = rs.getTimestamp( "when_bid" ).getTime(),
+          tld           = rs.getString( "tld" ),
+          ensAddress    = EthAddress( rs.getString( "ens_address" ) ),
           accepted      = rs.getBoolean( "accepted" ),
           revealed      = rs.getBoolean( "revealed" ),
           removed       = rs.getBoolean( "removed" )

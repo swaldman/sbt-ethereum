@@ -369,8 +369,8 @@ object Database {
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
   }
 
-  def ensStoreBid( blockchainId : String, bid : Bid ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.insert( _, blockchainId, bid.bidHash, bid.simpleName, bid.bidderAddress, bid.valueInWei, bid.salt ) ) )
+  def ensStoreBid( blockchainId : String, tld : String, ensAddress : EthAddress, bid : Bid ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.insert( _, blockchainId, bid.bidHash, bid.simpleName, bid.bidderAddress, bid.valueInWei, bid.salt, tld, ensAddress ) ) )
   }
 
   def ensRemoveBid( blockchainId : String, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
@@ -430,8 +430,8 @@ object Database {
     }
   }
 
-  def ensBidStore( blockchainId : String ) = new BidStore {
-    def store( bid : Bid ) : Unit = ensStoreBid( blockchainId, bid ).get
+  def ensBidStore( blockchainId : String, tld : String, ensAddress : EthAddress ) = new BidStore {
+    def store( bid : Bid ) : Unit = ensStoreBid( blockchainId, tld, ensAddress, bid ).get
     def remove( bid : Bid ) : Unit = ensRemoveBid( blockchainId, bid.bidHash ).get
     def markAccepted( bidHash : EthHash ) : Unit = ensMarkAccepted( blockchainId, bidHash ).get
     def markRevealed( bidHash : EthHash ) : Unit = ensMarkRevealed( blockchainId, bidHash ).get

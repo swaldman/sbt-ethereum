@@ -699,10 +699,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   def ensAuctionBidPlaceTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val blockchainId = (config / ethcfgBlockchainId).value
-    val ensClient = ( config / xensClient).value
+    val ensClient = ( config / xensClient ).value
     val privateKey = findPrivateKeyTask( config ).value
 
-    implicit val bidStore = repository.Database.ensBidStore( blockchainId )
+    implicit val bidStore = repository.Database.ensBidStore( blockchainId, ensClient.tld, ensClient.nameServiceAddress )
 
     val ( name, valueInWei, mbOverpaymentInWei ) = EnsPlaceNewBidParser.parsed
 
@@ -744,10 +744,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     val blockchainId = (config / ethcfgBlockchainId).value
     val ensClient = ( config / xensClient).value
     val privateKey = findPrivateKeyTask( config ).value
-    val tld = ( config / enscfgNameServiceTld).value
+    val tld = ensClient.tld
+    val ensAddress = ensClient.nameServiceAddress
     val is = interactionService.value
 
-    implicit val bidStore = repository.Database.ensBidStore( blockchainId )
+    implicit val bidStore = repository.Database.ensBidStore( blockchainId, tld, ensAddress )
 
     def revealBidForHash( hash : EthHash ) : Unit = {
       try { ensClient.revealBid( privateKey, hash, force=false ) }
