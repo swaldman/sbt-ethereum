@@ -101,6 +101,9 @@ object EthJsonRpc {
     doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.estimateGas( from = from, to = to, value = value, data = data ), Duration.Inf ) )
   }
 
+  /*
+   * // we use jsonrpc.Invoker rather than this method now... no longer maintaining.
+
   def doSignSendTransaction( log : sbt.Logger, jsonRpcUrl : String, signer : EthPrivateKey, unsigned : EthTransaction.Unsigned )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : EthHash = {
     doWithJsonClient( log, jsonRpcUrl, clientFactory, ec ){ client =>
       val signed = unsigned.sign( signer )
@@ -109,6 +112,8 @@ object EthJsonRpc {
       hash
     }
   }
+   * 
+   */
 
   def doEstimateAndMarkupGas(
     log : sbt.Logger,

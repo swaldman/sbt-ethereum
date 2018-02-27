@@ -40,7 +40,7 @@ import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.log.MLogger
 import com.mchange.sc.v1.texttable
 import scala.collection._
-import scala.concurrent.Await
+import scala.concurrent.{Await,Future}
 import scala.concurrent.duration._
 import scala.sys.process.{Process, ProcessLogger}
 import scala.io.Source
@@ -668,6 +668,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     val caller = (xethFindCurrentSender in config).value.get
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
     findCachePrivateKey(s, log, is, blockchainId, caller, autoRelockSeconds, true )
+  }
+
+  private def findTransactionLoggerTask( config : Configuration ) : Initialize[Task[Invoker.TransactionLogger]] = Def.task {
+    val blockchainId = (ethcfgBlockchainId in config).value
+
+    ( tle : Invoker.TransactionLogEntry, ec : ExecutionContext ) => Future {
+      repository.TransactionLog.logTransaction( blockchainId, tle.jsonRpcUrl, tle.transaction, tle.transactionHash ).get
+    }
   }
 
   // task definitions
@@ -2103,7 +2111,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    Invoker.Context.fromUrl( jsonRpcUrl, gasPriceTweak, gasLimitTweak, pollPeriod, timeout )
+    val transactionLogger = findTransactionLoggerTask( config ).value
+
+    Invoker.Context.fromUrl(
+      jsonRpcUrl = jsonRpcUrl,
+      gasPriceTweak = gasPriceTweak, gasLimitTweak = gasLimitTweak,
+      pollPeriod = pollPeriod,
+      pollTimeout = timeout,
+      transactionLogger = transactionLogger
+    )
   }
 
   def xethKeystoreWalletV3CreatePbkdf2Task : Initialize[Task[wallet.V3]] = Def.task {
