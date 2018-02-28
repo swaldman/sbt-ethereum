@@ -66,7 +66,7 @@ object Parsers {
     Space.* ~> token(literal(w) | literal(gw) | literal(s) | literal(f) | literal(e))
   }
 
-  private [sbtethereum] def toValueInWei( amount : BigDecimal, unit : String ) : BigInt = rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit ))).toBigInt
+  private [sbtethereum] def toValueInWei( amount : BigDecimal, unit : String ) : BigInt = rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit )))
 
   private [sbtethereum] def valueInWeiParser( tabHelp : String ) : Parser[BigInt] = {
     (amountParser( tabHelp ) ~ UnitParser).map { case ( amount, unit ) => toValueInWei( amount, unit ) }

@@ -43,7 +43,7 @@ object EthJsonRpc {
   }
 
   def doPrintingGetBalance(
-    log          : sbt.Logger,
+    log : sbt.Logger,
     jsonRpcUrl   : String,
     address      : EthAddress,
     blockNumber  : jsonrpc.Client.BlockNumber,
@@ -59,7 +59,7 @@ object EthJsonRpc {
       case Pending        => s"${out.denominated} ${denomination.unitName} (including currently pending transactions, address 0x${address.hex})"
       case Quantity( bn ) => s"${out.denominated} ${denomination.unitName} (at block #${bn}, address 0x${address.hex})"
     }
-    log.info(msg)
+    println(msg)
     out
   }
 
@@ -126,7 +126,7 @@ object EthJsonRpc {
     markup : Double
   )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
     val rawEstimate = doEstimateGas( log, jsonRpcUrl, from, to, value, data, blockNumber )( clientFactory, ec )
-    rounded(BigDecimal(rawEstimate) * BigDecimal(1 + markup)).toBigInt
+    rounded(BigDecimal(rawEstimate) * BigDecimal(1 + markup))
   }
 
   /*

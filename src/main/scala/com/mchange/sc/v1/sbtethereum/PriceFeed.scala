@@ -55,6 +55,8 @@ object PriceFeed {
       cachedEthPrices.get( currencyCode )
     }
 
+    val source = "Coinbase"
+
     def close() : Unit = {
       this.synchronized {
         scheduled.attemptCancel()
@@ -67,5 +69,6 @@ object PriceFeed {
 trait PriceFeed {
   def ethPriceInCurrency( currencyCode : String, forceRefresh : Boolean = false ) : Option[PriceFeed.Datum] = None
   def tokenPriceInCurrency( tokenSymbol : String, tokenAddress : EthAddress, currencyCode : String, forceRefresh : Boolean = false ) : Option[PriceFeed.Datum] = None
+  def source : String
   def close() : Unit
 }

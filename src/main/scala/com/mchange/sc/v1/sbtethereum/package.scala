@@ -9,8 +9,9 @@ import jsonrpc.{Abi,Compilation,Client}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 import specification.Types.Unsigned256
 import scala.collection._
+//import java.math.{MathContext, RoundingMode}
 import java.time.{Instant, ZoneId}
-import java.time.format.DateTimeFormatter
+import java.time.format.{FormatStyle, DateTimeFormatter}
 
 package object sbtethereum {
 
@@ -43,7 +44,7 @@ package object sbtethereum {
 
   val EmptyAbi: Abi = Abi.empty
 
-  def rounded( bd : BigDecimal ): BigDecimal = bd.round( bd.mc ) // work around absence of default rounded method in scala 2.10 BigDecimal
+  def rounded( bd : BigDecimal ) : BigInt = bd.setScale( 0, BigDecimal.RoundingMode.HALF_UP ).toBigInt
 
   def mbAbiForAddress( blockchainId : String, address : EthAddress ) : Option[Abi] = {
     def findMemorizedAbi = {
@@ -152,10 +153,14 @@ package object sbtethereum {
   }
 
   private val InstantFormatter = DateTimeFormatter.RFC_1123_DATE_TIME.withZone( ZoneId.systemDefault() )
+  private val TimeFormatter    = DateTimeFormatter.ofLocalizedTime( FormatStyle.SHORT ).withZone( ZoneId.systemDefault() )
 
   def formatInstant( instant : Instant ) : String = InstantFormatter.format( instant )
 
   def formatInstant( l : Long ) : String = formatInstant( Instant.ofEpochMilli( l ) )
+
+  def formatTime( l : Long ) : String = TimeFormatter.format( Instant.ofEpochMilli( l ) )
+
 }
 
 

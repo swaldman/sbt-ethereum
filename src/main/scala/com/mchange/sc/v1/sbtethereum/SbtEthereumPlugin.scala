@@ -101,6 +101,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val DefaultEthNetcompileUrl = "http://ethjsonrpc.mchange.com:8456"
 
+  private val DefaultPriceRefreshDelay = 300.seconds
+
+  private val priceFeed = new PriceFeed.Coinbase( DefaultPriceRefreshDelay )
+
   final object JsonFilter extends FilenameFilter {
     val DotSuffix = ".json"
     def accept( dir : File, name : String ) : Boolean = {
@@ -130,6 +134,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val enscfgNameServiceReverseTld        = settingKey[String]       ("The top-level domain under which reverse lookups are supported in the ENS name service smart contract at 'enscfgNameServiceAddress'.")
 
     val ethcfgAutoSpawnContracts           = settingKey[Seq[String]]  ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
+    val ethcfgBaseCurrencyCode             = settingKey[String]       ("Currency code for currency in which prices of ETH and other tokens should be displayed.")
     val ethcfgBlockchainId                 = settingKey[String]       ("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
     val ethcfgEntropySource                = settingKey[SecureRandom] ("The source of randomness that will be used for key generation")
     val ethcfgGasLimitCap                  = settingKey[BigInt]       ("Maximum gas limit to use in transactions")
@@ -175,7 +180,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
     val ethAddressAliasSet            = inputKey[Unit]                             ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
     val ethAddressBalance             = inputKey[BigDecimal]                       ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
-    val ethAddressBalanceInWei        = inputKey[BigInt]                           ("Computes the balance in wei of a given address, or of current sender if no address is supplied")
     val ethAddressPing                = inputKey[Option[Client.TransactionReceipt]]("Sends 0 ether from current sender to an address, by default the senser address itself")
     val ethAddressSenderEffective     = taskKey[Failable[EthAddress]]              ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
     val ethAddressSenderOverrideDrop  = taskKey [Unit]                             ("Removes any sender override, reverting to any 'ethcfgSender' or defaultSender that may be set.")
@@ -284,6 +288,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // ethcfg settings
 
+    ethcfgBaseCurrencyCode := "USD",
+
     ethcfgBlockchainId in Compile := MainnetIdentifier,
 
     ethcfgBlockchainId in Test := TestrpcIdentifier,
@@ -389,10 +395,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethAddressBalance in Compile := { ethAddressBalanceTask( Compile ).evaluated },
 
     ethAddressBalance in Test := { ethAddressBalanceTask( Test ).evaluated },
-
-    ethAddressBalanceInWei in Compile := { ethAddressBalanceInWeiTask( Compile ).evaluated },
-
-    ethAddressBalanceInWei in Test := { ethAddressBalanceInWeiTask( Test ).evaluated },
 
     ethAddressPing in Compile := { ethAddressPingTask( Compile ).evaluated },
 
@@ -945,24 +947,20 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
-      val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
-      val mbAddress = parser.parsed
-      val address = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
-      val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
-      result.denominated
-    }
-  }
+      val jsonRpcUrl       = (ethcfgJsonRpcUrl in config).value
+      val baseCurrencyCode = ethcfgBaseCurrencyCode.value
+      val mbAddress        = parser.parsed
+      val address          = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
+      val result           = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
+      val ethValue         = result.denominated
 
-  def ethAddressBalanceInWeiTask( config : Configuration ) : Initialize[InputTask[BigInt]] = {
-    val parser = Defaults.loadForParser(xethFindCacheAliasesIfAvailable in config)( genOptionalGenericAddressParser )
+      priceFeed.ethPriceInCurrency( baseCurrencyCode ).foreach { datum =>
+        val value = ethValue * datum.price
+        val roundedValue = value.setScale(2, BigDecimal.RoundingMode.HALF_UP )
+        println( s"This corresponds to approximately ${roundedValue} ${baseCurrencyCode} (at a rate of ${datum.price} ${baseCurrencyCode} per ETH, retrieved at ${ formatTime( datum.timestamp ) } from ${priceFeed.source})" )
+      }
 
-    Def.inputTask {
-      val log = streams.value.log
-      val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
-      val mbAddress = parser.parsed
-      val address = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
-      val result = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Wei )
-      result.wei
+      ethValue
     }
   }
 
@@ -1013,7 +1011,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbSenderOverride = getSenderOverride( config )( log, blockchainId )
 
     val message = mbSenderOverride.fold( s"No sender override is currently set (for configuration '${config}')." ) { address =>
-      val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases '$str')" ) )
+      val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases $str)" ) )
       s"A sender override is set, address '${address.hex}' (on blockchain '$blockchainId'${aliasesPart}, configuration '${config}')."
     }
 
@@ -1723,10 +1721,14 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val f_out = Invoker.transaction.sendWei( privateKey, to, Unsigned256( amount ) ) flatMap { txnHash =>
-        log.info( s"Sent ${amount} wei to address '0x${to.hex}' in transaction '0x${txnHash.hex}'." )
+        log.info( s"Sending ${amount} wei to address '0x${to.hex}' in transaction '0x${txnHash.hex}'." )
         Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None,  _ ) )
       }
-      Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
+      val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
+
+      log.info("Ether sent.")
+
+      out
     }
   }
 
@@ -1950,7 +1952,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     GasPriceOverride.get match {
       case Some( gasPriceOverride ) => gasPriceOverride
-      case None                     => rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) ).toBigInt
+      case None                     => rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) )
     }
   }
 
@@ -2326,7 +2328,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
       val message = {
-        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s" (aliases '$str')" ) )
+        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s" (aliases $str)" ) )
         out.fold( s"No V3 wallet found for '0x${address.hex}'${aliasesPart}" )( _ => s"V3 wallet found for '0x${address.hex}'${aliasesPart}" )
       }
       log.info( message )
