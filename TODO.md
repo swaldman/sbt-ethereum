@@ -5,8 +5,6 @@
 * Figure out why mlog output seems no longer to be showing up, on the console
   or in sbt-ethereum.log
 * Define gas approver  
-* Make constructor arg hex acessible from repository deployments.
-  -- then maybe remove verbosity about arg hex from ethContractSpawnOnly
 * ethTransactionExportInvoke / ethTransactionExportSend  
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'

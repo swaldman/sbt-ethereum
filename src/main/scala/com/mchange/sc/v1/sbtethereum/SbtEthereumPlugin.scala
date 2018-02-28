@@ -1178,6 +1178,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val blockchainId = (ethcfgBlockchainId in config).value
+      val log = streams.value.log
 
       println()
       val cap =     "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
@@ -1187,6 +1188,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       println( cap )
 
       def section( title : String, body : Option[String], hex : Boolean = false ) : Unit = body.foreach { b =>
+        println()
         println( minicap )
         println( s"${title}:")
         println();
@@ -1203,6 +1205,22 @@ object SbtEthereumPlugin extends AutoPlugin {
       def jsonSection[T : play.api.libs.json.Writes]( title : String, body : Option[T] ) : Unit = {
         section( title, body.map( t => Json.stringify( Json.toJson( t ) ) ), false )
       }
+      def constructorInputsSection( mbConstructorInputs : Option[immutable.Seq[Byte]], mbAbi : Option[Abi] ) : Unit = {
+        section( "Constructor Inputs Hex", mbConstructorInputs.map( _.hex ), true )
+        for {
+          ctorInputs <- mbConstructorInputs
+          if ctorInputs.nonEmpty
+          abi <- mbAbi
+        } {
+          if ( abi.constructors.length == 0 ) println("Cannot decode inputs! No constructor found in ABI, but apparently constructor inputs were provided?!?")
+          else if (abi.constructors.length > 1 ) println("Cannot decode inputs! ABI has multiple construtors, which is not legal.")
+          else {
+            val decodedInputs = ethabi.decodeConstructorArgs( ctorInputs, abi.constructors.head ).xwarn("Error decoding constructor inputs!").foreach { seq =>
+              println( s"""Decoded inputs: ${seq.map( _.stringRep ).mkString(", ")}""" )
+            }
+          }
+        }
+      }
 
       val source = parser.parsed
       source match {
@@ -1215,6 +1233,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             section( "Deployment Timestamp", info.mbDeployedWhen.map( l => (new Date(l)).toString ) )
             section( "Code Hash", Some( info.codeHash.hex ), true )
             section( "Code", Some( info.code ), true )
+            constructorInputsSection( info.mbConstructorInputs, info.mbAbi )
             section( "Contract Name", info.mbName )
             section( "Contract Source", info.mbSource )
             section( "Contract Language", info.mbLanguage )
