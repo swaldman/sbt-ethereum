@@ -673,9 +673,9 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def findTransactionLoggerTask( config : Configuration ) : Initialize[Task[Invoker.TransactionLogger]] = Def.task {
     val blockchainId = (ethcfgBlockchainId in config).value
 
-    ( tle : Invoker.TransactionLogEntry, ec : ExecutionContext ) => Future {
+    ( tle : Invoker.TransactionLogEntry, ec : ExecutionContext ) => Future (
       repository.TransactionLog.logTransaction( blockchainId, tle.jsonRpcUrl, tle.transaction, tle.transactionHash ).get
-    }
+    )( ec )
   }
 
   // task definitions
