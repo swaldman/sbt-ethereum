@@ -2674,13 +2674,18 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def transactionApprover( is : sbt.InteractionService, currencyCode : String ) : ( Invoker.TransactionCostInfo ) => Future[Unit] = tci => Future {
-    println( s"The transaction you have requested could use up to ${tci.computedGas.gasLimit} units of gas." )
+  private def transactionApprover( is : sbt.InteractionService, currencyCode : String ) : EthTransaction.Signed => Future[Unit] = txn => Future {
+
+    val gasPrice   = txn.gasPrice.widen
+    val gasLimit   = txn.gasLimit.widen
+    val valueInWei = txn.value.widen
+
+    println( s"The transaction you have requested could use up to ${gasLimit} units of gas." )
 
     val mbEthPrice = priceFeed.ethPriceInCurrency( currencyCode, forceRefresh = true )
 
-    val gweiPerGas = Denominations.GWei.fromWei(tci.computedGas.gasPrice)
-    val gasCostInWei = tci.computedGas.gasLimit * tci.computedGas.gasPrice
+    val gweiPerGas = Denominations.GWei.fromWei(gasPrice)
+    val gasCostInWei = gasLimit * gasPrice
     val gasCostInEth = Denominations.Ether.fromWei( gasCostInWei )
     val gasCostMessage = {
       val sb = new StringBuilder
@@ -2697,8 +2702,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     println( gasCostMessage )
 
-    if ( tci.valueInWei != 0 ) {
-      val xferInEth = Denominations.Ether.fromWei( tci.valueInWei )
+    if ( valueInWei != 0 ) {
+      val xferInEth = Denominations.Ether.fromWei( valueInWei )
       val maxTotalCostInEth = xferInEth + gasCostInEth
       print( s"You would also send ${xferInEth} ether" )
       mbEthPrice match {
@@ -2724,7 +2729,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    if ( check ) () else tci.throwDisapproved
+    if ( check ) () else Invoker.throwDisapproved( txn )
   }
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
