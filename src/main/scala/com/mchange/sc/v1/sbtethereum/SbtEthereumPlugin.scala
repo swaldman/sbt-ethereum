@@ -39,6 +39,7 @@ import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.log.MLogger
 import com.mchange.sc.v1.texttable
+import scala.annotation.tailrec
 import scala.collection._
 import scala.concurrent.{Await,Future}
 import scala.concurrent.duration._
@@ -2107,6 +2108,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val gasPriceCap     = ethcfgGasPriceCap.?.value
     val gasPriceFloor   = ethcfgGasPriceFloor.?.value
 
+    val is              = interactionService.value
+    val currencyCode    = ethcfgBaseCurrencyCode.value
+
     val gasLimitTweak = {
       GasLimitOverride.get match {
         case Some( overrideValue ) => {
@@ -2134,11 +2138,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val transactionLogger = findTransactionLoggerTask( config ).value
 
+    val approver = transactionApprover( is, currencyCode )
+
     Invoker.Context.fromUrl(
       jsonRpcUrl = jsonRpcUrl,
       gasPriceTweak = gasPriceTweak, gasLimitTweak = gasLimitTweak,
       pollPeriod = pollPeriod,
       pollTimeout = timeout,
+      transactionApprover = approver,
       transactionLogger = transactionLogger
     )
   }
@@ -2665,6 +2672,59 @@ object SbtEthereumPlugin extends AutoPlugin {
     } else {
       throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )
     }
+  }
+
+  private def transactionApprover( is : sbt.InteractionService, currencyCode : String ) : ( Invoker.TransactionCostInfo ) => Future[Unit] = tci => Future {
+    println( s"The transaction you have requested could use up to ${tci.computedGas.gasLimit} units of gas." )
+
+    val mbEthPrice = priceFeed.ethPriceInCurrency( currencyCode, forceRefresh = true )
+
+    val gweiPerGas = Denominations.GWei.fromWei(tci.computedGas.gasPrice)
+    val gasCostInWei = tci.computedGas.gasLimit * tci.computedGas.gasPrice
+    val gasCostInEth = Denominations.Ether.fromWei( gasCostInWei )
+    val gasCostMessage = {
+      val sb = new StringBuilder
+      sb.append( s"You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether" )
+      mbEthPrice match {
+        case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
+          sb.append( s", which is worth ${ gasCostInEth * ethPrice } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
+        }
+        case None => {
+          sb.append( "." )
+        }
+      }
+      sb.toString
+    }
+    println( gasCostMessage )
+
+    if ( tci.valueInWei != 0 ) {
+      val xferInEth = Denominations.Ether.fromWei( tci.valueInWei )
+      val maxTotalCostInEth = xferInEth + gasCostInEth
+      print( s"You would also send ${xferInEth} ether" )
+      mbEthPrice match {
+        case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
+          println( s" (${ xferInEth * ethPrice } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${maxTotalCostInEth} ${currencyCode})." )
+        }
+        case None => {
+          println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
+        }
+      }
+    }
+
+    @tailrec
+    def check : Boolean = {
+      val response = is.readLine( "Would you like to submit this transaction? [y/n] ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
+      response.toLowerCase match {
+        case "y" | "yes" => true
+        case "n" | "no"  => false
+        case _           => {
+          println( s"Invalid response '${response}'." )
+          check
+        }
+      }
+    }
+
+    if ( check ) () else tci.throwDisapproved
   }
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
