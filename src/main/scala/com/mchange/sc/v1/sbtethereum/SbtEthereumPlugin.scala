@@ -715,7 +715,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     implicit val bidStore = repository.Database.ensBidStore( blockchainId, ensClient.tld, ensClient.nameServiceAddress )
 
-    val ( name, valueInWei, mbOverpaymentInWei ) = EnsPlaceNewBidParser.parsed
+    val ( name, valueInWei, mbOverpaymentInWei ) = ensPlaceNewBidParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
 
     val status = ensClient.nameStatus( name )
     if ( status != ens.NameStatus.Auction ) {
@@ -771,7 +771,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    val hashOrName = BidHashOrNameParser.parsed
+    val hashOrName = bidHashOrNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
 
     hashOrName match {
       case Left( hash ) => {
@@ -815,18 +815,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   def ensAuctionFinalizeTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val privateKey = findPrivateKeyTask( config ).value
-    val name       = EnsNameParser.parsed
+    val name       = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
     val ensClient  = ( config / xensClient).value
     ensClient.finalizeAuction( privateKey, name )
   }
 
   def ensAuctionStartTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
-
-    val privateKey = findPrivateKeyTask( config ).value
-    
-    val ( name, mbNumDiversions ) = EnsNameNumDiversionParser.parsed
-
-    val ensClient = ( config / xensClient).value
+    val privateKey                = findPrivateKeyTask( config ).value
+    val ( name, mbNumDiversions ) = ensNameNumDiversionParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
+    val ensClient                 = ( config / xensClient).value
 
     mbNumDiversions match {
       case Some( numDiversions ) => {
@@ -841,13 +838,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   def ensOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
-    val name = EnsNameParser.parsed
-
     val blockchainId = (ethcfgBlockchainId in config).value
-
-    val ensClient = ( config / xensClient).value
-
-    val mbOwner = ensClient.owner( name )
+    val ensClient    = ( config / xensClient).value
+    val name         = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
+    val mbOwner      = ensClient.owner( name )
 
     mbOwner match {
       case Some( address ) => println( s"The name '${name}' is owned by address ${verboseAddress(blockchainId, address)}'." )
@@ -860,11 +854,9 @@ object SbtEthereumPlugin extends AutoPlugin {
   def ensNameStatusTask( config : Configuration ) : Initialize[InputTask[ens.NameStatus]] = Def.inputTask {
     import ens.NameStatus._
 
-    val name = EnsNameParser.parsed
-
     val ensClient = ( config / xensClient).value
-
-    val status = ensClient.nameStatus( name )
+    val name      = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
+    val status    = ensClient.nameStatus( name )
 
     println( s"The current status of ENS name '${name}' is '${status}'." )
 
