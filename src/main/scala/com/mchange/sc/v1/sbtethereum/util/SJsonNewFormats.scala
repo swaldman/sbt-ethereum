@@ -5,7 +5,7 @@ import v1.consuela._
 import v1.consuela.ethereum.EthAddress
 import v1.consuela.ethereum.encoding.{RLP,RLPSerializing}
 import v1.consuela.ethereum.jsonrpc
-import v1.sbtethereum.MaybeSpawnable
+import v1.sbtethereum.{AddressParserInfo,MaybeSpawnable}
 
 import sjsonnew._
 import BasicJsonProtocol._
@@ -35,7 +35,7 @@ object SJsonNewFormats {
 
   implicit val SeedIso = playJsonSerializingIso[MaybeSpawnable.Seed]
 
-  implicit val StrigEthAddressSortedMapFormat = new JsonFormat[immutable.SortedMap[String,EthAddress]]{
+  implicit val StringEthAddressSortedMapFormat = new JsonFormat[immutable.SortedMap[String,EthAddress]]{
     val inner = mapFormat[String,EthAddress]
 
     def write[J](m : immutable.SortedMap[String, EthAddress], builder : Builder[J]): Unit = {
@@ -45,5 +45,32 @@ object SJsonNewFormats {
       immutable.TreeMap.empty[String, EthAddress] ++ inner.read( jsOpt, unbuilder )
     }
   }
-
+  implicit object AddressParserInfoFormat extends JsonFormat[AddressParserInfo] {
+    def write[J](api : AddressParserInfo, builder: Builder[J]) : Unit = {
+      builder.beginObject()
+      builder.addField("blockchainId", api.blockchainId)
+      builder.addField("jsonRpcUrl", api.jsonRpcUrl)
+      builder.addField("mbAliases", api.mbAliases)
+      builder.addField("nameServiceAddressHex", api.nameServiceAddress.hex)
+      builder.addField("nameServiceTld", api.nameServiceTld)
+      builder.addField("nameServiceReverseTld", api.nameServiceReverseTld)
+      builder.endObject()
+    }
+    def read[J](jsOpt: Option[J], unbuilder: Unbuilder[J]) : AddressParserInfo = {
+      jsOpt match {
+        case Some(js) =>
+          unbuilder.beginObject(js)
+          val blockchainId = unbuilder.readField[String]("blockchainId")
+          val jsonRpcUrl = unbuilder.readField[String]("jsonRpcUrl")
+          val mbAliases = unbuilder.readField[Option[immutable.SortedMap[String,EthAddress]]]("mbAliases")
+          val nameServiceAddressHex = unbuilder.readField[String]("nameServiceAddressHex")
+          val nameServiceTld = unbuilder.readField[String]("nameServiceTld")
+          val nameServiceReverseTld = unbuilder.readField[String]("nameServiceReverseTld")
+          unbuilder.endObject()
+          AddressParserInfo(blockchainId, jsonRpcUrl, mbAliases, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
+        case None =>
+          deserializationError("Expected JsObject but found None")
+      }
+    }
+  }
 }

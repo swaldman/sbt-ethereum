@@ -12,6 +12,9 @@ import com.mchange.sc.v1.consuela.ethereum.{jsonrpc,specification,EthAddress,Eth
 import specification.Denominations
 import jsonrpc.Abi
 
+import com.mchange.sc.v2.ens
+import com.mchange.sc.v2.ens.NoResolverSetException
+
 import com.mchange.sc.v2.failable._
 
 import com.mchange.sc.v1.log.MLevel._
@@ -19,6 +22,8 @@ import com.mchange.sc.v1.log.MLevel._
 import scala.collection._
 
 import scala.util.matching.Regex
+
+import scala.util.control.NonFatal
 
 import play.api.libs.json._
 
@@ -39,12 +44,17 @@ object Parsers {
 
   private def rawAliasedAddressParser( aliases : SortedMap[String,EthAddress] ) : Parser[EthAddress] = rawAliasParser( aliases ).map( aliases )
 
-  private def createAddressParser( tabHelp : String, aliases : immutable.SortedMap[String,EthAddress] ) : Parser[EthAddress] = {
-    if ( aliases.isEmpty ) {
-      createSimpleAddressParser( tabHelp )
-    } else {
-      // println("CREATING COMPOUND PARSER")
-      Space.* ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) )
+  private def createAddressParser( tabHelp : String, mbApi : Option[AddressParserInfo] ) : Parser[EthAddress] = {
+    mbApi match {
+      case Some( api ) => {
+        val aliases = api.mbAliases.getOrElse( EmptyAliasMap )
+        val eclient = ens.Client( jsonRpcUrl = api.jsonRpcUrl, nameServiceAddress = api.nameServiceAddress, tld = api.nameServiceTld, reverseTld = api.nameServiceReverseTld )
+        val tld = api.nameServiceTld
+        Space.* ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensNameToAddressParser( eclient ).examples( s"<ens-name>.${tld}" ) )
+      }
+      case None => {
+        createSimpleAddressParser( tabHelp )
+      }
     }
   }
 
@@ -83,6 +93,30 @@ object Parsers {
   }
 
   private [sbtethereum] def ensNameParser( tld : String ) : Parser[String] = token( Space.* ) ~> token( rawEnsNameParser( tld ) ).examples( s"<ens-name>.${tld}" )
+
+  private [sbtethereum] def ensNameToAddressParser( tld : String, ensClient : ens.Client ) : Parser[EthAddress] = {
+    ensNameParser( tld ).flatMap { name =>
+      try {
+        ensClient.address( name ) match {
+          case Some( address ) => success( address )
+          case None            => failure( s"No address found for ens name '${name}'" )
+        }
+      } catch {
+        case nrs : NoResolverSetException => {
+          val message = s"No resolver has been set for '${name}'"
+          INFO.log( message )
+          failure( message )
+        }
+        case NonFatal( nfe ) => {
+          val message = s"Exception while looking up ENS name '${name}'"
+          WARNING.log( message, nfe )
+          failure( message )
+        }
+      }
+    }
+  }
+
+  private [sbtethereum] def ensNameToAddressParser( ensClient : ens.Client ) : Parser[EthAddress] = ensNameToAddressParser( ensClient.tld, ensClient )
 
   private [sbtethereum] def ensNameNumDiversionParser( tld : String ) : Parser[(String, Option[Int])] = {
     token( Space.* ) ~> token( rawEnsNameParser( tld ) ).examples( s"<ens-name>.${tld}" ) ~ ( token( Space.+ ) ~> token(RawIntParser).examples("[<optional number of diversion auctions>]") ).?
@@ -125,23 +159,23 @@ object Parsers {
     baseParser.map( processedNamesToFunctions )
   }
 
-  private def inputParser( input : Abi.Parameter, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[String] = {
+  private def inputParser( input : Abi.Parameter, mbApi : Option[AddressParserInfo] ) : Parser[String] = {
     val displayName = if ( input.name.length == 0 ) "mapping key" else input.name
     val sample = s"<${displayName}, of type ${input.`type`}>"
-    if ( input.`type` == "address" && !mbAliases.isEmpty ) { // special case
-      createAddressParser( sample, mbAliases.get ).map( _.hex )
+    if ( input.`type` == "address" && mbApi.nonEmpty ) { // special case
+      createAddressParser( sample, mbApi ).map( _.hex )
     } else {
       token( (StringEscapable.map( str => s""""${str}"""") | NotQuoted).examples( FixedSetExamples( immutable.Set( sample, ZWSP ) ) ) )
     }
   }
 
-  private def inputsParser( inputs : immutable.Seq[Abi.Parameter], mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[immutable.Seq[String]] = {
-    val parserMaker : Abi.Parameter => Parser[String] = param => inputParser( param, mbAliases )
+  private def inputsParser( inputs : immutable.Seq[Abi.Parameter], mbApi : Option[AddressParserInfo] ) : Parser[immutable.Seq[String]] = {
+    val parserMaker : Abi.Parameter => Parser[String] = param => inputParser( param, mbApi )
     inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space.* ~> next.map( str => partial :+ str ) ) )
   }
 
-  private def functionAndInputsParser( abi : Abi, restrictToConstants : Boolean, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[(Abi.Function, immutable.Seq[String])] = {
-    token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs, mbAliases ).map( seq => ( function, seq ) ) )
+  private def functionAndInputsParser( abi : Abi, restrictToConstants : Boolean, mbApi : Option[AddressParserInfo] ) : Parser[(Abi.Function, immutable.Seq[String])] = {
+    token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs, mbApi ).map( seq => ( function, seq ) ) )
   }
 
   private [sbtethereum] val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
@@ -200,96 +234,66 @@ object Parsers {
 
   private [sbtethereum] def genAliasParser(
     state : State,
-    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+    mbApi : Option[AddressParserInfo]
   ) = {
     // XXX: we accept ID (sbt's built-in identifier parser) when we don't have aliases,
     //      bc maybe there was just a problem getting the aliases but they exist. (kind of weak?)
-    Space.* ~> mbIdAndMbAliases.map( _._2 ).flatten.fold( ID )( aliases => token( rawAliasParser( aliases ).examples( aliases.keySet, false ) ) )
+    Space.* ~> mbApi.flatMap( _.mbAliases ).fold( ID )( aliases => token( rawAliasParser( aliases ).examples( aliases.keySet, false ) ) )
   }
 
-  private def _genGenericAddressParser( state : State, mbAliases : Option[immutable.SortedMap[String,EthAddress]] ) : Parser[EthAddress] = {
-    val sample = mbAliases.fold( "<address-hex>" )( map => if ( map.isEmpty ) "<address-hex>" else "<address-hex or alias>" )
-    createAddressParser( sample, mbAliases.getOrElse( EmptyAliasMap ) )
-  }
-
-  private [sbtethereum] def genGenericAddressParser(
-    state : State,
-    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
-  ) : Parser[EthAddress] = {
-    val mbAliases = mbIdAndMbAliases match {
-      case Some( idAndMbAliases ) => idAndMbAliases._2
-      case None => {
-        WARNING.log("Failed to load aliases for generic address parser.")
-        None
-      }
-    }
-    _genGenericAddressParser( state, mbAliases )
+  private [sbtethereum] def genGenericAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[EthAddress] = {
+    createAddressParser( "<address-hex>", mbApi )
   }
 
   private [sbtethereum] def genOptionalGenericAddressParser(
     state : State,
-    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+    mbApi : Option[AddressParserInfo]
   ) : Parser[Option[EthAddress]] = {
-    genGenericAddressParser( state, mbIdAndMbAliases ).?
+    genGenericAddressParser( state, mbApi ).?
   }
 
   private [sbtethereum] def genRecipientAddressParser(
     state : State,
-    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+    mbApi : Option[AddressParserInfo]
   ) = {
-    mbIdAndMbAliases match {
-      case Some( Tuple2(blockchainId, mbAliases) ) => {
-        mbAliases match {
-          case Some( aliases ) => createAddressParser("<recipient-address-hex or alias>", aliases)
-          case None            => createAddressParser("<recipient-address-hex or alias>", EmptyAliasMap)
-        }
-      }
-      case None => {
-        WARNING.log("Failed to load blockchain ID and aliases for address, function, inputs, abi parser")
-        failure( "Blockchain ID and alias list are unavailable, can't parse address and ABI" )
-      }
-    }
+    createAddressParser( "<recipient-address>", mbApi )
   }
 
   private [sbtethereum] def genEthSendEtherParser(
     state : State,
-    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+    mbApi : Option[AddressParserInfo]
   ) : Parser[( EthAddress, BigInt )] = {
-    genRecipientAddressParser( state, mbIdAndMbAliases ) ~ valueInWeiParser("<amount>")
+    genRecipientAddressParser( state, mbApi ) ~ valueInWeiParser("<amount>")
   }
-
-
-          
 
   private [sbtethereum] def genContractAddressOrCodeHashParser(
     state : State,
-    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+    mbApi : Option[AddressParserInfo]
   ) : Parser[Either[EthAddress,EthHash]] = {
     val chp = ethHashParser( "<contract-code-hash>" )
-    genGenericAddressParser( state, mbIdAndMbAliases ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+    genGenericAddressParser( state, mbApi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
   }
 
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
     state : State,
-    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+    mbApi : Option[AddressParserInfo]
   ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi)] = {
-    mbIdAndMbAliases match {
-      case Some( Tuple2(blockchainId, mbAliases) ) => { 
-        _genGenericAddressParser( state, mbAliases ).map( a => ( a, abiForAddressOrEmpty(blockchainId,a) ) ).flatMap { case ( address, abi ) =>
-          ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbAliases ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
+    mbApi match {
+      case Some( api ) =>
+        genGenericAddressParser( state, mbApi ).map( a => ( a, abiForAddressOrEmpty(api.blockchainId,a) ) ).flatMap { case ( address, abi ) =>
+          ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbApi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
         }
-      }
       case None => {
-        WARNING.log("Failed to load blockchain ID and aliases for address, function, inputs, abi parser")
-        failure( "Blockchain ID and alias list are unavailable, can't parse address and ABI" )
+        WARNING.log("Failed to load blockchain ID for address, function, inputs, abi parser")
+        failure( "Blockchain ID is unavailable, can't parse ABI" )
       }
     }
   }
   private [sbtethereum] def genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants : Boolean  )(
     state : State,
-    mbIdAndMbAliases : Option[(String,Option[immutable.SortedMap[String,EthAddress]])]
+    mbApi : Option[AddressParserInfo]
   ) : Parser[((EthAddress, Abi.Function, immutable.Seq[String], Abi), Option[BigInt])] = {
-    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbIdAndMbAliases ).flatMap { afia =>
+    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbApi ).flatMap { afia =>
       if ( afia._2.payable ) {
         valueInWeiParser("[ETH to pay, optional]").?.flatMap( mbv => success(  ( afia, mbv ) ) ) // useless flatmap rather than map
       } else {

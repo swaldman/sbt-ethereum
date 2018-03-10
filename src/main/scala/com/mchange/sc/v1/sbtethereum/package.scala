@@ -161,6 +161,14 @@ package object sbtethereum {
 
   def formatTime( l : Long ) : String = TimeFormatter.format( Instant.ofEpochMilli( l ) )
 
+  case class AddressParserInfo(
+    blockchainId          : String,
+    jsonRpcUrl            : String,
+    mbAliases             : Option[immutable.SortedMap[String,EthAddress]],
+    nameServiceAddress    : EthAddress,
+    nameServiceTld        : String,
+    nameServiceReverseTld : String
+  )
 }
 
 
