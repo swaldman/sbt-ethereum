@@ -79,21 +79,26 @@ object Parsers {
 
   private [sbtethereum] val RawEnsNameParser : Parser[String] = NotSpace
 
-  private [sbtethereum] val EnsNameParser : Parser[String] = token( Space.* ) ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" )
-
-  private [sbtethereum] val EnsNameNumDiversionParser : Parser[(String, Option[Int])] = {
-    token( Space.* ) ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" ) ~ ( token( Space.+ ) ~> token(RawIntParser).examples("[<optional number of diversion auctions]") ).?
+  private [sbtethereum] def genEnsNameParser( state : State, mbtld : Option[String] ) : Parser[String] = {
+    val tld = mbtld.getOrElse( "eth" )
+    token( Space.* ) ~> token( RawEnsNameParser ).examples( s"<ens-name>.${tld}" )
   }
 
-  private [sbtethereum] val EnsPlaceNewBidParser : Parser[(String, BigInt, Option[BigInt])] = {
-    val baseParser = Space.* ~> token( RawEnsNameParser ).examples( "<ens-name>.eth" ) ~ ( Space.+ ~> valueInWeiParser( "<amount to bid>" ) ) ~ ( Space.* ~> valueInWeiParser( "[<optional-overpayment-amount>]" ).? )
+  private [sbtethereum] def genEnsNameNumDiversionParser( state : State, mbtld : Option[String] ) : Parser[(String, Option[Int])] = {
+    val tld = mbtld.getOrElse( "eth" )
+    token( Space.* ) ~> token( RawEnsNameParser ).examples( s"<ens-name>.${tld}" ) ~ ( token( Space.+ ) ~> token(RawIntParser).examples("[<optional number of diversion auctions]") ).?
+  }
+
+  private [sbtethereum] def genEnsPlaceNewBidParser( state : State, mbtld : Option[String] ) : Parser[(String, BigInt, Option[BigInt])] = {
+    val tld = mbtld.getOrElse( "eth" )
+    val baseParser = Space.* ~> token( RawEnsNameParser ).examples( s"<ens-name>.${tld}" ) ~ ( Space.+ ~> valueInWeiParser( "<amount to bid>" ) ) ~ ( Space.* ~> valueInWeiParser( "[<optional-overpayment-amount>]" ).? )
     baseParser.map { case ( (name, amount), mbOverpayment ) => ( name, amount, mbOverpayment ) }
   }
 
   private [sbtethereum] def ethHashParser( exampleStr : String ) : Parser[EthHash] = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), exampleStr).map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
 
-  private [sbtethereum] def BidHashOrNameParser : Parser[Either[EthHash,String]] = {
-    ethHashParser("<bid-hash>").map( hash => (Left(hash) : Either[EthHash,String]) ) | EnsNameParser.map( name => (Right(name) : Either[EthHash,String]) )
+  private [sbtethereum] def genBidHashOrNameParser( state : State, mbtld : Option[String] ) : Parser[Either[EthHash,String]] = {
+    ethHashParser("<bid-hash>").map( hash => (Left(hash) : Either[EthHash,String]) ) | genEnsNameParser( state, mbtld ).map( name => (Right(name) : Either[EthHash,String]) )
   }
 
   private [sbtethereum] def functionParser( abi : Abi, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
