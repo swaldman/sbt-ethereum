@@ -1,9 +1,15 @@
 # TODO
 
+* Request aliases on
+  - ethAbiMemorize
+  - ethContractSpawn
+
+* Let ethAddressAliasSet accept any form of address, not just raw hex
+    
 * reset plugin state on unload
 * aggressively privatify stuff
+
 * interactive migrate (or restore) of database, default compiler
-* tld-sensitive ENS parsers
 * Figure out why mlog output seems no longer to be showing up, on the console
   or in sbt-ethereum.log
 * ethTransactionExportInvoke / ethTransactionExportSend  
@@ -16,6 +22,8 @@
 * xethSendMessage
 * Prettify output of log items in client transactions
 * Excise Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
+* ensAddressLookup, ensAddressSet
+* ensOwnerSet and Deed stuff
 * ethToken*
 * add getEvents [backed by RPC getLogs(...)] methods to stub events
 * Make stub compilation incremental

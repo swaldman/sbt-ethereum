@@ -190,10 +190,10 @@ object Schema_h2 {
             migrateSchema( conn, v, SchemaVersion )
           } else if ( v > SchemaVersion ) {
             throw new SchemaVersionException(
-              s"""|Database schema version ${v} is higher than the latest version known to this version of
-                  |sbt-ethereum, ${SchemaVersion}. Please update this project to the latest version of sbt-ethereum!
-                  |Usually this just means modifying 'project/plugin.sbt'. If you still see this message, try
-                  |'reload plugins', then 'update', then restart sbt.""".stripMargin
+              s"""|Database schema version ${v} is higher than the latest version known to this version of sbt-ethereum, ${SchemaVersion}.
+                  | ==> Please update this project to the latest version of sbt-ethereum!
+                  |      - Usually this just means modifying 'project/plugin.sbt'.
+                  |      - If you still see this message afterwards, try 'reload plugins', then 'update', then restart sbt.""".stripMargin
             )
           }
         }
