@@ -2704,7 +2704,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       print( s"You would also send ${xferInEth} ether" )
       mbEthPrice match {
         case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-          println( s" (${ xferInEth * ethPrice } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${maxTotalCostInEth} ${currencyCode})." )
+          println( s" (${ xferInEth * ethPrice } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${maxTotalCostInEth * ethPrice} ${currencyCode})." )
         }
         case None => {
           println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
