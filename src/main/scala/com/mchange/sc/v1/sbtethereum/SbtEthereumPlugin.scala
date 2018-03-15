@@ -1048,7 +1048,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   def ethContractAbiForgetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo)( genGenericAddressParser )
+    val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
       val blockchainId = (ethcfgBlockchainId in config).value
@@ -1306,7 +1306,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   def ethContractSpawnTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]] = {
-    val parser = Defaults.loadForParser(xethFindCacheSeeds)( genContractSpawnParser )
+    val parser = Defaults.loadForParser(xethFindCacheSeeds in config)( genContractSpawnParser )
 
     Def.inputTask {
       val s = state.value
@@ -2334,7 +2334,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val mbNamedSeeds = currentCompilations.map { cc =>
       val seed = currentCompilationsConverter.mbSeed( cc )
-      if (seed.isEmpty) log.warn( s"Compilation missing name and/or ABI cannot be deployed: ${cc}" )
+      if (seed.isEmpty) log.warn( s"Compilation missing name and/or ABI cannot be deployed: ${cc._1}" )
       ( cc._1, seed )
     }
 
