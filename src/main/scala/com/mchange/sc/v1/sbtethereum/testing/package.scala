@@ -27,8 +27,5 @@ package object testing {
 
     val TestrpcCommandParsed = immutable.Seq( "testrpc", "--port", EthJsonRpc.Port.toString, s"--account=0x${ Faucet.pvt.hex },$MaxWei" )
     val TestrpcCommand: String = TestrpcCommandParsed.mkString(" ")
-
-    val GasMarkup = 0.2
-    val GasPriceMarkup = 0
   }
 }

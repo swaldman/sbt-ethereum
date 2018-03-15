@@ -20,7 +20,6 @@ object TestingResourcesGenerator {
 
       iw.println( s"import $ethereumPackage.EthPrivateKey" )
       iw.println( s"import $ethereumPackage.stub" )
-      iw.println( s"import $ethereumPackage.jsonrpc.Invoker" )
       iw.println( s"import $ethereumPackage.specification.Denominations" )
       iw.println()
 
@@ -39,8 +38,7 @@ object TestingResourcesGenerator {
       iw.println( "trait Context extends Denominations {" )
       iw.upIndent()
 
-      iw.println( "implicit val econtext = scala.concurrent.ExecutionContext.Implicits.global" )
-      iw.println( s"implicit val icontext = Invoker.Context( EthJsonRpcUrl, Invoker.Markup( ${ Default.GasMarkup } ), Invoker.Markup( ${ Default.GasPriceMarkup } ) )" )
+      iw.println( s"implicit val scontext = stub.Context.fromUrl( EthJsonRpcUrl )" )
 
       iw.println( "def createRandomSender() : stub.Sender = stub.Sender.Basic( EthPrivateKey( EntropySource ) )" )
 
