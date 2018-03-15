@@ -323,11 +323,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
 
-    ethcfgSoliditySource in Compile := (sourceDirectory in Test).value / "solidity",
+    ethcfgSoliditySource in Test := (sourceDirectory in Test).value / "solidity",
 
     ethcfgSolidityDestination in Compile := (ethcfgTargetDir in Compile).value / "solidity",
 
-    ethcfgSolidityDestination in Compile := (ethcfgTargetDir in Test).value / "solidity",
+    ethcfgSolidityDestination in Test := (ethcfgTargetDir in Test).value / "solidity",
 
     ethcfgTargetDir in Compile := (target in Compile).value / "ethereum",
 
