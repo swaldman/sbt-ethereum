@@ -136,7 +136,7 @@ object SourceFile {
     Location.URL( new java.net.URL( parentSpec ) ).resolveKey( key ).get
   }
 
-  val oldAndEmpty = SourceFile(Location.Empty, "", Long.MinValue)
+  val OldAndEmpty = SourceFile(Location.Empty, "", Long.MinValue)
 
   def fileToString( srcFile : File ) : String = {
     borrow( Source.fromFile( srcFile )(Codec.UTF8) ){ _.foldLeft("")( _ + _ ) }
@@ -147,8 +147,8 @@ case class SourceFile( immediateParent : SourceFile.Location, rawText : String, 
   import SourceFile.PragmaSolidityRegex
 
   private def exciseAndPrepend( semanticVersion : SemanticVersion ) : String = {
-    val pragma = s"pragma solidity ^${ semanticVersion.versionString };\n\n"
-    pragma + PragmaSolidityRegex.replaceAllIn( rawText, _ => "\n\n" )
+    val pragma = s"pragma solidity ^${ semanticVersion.versionString };${SEP}${SEP}"
+    pragma + PragmaSolidityRegex.replaceAllIn( rawText, _ => "" ).trim
   }
 
   lazy val pragmaResolvedText : String = {

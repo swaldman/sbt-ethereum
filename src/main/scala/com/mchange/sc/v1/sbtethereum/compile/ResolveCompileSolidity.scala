@@ -3,6 +3,7 @@ package com.mchange.sc.v1.sbtethereum.compile
 import java.io.{BufferedOutputStream, File, FileOutputStream, OutputStreamWriter}
 import java.nio.file.Files
 import scala.annotation.tailrec
+import scala.collection._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.io.{Codec, Source}
 import scala.math.max
@@ -23,8 +24,6 @@ object ResolveCompileSolidity {
 
   private implicit lazy val logger: MLogger = mlogger( this )
 
-  private val SEP = Option( System.getProperty("line.separator") ).getOrElse( "\n" )
-
   private val SolFileRegex = """(.+)\.sol""".r
 
   private val SolidityFileBadFirstChars = ".#~"
@@ -35,56 +34,88 @@ object ResolveCompileSolidity {
   // XXX: hardcoded
   private val SolidityWriteBufferSize = 1024 * 1024; // 1 MiB
 
-  @tailrec
-  private def loadResolveSourceFile( allSourceLocations : Seq[SourceFile.Location], key : String, remainingSourceLocations : Seq[SourceFile.Location] ) : Failable[SourceFile] = {
-    if ( remainingSourceLocations.isEmpty ){
-      fail( s"""Could not resolve file for '$key', checked source locations: '${allSourceLocations.mkString(", ")}'""" )
-    } else {
-      val nextSrcLoc = remainingSourceLocations.head
-      def premessage( from : String = nextSrcLoc.toString ) = s"Failed to load '$key' from '$from': "
-      val fsource = Failable( SourceFile( nextSrcLoc, key ) ).xdebug( premessage() )
-      if ( fsource.isFailed ) {
-        loadResolveSourceFile( allSourceLocations, key, remainingSourceLocations.tail )
+  private def loadResolveSourceFile( allSourceLocations : Seq[SourceFile.Location], key : String ) : Failable[SourceFile] = {
+
+    // yuk, but doing this more functionally, via immutable arguments, prevents duplicates only down a single
+    // subtree of the recursive replacemnt, and i can't figure out an elegant way to prevent duplicates "globally",
+    // so this.
+
+    // MT: local var referring to an unshared (although mutable) object. naturally single-threaded
+    val visitedRawText = mutable.HashSet.empty[String]
+
+    def safeComment( text : String ) = {
+      val safeText = text.replaceAll( """\*\/""", """*.../""" )
+      s"""${SEP}/* ${safeText} */${SEP}"""
+    }
+
+    @tailrec
+    def loadResolve( localKey : String, remainingSourceLocations : Seq[SourceFile.Location] ) : Failable[SourceFile] = {
+      if ( remainingSourceLocations.isEmpty ){
+        fail( s"""Could not resolve file for '$localKey', checked source locations: '${allSourceLocations.mkString(", ")}'""" )
       } else {
-        substituteImports( allSourceLocations, fsource.get )
+        val nextSrcLoc = remainingSourceLocations.head
+        def premessage( from : String = nextSrcLoc.toString ) = s"Failed to load '$localKey' from '$from': "
+        val fsource = Failable( SourceFile( nextSrcLoc, localKey ) ).xdebug( premessage() )
+        if ( fsource.isFailed ) {
+          loadResolve( localKey, remainingSourceLocations.tail )
+        } else {
+          val sourceFile = fsource.get
+          val rawText = sourceFile.rawText
+          if ( !visitedRawText( rawText ) ) {
+            visitedRawText += rawText
+            substituteImports( sourceFile )
+          }
+          else {
+            succeed( SourceFile( SourceFile.Location.Empty, safeComment(s"Skipping duplicate text via import from '${nextSrcLoc}' with key '${localKey}'."), Long.MinValue ) )
+          }
+        }
       }
     }
-  }
 
-  private def loadResolveSourceFile( allSourceLocations : Seq[SourceFile.Location], key : String ) : Failable[SourceFile] = loadResolveSourceFile( allSourceLocations, key, allSourceLocations )
+    def substituteImports( input : SourceFile ) : Failable[SourceFile] = {
+
+      // local reference to immutable object, naturally single-threaded
+      var lastModified : Long = input.lastModified
+
+      val ( normalized, tcq ) = TextCommentQuote.parse( input.rawText )
+
+      // we will let this function have side effects, updates lastModified...
+      def replaceMatch( m : Match ) : String = {
+        if ( tcq.quote.containsPoint( m.start ) ) {          // if the word import is in a quote
+          m.group(0)                                         //   replace the match with itself
+        } else if ( tcq.comment.containsPoint( m.start ) ) { // if the word import is in a comment
+          m.group(0)                                         //   replace the match with itself
+        } else {                                             // otherwise, do the replacement
+          m.group(1) match {
+            case GoodImportBodyRegex( imported ) => {
+              val key = StringLiteral.parsePermissiveStringLiteral( imported ).parsed
+              val newAllSourceLocations = input.immediateParent +: allSourceLocations // look first local to this file to resolve recursive imports
+              val fimport = loadResolve( key, newAllSourceLocations )
+              val sourceFile = fimport.get // throw the Exception if resolution failed
+              lastModified = max( lastModified, sourceFile.lastModified )
+
+              val srcLoc = sourceFile.immediateParent
+              val srcBegin = safeComment( s"Importing from '${srcLoc}' with key '${key}'." )
+              val srcEnd = safeComment( s"End importing from '${srcLoc}' with key '${key}'." )
+              srcBegin + sourceFile.rawText.trim + srcEnd
+            }
+            case unkey => throw new Exception( s"""Unsupported import format: '$unkey' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
+          }
+        }
+      }
+
+      val resolved = ImportRegex.replaceAllIn( normalized, replaceMatch _ )
+
+      succeed( SourceFile( input.immediateParent, resolved, lastModified ) )
+    }
+
+    loadResolve( key, allSourceLocations )
+  }
 
   private def loadResolveSourceFile( file : File, includeLocations : Seq[SourceFile.Location] = Nil ) : Failable[SourceFile] = {
     loadResolveSourceFile( SourceFile.Location( file.getParentFile ) +: includeLocations, file.getName )
   }
 
-  private def substituteImports( allSourceLocations : Seq[SourceFile.Location], input : SourceFile ) : Failable[SourceFile] = {
-    var lastModified : Long = input.lastModified
-
-    val ( normalized, tcq ) = TextCommentQuote.parse( input.rawText )
-
-    def replaceMatch( m : Match ) : String = {
-      if ( tcq.quote.containsPoint( m.start ) ) {          // if the word import is in a quote
-        m.group(0)                                         //   replace the match with itself
-      } else if ( tcq.comment.containsPoint( m.start ) ) { // if the word import is in a comment
-        m.group(0)                                         //   replace the match with itself
-      } else {                                             // otherwise, do the replacement
-        m.group(1) match {
-          case GoodImportBodyRegex( imported ) => {
-            val key = StringLiteral.parsePermissiveStringLiteral( imported ).parsed
-            val fimport = loadResolveSourceFile( input.immediateParent +: allSourceLocations, key ) // look first local to this file to resolve recursive imports
-            val sourceFile = fimport.get // throw the Exception if resolution failed
-            lastModified = max( lastModified, sourceFile.lastModified )
-            sourceFile.rawText
-          }
-          case unkey => throw new Exception( s"""Unsupported import format: '$unkey' [sbt-ethereum supports only simple 'import "<filespec>"', without 'from' or 'as' clauses.]""" )
-        }
-      }
-    }
-
-    val resolved = ImportRegex.replaceAllIn( normalized, replaceMatch _ )
-
-    succeed( SourceFile( input.immediateParent, resolved, lastModified ) )
-  }
 
   def goodSolidityFileName( simpleName : String ) : Boolean =  simpleName.endsWith(".sol") && SolidityFileBadFirstChars.indexOf( simpleName.head ) < 0
 
