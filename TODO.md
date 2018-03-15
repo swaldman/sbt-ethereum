@@ -9,6 +9,8 @@
 * reset plugin state on unload
 * aggressively privatify stuff
 
+* Better message when no solidity compiler is installed
+
 * interactive migrate (or restore) of database, default compiler
 * Figure out why mlog output seems no longer to be showing up, on the console
   or in sbt-ethereum.log

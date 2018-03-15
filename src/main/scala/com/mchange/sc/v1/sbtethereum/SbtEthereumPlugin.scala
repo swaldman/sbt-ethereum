@@ -323,9 +323,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
 
+    ethcfgSoliditySource in Compile := (sourceDirectory in Test).value / "solidity",
+
     ethcfgSolidityDestination in Compile := (ethcfgTargetDir in Compile).value / "solidity",
 
+    ethcfgSolidityDestination in Compile := (ethcfgTargetDir in Test).value / "solidity",
+
     ethcfgTargetDir in Compile := (target in Compile).value / "ethereum",
+
+    ethcfgTargetDir in Test := (ethcfgTargetDir in Compile).value / "test",
 
     ethcfgTransactionReceiptPollPeriod := 3.seconds,
 
@@ -526,7 +532,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethFindCacheAddressParserInfo in Test := { (xethFindCacheAddressParserInfoTask( Test ).storeAs( xethFindCacheAddressParserInfo in Test ).triggeredBy( xethTriggerDirtyAliasCache )).value },
 
-    xethFindCacheSeeds in Compile := { (xethFindCacheSeedsTask.storeAs( xethFindCacheSeeds in Compile ).triggeredBy( compileSolidity in Compile )).value },
+    xethFindCacheSeeds in Compile := { (xethFindCacheSeedsTask( Compile ).storeAs( xethFindCacheSeeds in Compile ).triggeredBy( compileSolidity in Compile )).value },
+
+    xethFindCacheSeeds in Test := { (xethFindCacheSeedsTask( Test ).storeAs( xethFindCacheSeeds in Test ).triggeredBy( compileSolidity in Test )).value },
 
     xethFindCacheSessionSolidityCompilerKeys in Compile := { (xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList )).value },
 
@@ -562,11 +570,17 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethLoadAbiFor in Test := { xethLoadAbiForTask( Test ).evaluated },
 
-    xethLoadCurrentCompilationsKeepDups in Compile := { xethLoadCurrentCompilationsKeepDupsTask.value },
+    xethLoadCurrentCompilationsKeepDups in Compile := { xethLoadCurrentCompilationsKeepDupsTask( Compile ).value },
 
-    xethLoadCurrentCompilationsOmitDups in Compile := { xethLoadCurrentCompilationsOmitDupsTask.value },
+    xethLoadCurrentCompilationsKeepDups in Test := { xethLoadCurrentCompilationsKeepDupsTask( Test ).value },
 
-    xethLoadSeeds in Compile := { xethLoadSeedsTask.value },
+    xethLoadCurrentCompilationsOmitDups in Compile := { xethLoadCurrentCompilationsOmitDupsTask( Compile ).value },
+
+    xethLoadCurrentCompilationsOmitDups in Test := { xethLoadCurrentCompilationsOmitDupsTask( Test ).value },
+
+    xethLoadSeeds in Compile := { xethLoadSeedsTask( Compile ).value },
+
+    xethLoadSeeds in Test := { xethLoadSeedsTask( Test ).value },
 
     xethLoadWalletV3 in Compile := { xethLoadWalletV3Task( Compile ).value },
 
@@ -598,7 +612,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethUpdateSessionSolidityCompilers in Compile := { xethUpdateSessionSolidityCompilersTask.value },
 
-    compileSolidity in Compile := { compileSolidityTask.value },
+    compileSolidity in Compile := { compileSolidityTask( Compile ).value },
+
+    compileSolidity in Test := { compileSolidityTask( Test ).value },
 
     commands += ethDebugTestrpcRestartCommand,
 
@@ -609,6 +625,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     autoStartServer := false,
 
     Keys.compile in Compile := { (Keys.compile in Compile).dependsOn(compileSolidity in Compile).value },
+
+    Keys.compile in Test := { (Keys.compile in Test).dependsOn(compileSolidity in Test).value },
 
     onLoad in Global := {
       val origF : State => State = (onLoad in Global).value
@@ -1819,8 +1837,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     AddressParserInfo( blockchainId, jsonRpcUrl, mbAliases, nameServiceAddress, tld, reverseTld )
   }
 
-  def xethFindCacheSeedsTask : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
-    (xethLoadSeeds in Compile).value
+  def xethFindCacheSeedsTask( config : Configuration ) : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
+    (xethLoadSeeds in config).value
   }
 
   def xethFindCacheSessionSolidityCompilerKeysTask : Initialize[Task[immutable.Set[String]]] = Def.task {
@@ -2187,30 +2205,41 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def xethLoadCurrentCompilationsKeepDupsTask : Initialize[Task[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]] = Def.task {
+  def xethLoadCurrentCompilationsKeepDupsTask( config : Configuration ) : Initialize[Task[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]] = Def.task {
     val log = streams.value.log
 
-    val dummy = (compileSolidity in Compile).value // ensure compilation has completed
+    val dummy = (compileSolidity in config).value // ensure compilation has completed
 
-    val dir = (ethcfgSolidityDestination in Compile).value
+    val compileDir = (ethcfgSolidityDestination in Compile).value // we always want compilations from the compile dir
 
-    def addContracts( vec : immutable.Vector[(String,jsonrpc.Compilation.Contract)], name : String ) = {
-      val next = {
-        val file = new File( dir, name )
-        try {
-          borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc.Compilation.Contract]] )
-        } catch {
-          case e : Exception => {
-            log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
-            log.warn( s"  --> cause: ${e.toString}" )
-            Map.empty[String,jsonrpc.Compilation.Contract]
+    val configDir = (ethcfgSolidityDestination in config).value // if distinct, config will usually Test, but we are writing a bit more generally
+
+    def compilationsForDir( dir : File ) : immutable.Iterable[(String,jsonrpc.Compilation.Contract)] = {
+
+      def addContracts( vec : immutable.Vector[(String,jsonrpc.Compilation.Contract)], name : String ) = {
+        val next = {
+          val file = new File( dir, name )
+          try {
+            borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc.Compilation.Contract]] )
+          } catch {
+            case e : Exception => {
+              log.warn( s"Bad or unparseable solidity compilation: ${file.getPath}. Skipping." )
+              log.warn( s"  --> cause: ${e.toString}" )
+              Map.empty[String,jsonrpc.Compilation.Contract]
+            }
           }
         }
+        vec ++ next
       }
-      vec ++ next
+
+      dir.list.filter( _.endsWith(".json") ).foldLeft( immutable.Vector.empty[(String,jsonrpc.Compilation.Contract)] )( addContracts )
     }
 
-    dir.list.filter( _.endsWith(".json") ).foldLeft( immutable.Vector.empty[(String,jsonrpc.Compilation.Contract)] )( addContracts )
+    val compileCompilations = compilationsForDir( compileDir )
+    config match {
+      case Compile => compileCompilations
+      case _       => compileCompilations ++ compilationsForDir( configDir )
+    }
   }
 
   // often small, abstract contracts like "owned" get imported into multiple compilation units
@@ -2222,12 +2251,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   // we also omit any compilations whose EVM code differs but that have identical names, as there is
   // no way to unambigous select one of these compilations to spawn
 
-  def xethLoadCurrentCompilationsOmitDupsTask : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
+  def xethLoadCurrentCompilationsOmitDupsTask( config : Configuration ) : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
     val log = streams.value.log
 
-    val dummy = (compileSolidity in Compile).value // ensure compilation has completed
+    val dummy = (compileSolidity in config).value // ensure compilation has completed
 
-    val dir = (ethcfgSolidityDestination in Compile).value
+    val compileDir = (ethcfgSolidityDestination in Compile).value //
+    val configDir  = (ethcfgSolidityDestination in config).value  // if different, usually Test, but we are writing this more generally
 
     def addBindingKeepShorterSource( addTo : immutable.Map[String,jsonrpc.Compilation.Contract], binding : (String,jsonrpc.Compilation.Contract) ) = {
       val ( name, compilation ) = binding
@@ -2248,10 +2278,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     def addAllKeepShorterSource( addTo : immutable.Map[String,jsonrpc.Compilation.Contract], nextBindings : Iterable[(String,jsonrpc.Compilation.Contract)] ) = {
       nextBindings.foldLeft( addTo )( ( accum, next ) => addBindingKeepShorterSource( accum, next ) )
     }
-    def addContracts( tup : ( immutable.Map[String,jsonrpc.Compilation.Contract], immutable.Set[String] ), name : String ) = {
+    def addContracts( tup : ( immutable.Map[String,jsonrpc.Compilation.Contract], immutable.Set[String] ), file : File ) = {
       val ( addTo, overlaps ) = tup
       val next = {
-        val file = new File( dir, name )
         try {
           borrow( new BufferedInputStream( new FileInputStream( file ), BufferSize ) )( Json.parse( _ ).as[immutable.Map[String,jsonrpc.Compilation.Contract]] )
         } catch {
@@ -2272,7 +2301,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       ( addAllKeepShorterSource( addTo, next ), overlaps ++ realNewOverlaps )
     }
 
-    val ( rawCompilations, duplicateNames ) = dir.list.filter( _.endsWith( ".json" ) ).foldLeft( ( immutable.Map.empty[String,jsonrpc.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
+    val files = {
+      def jsonFiles( dir : File ) = dir.list.filter( _.endsWith( ".json" ) ).map( name => new File( dir, name ) )
+      config match {
+        case Compile => jsonFiles( compileDir )
+        case _       => jsonFiles( compileDir ) ++ jsonFiles( configDir )
+      }
+    }
+
+    val ( rawCompilations, duplicateNames ) = files.foldLeft( ( immutable.Map.empty[String,jsonrpc.Compilation.Contract], immutable.Set.empty[String] ) )( addContracts )
     if ( !duplicateNames.isEmpty ) {
       val dupsStr = duplicateNames.mkString(", ")
       log.warn( s"The project contains mutiple contracts and/or libraries that have identical names but compile to distinct code: $dupsStr" )
@@ -2289,10 +2326,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // when compilation aliases are done, add them here
 
-  def xethLoadSeedsTask : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
+  def xethLoadSeedsTask( config : Configuration ) : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
     val log = streams.value.log
 
-    val currentCompilations          = xethLoadCurrentCompilationsOmitDupsTask.value
+    val currentCompilations          = (xethLoadCurrentCompilationsOmitDups in config ).value
     val currentCompilationsConverter = implicitly[MaybeSpawnable[Tuple2[String,jsonrpc.Compilation.Contract]]]
 
     val mbNamedSeeds = currentCompilations.map { cc =>
@@ -2501,15 +2538,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // unprefixed tasks
 
-  def compileSolidityTask : Initialize[Task[Unit]] = Def.task {
+  def compileSolidityTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
 
     val compiler = (xethFindCurrentSolidityCompiler in Compile).value
 
     val includeStrings = ethcfgIncludeLocations.value
 
-    val solSource      = (ethcfgSoliditySource in Compile).value
-    val solDestination = (ethcfgSolidityDestination in Compile).value
+    val solSource      = (ethcfgSoliditySource in config).value
+    val solDestination = (ethcfgSolidityDestination in config).value
 
     val baseDir = baseDirectory.value
 
