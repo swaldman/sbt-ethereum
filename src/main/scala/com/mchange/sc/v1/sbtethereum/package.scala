@@ -26,6 +26,7 @@ package object sbtethereum {
   final class RepositoryException( msg : String )         extends SbtEthereumException( msg )
   final class CompilationFailedException( msg : String )  extends SbtEthereumException( msg )
   final class SenderNotAvailableException( msg : String ) extends SbtEthereumException( msg )
+  final class NoSuchCompilationException( msg : String )  extends SbtEthereumException( msg )
 
   final class NotCurrentlyUnderAuctionException( name : String, status : ens.NameStatus ) extends SbtEthereumException( s"ENS name '${name}' is not currently under auction. Its status is '${status}'." )
 

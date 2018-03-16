@@ -1328,7 +1328,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       // it may be out of date if the source for the prior compilation has changed
       // to be safe, we have to reload the compilation, rather than use the one found
       // by the parser
-      val currentCompilationsMap = (xethLoadCurrentCompilationsOmitDups in Compile).value
+      val currentCompilationsMap = (xethLoadCurrentCompilationsOmitDups in config).value
       val updateChangedDb = (xethUpdateContractDatabase in config).value
 
       def anySourceFreshSeed( deploymentAlias : String ) : MaybeSpawnable.Seed = {
@@ -1342,7 +1342,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         // TODO: lookup archived compilation in case no current compilation is found
 
-        mbCurrentCompilationSeed.get // asserts that something has been found
+        mbCurrentCompilationSeed match {
+          case Some( seed ) => seed
+          case None         => throw new NoSuchCompilationException( s"""Could not find compilation '${deploymentAlias}' among available compilations [${currentCompilationsMap.keys.mkString(", ")}]""" )
+        }
       }
 
       val mbAutoNameInputs = (ethcfgAutoSpawnContracts in config).?.value
@@ -1904,9 +1907,10 @@ object SbtEthereumPlugin extends AutoPlugin {
                     }
                     case None => {
                       if ( config == Test ) {
-                        val defaultTestAddress = stub.Sender.TestSender.address
+                        val defaultTestAddress = testing.Default.Faucet.address
                         ifPrint (
-                          s"""|The current effective sender is the default testing address, '0x${defaultTestAddress.hex}' (with well-known private key '0x${stub.Sender.TestSigner.hex}')."
+                          s"""|The current effective sender is the default testing address, '0x${defaultTestAddress.hex}' 
+                              |(with widely known private key '0x${testing.Default.Faucet.pvt.hex}')."
                               |It has been set because you are in the Test configuration, and no address has been defined for this configuration.
                               | + No sender override has been set.
                               | + Build setting 'ethcfgSender has not been defined. 
