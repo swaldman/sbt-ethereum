@@ -1903,17 +1903,31 @@ object SbtEthereumPlugin extends AutoPlugin {
                       address
                     }
                     case None => {
-                      val msg ={
-                        s"""|No effective sender is defined. (blockchain '${blockchainId}', configuration '${config}')
-                            |Cannot find any of...
-                            | + a sender override
-                            | + a value for build setting 'ethcfgSender' 
-                            | + an 'eth.sender' System property
-                            | + an 'ETH_SENDER' environment variable
-                            | + a '${DefaultSenderAlias}' address alias""".stripMargin
+                      if ( config == Test ) {
+                        val defaultTestAddress = stub.Sender.TestSender.address
+                        ifPrint (
+                          s"""|The current effective sender is the default testing address, '0x${defaultTestAddress.hex}' (with well-known private key '0x${stub.Sender.TestSigner.hex}')."
+                              |It has been set because you are in the Test configuration, and no address has been defined for this configuration.
+                              | + No sender override has been set.
+                              | + Build setting 'ethcfgSender has not been defined. 
+                              | + Neither the System property 'eth.sender' nor the environment variable 'ETH_SENDER' are defined.
+                              | + No '${DefaultSenderAlias}' address alias has been defined for blockchain '${blockchainId}'.""".stripMargin
+                        )
+                        defaultTestAddress
                       }
-                      ifPrint( msg )
-                      throw new SenderNotAvailableException( msg )
+                      else {
+                        val msg ={
+                          s"""|No effective sender is defined. (blockchain '${blockchainId}', configuration '${config}')
+                              |Cannot find any of...
+                              | + a sender override
+                              | + a value for build setting 'ethcfgSender' 
+                              | + an 'eth.sender' System property
+                              | + an 'ETH_SENDER' environment variable
+                              | + a '${DefaultSenderAlias}' address alias defined for blockchain '${blockchainId}'""".stripMargin
+                        }
+                        ifPrint( msg )
+                        throw new SenderNotAvailableException( msg )
+                      }
                     }
                   }
                 }
