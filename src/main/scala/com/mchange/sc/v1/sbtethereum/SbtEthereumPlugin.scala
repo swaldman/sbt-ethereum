@@ -1438,7 +1438,8 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
         val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
-          ( deploymentAlias, out )
+
+        ( deploymentAlias, out )
       }
       quartets.map( (doSpawn _).tupled )
     }
@@ -2170,7 +2171,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val transactionLogger = findTransactionLoggerTask( config ).value
 
-    val approver = transactionApprover( is, currencyCode )
+    val approver = transactionApprover( is, currencyCode, config )
 
     Invoker.Context.fromUrl(
       jsonRpcUrl = jsonRpcUrl,
@@ -2725,7 +2726,19 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def transactionApprover( is : sbt.InteractionService, currencyCode : String ) : EthTransaction.Signed => Future[Unit] = txn => Future {
+  private def transactionApprover( is : sbt.InteractionService, currencyCode : String, config : Configuration )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
+    config match {
+      case Test => testTransactionApprover( is, currencyCode )( ec )
+      case _    => normalTransactionApprover( is, currencyCode )( ec )
+    }
+  }
+
+  // when using the open test address in Test config, don't bother getting user approval
+  private def testTransactionApprover( is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = txn => {
+    if (txn.sender == testing.Default.Faucet.address) Future.successful( () ) else normalTransactionApprover( is, currencyCode )( ec )( txn )
+  }
+
+  private def normalTransactionApprover( is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = txn => Future {
 
     val gasPrice   = txn.gasPrice.widen
     val gasLimit   = txn.gasLimit.widen
@@ -2781,7 +2794,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     if ( check ) () else Invoker.throwDisapproved( txn )
-  }
+  }( ec )
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
 
