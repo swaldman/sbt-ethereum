@@ -51,7 +51,7 @@ object Schema_h2 {
         stmt.executeUpdate( Table.EnsBidStore.CreateIndex )
       }
       Table.Metadata.ensureSchemaVersion( conn )
-      Table.AddressAliases.attemptInsertTestrpcFaucetDefaultSender( conn )
+      true
     }
   }
 
@@ -774,15 +774,6 @@ object Schema_h2 {
           ps.setString( 1, blockchainId )
           ps.setString( 2, alias )
           ps.executeUpdate() == 1
-        }
-      }
-      def attemptInsertTestrpcFaucetDefaultSender( conn : Connection ) : Boolean = {
-        selectByAlias( conn, TestrpcIdentifier, DefaultSenderAlias ) match {
-          case None => {
-            insert( conn, TestrpcIdentifier, DefaultSenderAlias, testing.Default.Faucet.address )
-            true
-          }
-          case _ => false
         }
       }
     }

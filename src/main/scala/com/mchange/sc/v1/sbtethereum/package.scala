@@ -39,7 +39,7 @@ package object sbtethereum {
   val One256  = Unsigned256( 1 )
 
   val MainnetIdentifier = "mainnet"
-  val TestrpcIdentifier = "testrpc"
+  val GanacheIdentifier = "ganache"
 
   val DefaultSenderAlias = "defaultSender"
 

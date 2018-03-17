@@ -52,7 +52,7 @@ import com.mchange.sc.v2.jsonrpc.Exchanger.Factory.Default
 
 // global implicits
 import scala.concurrent.ExecutionContext.Implicits.global
-import com.mchange.sc.v2.concurrent.Poller.Default
+import com.mchange.sc.v2.concurrent.Poller
 
 object SbtEthereumPlugin extends AutoPlugin {
 
@@ -81,8 +81,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   // MT: protected by TestSenderOverride's lock
   private val TestSenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
 
-  // MT: protected by LocalTestrpc's lock
-  private val LocalTestrpc = new AtomicReference[Option[Process]]( None )
+  // MT: protected by LocalGanache's lock
+  private val LocalGanache = new AtomicReference[Option[Process]]( None )
 
   private val BufferSize = 4096
 
@@ -116,15 +116,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // if we've started a child test process,
   // kill it on exit
-  val TestrpcDestroyer: Thread = new Thread {
+  val GanacheDestroyer: Thread = new Thread {
     override def run() : Unit = {
-      LocalTestrpc synchronized {
-        LocalTestrpc.get.foreach ( _.destroy )
+      LocalGanache synchronized {
+        LocalGanache.get.foreach ( _.destroy )
       }
     }
   }
 
-  java.lang.Runtime.getRuntime.addShutdownHook( TestrpcDestroyer )
+  java.lang.Runtime.getRuntime.addShutdownHook( GanacheDestroyer )
 
 
   object autoImport {
@@ -198,8 +198,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractCompilationsList    = taskKey [Unit] ("Lists summary information about compilations known in the repository")
     val ethContractSpawn               = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]](""""Spawns" (deploys) the specified named contract, or contracts via 'ethcfgAutoSpawnContracts'""")
 
-    val ethDebugTestrpcStart = taskKey[Unit] ("Starts a local testrpc environment (if the command 'testrpc' is in your PATH)")
-    val ethDebugTestrpcStop  = taskKey[Unit] ("Stops any local testrpc environment that may have been started previously")
+    val ethDebugGanacheStart = taskKey[Unit] (s"Starts a local ganache environment (if the command '${testing.Default.Ganache.Executable}' is in your PATH)")
+    val ethDebugGanacheStop  = taskKey[Unit] ("Stops any local ganache environment that may have been started previously")
 
     val ethGasLimitOverrideSet   = inputKey[Unit] ("Defines a value which overrides the usual automatic marked-up estimation of gas required for a transaction.")
     val ethGasLimitOverrideDrop  = taskKey [Unit] ("Removes any previously set gas override, reverting to the usual automatic marked-up estimation of gas required for a transaction.")
@@ -263,6 +263,16 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   import autoImport._
 
+  // commands
+
+  val ethDebugGanacheRestartCommand = Command.command( "ethDebugGanacheRestart" ) { state =>
+    "ethDebugGanacheStop" :: "ethDebugGanacheStart" :: state
+  }
+
+  val ethDebugGanacheTestCommand = Command.command( "ethDebugGanacheTest" ) { state =>
+    "ethDebugGanacheStart" :: "Test/ethContractSpawn" :: "test" :: "ethDebugGanacheStop" :: state
+  }
+
   // definitions
 
   /*
@@ -293,7 +303,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgBlockchainId in Compile := MainnetIdentifier,
 
-    ethcfgBlockchainId in Test := TestrpcIdentifier,
+    ethcfgBlockchainId in Test := GanacheIdentifier,
 
     ethcfgEntropySource := new java.security.SecureRandom,
 
@@ -339,7 +349,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // xeth settings
 
-    xethcfgEphemeralBlockchains := immutable.Seq( TestrpcIdentifier ),
+    xethcfgEphemeralBlockchains := immutable.Seq( GanacheIdentifier ),
 
     xethcfgNamedAbiSource in Compile := (sourceDirectory in Compile).value / "ethabi",
 
@@ -459,9 +469,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractSpawn in Test := { ethContractSpawnTask( Test ).evaluated },
 
-    ethDebugTestrpcStart in Test := { ethDebugTestrpcStartTask.value },
+    ethDebugGanacheStart in Test := { ethDebugGanacheStartTask.value },
 
-    ethDebugTestrpcStop in Test := { ethDebugTestrpcStopTask.value },
+    ethDebugGanacheStop in Test := { ethDebugGanacheStopTask.value },
 
     // we don't scope the gas override tasks for now
     // since any gas override gets used in tests as well as other contexts
@@ -616,7 +626,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     compileSolidity in Test := { compileSolidityTask( Test ).value },
 
-    commands += ethDebugTestrpcRestartCommand,
+    commands ++= Seq( ethDebugGanacheRestartCommand, ethDebugGanacheTestCommand ),
 
     libraryDependencies ++= {
       ethcfgScalaStubsPackage.?.value.fold( Nil : Seq[ModuleID] )( _ => Consuela.ModuleID :: Nil )
@@ -672,12 +682,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
   )
-
-  // commands
-
-  val ethDebugTestrpcRestartCommand = Command.command( "ethDebugTestrpcRestart" ) { state =>
-    "ethDebugTestrpcStop" :: "ethDebugTestrpcStart" :: state
-  }
 
   // private, internal task definitions
 
@@ -1445,48 +1449,57 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def ethDebugTestrpcStartTask : Initialize[Task[Unit]] = Def.task {
+  def ethDebugGanacheStartTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
 
-    def newTestrpcProcess = {
+    def newGanacheProcess = {
       try {
         val plogger = ProcessLogger(
-          line => log.info( s"testrpc: ${line}" ),
-          line => log.warn( s"testrpc: ${line}" )
+          line => log.info( s"ganache: ${line}" ),
+          line => log.warn( s"ganache: ${line}" )
         )
-        log.info(s"Executing command '${testing.Default.TestrpcCommand}'")
-        Process( testing.Default.TestrpcCommandParsed ).run( plogger )
+        log.info(s"Executing command '${testing.Default.Ganache.Command}'")
+        Process( testing.Default.Ganache.CommandParsed ).run( plogger )
       } catch {
         case t : Throwable => {
-          log.error(s"Failed to start a local testrpc process with command '${testing.Default.TestrpcCommand}'.")
+          log.error(s"Failed to start a local ganache process with command '${testing.Default.Ganache.Command}'.")
           throw t
         }
       }
     }
 
-    LocalTestrpc synchronized {
-      LocalTestrpc.get match {
-        case Some( process ) => log.warn("A local testrpc environment is already running. To restart it, please try 'ethDebugTestrpcRestart'.")
+    LocalGanache synchronized {
+      LocalGanache.get match {
+        case Some( process ) => log.warn("A local ganache environment is already running. To restart it, please try 'ethDebugGanacheRestart'.")
         case _               => {
-          LocalTestrpc.set( Some( newTestrpcProcess ) )
-          log.info("A local testrpc process has been started.")
+          LocalGanache.set( Some( newGanacheProcess ) )
+          log.info("A local ganache process has been started.")
         }
       }
     }
+    log.info("Awaiting availability of testing jsonrpc interface.")
+
+    val cfactory = implicitly[jsonrpc.Client.Factory]
+    val poller = implicitly[Poller]
+    borrow( cfactory( testing.Default.EthJsonRpc.Url ) ) { client =>
+      val task = Poller.Task( "await-ganache-jsonrpc", 1.seconds, () => Await.result( client.eth.blockNumber().map( Option.apply _ ) recover { case _ => None }, 1.seconds ) )
+      Await.result( poller.addTask( task ), 5.seconds )
+    }
+    log.info("Testing jsonrpc interface found.")
   }
 
-  def ethDebugTestrpcStopTask : Initialize[Task[Unit]] = Def.task {
+  def ethDebugGanacheStopTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
 
-    LocalTestrpc synchronized {
-      LocalTestrpc.get match {
+    LocalGanache synchronized {
+      LocalGanache.get match {
         case Some( process ) => {
-          LocalTestrpc.set( None )
+          LocalGanache.set( None )
           process.destroy()
-          log.info("A local testrpc environment was running but has been stopped.")
+          log.info("A local ganache environment was running but has been stopped.")
         }
         case _                                  => {
-          log.warn("No local testrpc process is running.")
+          log.warn("No local ganache process is running.")
         }
       }
     }
