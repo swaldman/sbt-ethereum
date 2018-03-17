@@ -11,10 +11,10 @@ import com.mchange.sc.v1.consuela.ethereum.EthPrivateKey
 object TestingResourcesGenerator {
   private val ethereumPackage = "com.mchange.sc.v1.consuela.ethereum"
 
-  def generateTestingResources( objectName : String, testEthJsonRpcUrl : String, faucetKey : EthPrivateKey, fullyQualifiedPackageName : String ) : String = {
+  def generateTestingResources( objectName : String, testEthJsonRpcUrl : String, fullyQualifiedPackageName : String ) : String = {
     val sw = new StringWriter()
 
-    borrow( new IndentedWriter( sw ) ) { iw =>
+    borrow( new IndentedWriter( sw, "  " ) ) { iw =>
       iw.println( s"package $fullyQualifiedPackageName" )
       iw.println()
 
@@ -27,9 +27,9 @@ object TestingResourcesGenerator {
       iw.upIndent()
 
       iw.println( s"""val EthJsonRpcUrl = "$testEthJsonRpcUrl"""" )
-      iw.println( s"""val Faucet = EthPrivateKey( "0x${ faucetKey.hex }" )""" )
-      iw.println()
-      iw.println( s"""val DefaultSender = stub.Sender.Basic( Faucet )""" )
+      iw.println(  """val TestSender : IndexedSeq[stub.Sender] = stub.Test.Sender""" )
+      iw.println( s"""val DefaultSender = TestSender(0)""" )
+      iw.println(  """val Faucet = DefaultSender""" )
       iw.println()
 
       iw.println( "val EntropySource = new java.security.SecureRandom()" )

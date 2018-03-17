@@ -27,9 +27,12 @@
 * ensAddressLookup, ensAddressSet
 * ensOwnerSet and Deed stuff
 * ethToken*
+
 * add getEvents [backed by RPC getLogs(...)] methods to stub events
 * Make stub compilation incremental
+* Move stub.ScalaParameterHelper somewhere more sensible
 * Uncloseable wrappers for default Poller (done!), Exchanger.Factory, jsonrpc.Client.Factory
+
 * built-in solcJ-based eth-netcompile
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup!
 * Support for compiling and deploying solidity libraries and linking contracts that reference them

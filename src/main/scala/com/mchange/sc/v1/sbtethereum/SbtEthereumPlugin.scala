@@ -1921,10 +1921,10 @@ object SbtEthereumPlugin extends AutoPlugin {
                     }
                     case None => {
                       if ( config == Test ) {
-                        val defaultTestAddress = testing.Default.Faucet.address
+                        val defaultTestAddress = testing.Default.Faucet.Address
                         ifPrint (
                           s"""|The current effective sender is the default testing address, '0x${defaultTestAddress.hex}' 
-                              |(with widely known private key '0x${testing.Default.Faucet.pvt.hex}')."
+                              |(with widely known private key '0x${testing.Default.Faucet.PrivateKey.hex}')."
                               |It has been set because you are in the Test configuration, and no address has been defined for this configuration.
                               | + No sender override has been set.
                               | + Build setting 'ethcfgSender has not been defined. 
@@ -2026,8 +2026,6 @@ object SbtEthereumPlugin extends AutoPlugin {
    * We get it all (so we can reuse a lot of shared task logic, although maybe we
    * should factor that logic out someday so that we can have separate tasks).
    *
-   * TODO: Break faucet private key into a setting. Currently hardcoded.
-   *
    */
   def xethGenScalaStubsAndTestingResourcesTask( config : Configuration ) : Initialize[Task[immutable.Seq[File]]] = Def.task {
     val log = streams.value.log
@@ -2111,7 +2109,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                   log.warn(  "The testing resources object '${testingResourcesObjectName}' will not be generated." )
                   immutable.Seq.empty[File]
                 } else {
-                  val gensrc = testing.TestingResourcesGenerator.generateTestingResources( testingResourcesObjectName, testingEthJsonRpcUrl, testing.Default.Faucet.pvt, stubPackage )
+                  val gensrc = testing.TestingResourcesGenerator.generateTestingResources( testingResourcesObjectName, testingEthJsonRpcUrl, stubPackage )
                   val testingResourcesFile = new File( stubsDir, s"${testingResourcesObjectName}.scala" )
                   Files.write( testingResourcesFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
                   immutable.Seq( testingResourcesFile )
@@ -2715,8 +2713,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     // special case for testing...
-    if ( address == testing.Default.Faucet.address ) {
-      testing.Default.Faucet.pvt
+    if ( address == testing.Default.Faucet.Address ) {
+      testing.Default.Faucet.PrivateKey
     } else {
       CurrentAddress.synchronized {
         goodCached.getOrElse( updateCached )
@@ -2748,7 +2746,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // when using the open test address in Test config, don't bother getting user approval
   private def testTransactionApprover( is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = txn => {
-    if (txn.sender == testing.Default.Faucet.address) Future.successful( () ) else normalTransactionApprover( is, currencyCode )( ec )( txn )
+    if (txn.sender == testing.Default.Faucet.Address) Future.successful( () ) else normalTransactionApprover( is, currencyCode )( ec )( txn )
   }
 
   private def normalTransactionApprover( is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = txn => Future {
