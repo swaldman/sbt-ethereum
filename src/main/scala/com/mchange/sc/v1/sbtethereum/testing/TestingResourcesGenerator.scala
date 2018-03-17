@@ -26,10 +26,10 @@ object TestingResourcesGenerator {
       iw println s"object $objectName {"
       iw.upIndent()
 
-      iw.println( s"""val EthJsonRpcUrl = "$testEthJsonRpcUrl"""" )
-      iw.println(  """val TestSender : IndexedSeq[stub.Sender] = stub.Test.Sender""" )
-      iw.println( s"""val DefaultSender = TestSender(0)""" )
-      iw.println(  """val Faucet = DefaultSender""" )
+      iw.println( s"""val EthJsonRpcUrl : String                  = "$testEthJsonRpcUrl"""" )
+      iw.println(  """val TestSender    : IndexedSeq[stub.Sender] = stub.Test.Sender""" )
+      iw.println( s"""val DefaultSender : stub.Sender             = TestSender(0)""" )
+      iw.println(  """val Faucet        : stub.Sender             = DefaultSender""" )
       iw.println()
 
       iw.println( "val EntropySource = new java.security.SecureRandom()" )
@@ -48,7 +48,7 @@ object TestingResourcesGenerator {
       iw.println( "trait AutoSender extends Context {" )
       iw.upIndent()
 
-      iw.println( s"implicit val DefaultSender = ${objectName}.DefaultSender" )
+      iw.println( s"implicit val DefaultSender : stub.Sender = ${objectName}.DefaultSender" )
 
       iw.downIndent()
       iw.println( "}" )
