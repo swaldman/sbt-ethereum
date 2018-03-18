@@ -270,7 +270,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   val ethDebugGanacheTestCommand = Command.command( "ethDebugGanacheTest" ) { state =>
-    "Test/compile" :: "ethDebugGanacheStart" :: "Test/ethContractSpawn" :: "test" :: "ethDebugGanacheStop" :: state
+    "Test/compile" :: "ethDebugGanacheStop" :: "ethDebugGanacheStart" :: "Test/ethContractSpawn" :: "test" :: "ethDebugGanacheStop" :: state
   }
 
   // definitions
