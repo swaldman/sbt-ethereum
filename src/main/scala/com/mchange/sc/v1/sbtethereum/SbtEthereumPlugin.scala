@@ -240,7 +240,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethInvokerContext = taskKey[Invoker.Context]("Puts together gas and jsonrpc configuration to generate a context for transaction invocation.")
     val xethLoadAbiFor = inputKey[Abi]("Finds the ABI for a contract address, if known")
     val xethLoadCurrentCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
-    val xethLoadCurrentCompilationsOmitDups = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
+    val xethLoadCurrentCompilationsOmitDupsCumulative = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
     val xethLoadSeeds = taskKey[immutable.Map[String,MaybeSpawnable.Seed]]("""Loads compilations available for deployment (or "spawning"), which may include both current and archived compilations""")
     val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
@@ -352,6 +352,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethcfgEphemeralBlockchains := immutable.Seq( GanacheIdentifier ),
 
     xethcfgNamedAbiSource in Compile := (sourceDirectory in Compile).value / "ethabi",
+
+    xethcfgNamedAbiSource in Test := (sourceDirectory in Test).value / "ethabi",
 
     xethcfgTestingResourcesObjectName in Test := "Testing",
 
@@ -584,9 +586,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethLoadCurrentCompilationsKeepDups in Test := { xethLoadCurrentCompilationsKeepDupsTask( Test ).value },
 
-    xethLoadCurrentCompilationsOmitDups in Compile := { xethLoadCurrentCompilationsOmitDupsTask( Compile ).value },
+    xethLoadCurrentCompilationsOmitDupsCumulative in Compile := { xethLoadCurrentCompilationsOmitDupsTask( cumulative = true )( Compile ).value },
 
-    xethLoadCurrentCompilationsOmitDups in Test := { xethLoadCurrentCompilationsOmitDupsTask( Test ).value },
+    xethLoadCurrentCompilationsOmitDupsCumulative in Test := { xethLoadCurrentCompilationsOmitDupsTask( cumulative = true )( Test ).value },
 
     xethLoadSeeds in Compile := { xethLoadSeedsTask( Compile ).value },
 
@@ -600,7 +602,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethLoadWalletV3For in Test := { xethLoadWalletV3ForTask( Test ).evaluated },
 
-    xethNamedAbis in Compile := { xethNamedAbisTask.value },
+    xethNamedAbis in Compile := { xethNamedAbisTask( Compile ).value },
+
+    xethNamedAbis in Test := { xethNamedAbisTask( Test ).value },
 
     xethNextNonce in Compile := { xethNextNonceTask( Compile ).value },
 
@@ -1332,7 +1336,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       // it may be out of date if the source for the prior compilation has changed
       // to be safe, we have to reload the compilation, rather than use the one found
       // by the parser
-      val currentCompilationsMap = (xethLoadCurrentCompilationsOmitDups in config).value
+      val currentCompilationsMap = (xethLoadCurrentCompilationsOmitDupsCumulative in config).value
       val updateChangedDb = (xethUpdateContractDatabase in config).value
 
       def anySourceFreshSeed( deploymentAlias : String ) : MaybeSpawnable.Seed = {
@@ -2032,8 +2036,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // Used for both Compile and Test
     val mbStubPackage = ethcfgScalaStubsPackage.?.value
-    val currentCompilations = (xethLoadCurrentCompilationsOmitDups in Compile).value
-    val namedAbis = (xethNamedAbis in Compile).value
+    val currentCompilations = xethLoadCurrentCompilationsOmitDupsTask( cumulative = false )( config ).value
+    val namedAbis = (xethNamedAbis in config).value
     val dependencies = libraryDependencies.value
 
     // Used only for Test
@@ -2089,32 +2093,36 @@ object SbtEthereumPlugin extends AutoPlugin {
               val stubsDirFilePath = packages.mkString( File.separator )
               val stubsDir = new File( scalaStubsTarget, stubsDirFilePath )
               stubsDir.mkdirs()
-              if ( config != Test ) {
-                val mbFileSets = allMbAbis map { case ( className, mbAbi ) =>
-                  mbAbi map { abi =>
-                    stub.Generator.generateStubClasses( className, abi, stubPackage ) map { generated =>
-                      val srcFile = new File( stubsDir, s"${generated.className}.scala" )
-                      srcFile.replaceContents( generated.sourceCode, scala.io.Codec.UTF8 )
-                      srcFile
-                    }
-                  } orElse {
-                    log.warn( s"No ABI definition found for contract '${className}'. Skipping Scala stub generation." )
-                    None
+              val mbFileSets = allMbAbis map { case ( className, mbAbi ) =>
+                mbAbi map { abi =>
+                  stub.Generator.generateStubClasses( className, abi, stubPackage ) map { generated =>
+                    val srcFile = new File( stubsDir, s"${generated.className}.scala" )
+                    srcFile.replaceContents( generated.sourceCode, scala.io.Codec.UTF8 )
+                    srcFile
                   }
-                }
-                mbFileSets.filter( _.nonEmpty ).map( _.get ).foldLeft( Vector.empty[File])( _ ++ _ )
-              } else {
-                if ( allMbAbis.contains( testingResourcesObjectName ) ) { // TODO: A case insensitive check
-                  log.warn( s"The name of the requested testing resources object '${testingResourcesObjectName}' conflicts with the name of a contract." )
-                  log.warn(  "The testing resources object '${testingResourcesObjectName}' will not be generated." )
-                  immutable.Seq.empty[File]
-                } else {
-                  val gensrc = testing.TestingResourcesGenerator.generateTestingResources( testingResourcesObjectName, testingEthJsonRpcUrl, stubPackage )
-                  val testingResourcesFile = new File( stubsDir, s"${testingResourcesObjectName}.scala" )
-                  Files.write( testingResourcesFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
-                  immutable.Seq( testingResourcesFile )
+                } orElse {
+                  log.warn( s"No ABI definition found for contract '${className}'. Skipping Scala stub generation." )
+                  None
                 }
               }
+              val stubFiles = mbFileSets.filter( _.nonEmpty ).map( _.get ).foldLeft( Vector.empty[File])( _ ++ _ ).toVector
+              val testingResourceFiles : immutable.Seq[File] = {
+                if ( config == Test ) {
+                  if ( allMbAbis.contains( testingResourcesObjectName ) ) { // TODO: A case insensitive check
+                    log.warn( s"The name of the requested testing resources object '${testingResourcesObjectName}' conflicts with the name of a contract." )
+                    log.warn(  "The testing resources object '${testingResourcesObjectName}' will not be generated." )
+                    immutable.Seq.empty[File]
+                  } else {
+                    val gensrc = testing.TestingResourcesGenerator.generateTestingResources( testingResourcesObjectName, testingEthJsonRpcUrl, stubPackage )
+                    val testingResourcesFile = new File( stubsDir, s"${testingResourcesObjectName}.scala" )
+                    Files.write( testingResourcesFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
+                    immutable.Seq( testingResourcesFile )
+                  }
+                } else {
+                  immutable.Seq.empty[File]
+                }
+              }
+              stubFiles ++ testingResourceFiles
             }
           }
         }
@@ -2281,7 +2289,9 @@ object SbtEthereumPlugin extends AutoPlugin {
   // we also omit any compilations whose EVM code differs but that have identical names, as there is
   // no way to unambigous select one of these compilations to spawn
 
-  def xethLoadCurrentCompilationsOmitDupsTask( config : Configuration ) : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
+  def xethLoadCurrentCompilationsOmitDupsTask( cumulative : Boolean )( config : Configuration ) : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
+    require( config == Compile || config == Test, "For now we expect to load compilations for deployment selection or stub generation only in Compile and Test configurations." )
+
     val log = streams.value.log
 
     val dummy = (compileSolidity in config).value // ensure compilation has completed
@@ -2334,8 +2344,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val files = {
       def jsonFiles( dir : File ) = dir.list.filter( _.endsWith( ".json" ) ).map( name => new File( dir, name ) )
       config match {
-        case Compile => jsonFiles( compileDir )
-        case _       => jsonFiles( compileDir ) ++ jsonFiles( configDir )
+        case Compile         => jsonFiles( compileDir )
+        case _ if cumulative => jsonFiles( compileDir ) ++ jsonFiles( configDir )
+        case _               => jsonFiles( configDir  )
       }
     }
 
@@ -2359,7 +2370,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   def xethLoadSeedsTask( config : Configuration ) : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
     val log = streams.value.log
 
-    val currentCompilations          = (xethLoadCurrentCompilationsOmitDups in config ).value
+    val currentCompilations          = (xethLoadCurrentCompilationsOmitDupsCumulative in config ).value
     val currentCompilationsConverter = implicitly[MaybeSpawnable[Tuple2[String,jsonrpc.Compilation.Contract]]]
 
     val mbNamedSeeds = currentCompilations.map { cc =>
@@ -2406,9 +2417,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def xethNamedAbisTask : Initialize[Task[immutable.Map[String,Abi]]] = Def.task {
+  def xethNamedAbisTask( config : Configuration ) : Initialize[Task[immutable.Map[String,Abi]]] = Def.task {
     val log    = streams.value.log
-    val srcDir = (xethcfgNamedAbiSource in Compile).value
+    val srcDir = (xethcfgNamedAbiSource in config).value
 
     def empty = immutable.Map.empty[String,Abi]
 
