@@ -175,7 +175,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensAuctionBidPlace  = inputKey[Unit]              ("Places a bid in an currently running auction.")
     val ensAuctionBidReveal = inputKey[Unit]              ("Reveals a bid in an currently running auction.")
     val ensNameStatus       = inputKey[ens.NameStatus]    ("Prints the current status of a given name.")
-    val ensOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the address has an owner.")
+    val ensOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the name has an owner.")
+    val ensOwnerSet         = inputKey[Unit]              ("Sets the owner of a given name to an address.")
 
     val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
     val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
@@ -398,6 +399,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensOwnerLookup in Compile := { ensOwnerLookupTask( Compile ).evaluated },
 
     ensOwnerLookup in Test := { ensOwnerLookupTask( Test ).evaluated },
+
+    ensOwnerSet in Compile := { ensOwnerSetTask( Compile ).evaluated },
+
+    ensOwnerSet in Test := { ensOwnerSetTask( Test ).evaluated },
 
     ethAddressAliasDrop in Compile := { ethAddressAliasDropTask( Compile ).evaluated },
 
@@ -875,6 +880,19 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     mbOwner
+  }
+
+  def ensOwnerSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheAddressParserInfo)( genEnsNameOwnerAddressParser )
+
+    Def.inputTask {
+      val privateKey   = findPrivateKeyTask( config ).value
+      val blockchainId = (config / ethcfgBlockchainId).value
+      val ensClient    = ( config / xensClient).value
+      val ( ensName, ownerAddress ) = parser.parsed
+      ensClient.setOwner( privateKey, ensName, ownerAddress )
+      println( s"The name '${ensName}' is now owned by '${hexString( ownerAddress )}'. (However, this has not affected the Deed owner associated with the name!)" )
+    }
   }
 
   def ensNameStatusTask( config : Configuration ) : Initialize[InputTask[ens.NameStatus]] = Def.inputTask {
