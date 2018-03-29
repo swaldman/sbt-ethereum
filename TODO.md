@@ -5,6 +5,15 @@
   - ethContractSpawn
 
 * Let ethAddressAliasSet accept any form of address, not just raw hex
+
+* Redo failable
+
+* Figure out why mlog output seems no longer to be showing up, on the console
+  or in sbt-ethereum.log
+
+* Let compilations store the name of the project from which they were compiled
+
+* Make stub compilation incremental
     
 * reset plugin state on unload
 * aggressively privatify stuff
@@ -12,8 +21,7 @@
 * Better message when no solidity compiler is installed
 
 * interactive migrate (or restore) of database, default compiler
-* Figure out why mlog output seems no longer to be showing up, on the console
-  or in sbt-ethereum.log
+
 * ethTransactionExportInvoke / ethTransactionExportSend  
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
@@ -26,10 +34,9 @@
 * Excise Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
 * ensAddressLookup, ensAddressSet
 * ensOwnerSet and Deed stuff
-* ethToken*
+* erc20*
 
 * add getEvents [backed by RPC getLogs(...)] methods to stub events
-* Make stub compilation incremental
 * Move stub.ScalaParameterHelper somewhere more sensible
 * Uncloseable wrappers for default Poller (done!), Exchanger.Factory, jsonrpc.Client.Factory
 
@@ -45,4 +52,4 @@
 * add type resriction to log / event Topic Seq, to limit length to four elements
 * Integrate keystore into database? (?)
 * Generate Java stubs
-* Redo failable
+
