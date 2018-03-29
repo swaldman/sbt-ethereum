@@ -249,6 +249,14 @@ object Parsers {
     }
   }
 
+  private [sbtethereum] def genEnsNameAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[(String,EthAddress)] = {
+    mbApi.map { api =>
+      (ensNameParser( api.nameServiceTld ) ~ (token(Space.+) ~> createAddressParser( "<address-hex>", mbApi )))
+    } getOrElse {
+      failure( "Failed to retrieve AddressParserInfo." )
+    }
+  }
+
   private [sbtethereum] def genGenericAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[EthAddress] = {
     createAddressParser( "<address-hex>", mbApi )
   }

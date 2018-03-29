@@ -22,6 +22,14 @@
 
 * interactive migrate (or restore) of database, default compiler
 
+* Setting for turning optimization on / off in compilation
+
+* enable libraries to deploy as well as interact with already-deployed contracts
+  * embed compilations as a resource in jar files
+  * add method in jsonrpc.Invoker for contract creation
+
+* make price feeds sensitive to blockchainId
+
 * ethTransactionExportInvoke / ethTransactionExportSend  
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
@@ -52,4 +60,4 @@
 * add type resriction to log / event Topic Seq, to limit length to four elements
 * Integrate keystore into database? (?)
 * Generate Java stubs
-
+* More consistency about when tasks use println(...) vs log.info(...)

@@ -133,6 +133,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val enscfgNameServiceAddress           = settingKey[EthAddress]   ("The address of the ENS name service smart contract")
     val enscfgNameServiceTld               = settingKey[String]       ("The top-level domain associated with the ENS name service smart contract at 'enscfgNameServiceAddress'.")
     val enscfgNameServiceReverseTld        = settingKey[String]       ("The top-level domain under which reverse lookups are supported in the ENS name service smart contract at 'enscfgNameServiceAddress'.")
+    val enscfgNameServicePublicResolver    = settingKey[EthAddress]   ("The address of a publically accessible resolver (if any is available) that can be used to map names to addresses.")
 
     val ethcfgAutoSpawnContracts           = settingKey[Seq[String]]  ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
     val ethcfgBaseCurrencyCode             = settingKey[String]       ("Currency code for currency in which prices of ETH and other tokens should be displayed.")
@@ -169,6 +170,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // tasks
 
+    val ensAddressLookup    = inputKey[Option[EthAddress]]("Prints the address given ens name should resolve to, if one has been set.")
+    val ensAddressSet       = inputKey[Unit]              ("Sets the address a given ens name should resolve to.")
     val ensAuctionFinalize  = inputKey[Unit]              ("Finalizes an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
     val ensAuctionStart     = inputKey[Unit]              ("Starts an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
     val ensAuctionBidList   = taskKey[Unit]               ("Places a bid in an currently running auction.")
@@ -298,6 +301,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     enscfgNameServiceReverseTld in Compile := ens.StandardNameServiceReverseTld,
 
+    enscfgNameServicePublicResolver in Compile := ens.StandardNameServicePublicResolver,
+
     // ethcfg settings
 
     ethcfgBaseCurrencyCode := "USD",
@@ -371,6 +376,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethcfgWalletV3ScryptP := wallet.V3.Default.Scrypt.P,
 
     // tasks
+
+    ensAddressLookup in Compile := { ensAddressLookupTask( Compile ).evaluated },
+
+    ensAddressLookup in Test := { ensAddressLookupTask( Test ).evaluated },
+
+    ensAddressSet in Compile := { ensAddressSetTask( Compile ).evaluated },
+
+    ensAddressSet in Test := { ensAddressSetTask( Test ).evaluated },
 
     ensAuctionBidPlace in Compile := { ensAuctionBidPlaceTask( Compile ).evaluated },
 
@@ -716,6 +729,81 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // ens tasks
 
+  def ensAddressLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
+    val blockchainId = (ethcfgBlockchainId in config).value
+    val ensClient    = ( config / xensClient).value
+    val name         = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
+    val mbAddress      = ensClient.address( name )
+
+    mbAddress match {
+      case Some( address ) => println( s"The name '${name}' resolves to address ${verboseAddress(blockchainId, address)}." )
+      case None            => println( s"The name '${name}' does not currently resolve to any address." )
+    }
+
+    mbAddress
+  }
+
+  def ensAddressSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheAddressParserInfo)( genEnsNameAddressParser )
+
+    Def.inputTask {
+      val log               = streams.value.log
+      val privateKey        = findPrivateKeyTask( config ).value
+      val blockchainId      = ( config / ethcfgBlockchainId ).value
+      val ensClient         = ( config / xensClient).value
+      val is                = interactionService.value
+      val mbDefaultResolver = ( config / enscfgNameServicePublicResolver).?.value
+      val ( ensName, address ) = parser.parsed
+      try {
+        ensClient.setAddress( privateKey, ensName, address )
+      }
+      catch {
+        case e : ens.NoResolverSetException => {
+          val defaultResolver = mbDefaultResolver.getOrElse( throw e )
+          val setAndRetry = {
+            is.readLine( s"No resolver has been set for '${ensName}'. Do you wish to use the default public resolver '${hexString(defaultResolver)}'? [y/n] ", false )
+              .getOrElse( throw new Exception( CantReadInteraction ) )
+              .trim()
+              .equalsIgnoreCase("y")
+          }
+          if ( setAndRetry ) {
+            log.info( s"Preparing transaction to set the resolver." ) 
+            ensClient.setResolver( privateKey, ensName, defaultResolver )
+            log.info( s"Resolver for '${ensName}' set to public resolver '${hexString( defaultResolver )}'." )
+
+            // await propogation back to us that the resolver has actually been set
+            log.info( "Verifiying resolver." )
+            var resolverSet = false
+            var tick = false
+            while ( !resolverSet ) {
+              try {
+                Thread.sleep(1000)
+                val mbFound = ensClient.resolver( ensName )
+                mbFound.foreach { found =>
+                  assert( found == defaultResolver, s"Huh? The resolver we just set to ${hexString(defaultResolver)} was found to be ${hexString(found)}. Bailing." )
+                  resolverSet = true
+                }
+              }
+              catch {
+                case _ : ens.NoResolverSetException => {
+                  tick = true
+                  print( '.' )
+                  /* continue */
+                }
+              }
+            }
+            if (tick) println()
+            log.info( s"Preparing transaction to set address." ) 
+            ensClient.setAddress( privateKey, ensName, address )
+          } else {
+            throw e
+          }
+        }
+      }
+      log.info( s"The name '${ensName}' now resolves to ${verboseAddress(blockchainId, address)}." )
+    }
+  }
+
   def ensAuctionBidListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     import repository.Schema_h2.Table.EnsBidStore.RawBid
 
@@ -886,12 +974,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(config / xethFindCacheAddressParserInfo)( genEnsNameOwnerAddressParser )
 
     Def.inputTask {
+      val log          = streams.value.log
       val privateKey   = findPrivateKeyTask( config ).value
       val blockchainId = (config / ethcfgBlockchainId).value
       val ensClient    = ( config / xensClient).value
       val ( ensName, ownerAddress ) = parser.parsed
       ensClient.setOwner( privateKey, ensName, ownerAddress )
-      println( s"The name '${ensName}' is now owned by '${hexString( ownerAddress )}'. (However, this has not affected the Deed owner associated with the name!)" )
+      log.info( s"The name '${ensName}' is now owned by '${verboseAddress(blockchainId, ownerAddress)}'. (However, this has not affected the Deed owner associated with the name!)" )
     }
   }
 
@@ -2833,7 +2922,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    if ( check ) () else Invoker.throwDisapproved( txn )
+    if ( check ) {
+      val txnHash = hashRLP[EthTransaction]( txn )
+      println( s"A transaction with hash '${hexString(txnHash)}' will be submitted." )
+    }
+    else {
+      Invoker.throwDisapproved( txn )
+    }
   }( ec )
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
