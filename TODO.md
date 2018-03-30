@@ -1,5 +1,9 @@
 # TODO
 
+* Fix silent, unwarned timeouts of unmined transactions.
+
+* Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings ar used in auto spawn
+
 * Request aliases on
   - ethAbiMemorize
   - ethContractSpawn
