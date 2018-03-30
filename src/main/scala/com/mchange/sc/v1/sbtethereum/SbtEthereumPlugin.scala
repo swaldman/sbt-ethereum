@@ -181,6 +181,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensNameStatus       = inputKey[ens.NameStatus]    ("Prints the current status of a given name.")
     val ensOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the name has an owner.")
     val ensOwnerSet         = inputKey[Unit]              ("Sets the owner of a given name to an address.")
+    val ensResolverLookup   = inputKey[Option[EthAddress]]("Prints the address of the resolver associated with a given name.")
+    val ensResolverSet      = inputKey[Unit]              ("Sets the resolver for a given name to an address.")
 
     val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
     val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
@@ -417,6 +419,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensOwnerSet in Compile := { ensOwnerSetTask( Compile ).evaluated },
 
     ensOwnerSet in Test := { ensOwnerSetTask( Test ).evaluated },
+
+    ensResolverLookup in Compile := { ensResolverLookupTask( Compile ).evaluated },
+
+    ensResolverLookup in Test := { ensResolverLookupTask( Test ).evaluated },
+
+    ensResolverSet in Compile := { ensResolverSetTask( Compile ).evaluated },
+
+    ensResolverSet in Test := { ensResolverSetTask( Test ).evaluated },
 
     ethAddressAliasDrop in Compile := { ethAddressAliasDropTask( Compile ).evaluated },
 
@@ -957,34 +967,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def ensOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
-    val blockchainId = (ethcfgBlockchainId in config).value
-    val ensClient    = ( config / xensClient).value
-    val name         = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
-    val mbOwner      = ensClient.owner( name )
-
-    mbOwner match {
-      case Some( address ) => println( s"The name '${name}' is owned by address ${verboseAddress(blockchainId, address)}'." )
-      case None            => println( s"No owner has been assigned to the name '${name}'." )
-    }
-
-    mbOwner
-  }
-
-  def ensOwnerSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(config / xethFindCacheAddressParserInfo)( genEnsNameOwnerAddressParser )
-
-    Def.inputTask {
-      val log          = streams.value.log
-      val privateKey   = findPrivateKeyTask( config ).value
-      val blockchainId = (config / ethcfgBlockchainId).value
-      val ensClient    = ( config / xensClient).value
-      val ( ensName, ownerAddress ) = parser.parsed
-      ensClient.setOwner( privateKey, ensName, ownerAddress )
-      log.info( s"The name '${ensName}' is now owned by '${verboseAddress(blockchainId, ownerAddress)}'. (However, this has not affected the Deed owner associated with the name!)" )
-    }
-  }
-
   def ensNameStatusTask( config : Configuration ) : Initialize[InputTask[ens.NameStatus]] = Def.inputTask {
     import ens.NameStatus._
 
@@ -1016,6 +998,62 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     status
+  }
+
+  def ensOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
+    val blockchainId = (ethcfgBlockchainId in config).value
+    val ensClient    = ( config / xensClient).value
+    val name         = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
+    val mbOwner      = ensClient.owner( name )
+
+    mbOwner match {
+      case Some( address ) => println( s"The name '${name}' is owned by address ${verboseAddress(blockchainId, address)}'." )
+      case None            => println( s"No owner has been assigned to the name '${name}'." )
+    }
+
+    mbOwner
+  }
+
+  def ensOwnerSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheAddressParserInfo)( genEnsNameOwnerAddressParser )
+
+    Def.inputTask {
+      val log          = streams.value.log
+      val privateKey   = findPrivateKeyTask( config ).value
+      val blockchainId = (config / ethcfgBlockchainId).value
+      val ensClient    = ( config / xensClient).value
+      val ( ensName, ownerAddress ) = parser.parsed
+      ensClient.setOwner( privateKey, ensName, ownerAddress )
+      log.info( s"The name '${ensName}' is now owned by ${verboseAddress(blockchainId, ownerAddress)}. (However, this has not affected the Deed owner associated with the name!)" )
+    }
+  }
+
+  def ensResolverLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
+    val blockchainId = (ethcfgBlockchainId in config).value
+    val ensClient    = ( config / xensClient).value
+    val name         = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
+    val mbResolver   = ensClient.resolver( name )
+
+    mbResolver match {
+      case Some( address ) => println( s"The name '${name}' is associated with a resolver at address ${verboseAddress(blockchainId, address)}'." )
+      case None            => println( s"No resolver has been associated with the name '${name}'." )
+    }
+
+    mbResolver
+  }
+
+  def ensResolverSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheAddressParserInfo)( genEnsNameResolverAddressParser )
+
+    Def.inputTask {
+      val log          = streams.value.log
+      val privateKey   = findPrivateKeyTask( config ).value
+      val blockchainId = (config / ethcfgBlockchainId).value
+      val ensClient    = ( config / xensClient).value
+      val ( ensName, resolverAddress ) = parser.parsed
+      ensClient.setResolver( privateKey, ensName, resolverAddress )
+      log.info( s"The name '${ensName}' is now set to be resolved by a contract at ${verboseAddress(blockchainId, resolverAddress)}." )
+    }
   }
 
   // eth tasks
@@ -2925,7 +2963,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     if ( check ) {
       val txnHash = hashRLP[EthTransaction]( txn )
-      println( s"A transaction with hash '${hexString(txnHash)}' will be submitted." )
+      println( s"A transaction with hash '${hexString(txnHash)}' will be submitted. Please wait." )
     }
     else {
       Invoker.throwDisapproved( txn )

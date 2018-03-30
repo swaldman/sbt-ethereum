@@ -242,16 +242,20 @@ object Parsers {
   }
 
   private [sbtethereum] def genEnsNameOwnerAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[(String,EthAddress)] = {
-    mbApi.map { api =>
-      (ensNameParser( api.nameServiceTld ) ~ (token(Space.+) ~> createAddressParser( "<owner-address-hex>", mbApi )))
-    } getOrElse {
-      failure( "Failed to retrieve AddressParserInfo." )
-    }
+    _genEnsNameXxxAddressParser("<owner-address-hex>")( state, mbApi )
   }
 
   private [sbtethereum] def genEnsNameAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[(String,EthAddress)] = {
+    _genEnsNameXxxAddressParser("<address-hex>")( state, mbApi )
+  }
+
+  private [sbtethereum] def genEnsNameResolverAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[(String,EthAddress)] = {
+    _genEnsNameXxxAddressParser("<resolver-address-hex>")( state, mbApi )
+  }
+
+  private def _genEnsNameXxxAddressParser( example : String )( state : State, mbApi : Option[AddressParserInfo] ) : Parser[(String,EthAddress)] = {
     mbApi.map { api =>
-      (ensNameParser( api.nameServiceTld ) ~ (token(Space.+) ~> createAddressParser( "<address-hex>", mbApi )))
+      (ensNameParser( api.nameServiceTld ) ~ (token(Space.+) ~> createAddressParser( example, mbApi )))
     } getOrElse {
       failure( "Failed to retrieve AddressParserInfo." )
     }

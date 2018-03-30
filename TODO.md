@@ -7,12 +7,15 @@
 * Let ethAddressAliasSet accept any form of address, not just raw hex
 
 * Redo failable
+  * Afterwards, undo temporary extra protection in SolidityEvent
 
 * Let compilations store the name of the project from which they were compiled
 
 * Make stub compilation incremental
     
 * reset plugin state on unload
+  * close c3p0 DataSource
+  
 * aggressively privatify stuff
 
 * Better message when no solidity compiler is installed
@@ -26,6 +29,7 @@
   * add method in jsonrpc.Invoker for contract creation
 
 * make price feeds sensitive to blockchainId
+* better formatting of currency amounts (fewer decimals)
 
 * ethTransactionExportInvoke / ethTransactionExportSend  
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
@@ -37,7 +41,7 @@
 * xethSendMessage
 * Prettify output of log items in client transactions
 * Excise Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
-* ens Resolver, TTL, and Deed stuff
+* ens TTL, and Deed stuff
 * erc20*
 
 * add getEvents [backed by RPC getLogs(...)] methods to stub events
