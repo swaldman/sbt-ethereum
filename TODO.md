@@ -8,9 +8,6 @@
 
 * Redo failable
 
-* Figure out why mlog output seems no longer to be showing up, on the console
-  or in sbt-ethereum.log
-
 * Let compilations store the name of the project from which they were compiled
 
 * Make stub compilation incremental
@@ -40,8 +37,7 @@
 * xethSendMessage
 * Prettify output of log items in client transactions
 * Excise Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
-* ensAddressLookup, ensAddressSet
-* ensOwnerSet and Deed stuff
+* ens Resolver, TTL, and Deed stuff
 * erc20*
 
 * add getEvents [backed by RPC getLogs(...)] methods to stub events
@@ -61,3 +57,8 @@
 * Integrate keystore into database? (?)
 * Generate Java stubs
 * More consistency about when tasks use println(...) vs log.info(...)
+
+* Maybe someday put logging configuration into sbt-ethereum repository directory (where it can be easily edited). (maybe put log files there too?)
+
+* Warn if no 'defaultSender' is set?
+

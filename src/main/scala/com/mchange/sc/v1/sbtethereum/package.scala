@@ -2,6 +2,7 @@ package com.mchange.sc.v1
 
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v2.failable._
+import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.consuela.ethereum._
 import ethabi._
@@ -9,7 +10,7 @@ import jsonrpc.{Abi,Compilation,Client}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 import specification.Types.Unsigned256
 import scala.collection._
-//import java.math.{MathContext, RoundingMode}
+import scala.util.control.NonFatal
 import java.time.{Instant, ZoneId}
 import java.time.format.{FormatStyle, DateTimeFormatter}
 
@@ -170,6 +171,23 @@ package object sbtethereum {
     nameServiceTld        : String,
     nameServiceReverseTld : String
   )
+
+  // due to ClassLoader issues, we have to load the java.util.logging config file manually. grrrr.
+  def initializeLoggingConfig() : Unit = {
+    import java.util.logging._
+
+    try {
+      borrow( this.getClass().getResourceAsStream("/logging.properties") ) { is =>
+        LogManager.getLogManager().readConfiguration( is )
+      }
+    }
+    catch {
+      case NonFatal(e) => {
+        Console.err.println("A problem occurred while initializing the logging system. Logs may not function.")
+        e.printStackTrace()
+      }
+    }
+  }
 }
 
 

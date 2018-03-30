@@ -56,6 +56,8 @@ import com.mchange.sc.v2.concurrent.Poller
 
 object SbtEthereumPlugin extends AutoPlugin {
 
+  initializeLoggingConfig()
+
   // not lazy. make sure the initialization banner is emitted before any tasks are executed
   // still, generally we should try to log through sbt loggers
   private implicit val logger = mlogger( this )
@@ -125,7 +127,6 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   java.lang.Runtime.getRuntime.addShutdownHook( GanacheDestroyer )
-
 
   object autoImport {
 

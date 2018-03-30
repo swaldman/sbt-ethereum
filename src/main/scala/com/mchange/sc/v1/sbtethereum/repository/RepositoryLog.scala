@@ -10,7 +10,7 @@ import com.mchange.sc.v1.consuela.ethereum.{EthHash, EthTransaction}
 import scala.io.Codec
 
 abstract class RepositoryLog[T]( logName : String ) {
-  private val TimestampPattern = "yyyy-MM-dd'T'HH-mm-ssZ"
+  private val TimestampPattern = "yyyy-MM-dd'T'HH:mm:ssZ"
 
   lazy val File : Failable[File] = Directory.map(dir => new java.io.File(dir, logName) )
 
