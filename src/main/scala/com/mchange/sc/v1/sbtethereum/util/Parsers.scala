@@ -283,7 +283,7 @@ object Parsers {
     state : State,
     mbApi : Option[AddressParserInfo]
   ) : Parser[( EthAddress, BigInt )] = {
-    genRecipientAddressParser( state, mbApi ) ~ valueInWeiParser("<amount>")
+    token( genRecipientAddressParser( state, mbApi ) ) ~ token( valueInWeiParser("<amount>") )
   }
 
   private [sbtethereum] def genContractAddressOrCodeHashParser(
