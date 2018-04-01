@@ -710,6 +710,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val lastState = origF( state )
         Mutables.reset()
         repository.Database.reset()
+        util.Parsers.reset()
         lastState
       }
       newF

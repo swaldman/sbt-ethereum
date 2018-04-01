@@ -37,7 +37,7 @@ object Parsers {
   private val EmptyAliasMap = immutable.SortedMap.empty[String,EthAddress]
 
   private final object EnsAddressCache {
-    private val TTL     = 300000 // 300 secs, 5 mins
+    private val TTL     = 300000 // 300 secs, 5 mins, maybe someday make this sensitive to ENS TTLs
     private val MaxSize = 100
 
     private final case class Key( blockchainId : String, jsonRpcUrl : String, nameServiceAddress : EthAddress, nameServiceTld : String, nameServiceReverseTld : String, name : String )
@@ -45,7 +45,7 @@ object Parsers {
     // MT: synchronized on EnsAddressCache's lock
     private val cache = mutable.HashMap.empty[Key,Tuple2[Failable[EthAddress],Long]]
 
-    def doLookup( key : Key ) : ( Failable[EthAddress], Long ) = {
+    private def doLookup( key : Key ) : ( Failable[EthAddress], Long ) = {
       TRACE.log( s"doLookup( $key )" )
       val ensClient = ens.Client( jsonRpcUrl = key.jsonRpcUrl, nameServiceAddress = key.nameServiceAddress, tld = key.nameServiceTld, reverseTld = key.nameServiceReverseTld )
       val name = key.name
@@ -58,6 +58,7 @@ object Parsers {
       }
     }
 
+    // called only from synchronized lookup(...)
     private def update( key : Key ) : Tuple2[Failable[EthAddress],Long] = {
       val updated = doLookup( key )
       cache += Tuple2( key, updated )
@@ -72,13 +73,18 @@ object Parsers {
           case None        => update( key )
         }
       }
-      if ( cache.size > MaxSize ) {
+      if ( cache.size > MaxSize ) { // an ugly, but easy, way to bound the size of th cache
         cache.clear()
         cache += Tuple2( key, Tuple2( result, timestamp ) )
       }
       result
     }
+
+    def reset() : Unit = this.synchronized( cache.clear() )
   }
+
+  private [sbtethereum]
+  def reset() : Unit = EnsAddressCache.reset()
 
   private def createSimpleAddressParser( tabHelp : String ) = Space.* ~> token( RawAddressParser, tabHelp )
 
