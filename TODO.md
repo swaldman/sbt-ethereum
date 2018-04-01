@@ -15,8 +15,6 @@
 
 * Make stub compilation incremental
     
-* aggressively privatify stuff
-
 * Better message when no solidity compiler is installed
 
 * interactive migrate (or restore) of database

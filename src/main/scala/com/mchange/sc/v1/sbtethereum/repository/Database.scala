@@ -30,6 +30,7 @@ object Database {
   private var _DataSource : Failable[ComboPooledDataSource] = null
   private var _UncheckedDataSource : Failable[ComboPooledDataSource] = null;
 
+  private [sbtethereum]
   def Directory : Failable[File] = this.synchronized {
     if ( _Directory == null ) {
       _Directory = repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
@@ -37,12 +38,14 @@ object Database {
     _Directory
   }
 
+  private [sbtethereum]
   def DataSource : Failable[ComboPooledDataSource] = this.synchronized {
     if ( _DataSource == null ) {
       _DataSource = h2.initializeDataSource( true )
     }
     _DataSource
   }
+  private [sbtethereum]
   def UncheckedDataSource : Failable[ComboPooledDataSource] = this.synchronized {
     if ( _UncheckedDataSource == null ) {
       _UncheckedDataSource = h2.initializeDataSource( false )
@@ -50,6 +53,7 @@ object Database {
     _UncheckedDataSource
   }
 
+  private [sbtethereum]
   def reset() : Unit = this.synchronized {
     _Directory = null
     if ( _DataSource != null ) {
@@ -62,6 +66,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def insertCompilation(
     code              : String,
     mbName            : Option[String] = None,
@@ -101,6 +106,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def insertNewDeployment( blockchainId : String, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash, constructorInputs : immutable.Seq[Byte] ) : Failable[Unit] = {
     DataSource.flatMap { ds =>
       Failable {
@@ -111,6 +117,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def setMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress, abi : Abi ) : Failable[Unit] = {
     DataSource.flatMap { ds =>
       Failable {
@@ -121,6 +128,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def deleteMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress ) : Failable[Boolean] = {
     DataSource.flatMap { ds =>
       Failable {
@@ -131,6 +139,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def getMemorizedContractAbiAddresses( blockchainId : String ) : Failable[immutable.Seq[EthAddress]] = {
     DataSource.flatMap { ds =>
       Failable {
@@ -141,6 +150,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def getMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress ) : Failable[Option[Abi]] = {
     DataSource.flatMap { ds =>
       Failable {
@@ -151,6 +161,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def updateContractDatabase( compilations : Iterable[(String,jsonrpc.Compilation.Contract)] ) : Failable[Boolean] = {
     val ( compiledContracts, stubsWithDups ) = compilations.partition { case ( name, compilation ) => compilation.code.decodeHex.length > 0 }
 
@@ -210,6 +221,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   case class DeployedContractInfo (
     blockchainId        : String,
     contractAddress     : EthAddress,
@@ -231,6 +243,7 @@ object Database {
     mbMetadata          : Option[String]
   )
 
+  private [sbtethereum]
   def deployedContractInfoForAddress( blockchainId : String, address : EthAddress ) : Failable[Option[DeployedContractInfo]] =  {
     DataSource.flatMap { ds =>
       Failable {
@@ -266,6 +279,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def allDeployedContractInfosForBlockchainId( blockchainId : String ) : Failable[immutable.Seq[DeployedContractInfo]] = {
 
     def deployedContractInfosForAddresses( addresses : immutable.Seq[EthAddress] ) : Failable[immutable.Seq[DeployedContractInfo]] = {
@@ -281,6 +295,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   case class CompilationInfo (
     codeHash          : EthHash,
     code              : String,
@@ -296,6 +311,7 @@ object Database {
     mbMetadata        : Option[String]
   )
 
+  private [sbtethereum]
   def compilationInfoForCodeHash( codeHash : EthHash ) : Failable[Option[CompilationInfo]] =  {
     DataSource.flatMap { ds =>
       Failable {
@@ -324,6 +340,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def contractAddressesForCodeHash( blockchainId : String, codeHash : EthHash ) : Failable[immutable.Set[EthAddress]] = {
     DataSource.flatMap { ds =>
       Failable {
@@ -334,6 +351,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def blockchainIdContractAddressesForCodeHash( codeHash : EthHash ) : Failable[immutable.Set[(String,EthAddress)]] = {
     DataSource.flatMap { ds =>
       Failable {
@@ -344,8 +362,10 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   case class ContractsSummaryRow( blockchain_id : String, contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
 
+  private [sbtethereum]
   def contractsSummary : Failable[immutable.Seq[ContractsSummaryRow]] = {
     import ContractsSummary._
 
@@ -375,6 +395,8 @@ object Database {
       }
     }
   }
+
+  private [sbtethereum]
   def cullUndeployedCompilations() : Failable[Int] = DataSource.flatMap { ds =>
     Failable {
       borrow( ds.getConnection() ) { conn =>
@@ -385,43 +407,53 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def createUpdateAlias( blockchainId : String, alias : String, address : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, blockchainId, alias, address ) ) )
   }
 
+  private [sbtethereum]
   def findAllAliases( blockchainId : String ) : Failable[immutable.SortedMap[String,EthAddress]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectAllForBlockchainId( _, blockchainId ) ) )
   }
 
+  private [sbtethereum]
   def findAddressByAlias( blockchainId : String, alias : String ) : Failable[Option[EthAddress]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, blockchainId, alias ) ) )
   }
 
+  private [sbtethereum]
   def findAliasesByAddress( blockchainId : String, address : EthAddress ) : Failable[immutable.Seq[String]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAddress( _, blockchainId, address ) ) )
   }
 
+  private [sbtethereum]
   def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
   }
 
+  private [sbtethereum]
   def ensStoreBid( blockchainId : String, tld : String, ensAddress : EthAddress, bid : Bid ) : Failable[Unit] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.EnsBidStore.insert( _, blockchainId, bid.bidHash, bid.simpleName, bid.bidderAddress, bid.valueInWei, bid.salt, tld, ensAddress ) ) )
   }
 
+  private [sbtethereum]
   def ensRemoveBid( blockchainId : String, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markRemoved( _, blockchainId, bidHash ) ) )
   }
 
+  private [sbtethereum]
   def ensMarkAccepted( blockchainId : String, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markAccepted( _, blockchainId, bidHash ) ) )
   }
 
+  private [sbtethereum]
   def ensMarkRevealed( blockchainId : String, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markRevealed( _, blockchainId, bidHash ) ) )
   }
 
-  private def ensBidStateFromRawBid( rawBid : Table.EnsBidStore.RawBid ) : BidStore.State = {
+  private
+  def ensBidStateFromRawBid( rawBid : Table.EnsBidStore.RawBid ) : BidStore.State = {
     ( rawBid.accepted, rawBid.revealed ) match {
       case ( _, true )     => BidStore.State.Revealed
       case ( true, false ) => BidStore.State.Accepted
@@ -429,10 +461,12 @@ object Database {
     }
   }
 
-  private def ensBidBidStateTupleFromRawBid( rawBid  : Table.EnsBidStore.RawBid ) : Tuple2[ Bid, BidStore.State ] = {
+  private
+  def ensBidBidStateTupleFromRawBid( rawBid  : Table.EnsBidStore.RawBid ) : Tuple2[ Bid, BidStore.State ] = {
     Tuple2( Bid( rawBid.bidHash, rawBid.simpleName, rawBid.bidderAddress, rawBid.valueInWei, rawBid.salt ), ensBidStateFromRawBid( rawBid ) )
   }
 
+  private [sbtethereum]
   def ensFindByHash( blockchainId : String, bidHash : EthHash ) : Failable[( Bid, BidStore.State )] = DataSource.flatMap { ds =>
     Failable {
       borrow( ds.getConnection() ) { conn =>
@@ -449,6 +483,7 @@ object Database {
     }.flatten
   }
 
+  private [sbtethereum]
   def ensFindByNameBidderAddress( blockchainId : String, simpleName : String, bidderAddress : EthAddress ) : Failable[immutable.Seq[(Bid, BidStore.State)]] = DataSource.flatMap { ds =>
     Failable {
       borrow( ds.getConnection() ) { conn =>
@@ -458,6 +493,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def ensAllRawBidsForBlockchainId( blockchainId : String ) : Failable[immutable.Seq[Table.EnsBidStore.RawBid]] = DataSource.flatMap { ds =>
     Failable {
       borrow( ds.getConnection() ) { conn =>
@@ -466,6 +502,7 @@ object Database {
     }
   }
 
+  private [sbtethereum]
   def ensBidStore( blockchainId : String, tld : String, ensAddress : EthAddress ) = new BidStore {
     def store( bid : Bid ) : Unit = ensStoreBid( blockchainId, tld, ensAddress, bid ).get
     def remove( bid : Bid ) : Unit = ensRemoveBid( blockchainId, bid.bidHash ).get
@@ -477,12 +514,14 @@ object Database {
     }
   }
 
+  private [sbtethereum]
+  def backupDatabaseH2( conn : Connection, schemaVersion : Int ) : Failable[Unit] = h2.makeBackup( conn, schemaVersion )
 
-  final object h2 {
+  private final object h2 {
     val DirName = "h2"
     val DbName  = "sbt-ethereum"
 
-    val BackupsDirName = "h2-backups"
+    private val BackupsDirName = "h2-backups"
 
     lazy val Directory : Failable[File] = Database.Directory.flatMap( dbDir => ensureUserOnlyDirectory( new File( dbDir, DirName ) ) )
 
