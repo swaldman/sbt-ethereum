@@ -15,9 +15,6 @@
 
 * Make stub compilation incremental
     
-* reset plugin state on unload
-  * close c3p0 DataSource
-  
 * aggressively privatify stuff
 
 * Better message when no solidity compiler is installed

@@ -36,6 +36,50 @@ object Parsers {
 
   private val EmptyAliasMap = immutable.SortedMap.empty[String,EthAddress]
 
+  private final object EnsAddressCache {
+    private val TTL     = 300000 // 300 secs, 5 mins
+    private val MaxSize = 100
+
+    private final case class Key( blockchainId : String, jsonRpcUrl : String, nameServiceAddress : EthAddress, nameServiceTld : String, nameServiceReverseTld : String, name : String )
+
+    // MT: synchronized on EnsAddressCache's lock
+    private val cache = mutable.HashMap.empty[Key,Tuple2[Failable[EthAddress],Long]]
+
+    def doLookup( key : Key ) : ( Failable[EthAddress], Long ) = {
+      TRACE.log( s"doLookup( $key )" )
+      val ensClient = ens.Client( jsonRpcUrl = key.jsonRpcUrl, nameServiceAddress = key.nameServiceAddress, tld = key.nameServiceTld, reverseTld = key.nameServiceReverseTld )
+      val name = key.name
+      val ts = System.currentTimeMillis()
+      try {
+        Tuple2( ensClient.address( name ).toFailable( s"No address has been associated with ENS name '${name}'." ), ts )
+      }
+      catch {
+        case NonFatal( nfe ) => ( fail( s"Exception while looking up ENS name '${name}': ${nfe}", includeStackTrace = false ), ts )
+      }
+    }
+
+    private def update( key : Key ) : Tuple2[Failable[EthAddress],Long] = {
+      val updated = doLookup( key )
+      cache += Tuple2( key, updated )
+      updated
+    }
+
+    def lookup( api : AddressParserInfo, name : String ) : Failable[EthAddress] = this.synchronized {
+      val key = Key( api.blockchainId, api.jsonRpcUrl, api.nameServiceAddress, api.nameServiceTld, api.nameServiceReverseTld, name )
+      val ( result, timestamp ) = {
+        cache.get( key ) match {
+          case Some( tup ) => if ( System.currentTimeMillis() > tup._2 + TTL ) update( key ) else tup
+          case None        => update( key )
+        }
+      }
+      if ( cache.size > MaxSize ) {
+        cache.clear()
+        cache += Tuple2( key, Tuple2( result, timestamp ) )
+      }
+      result
+    }
+  }
+
   private def createSimpleAddressParser( tabHelp : String ) = Space.* ~> token( RawAddressParser, tabHelp )
 
   private def rawAliasParser( aliases : SortedMap[String,EthAddress] ) : Parser[String] = {
@@ -48,9 +92,10 @@ object Parsers {
     mbApi match {
       case Some( api ) => {
         val aliases = api.mbAliases.getOrElse( EmptyAliasMap )
-        val eclient = ens.Client( jsonRpcUrl = api.jsonRpcUrl, nameServiceAddress = api.nameServiceAddress, tld = api.nameServiceTld, reverseTld = api.nameServiceReverseTld )
         val tld = api.nameServiceTld
-        Space.* ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensNameToAddressParser( eclient ).examples( s"<ens-name>.${tld}" ) )
+        val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
+        token(Space.*) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensNameToAddressParser( api ) ).examples( allExamples : _* )
+        //Space.* ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensNameToAddressParser( api ).examples( s"<ens-name>.${tld}" ) )
       }
       case None => {
         createSimpleAddressParser( tabHelp )
@@ -69,11 +114,11 @@ object Parsers {
   private [sbtethereum] val RawAmountParser = ((Digit|literal('.')).+).map( chars => BigDecimal( chars.mkString ) )
 
   //private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )
-  private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> RawAmountParser, tabHelp)
+  private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.*) ~> token(RawAmountParser, tabHelp)
 
   private [sbtethereum] val UnitParser = {
     val ( w, gw, s, f, e ) = ( "wei", "gwei", "szabo", "finney", "ether" );
-    Space.* ~> token(literal(w) | literal(gw) | literal(s) | literal(f) | literal(e))
+    token(Space.*) ~> token( literal(w) | literal(gw) | literal(s) | literal(f) | literal(e) )
   }
 
   private [sbtethereum] def toValueInWei( amount : BigDecimal, unit : String ) : BigInt = rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit )))
@@ -94,29 +139,12 @@ object Parsers {
 
   private [sbtethereum] def ensNameParser( tld : String ) : Parser[String] = token( Space.* ) ~> token( rawEnsNameParser( tld ) ).examples( s"<ens-name>.${tld}" )
 
-  private [sbtethereum] def ensNameToAddressParser( tld : String, ensClient : ens.Client ) : Parser[EthAddress] = {
-    ensNameParser( tld ).flatMap { name =>
-      try {
-        ensClient.address( name ) match {
-          case Some( address ) => success( address )
-          case None            => failure( s"No address found for ens name '${name}'" )
-        }
-      } catch {
-        case nrs : NoResolverSetException => {
-          val message = s"No resolver has been set for '${name}'"
-          INFO.log( message )
-          failure( message )
-        }
-        case NonFatal( nfe ) => {
-          val message = s"Exception while looking up ENS name '${name}'"
-          WARNING.log( message, nfe )
-          failure( message )
-        }
-      }
+  private [sbtethereum] def ensNameToAddressParser( api : AddressParserInfo ) : Parser[EthAddress] = {
+    ensNameParser( api.nameServiceTld ).flatMap { name =>
+      val faddress = EnsAddressCache.lookup( api, name )
+      if ( faddress.isSucceeded ) success( faddress.get ) else failure( faddress.fail.toString )
     }
   }
-
-  private [sbtethereum] def ensNameToAddressParser( ensClient : ens.Client ) : Parser[EthAddress] = ensNameToAddressParser( ensClient.tld, ensClient )
 
   private [sbtethereum] def ensNameNumDiversionParser( tld : String ) : Parser[(String, Option[Int])] = {
     token( Space.* ) ~> token( rawEnsNameParser( tld ) ).examples( s"<ens-name>.${tld}" ) ~ ( token( Space.+ ) ~> token(RawIntParser).examples("[<optional number of diversion auctions>]") ).?
@@ -279,11 +307,14 @@ object Parsers {
     createAddressParser( "<recipient-address>", mbApi )
   }
 
+  // for some reason, using a flatMap(...) dependent parser explcitly seems to yield more relable tab completion
+  // otherwise we'd just use
+  //     genRecipientAddressParser( state, mbApi ) ~ valueInWeiParser("<amount>")
   private [sbtethereum] def genEthSendEtherParser(
     state : State,
     mbApi : Option[AddressParserInfo]
   ) : Parser[( EthAddress, BigInt )] = {
-    token( genRecipientAddressParser( state, mbApi ) ) ~ token( valueInWeiParser("<amount>") )
+    genRecipientAddressParser( state, mbApi ).flatMap( addr => valueInWeiParser("<amount>").map( valueInWei => Tuple2( addr, valueInWei ) ) )
   }
 
   private [sbtethereum] def genContractAddressOrCodeHashParser(
