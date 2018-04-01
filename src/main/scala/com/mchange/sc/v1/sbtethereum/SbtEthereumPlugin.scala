@@ -335,9 +335,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethcfgKeystoreAutoRelockSeconds := 300,
 
     ethcfgKeystoreLocationsV3 := {
-      def warning( location : String ) : String = s"Failed to find V3 keystore in ${location}"
+      def debug( location : String ) : String = s"Failed to find V3 keystore in ${location}"
       def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
-      listify( repository.Keystore.V3.Directory.xwarn( warning("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xwarn( warning("geth home directory") ) ) ::: Nil
+      listify( repository.Keystore.V3.Directory.xdebug( debug("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xdebug( debug("geth home directory") ) ) ::: Nil
     },
 
     ethcfgSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
@@ -2549,7 +2549,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val address = parser.parsed
       val out = {
         keystoresV3
-          .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
+          .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
           .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
           if ( mb.isEmpty ) nextKeystore.get( address ) else mb
         }
