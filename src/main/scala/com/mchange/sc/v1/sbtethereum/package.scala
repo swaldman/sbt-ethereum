@@ -4,12 +4,14 @@ import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v2.failable._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.ens
+import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
 import ethabi._
 import jsonrpc.{Abi,Compilation,Client}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
 import specification.Types.Unsigned256
 import scala.collection._
+import scala.concurrent.duration.Duration
 import scala.util.control.NonFatal
 import java.time.{Instant, ZoneId}
 import java.time.format.{FormatStyle, DateTimeFormatter}
@@ -147,9 +149,10 @@ package object sbtethereum {
     ctr
   }
 
-  def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], mbctr : Option[Client.TransactionReceipt] ) : Option[Client.TransactionReceipt] = {
-    mbctr.foreach { ctr =>
-      log.info( prettyClientTransactionReceipt( mbabi, ctr ) )
+  def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], txnHash : EthHash, timeout : Duration, mbctr : Option[Client.TransactionReceipt] ) : Option[Client.TransactionReceipt] = {
+    mbctr match {
+      case Some( ctr ) => log.info( prettyClientTransactionReceipt( mbabi, ctr ) )
+      case None        => log.warn( s"Failed to mine transaction with hash '${hexString(txnHash)}' within timeout of ${timeout}!" )
     }
     mbctr
   }
@@ -162,6 +165,13 @@ package object sbtethereum {
   def formatInstant( l : Long ) : String = formatInstant( Instant.ofEpochMilli( l ) )
 
   def formatTime( l : Long ) : String = TimeFormatter.format( Instant.ofEpochMilli( l ) )
+
+  def hexString( bytes : Seq[Byte]    ) = s"0x${bytes.hex}"
+  def hexString( bytes : Array[Byte]  ) = s"0x${bytes.hex}"
+  def hexString( address : EthAddress ) = s"0x${address.hex}"
+  def hexString( hash : EthHash )       = s"0x${hash.hex}"
+
+
 
   case class AddressParserInfo(
     blockchainId          : String,

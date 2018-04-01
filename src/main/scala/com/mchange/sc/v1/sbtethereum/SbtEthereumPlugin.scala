@@ -1567,7 +1567,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val f_out = {
           for {
             txnHash <- Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq )
-            mbReceipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), _ ) )
+            mbReceipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
           } yield {
             log.info( s"Contract '${deploymentAlias}' deployed in transaction '0x${txnHash.hex}'." )
             mbReceipt match {
@@ -1877,9 +1877,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val f_out = Invoker.transaction.sendMessage( privateKey, contractAddress, Unsigned256( amount ), callData ) flatMap { txnHash =>
         log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei to address '0x${contractAddress.hex}' in transaction '0x${txnHash.hex}'.""" )
-        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi),  _ ) )
+        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
       }
-      Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
+      Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete as None on time out
     }
   }
 
@@ -1900,11 +1900,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val f_out = Invoker.transaction.sendWei( privateKey, to, Unsigned256( amount ) ) flatMap { txnHash =>
         log.info( s"Sending ${amount} wei to address '0x${to.hex}' in transaction '0x${txnHash.hex}'." )
-        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None,  _ ) )
+        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None, txnHash, invokerContext.pollTimeout, _ ) )
       }
       val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
 
-      log.info("Ether sent.")
+      out.foreach { _ =>
+        log.info("Ether sent.")
+      }
 
       out
     }
@@ -2556,7 +2558,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       val message = {
         val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s" (aliases $str)" ) )
-        out.fold( s"No V3 wallet found for '0x${address.hex}'${aliasesPart}" )( _ => s"V3 wallet found for '0x${address.hex}'${aliasesPart}" )
+        out.fold( s"""No V3 wallet found for '0x${address.hex}'${aliasesPart}. Directories checked: ${keystoresV3.mkString(", ")}""" )( _ => s"V3 wallet found for '0x${address.hex}'${aliasesPart}" )
       }
       log.info( message )
       out
@@ -3013,11 +3015,6 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def emptyOrHex( str : String ) = if (str == null) "" else s"0x$str"
   private def blankNull( str : String ) = if (str == null) "" else str
   private def span( len : Int ) = (0 until len).map(_ => "-").mkString
-
-  private def hexString( bytes : Seq[Byte]    ) = s"0x${bytes.hex}"
-  private def hexString( bytes : Array[Byte]  ) = s"0x${bytes.hex}"
-  private def hexString( address : EthAddress ) = s"0x${address.hex}"
-  private def hexString( hash : EthHash )       = s"0x${hash.hex}"
 
   private def commaSepAliasesForAddress( blockchainId : String, address : EthAddress ) : Failable[Option[String]] = {
     repository.Database.findAliasesByAddress( blockchainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
