@@ -23,8 +23,44 @@ import play.api.libs.json.Json
 object Database {
   import Schema_h2._
 
-  val DirName = "database"
-  lazy val Directory : Failable[File] = repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
+  private val DirName = "database"
+
+  private var _Directory : Failable[File] = null
+
+  private var _DataSource : Failable[ComboPooledDataSource] = null
+  private var _UncheckedDataSource : Failable[ComboPooledDataSource] = null;
+
+  def Directory : Failable[File] = this.synchronized {
+    if ( _Directory == null ) {
+      _Directory = repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
+    }
+    _Directory
+  }
+
+  def DataSource : Failable[ComboPooledDataSource] = this.synchronized {
+    if ( _DataSource == null ) {
+      _DataSource = h2.initializeDataSource( true )
+    }
+    _DataSource
+  }
+  def UncheckedDataSource : Failable[ComboPooledDataSource] = this.synchronized {
+    if ( _UncheckedDataSource == null ) {
+      _UncheckedDataSource = h2.initializeDataSource( false )
+    }
+    _UncheckedDataSource
+  }
+
+  def reset() : Unit = this.synchronized {
+    _Directory = null
+    if ( _DataSource != null ) {
+      _DataSource.foreach { _.close() }
+      _DataSource = null
+    }
+    if ( _UncheckedDataSource != null ) {
+      _UncheckedDataSource.foreach { _.close() }
+      _UncheckedDataSource = null
+    }
+  }
 
   def insertCompilation(
     code              : String,
@@ -442,9 +478,6 @@ object Database {
   }
 
 
-  lazy val DataSource          : Failable[DataSource] = h2.initializeDataSource( true )
-  lazy val UncheckedDataSource : Failable[DataSource] = h2.initializeDataSource( false )
-
   final object h2 {
     val DirName = "h2"
     val DbName  = "sbt-ethereum"
@@ -459,7 +492,7 @@ object Database {
 
     lazy val JdbcUrl : Failable[String] = h2.DbAsFile.map( f => s"jdbc:h2:${f.getAbsolutePath};AUTO_SERVER=TRUE" )
 
-    def initializeDataSource( ensureSchema : Boolean ) : Failable[javax.sql.DataSource] = {
+    def initializeDataSource( ensureSchema : Boolean ) : Failable[ComboPooledDataSource] = {
       for {
         _       <- Directory
         jdbcUrl <- JdbcUrl

@@ -66,25 +66,46 @@ object SbtEthereumPlugin extends AutoPlugin {
   private final case object NoAddress                                                                                                         extends AddressInfo
   private final case class  UnlockedAddress( blockchainId : String, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
 
-  // MT: protected by CurrentAddress' lock
-  private val CurrentAddress = new AtomicReference[AddressInfo]( NoAddress )
+  private final object Mutables {
+    // MT: protected by CurrentAddress' lock
+    val CurrentAddress = new AtomicReference[AddressInfo]( NoAddress )
 
-  private val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
+    val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
 
-  private val CurrentSolidityCompiler = new AtomicReference[Option[( String, Compiler.Solidity )]]( None )
+    val CurrentSolidityCompiler = new AtomicReference[Option[( String, Compiler.Solidity )]]( None )
 
-  private val GasLimitOverride = new AtomicReference[Option[BigInt]]( None )
+    val GasLimitOverride = new AtomicReference[Option[BigInt]]( None )
 
-  private val GasPriceOverride = new AtomicReference[Option[BigInt]]( None )
+    val GasPriceOverride = new AtomicReference[Option[BigInt]]( None )
 
-  // MT: protected by SenderOverride's lock
-  private val SenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
+    // MT: protected by SenderOverride's lock
+    val SenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
 
-  // MT: protected by TestSenderOverride's lock
-  private val TestSenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
+    // MT: protected by TestSenderOverride's lock
+    val TestSenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
 
-  // MT: protected by LocalGanache's lock
-  private val LocalGanache = new AtomicReference[Option[Process]]( None )
+    // MT: protected by LocalGanache's lock
+    val LocalGanache = new AtomicReference[Option[Process]]( None )
+
+    def reset() : Unit = {
+      CurrentAddress synchronized {
+        CurrentAddress.set( NoAddress )
+      }
+      SessionSolidityCompilers.set( None )
+      CurrentSolidityCompiler.set( None )
+      GasLimitOverride.set( None )
+      GasPriceOverride.set( None )
+      SenderOverride synchronized {
+        SenderOverride.set( None )
+      }
+      TestSenderOverride synchronized {
+        TestSenderOverride.set( None )
+      }
+      LocalGanache synchronized {
+        LocalGanache.set( None )
+      }
+    }
+  }
 
   private val BufferSize = 4096
 
@@ -120,8 +141,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   // kill it on exit
   val GanacheDestroyer: Thread = new Thread {
     override def run() : Unit = {
-      LocalGanache synchronized {
-        LocalGanache.get.foreach ( _.destroy )
+      Mutables.LocalGanache synchronized {
+        Mutables.LocalGanache.get.foreach ( _.destroy )
       }
     }
   }
@@ -674,27 +695,22 @@ object SbtEthereumPlugin extends AutoPlugin {
     onLoad in Global := {
       val origF : State => State = (onLoad in Global).value
       val newF  : State => State = ( state : State ) => {
-        def attemptAdvanceStateWithTask[T]( taskKey : Def.ScopedKey[Task[T]], startState : State ) : State = {
-          Project.runTask( taskKey, startState ) match {
-            case None => {
-              WARNING.log(s"Huh? Key '${taskKey}' was undefined in the original state. Ignoring attempt to run that task in onLoad.")
-              startState
-            }
-            case Some((newState, Inc(inc))) => {
-              WARNING.log("Failed to run '${taskKey}' on initialization: " + Incomplete.show(inc.tpe))
-              startState
-            }
-            case Some((newState, Value(_))) => {
-              newState
-            }
-          }
-        }
-
         val lastState = origF( state )
         val state1 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Compile,          lastState )
         val state2 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Test,             state1    )
         val state3 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state2    )
         state3
+      }
+      newF
+    },
+
+    onUnload in Global := {
+      val origF : State => State = (onUnload in Global).value
+      val newF  : State => State = ( state : State ) => {
+        val lastState = origF( state )
+        Mutables.reset()
+        repository.Database.reset()
+        lastState
       }
       newF
     },
@@ -1163,7 +1179,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val configSenderOverride = senderOverride( config )
     configSenderOverride.synchronized {
       val log = streams.value.log
-      SenderOverride.set( None )
+      Mutables.SenderOverride.set( None )
       log.info("No sender override is now set. Effective sender will be determined by 'ethcfgSender' setting, the System property 'eth.sender', the environment variable 'ETH_SENDER', or a 'defaultSender' alias.")
     }
   }
@@ -1618,11 +1634,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    LocalGanache synchronized {
-      LocalGanache.get match {
+    Mutables.LocalGanache synchronized {
+      Mutables.LocalGanache.get match {
         case Some( process ) => log.warn("A local ganache environment is already running. To restart it, please try 'ethDebugGanacheRestart'.")
         case _               => {
-          LocalGanache.set( Some( newGanacheProcess ) )
+          Mutables.LocalGanache.set( Some( newGanacheProcess ) )
           log.info("A local ganache process has been started.")
         }
       }
@@ -1641,10 +1657,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   def ethDebugGanacheStopTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
 
-    LocalGanache synchronized {
-      LocalGanache.get match {
+    Mutables.LocalGanache synchronized {
+      Mutables.LocalGanache.get match {
         case Some( process ) => {
-          LocalGanache.set( None )
+          Mutables.LocalGanache.set( None )
           process.destroy()
           log.info("A local ganache environment was running but has been stopped.")
         }
@@ -1657,20 +1673,20 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   def ethGasLimitOverrideDropTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    GasLimitOverride.set( None )
+    Mutables.GasLimitOverride.set( None )
     log.info("No gas override is now set. Quantities of gas will be automatically computed.")
   }
 
   def ethGasLimitOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val amount = bigIntParser("<gas override>").parsed
-    GasLimitOverride.set( Some( amount ) )
+    Mutables.GasLimitOverride.set( Some( amount ) )
     log.info( s"Gas override set to ${amount}." )
   }
 
   def ethGasLimitOverridePrintTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    GasLimitOverride.get match {
+    Mutables.GasLimitOverride.get match {
       case Some( value ) => log.info( s"A gas override is set, with value ${value}." )
       case None          => log.info( "No gas override is currently set." )
     }
@@ -1678,13 +1694,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   def ethGasPriceOverrideDropTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    GasPriceOverride.set( None )
+    Mutables.GasPriceOverride.set( None )
     log.info("No gas price override is now set. Gas price will be automatically marked-up from your ethereum node's current default value.")
   }
 
   def ethGasPriceOverridePrintTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    GasPriceOverride.get match {
+    Mutables.GasPriceOverride.get match {
       case Some( value ) => log.info( s"A gas price override is set, with value ${value}." )
       case None          => log.info( "No gas price override is currently set." )
     }
@@ -1693,7 +1709,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   def ethGasPriceOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val amount = valueInWeiParser("<gas price override>").parsed
-    GasPriceOverride.set( Some( amount ) )
+    Mutables.GasPriceOverride.set( Some( amount ) )
     log.info( s"Gas price override set to ${amount}." )
   }
 
@@ -1838,7 +1854,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   def ethSolidityCompilerPrintTask : Initialize[Task[Unit]] = Def.task {
     val log       = streams.value.log
     val ensureSet = (xethFindCurrentSolidityCompiler in Compile).value
-    val ( key, compiler ) = CurrentSolidityCompiler.get.get
+    val ( key, compiler ) = Mutables.CurrentSolidityCompiler.get.get
     log.info( s"Current solidity compiler '$key', which refers to $compiler." )
   }
 
@@ -1848,9 +1864,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log = streams.value.log
       val key = parser.parsed
-      val mbNewCompiler = SessionSolidityCompilers.get.get.get( key )
+      val mbNewCompiler = Mutables.SessionSolidityCompilers.get.get.get( key )
       val newCompilerTuple = mbNewCompiler.map( nc => ( key, nc ) )
-      CurrentSolidityCompiler.set( newCompilerTuple )
+      Mutables.CurrentSolidityCompiler.set( newCompilerTuple )
       log.info( s"Set compiler to '$key'" )
     }
   }
@@ -2113,12 +2129,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     import Compiler.Solidity._
 
     // val compilerKeys = xethFindCacheSessionSolidityCompilerKeys.value
-    val sessionCompilers = SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys during onLoad should have forced sessionCompilers to be set, but it's not." ) )
+    val sessionCompilers = Mutables.SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys during onLoad should have forced sessionCompilers to be set, but it's not." ) )
     val compilerKeys = sessionCompilers.keySet
 
     val mbExplicitJsonRpcUrl = ethcfgJsonRpcUrl.?.value
 
-    CurrentSolidityCompiler.get.map( _._2).getOrElse {
+    Mutables.CurrentSolidityCompiler.get.map( _._2).getOrElse {
       def latestLocalInstallVersion : Option[SemanticVersion] = {
         val versions = (immutable.TreeSet.empty[SemanticVersion] ++ compilerKeys.map( LocalSolc.versionFromKey ).filter( _ != None ).map( _.get ))
         if ( versions.size > 0 ) Some(versions.last) else None
@@ -2136,7 +2152,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       val compiler = sessionCompilers.get( key ).getOrElse( throw new Exception( s"Could not find a solidity compiler for key '$key'. sessionCompilers: ${sessionCompilers}" ) )
 
-      CurrentSolidityCompiler.set( Some( Tuple2( key, compiler ) ) )
+      Mutables.CurrentSolidityCompiler.set( Some( Tuple2( key, compiler ) ) )
 
       compiler
     }
@@ -2149,7 +2165,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val markup          = ethcfgGasPriceMarkup.value
     val defaultGasPrice = (xethDefaultGasPrice in config).value
 
-    GasPriceOverride.get match {
+    Mutables.GasPriceOverride.get match {
       case Some( gasPriceOverride ) => gasPriceOverride
       case None                     => rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) )
     }
@@ -2312,7 +2328,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val currencyCode    = ethcfgBaseCurrencyCode.value
 
     val gasLimitTweak = {
-      GasLimitOverride.get match {
+      Mutables.GasLimitOverride.get match {
         case Some( overrideValue ) => {
           log.info( s"Gas limit override set: ${overrideValue}")
           log.info( "Using gas limit override.")
@@ -2324,7 +2340,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
     val gasPriceTweak = {
-      GasPriceOverride.get match {
+      Mutables.GasPriceOverride.get match {
         case Some( overrideValue ) => {
           log.info( s"Gas price override set: ${overrideValue}")
           log.info( "Using gas price override.")
@@ -2721,7 +2737,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val raw = checkLocalRepositorySolcs :+ localPath :+ ethJsonRpc :+ netcompile :+ defaultNetcompile
 
     val out = immutable.SortedMap( raw.filter( _ != None ).map( _.get ) : _* )
-    SessionSolidityCompilers.set( Some( out ) )
+    Mutables.SessionSolidityCompilers.set( Some( out ) )
     out
   }
 
@@ -2748,7 +2764,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def allUnitsValue( valueInWei : BigInt ) = s"${valueInWei} wei (${Denominations.Ether.fromWei(valueInWei)} ether, ${Denominations.Finney.fromWei(valueInWei)} finney, ${Denominations.Szabo.fromWei(valueInWei)} szabo)"
 
-  def senderOverride( config : Configuration ) = if ( config == Test ) TestSenderOverride else SenderOverride
+  def senderOverride( config : Configuration ) = if ( config == Test ) Mutables.TestSenderOverride else Mutables.SenderOverride
 
   private def getSenderOverride( config : Configuration )( log : sbt.Logger, blockchainId : String ) : Option[EthAddress] = {
     val configSenderOverride = senderOverride( config )
@@ -2778,7 +2794,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     blockNumber : jsonrpc.Client.BlockNumber,
     markup      : Double
   )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-    GasLimitOverride.get match {
+    Mutables.GasLimitOverride.get match {
       case Some( overrideValue ) => {
         log.info( s"Gas override set: ${overrideValue}")
         log.info( "Using gas override.")
@@ -2839,7 +2855,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For in Compile, address.hex, state) // the config scope of xethLoadWalletV3For doesn't matter here, since we provide hex, not an alias
 
       val privateKey = findPrivateKey( log, mbWallet, credential )
-      CurrentAddress.set( UnlockedAddress( blockchainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
+      Mutables.CurrentAddress.set( UnlockedAddress( blockchainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
       privateKey
     }
     def goodCached : Option[EthPrivateKey] = {
@@ -2847,7 +2863,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val BlockchainId = blockchainId
       val Address = address
       val now = System.currentTimeMillis
-      CurrentAddress.get match {
+      Mutables.CurrentAddress.get match {
         case UnlockedAddress( BlockchainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if blockchainId and/or ethcfgSender has changed, this will no longer match
           val aliasesPart = commaSepAliasesForAddress( BlockchainId, Address ).fold( _ => "", _.fold("")( commasep => s", aliases $commasep" ) )
           val ok = {
@@ -2860,12 +2876,12 @@ object SbtEthereumPlugin extends AutoPlugin {
           if ( ok ) {
             Some( privateKey )
           } else {
-            CurrentAddress.set( NoAddress )
+            Mutables.CurrentAddress.set( NoAddress )
             throw new SenderNotAvailableException( s"Use of sender address '0x${address.hex}' (on blockchain '${blockchainId}'${aliasesPart}) vetoed by user." )
           }
         }
         case _ => { // if we don't match, we reset / forget the cached private key
-          CurrentAddress.set( NoAddress )
+          Mutables.CurrentAddress.set( NoAddress )
           None
         }
       }
@@ -2875,7 +2891,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     if ( address == testing.Default.Faucet.Address ) {
       testing.Default.Faucet.PrivateKey
     } else {
-      CurrentAddress.synchronized {
+      Mutables.CurrentAddress.synchronized {
         goodCached.getOrElse( updateCached )
       }
     }
@@ -3027,6 +3043,23 @@ object SbtEthereumPlugin extends AutoPlugin {
     val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s"with aliases $str " ) )
     s"'0x${address.hex}' (${aliasesPart}on blockchain '$blockchainId')"
   }
+
+  private def attemptAdvanceStateWithTask[T]( taskKey : Def.ScopedKey[Task[T]], startState : State ) : State = {
+    Project.runTask( taskKey, startState ) match {
+      case None => {
+        WARNING.log(s"Huh? Key '${taskKey}' was undefined in the original state. Ignoring attempt to run that task in onLoad/onUnload.")
+        startState
+      }
+      case Some((newState, Inc(inc))) => {
+        WARNING.log("Failed to run '${taskKey}' on initialization: " + Incomplete.show(inc.tpe))
+        startState
+      }
+      case Some((newState, Value(_))) => {
+        newState
+      }
+    }
+  }
+
 
   // plug-in setup
 
