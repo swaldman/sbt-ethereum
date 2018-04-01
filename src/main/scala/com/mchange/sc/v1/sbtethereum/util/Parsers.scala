@@ -103,8 +103,6 @@ object Parsers {
     }
   }
 
-  private [sbtethereum] val NewAliasParser = token(Space.* ~> ID, "<alias>") ~ createSimpleAddressParser("<hex-address>")
-
   private [sbtethereum] val RawIntParser = (Digit.+).map( chars => chars.mkString.toInt )
 
   private [sbtethereum] val RawBigIntParser = (Digit.+).map( chars => BigInt( chars.mkString ) )
@@ -298,6 +296,13 @@ object Parsers {
     mbApi : Option[AddressParserInfo]
   ) : Parser[Option[EthAddress]] = {
     genGenericAddressParser( state, mbApi ).?
+  }
+
+  private [sbtethereum] def genNewAliasParser(
+    state : State,
+    mbApi : Option[AddressParserInfo]
+  ) = {
+    token(Space.*) ~> token(ID, "<alias>") ~ genGenericAddressParser( state, mbApi )
   }
 
   private [sbtethereum] def genRecipientAddressParser(

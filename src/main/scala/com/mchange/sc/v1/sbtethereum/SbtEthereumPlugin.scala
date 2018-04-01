@@ -1106,20 +1106,24 @@ object SbtEthereumPlugin extends AutoPlugin {
     )
   }
 
-  def ethAddressAliasSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
-    val log = streams.value.log
-    val blockchainId = (ethcfgBlockchainId in config).value
-    val ( alias, address ) = NewAliasParser.parsed
-    val check = repository.Database.createUpdateAlias( blockchainId, alias, address )
-    check.fold(
-      _.vomit,
-      _ => {
-        log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${blockchainId}')." )
-      }
-    )
+  def ethAddressAliasSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genNewAliasParser )
 
-    Def.taskDyn {
-      xethTriggerDirtyAliasCache
+    Def.inputTaskDyn {
+      val log = streams.value.log
+      val blockchainId = (ethcfgBlockchainId in config).value
+      val ( alias, address ) = parser.parsed
+      val check = repository.Database.createUpdateAlias( blockchainId, alias, address )
+      check.fold(
+        _.vomit,
+        _ => {
+          log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${blockchainId}')." )
+        }
+      )
+
+      Def.taskDyn {
+        xethTriggerDirtyAliasCache
+      }
     }
   }
 

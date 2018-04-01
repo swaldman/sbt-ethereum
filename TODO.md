@@ -6,7 +6,7 @@
   - ethAbiMemorize
   - ethContractSpawn
 
-* Let ethAddressAliasSet accept any form of address, not just raw hex
+* Interactive setup of compiler if not present
 
 * Redo failable
   * Afterwards, undo temporary extra protection in SolidityEvent
@@ -19,7 +19,7 @@
 
 * Better message when no solidity compiler is installed
 
-* interactive migrate (or restore) of database, default compiler
+* interactive migrate (or restore) of database
 
 * Setting for turning optimization on / off in compilation
 
