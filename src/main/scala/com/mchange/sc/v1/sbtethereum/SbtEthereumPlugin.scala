@@ -2807,19 +2807,27 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
+    def forceKey = {
+      try {
+        EthPrivateKey( credential )
+      }
+      catch {
+        case _ : NumberFormatException | _ : IllegalArgumentException => throw new BadCredentialException()
+      }
+    }
     mbGethWallet.fold {
       log.info( "No wallet available. Trying passphrase as hex private key." )
-      EthPrivateKey( credential )
+      forceKey
     }{ gethWallet =>
       try {
         wallet.V3.decodePrivateKey( gethWallet, credential )
       } catch {
         case v3e : wallet.V3.Exception => {
           log.warn("Credential is not correct geth wallet passphrase. Trying as hex private key.")
-          val maybe = EthPrivateKey( credential )
+          val maybe = forceKey
           val desiredAddress = gethWallet.address
           if (maybe.toPublicKey.toAddress != desiredAddress) {
-            throw new SbtEthereumException( s"The hex private key supplied does not unlock the wallet for '0x${desiredAddress.hex}'" )
+            throw new BadCredentialException( desiredAddress )
           } else {
             maybe
           }
