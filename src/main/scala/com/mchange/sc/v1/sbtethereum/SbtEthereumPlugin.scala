@@ -1332,22 +1332,30 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   }
 
-  private def ethContractAbiMemorizeTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
-    val blockchainId = (ethcfgBlockchainId in config).value
-    val log = streams.value.log
-    val is = interactionService.value
-    val ( address, abi ) = readAddressAndAbi( log, is )
-    val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
-    mbKnownCompilation match {
-      case Some( knownCompilation ) => {
-        log.info( s"The contract at address '$address' was already associated with a deployed compilation." )
-        // TODO, maybe, check if the deployed compilation includes a non-null ABI
-      }
-      case None => {
-        repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // throw an Exception if there's a database issue
-        log.info( s"ABI is now known for the contract at address ${address.hex}" )
+  private def ethContractAbiMemorizeTask( config : Configuration ) : Initialize[Task[Unit]] = {
+    val mainTask = {
+      Def.task {
+        val blockchainId = (ethcfgBlockchainId in config).value
+        val s = state.value
+        val log = streams.value.log
+        val is = interactionService.value
+        val ( address, abi ) = readAddressAndAbi( log, is )
+        val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
+        mbKnownCompilation match {
+          case Some( knownCompilation ) => {
+            log.info( s"The contract at address '$address' was already associated with a deployed compilation." )
+            // TODO, maybe, check if the deployed compilation includes a non-null ABI
+          }
+          case None => {
+            repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // throw an Exception if there's a database issue
+            log.info( s"ABI is now known for the contract at address ${address.hex}" )
+            interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly memorized ABI", address )
+          }
+        }
       }
     }
+
+    Def.sequential( mainTask, xethTriggerDirtyAliasCache )
   }
 
   private def ethContractCompilationsCullTask : Initialize[Task[Unit]] = Def.task {
@@ -1621,7 +1629,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           out match {
             case Right( ctr ) => {
               val address = ctr.contractAddress.getOrElse( throw new SbtEthereumException("Huh? We deployed a contract, but the transaction receipt contains no contract address!") )
-              interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the newly deployed ${deploymentAlias} contract at '${hexString(address)}'", address )
+              interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the newly deployed '${deploymentAlias}' contract at '${hexString(address)}'", address )
             }
             case Left( _ ) => ()
           }

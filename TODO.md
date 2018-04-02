@@ -2,9 +2,6 @@
 
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings ar used in auto spawn
 
-* Request aliases on
-  - ethAbiMemorize
-
 * Some form of logging of overwriting of aliases
 
 * Interactive setup of compiler if not present
