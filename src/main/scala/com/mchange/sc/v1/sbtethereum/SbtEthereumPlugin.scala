@@ -215,16 +215,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgSender' or defaultSender that may be set.")
     val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
 
-    val ethContractAbiForget           = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiMemorize")
-    val ethContractAbiList             = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationsList'")
-    val ethContractAbiMemorize         = taskKey [Unit] ("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
-    val ethContractAbiPrint            = inputKey[Unit] ("Prints the contract ABI associated with a provided address, if known.")
-    val ethContractAbiPrintPretty      = inputKey[Unit] ("Pretty prints the contract ABI associated with a provided address, if known.")
-    val ethContractAbiPrintCompact     = inputKey[Unit] ("Compactly prints the contract ABI associated with a provided address, if known.")
-    val ethContractCompilationsCull    = taskKey [Unit] ("Removes never-deployed compilations from the repository database.")
-    val ethContractCompilationsInspect = inputKey[Unit] ("Dumps to the console full information about a compilation, based on either a code hash or contract address")
-    val ethContractCompilationsList    = taskKey [Unit] ("Lists summary information about compilations known in the repository")
-    val ethContractSpawn               = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]](""""Spawns" (deploys) the specified named contract, or contracts via 'ethcfgAutoSpawnContracts'""")
+    val ethContractAbiForget          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiMemorize")
+    val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
+    val ethContractAbiMemorize        = taskKey [Unit] ("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
+    val ethContractAbiPrint           = inputKey[Unit] ("Prints the contract ABI associated with a provided address, if known.")
+    val ethContractAbiPrintPretty     = inputKey[Unit] ("Pretty prints the contract ABI associated with a provided address, if known.")
+    val ethContractAbiPrintCompact    = inputKey[Unit] ("Compactly prints the contract ABI associated with a provided address, if known.")
+    val ethContractCompilationCull    = taskKey [Unit] ("Removes never-deployed compilations from the repository database.")
+    val ethContractCompilationInspect = inputKey[Unit] ("Dumps to the console full information about a compilation, based on either a code hash or contract address")
+    val ethContractCompilationList    = taskKey [Unit] ("Lists summary information about compilations known in the repository")
+    val ethContractSpawn              = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]](""""Spawns" (deploys) the specified named contract, or contracts via 'ethcfgAutoSpawnContracts'""")
 
     val ethDebugGanacheStart = taskKey[Unit] (s"Starts a local ganache environment (if the command '${testing.Default.Ganache.Executable}' is in your PATH)")
     val ethDebugGanacheStop  = taskKey[Unit] ("Stops any local ganache environment that may have been started previously")
@@ -513,13 +513,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractAbiPrintPretty in Test := { ethContractAbiPrintPrettyTask( Test ).evaluated },
 
-    ethContractCompilationsCull := { ethContractCompilationsCullTask.value },
+    ethContractCompilationCull := { ethContractCompilationCullTask.value },
 
-    ethContractCompilationsInspect in Compile := { ethContractCompilationsInspectTask( Compile ).evaluated },
+    ethContractCompilationInspect in Compile := { ethContractCompilationInspectTask( Compile ).evaluated },
 
-    ethContractCompilationsInspect in Test := { ethContractCompilationsInspectTask( Test ).evaluated },
+    ethContractCompilationInspect in Test := { ethContractCompilationInspectTask( Test ).evaluated },
 
-    ethContractCompilationsList := { ethContractCompilationsListTask.value },
+    ethContractCompilationList := { ethContractCompilationListTask.value },
 
     ethContractSpawn in Compile := { ethContractSpawnTask( Compile ).evaluated },
 
@@ -1365,14 +1365,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.sequential( mainTask, xethTriggerDirtyAliasCache )
   }
 
-  private def ethContractCompilationsCullTask : Initialize[Task[Unit]] = Def.task {
+  private def ethContractCompilationCullTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val fcount = repository.Database.cullUndeployedCompilations()
     val count = fcount.get
     log.info( s"Removed $count undeployed compilations from the repository database." )
   }
 
-  private def ethContractCompilationsInspectTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethContractCompilationInspectTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genContractAddressOrCodeHashParser )
 
     Def.inputTask {
@@ -1469,7 +1469,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethContractCompilationsListTask : Initialize[Task[Unit]] = Def.task {
+  private def ethContractCompilationListTask : Initialize[Task[Unit]] = Def.task {
     val contractsSummary = repository.Database.contractsSummary.get // throw for any db problem
 
     val Blockchain = "Blockchain"
