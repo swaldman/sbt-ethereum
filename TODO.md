@@ -4,7 +4,8 @@
 
 * Request aliases on
   - ethAbiMemorize
-  - ethContractSpawn
+
+* Some form of logging of overwriting of aliases
 
 * Interactive setup of compiler if not present
 

@@ -304,6 +304,8 @@ object Parsers {
     genGenericAddressParser( state, mbApi ).?
   }
 
+  private [sbtethereum] def parsesAsAlias( putativeAlias : String ) : Boolean = Parser.parse( putativeAlias, ID ).isRight
+
   private [sbtethereum] def genNewAliasParser(
     state : State,
     mbApi : Option[AddressParserInfo]

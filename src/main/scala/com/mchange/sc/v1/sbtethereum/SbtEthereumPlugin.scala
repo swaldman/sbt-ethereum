@@ -696,8 +696,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       val origF : State => State = (onLoad in Global).value
       val newF  : State => State = ( state : State ) => {
         val lastState = origF( state )
-        val state1 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Compile,          lastState )
-        val state2 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Test,             state1    )
+        val state1 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Compile,           lastState )
+        val state2 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Test,              state1    )
         val state3 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state2    )
         state3
       }
@@ -1483,12 +1483,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethContractSpawnTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]] = {
     val parser = Defaults.loadForParser(xethFindCacheSeeds in config)( genContractSpawnParser )
 
-    Def.inputTask {
+    Def.inputTaskDyn {
       val s = state.value
       val is = interactionService.value
       val log = streams.value.log
       val blockchainId = (ethcfgBlockchainId in config).value
       val ephemeralBlockchains = xethcfgEphemeralBlockchains.value
+      val ephemeralDeployment = ephemeralBlockchains.contains( blockchainId )
 
       val sender = (xethFindCurrentSender in config).value.get
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
@@ -1573,6 +1574,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
 
+      val interactive = instruction != SpawnInstruction.Auto
+
       implicit val invokerContext = (xethInvokerContext in config).value
 
       def doSpawn( deploymentAlias : String, codeHex : String, inputs : immutable.Seq[String], abi : Abi ) : ( String, Either[EthHash,Client.TransactionReceipt] ) = {
@@ -1596,7 +1599,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                 receipt.contractAddress.foreach { ca =>
                   log.info( s"Contract '${deploymentAlias}' has been assigned address '0x${ca.hex}'." )
 
-                  if (! ephemeralBlockchains.contains( blockchainId ) ) {
+                  if (! ephemeralDeployment ) {
                     val dbCheck = {
                       repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
                     }
@@ -1612,11 +1615,29 @@ object SbtEthereumPlugin extends AutoPlugin {
             }
           }
         }
-        val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
+        val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete internally, with a warning, on a timeout
+
+        if ( !ephemeralDeployment && interactive ) {
+          out match {
+            case Right( ctr ) => {
+              val address = ctr.contractAddress.getOrElse( throw new SbtEthereumException("Huh? We deployed a contract, but the transaction receipt contains no contract address!") )
+              interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the newly deployed ${deploymentAlias} contract at '${hexString(address)}'", address )
+            }
+            case Left( _ ) => ()
+          }
+        }
 
         ( deploymentAlias, out )
       }
-      quartets.map( (doSpawn _).tupled )
+
+      val result = quartets.map( (doSpawn _).tupled )
+
+      Def.taskDyn {
+        Def.task {
+          val force = xethTriggerDirtyAliasCache.value
+          result
+        }
+      }
     }
   }
 
@@ -3009,6 +3030,36 @@ object SbtEthereumPlugin extends AutoPlugin {
     ( address, abi )
   }
 
+  private def interactiveSetAliasForAddress( blockchainId : String )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
+    def rawFetch : String = is.readLine( s"Enter an optional alias for ${describedAddress} (or [return] for none): ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
+    def validate( alias : String ) : Boolean = parsesAsAlias( alias )
+
+    @tailrec
+    def query : Option[String] = {
+      rawFetch match {
+        case ""                         => None
+        case alias if validate( alias ) => Some( alias )
+        case alias                      => {
+          println( s"'${alias}' is not a valid alias. Please try again." )
+          query
+        }
+      }
+    }
+
+    query match {
+      case Some( alias ) => {
+        val check = repository.Database.createUpdateAlias( blockchainId, alias, address )
+        check.fold(
+          _.vomit,
+          _ => {
+            log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${blockchainId}')." )
+          }
+        )
+      }
+      case None => log.info( s"No alias set for ${describedAddress}." )
+    }
+  }
+
   private def readV3Wallet( is : sbt.InteractionService ) : wallet.V3 = {
     val jsonStr = is.readLine( "V3 Wallet JSON: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
     val jsv = Json.parse( jsonStr )
@@ -3076,8 +3127,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // plug-in setup
 
-  // very important to ensure the ordering of settings,
-  // so that compile actually gets overridden
+  // very important to ensure the ordering of definitions,
+  // so that JvmPlugin's compile actually gets overridden
   override def requires = JvmPlugin
 
   override def trigger = allRequirements
