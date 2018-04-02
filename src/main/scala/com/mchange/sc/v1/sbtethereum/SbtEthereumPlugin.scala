@@ -251,6 +251,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionSend   = inputKey[Option[Client.TransactionReceipt]]           ("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
     val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
+    // xens tasks
+
+    val xensClient = taskKey[ens.Client]("Loads an ENS client instance.")
+
     // xeth tasks
 
     val xethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
@@ -273,7 +277,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
     val xethNamedAbis = taskKey[immutable.Map[String,Abi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
-    val xensClient = taskKey[ens.Client]("Loads an ENS client instance.")
+    val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
     val xethSqlQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
     val xethSqlUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
@@ -652,6 +656,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethLoadWalletV3For in Test := { xethLoadWalletV3ForTask( Test ).evaluated },
 
+    xethOnLoadSolicitCompilerInstall := { xethOnLoadSolicitCompilerInstallTask.value },
+
     xethNamedAbis in Compile := { xethNamedAbisTask( Compile ).value },
 
     xethNamedAbis in Test := { xethNamedAbisTask( Test ).value },
@@ -698,8 +704,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val lastState = origF( state )
         val state1 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Compile,           lastState )
         val state2 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Test,              state1    )
-        val state3 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state2    )
-        state3
+        val state3 = attemptAdvanceStateWithTask( xethOnLoadSolicitCompilerInstall,                    state2    )
+        val state4 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state3    )
+        state4
       }
       newF
     },
@@ -1859,22 +1866,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         val versionDir = new File( rootSolcJDir, versionToInstall )
         if ( versionDir.exists() ) {
           log.warn( s"Directory '${versionDir.getAbsolutePath}' already exists. If you would like to reinstall this version, please delete this directory by hand." )
-          throw new Exception( s"Cannot overwrite existing installation in '${versionDir.getAbsolutePath}'. Please delete this directory by hand if you wish to reinstall." )
-        } else {
-          SolcJInstaller.installLocalSolcJ( rootSolcJDir.toPath, versionToInstall )
-          log.info( s"Installed local solcJ compiler, version ${versionToInstall} in '${rootSolcJDir}'." )
-          val test = Compiler.Solidity.test( new Compiler.Solidity.LocalSolc( Some( versionDir ) ) )
-          if ( test ) {
-            log.info( "Testing newly installed compiler... ok." )
-          } else {
-            log.warn( "Testing newly installed compiler... failed!" )
-            Platform.Current match {
-              case Some( Platform.Windows ) => {
-                log.warn("You may need to install MS Video Studio 2015 Runtime, see https://www.microsoft.com/en-us/download/details.aspx?id=48145") // known to be necessay for 0.4.18
-              }
-              case _ => /* ignore */
-            }
-          }
+          throw new TaskFailure( s"Cannot overwrite existing installation in '${versionDir.getAbsolutePath}'. Please delete this directory by hand if you wish to reinstall." )
+        }
+        else {
+          installLocalSolcJ( log, rootSolcJDir, versionToInstall )
         }
       }
     }
@@ -2648,6 +2643,44 @@ object SbtEthereumPlugin extends AutoPlugin {
     doGetTransactionCount( log, jsonRpcUrl, (xethFindCurrentSender in config).value.get , jsonrpc.Client.BlockNumber.Pending )
   }
 
+  private def xethOnLoadSolicitCompilerInstallTask : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+    val is  = interactionService.value
+    val currentDefaultCompilerVersion = SolcJInstaller.DefaultSolcJVersion
+    val currentSolcJDirectory  = repository.SolcJ.Directory
+
+    if ( currentSolcJDirectory.isFailed ) {
+      log.warn( s"Cannot find or create '${repository.SolcJ.DirName}' directory in the sbt-ethereum repository directory. This is not a good sign." )
+    }
+    else {
+      val DirSolcJ = currentSolcJDirectory.get
+      val versionDir = new File( DirSolcJ, currentDefaultCompilerVersion )
+      if (! versionDir.exists() ) {
+        val compilers = DirSolcJ.list()
+        if ( compilers.nonEmpty ) {
+          println( s"""Solidity compiler directory '${DirSolcJ.getAbsolutePath}'.""" )
+          println( s"""The following compiler versions currently appear to be installed: ${compilers.mkString(", ")}""" )
+        }
+        def prompt : Option[String] = is.readLine( s"The current default solidity compiler ['${currentDefaultCompilerVersion}'] is not installed. Install? [y/n] ", mask = false )
+
+        @tailrec
+        def checkInstall : Boolean = {
+          prompt match {
+            case None                                  => false
+            case Some( str ) if str.toLowerCase == "y" => true
+            case Some( str ) if str.toLowerCase == "n" => false
+            case _                                     => {
+              println( "Please type 'y' or 'n'." )
+              checkInstall
+            }
+          }
+        }
+
+        if ( checkInstall ) installLocalSolcJ( log, DirSolcJ, currentDefaultCompilerVersion )
+      }
+    }
+  }
+
   private def xethSqlQueryRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log   = streams.value.log
     val query = DbQueryParser.parsed
@@ -2795,6 +2828,24 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   // helper functions
+
+  private def installLocalSolcJ( log : sbt.Logger, rootSolcJDir : File, versionToInstall : String ) : Unit = {
+    val versionDir = new File( rootSolcJDir, versionToInstall )
+    SolcJInstaller.installLocalSolcJ( rootSolcJDir.toPath, versionToInstall )
+    log.info( s"Installed local solcJ compiler, version ${versionToInstall} in '${rootSolcJDir}'." )
+    val test = Compiler.Solidity.test( new Compiler.Solidity.LocalSolc( Some( versionDir ) ) )
+    if ( test ) {
+      log.info( "Testing newly installed compiler... ok." )
+    } else {
+      log.warn( "Testing newly installed compiler... failed!" )
+      Platform.Current match {
+        case Some( Platform.Windows ) => {
+          log.warn("You may need to install MS Video Studio 2015 Runtime, see https://www.microsoft.com/en-us/download/details.aspx?id=48145") // known to be necessay for 0.4.18
+        }
+        case _ => /* ignore */
+      }
+    }
+  }
 
   private def allUnitsValue( valueInWei : BigInt ) = s"${valueInWei} wei (${Denominations.Ether.fromWei(valueInWei)} ether, ${Denominations.Finney.fromWei(valueInWei)} finney, ${Denominations.Szabo.fromWei(valueInWei)} szabo)"
 
