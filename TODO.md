@@ -6,6 +6,8 @@
 
 * Redo failable
   * Afterwards, undo temporary extra protection in SolidityEvent
+  * type parameterized fail?
+  * assert / assertoStackTrace / assertRecover
 
 * Let compilations store the name of the project from which they were compiled
 
@@ -14,6 +16,8 @@
 * interactive migrate (or restore) of database
 
 * Setting for turning optimization on / off in compilation
+
+* Generalize reasoning surrounding when interactive transaction approver should be used
 
 * enable libraries to deploy as well as interact with already-deployed contracts
   * embed compilations as a resource in jar files
