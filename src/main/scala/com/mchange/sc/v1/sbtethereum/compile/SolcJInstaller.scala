@@ -10,6 +10,7 @@ import scala.io.Source
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v2.util.Platform
 import com.mchange.sc.v2.lang.borrow
+import com.mchange.sc.v1.sbtethereum.SbtEthereumException
 
 object SolcJInstaller {
   private lazy implicit val logger = mlogger( this )
@@ -31,13 +32,14 @@ object SolcJInstaller {
 
   private val OtherSolcjCompatibleSupportedVersion = {
     immutable.TreeMap (
-      "0.4.18" -> new URL( "http://repo1.maven.org/maven2/com/mchange/solcj-compat/0.4.18rev1/solcj-compat-0.4.18rev1.jar" )
+      "0.4.18" -> new URL( "http://repo1.maven.org/maven2/com/mchange/solcj-compat/0.4.18rev1/solcj-compat-0.4.18rev1.jar" ),
+      "0.4.22" -> new URL( "http://repo1.maven.org/maven2/com/mchange/solcj-compat/0.4.22rev1/solcj-compat-0.4.22rev1.jar" )
     )
   }
 
   val SupportedVersions = SolcJSupportedVersions ++ OtherSolcjCompatibleSupportedVersion.keySet
 
-  val DefaultSolcJVersion = "0.4.18"
+  val DefaultSolcJVersion = "0.4.22"
 
   private def mbVersionUrl( version : String ) : Option[URL] = {
     if ( SolcJSupportedVersions( version ) ) {
@@ -58,7 +60,14 @@ object SolcJInstaller {
 
   private def findSolcFileNames( cl : URLClassLoader ) : immutable.Seq[String] = {
     val fileListUrl = cl.findResource( FileListResource )
-    borrow( Source.fromURL( fileListUrl ) )( _.getLines().toList )
+    try {
+      borrow( Source.fromURL( fileListUrl ) )( _.getLines().toList )
+    }
+    catch {
+      case e : Exception => {
+        throw new SbtEthereumException( s"""Failed to load expected solc installation file list, URLClassLoader URLs ${cl.getURLs.mkString("[",", ","]")}, URL '${fileListUrl}'.""", e )
+      }
+    }
   }
 
   private def fileNameToLocalFile( rootLocalCompilerDir : Path, version : String, fileName : String, cl : URLClassLoader ) : Unit = {
