@@ -6,7 +6,7 @@ organization := "com.mchange"
 
 name := "sbt-ethereum"
 
-version := "0.1.1-SNAPSHOT" // 0.0.x is for sbt-0.13 versions
+version := "0.1.1" // 0.0.x is for sbt-0.13 versions
 
 sbtPlugin := true
 
