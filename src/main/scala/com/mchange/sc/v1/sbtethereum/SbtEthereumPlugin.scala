@@ -157,28 +157,30 @@ object SbtEthereumPlugin extends AutoPlugin {
     val enscfgNameServiceReverseTld        = settingKey[String]       ("The top-level domain under which reverse lookups are supported in the ENS name service smart contract at 'enscfgNameServiceAddress'.")
     val enscfgNameServicePublicResolver    = settingKey[EthAddress]   ("The address of a publically accessible resolver (if any is available) that can be used to map names to addresses.")
 
-    val ethcfgAutoSpawnContracts           = settingKey[Seq[String]]  ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
-    val ethcfgBaseCurrencyCode             = settingKey[String]       ("Currency code for currency in which prices of ETH and other tokens should be displayed.")
-    val ethcfgBlockchainId                 = settingKey[String]       ("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
-    val ethcfgEntropySource                = settingKey[SecureRandom] ("The source of randomness that will be used for key generation")
-    val ethcfgGasLimitCap                  = settingKey[BigInt]       ("Maximum gas limit to use in transactions")
-    val ethcfgGasLimitFloor                = settingKey[BigInt]       ("Minimum gas limit to use in transactions (usually left unset)")
-    val ethcfgGasLimitMarkup               = settingKey[Double]       ("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
-    val ethcfgGasPriceCap                  = settingKey[BigInt]       ("Maximum gas limit to use in transactions")
-    val ethcfgGasPriceFloor                = settingKey[BigInt]       ("Minimum gas limit to use in transactions (usually left unset)")
-    val ethcfgGasPriceMarkup               = settingKey[Double]       ("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
-    val ethcfgIncludeLocations             = settingKey[Seq[String]]  ("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
-    val ethcfgJsonRpcUrl                   = settingKey[String]       ("URL of the Ethereum JSON-RPC service build should work with")
-    val ethcfgKeystoreAutoRelockSeconds    = settingKey[Int]          ("Number of seconds after which an unlocked private key should automatically relock")
-    val ethcfgKeystoreLocationsV3          = settingKey[Seq[File]]    ("Directories from which V3 wallets can be loaded")
-    val ethcfgNetcompileUrl                = settingKey[String]       ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
-    val ethcfgScalaStubsPackage            = settingKey[String]       ("Package into which Scala stubs of Solidity compilations should be generated")
-    val ethcfgSender                       = settingKey[String]       ("The address from which transactions will be sent")
-    val ethcfgSoliditySource               = settingKey[File]         ("Solidity source code directory")
-    val ethcfgSolidityDestination          = settingKey[File]         ("Location for compiled solidity code and metadata")
-    val ethcfgTargetDir                    = settingKey[File]         ("Location in target directory where ethereum artifacts will be placed")
-    val ethcfgTransactionReceiptPollPeriod = settingKey[Duration]     ("Length of period after which sbt-ethereum will poll and repoll for a Client.TransactionReceipt after a transaction")
-    val ethcfgTransactionReceiptTimeout    = settingKey[Duration]     ("Length of period after which sbt-ethereum will give up on polling for a Client.TransactionReceipt after a transaction")
+    val ethcfgAutoSpawnContracts            = settingKey[Seq[String]]  ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
+    val ethcfgBaseCurrencyCode              = settingKey[String]       ("Currency code for currency in which prices of ETH and other tokens should be displayed.")
+    val ethcfgBlockchainId                  = settingKey[String]       ("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
+    val ethcfgEntropySource                 = settingKey[SecureRandom] ("The source of randomness that will be used for key generation")
+    val ethcfgGasLimitCap                   = settingKey[BigInt]       ("Maximum gas limit to use in transactions")
+    val ethcfgGasLimitFloor                 = settingKey[BigInt]       ("Minimum gas limit to use in transactions (usually left unset)")
+    val ethcfgGasLimitMarkup                = settingKey[Double]       ("Fraction by which automatically estimated gas limits will be marked up (if not overridden) in setting contract creation transaction gas limits")
+    val ethcfgGasPriceCap                   = settingKey[BigInt]       ("Maximum gas limit to use in transactions")
+    val ethcfgGasPriceFloor                 = settingKey[BigInt]       ("Minimum gas limit to use in transactions (usually left unset)")
+    val ethcfgGasPriceMarkup                = settingKey[Double]       ("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
+    val ethcfgIncludeLocations              = settingKey[Seq[String]]  ("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
+    val ethcfgJsonRpcUrl                    = settingKey[String]       ("URL of the Ethereum JSON-RPC service build should work with")
+    val ethcfgKeystoreAutoRelockSeconds     = settingKey[Int]          ("Number of seconds after which an unlocked private key should automatically relock")
+    val ethcfgKeystoreLocationsV3           = settingKey[Seq[File]]    ("Directories from which V3 wallets can be loaded")
+    val ethcfgNetcompileUrl                 = settingKey[String]       ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
+    val ethcfgScalaStubsPackage             = settingKey[String]       ("Package into which Scala stubs of Solidity compilations should be generated")
+    val ethcfgSender                        = settingKey[String]       ("The address from which transactions will be sent")
+    val ethcfgSolidityCompilerOptimize      = settingKey[Boolean]      ("Sets whether the Solidity compiler should run its optimizer on generated code, if supported.")
+    val ethcfgSolidityCompilerOptimizerRuns = settingKey[Int]          ("Sets the number of optimization runs the Solidity compiler will execute, if supported and 'ethcfgSolidityCompilerOptimize' is set to 'true'.")
+    val ethcfgSoliditySource                = settingKey[File]         ("Solidity source code directory")
+    val ethcfgSolidityDestination           = settingKey[File]         ("Location for compiled solidity code and metadata")
+    val ethcfgTargetDir                     = settingKey[File]         ("Location in target directory where ethereum artifacts will be placed")
+    val ethcfgTransactionReceiptPollPeriod  = settingKey[Duration]     ("Length of period after which sbt-ethereum will poll and repoll for a Client.TransactionReceipt after a transaction")
+    val ethcfgTransactionReceiptTimeout     = settingKey[Duration]     ("Length of period after which sbt-ethereum will give up on polling for a Client.TransactionReceipt after a transaction")
 
     val xethcfgEphemeralBlockchains       = settingKey[Seq[String]] ("IDs of blockchains that should be considered ephemeral (so their deployments should not be retained).")
     val xethcfgNamedAbiSource             = settingKey[File]        ("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
@@ -364,6 +366,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
       listify( repository.Keystore.V3.Directory.xdebug( debug("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xdebug( debug("geth home directory") ) ) ::: Nil
     },
+
+    ethcfgSolidityCompilerOptimize := false,
+
+    ethcfgSolidityCompilerOptimizerRuns := 200,
 
     ethcfgSoliditySource in Compile := (sourceDirectory in Compile).value / "solidity",
 
@@ -2817,6 +2823,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val includeStrings = ethcfgIncludeLocations.value
 
+    val useOptimizer = ethcfgSolidityCompilerOptimize.value
+    val numRuns      = ethcfgSolidityCompilerOptimizerRuns.value
+
+    val optimizerRuns = if (useOptimizer) Some( numRuns ) else None
+
     val solSource      = (ethcfgSoliditySource in config).value
     val solDestination = (ethcfgSolidityDestination in config).value
 
@@ -2824,7 +2835,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val includeLocations = includeStrings.map( SourceFile.Location.apply( baseDir, _ ) )
 
-    ResolveCompileSolidity.doResolveCompile( log, compiler, None, includeLocations, solSource, solDestination )
+    ResolveCompileSolidity.doResolveCompile( log, compiler, optimizerRuns, includeLocations, solSource, solDestination )
   }
 
   // helper functions
