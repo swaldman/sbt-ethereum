@@ -367,7 +367,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       listify( repository.Keystore.V3.Directory.xdebug( debug("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xdebug( debug("geth home directory") ) ) ::: Nil
     },
 
-    ethcfgSolidityCompilerOptimize := false,
+    ethcfgSolidityCompilerOptimize := true,
 
     ethcfgSolidityCompilerOptimizerRuns := 200,
 
