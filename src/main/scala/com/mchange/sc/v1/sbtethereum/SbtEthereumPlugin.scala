@@ -2824,7 +2824,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val includeLocations = includeStrings.map( SourceFile.Location.apply( baseDir, _ ) )
 
-    ResolveCompileSolidity.doResolveCompile( log, compiler, includeLocations, solSource, solDestination )
+    ResolveCompileSolidity.doResolveCompile( log, compiler, None, includeLocations, solSource, solDestination )
   }
 
   // helper functions

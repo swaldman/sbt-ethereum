@@ -36,7 +36,7 @@ object Compiler {
     def test( compiler : Compiler.Solidity )( implicit ec : ExecutionContext ) : Boolean = {
       try {
         val fcompilation: Future[Compilation] = {
-          compiler.compile( new TestLogger( compiler.toString ), "pragma solidity ^0.4.7;\ncontract Test {}" )( ec )
+          compiler.compile( new TestLogger( compiler.toString ), None, "pragma solidity ^0.4.7;\ncontract Test {}" )( ec )
         }
         Await.ready( fcompilation, Duration.Inf )
         fcompilation.value.get.isSuccess
@@ -45,12 +45,22 @@ object Compiler {
       }
     }
 
+    private def warnOptimizationUnsupported( optimizerRuns : Option[Int] ) : Unit = {
+      optimizerRuns.foreach { runs =>
+        WARNING.log(
+          "EthNetcompile doesn't support configurable optimization. The network compiler's default optimization setting will be used " +
+         s"instead of the requested use of an optimizer with ${runs} runs."
+        )
+      }
+    }
+
     final object EthJsonRpc {
       val KeyPrefix = "ethjsonrpc@"
     }
 
     final case class EthJsonRpc( jsonRpcUrl : String ) extends Compiler.Solidity {
-      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
+      def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
+        warnOptimizationUnsupported( optimizerRuns )
         util.EthJsonRpc.doAsyncCompileSolidity( log, jsonRpcUrl, source )( jsonrpc.Client.Factory.Default, ec )
       }
     }
@@ -62,7 +72,9 @@ object Compiler {
     final case class EthNetcompile( ethNetcompileUrl : String ) extends Compiler.Solidity {
       val url = new URL( ethNetcompileUrl )
 
-      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
+      def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
+        warnOptimizationUnsupported( optimizerRuns )
+
         borrow( Exchanger.Factory.Simple( url ) ) { exchanger =>
           val fsuccess = exchanger.exchange( "ethdev_compile",
                                              JsArray( Seq( JsObject( Seq(
@@ -122,15 +134,18 @@ object Compiler {
           case None        => "solc" // resolve via PATH environment variable
         }
       }
-      val solcCommand = immutable.Seq(solcExecutable, "--combined-json", "bin,metadata", "-")
-
-      def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
+      def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         import java.io._
         import scala.sys.process._
 
         import java.util.concurrent.atomic.AtomicReference
         import scala.io.Codec
         import com.mchange.v1.io.{InputStreamUtils,OutputStreamUtils}
+
+        val solcCommand = optimizerRuns match {
+          case Some( runs ) => immutable.Seq(solcExecutable, "--optimize", "--optimize-runs", runs.toString, "--combined-json", "bin,metadata", "-")
+          case None         => immutable.Seq(solcExecutable, "--combined-json", "bin,metadata", "-")
+        }
 
         // potential Exceptions from async process management methods,
         // see method names below to understand variable names
@@ -256,5 +271,5 @@ object Compiler {
 }
 
 trait Compiler {
-  def compile( log : sbt.Logger, source : String )( implicit ec : ExecutionContext ) : Future[Compilation]
+  def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String )( implicit ec : ExecutionContext ) : Future[Compilation]
 }

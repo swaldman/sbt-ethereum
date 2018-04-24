@@ -119,7 +119,14 @@ object ResolveCompileSolidity {
 
   def goodSolidityFileName( simpleName : String ) : Boolean =  simpleName.endsWith(".sol") && SolidityFileBadFirstChars.indexOf( simpleName.head ) < 0
 
-  def doResolveCompile( log : sbt.Logger, compiler : Compiler.Solidity, includeSourceLocations : Seq[SourceFile.Location], solSourceDir : File, solDestDir : File )( implicit ec : ExecutionContext ) : Unit = {
+  def doResolveCompile(
+    log : sbt.Logger,
+    compiler : Compiler.Solidity,
+    optimizerRuns : Option[Int],
+    includeSourceLocations : Seq[SourceFile.Location],
+    solSourceDir : File,
+    solDestDir : File
+  )( implicit ec : ExecutionContext ) : Unit = {
 
     def solToJson( filename : String ) : String = filename match {
       case SolFileRegex( base ) => base + ".json"
@@ -170,7 +177,7 @@ object ResolveCompileSolidity {
         }
         Files.write( debugDestFile.toPath, combinedSource.getBytes( Codec.UTF8.charSet ) )
         log.info( s"Compiling '${ file.getName }'. (Debug source: '${ debugDestFile.getPath }')" )
-        file -> compiler.compile( log, combinedSource ).map( result => ( destFile, result ) )
+        file -> compiler.compile( log, optimizerRuns, combinedSource ).map( result => ( destFile, result ) )
       }
       waitForFiles( compileLabeledFuts, count => s"compileSolidity failed. [${count} failures]" )
 
