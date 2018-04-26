@@ -1,6 +1,8 @@
 # TODO
 
-* Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings ar used in auto spawn
+* Inquire to auto-set 'defaultSender' when a autogenerating a wallet on startup
+
+* Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
 
 * Some form of logging of overwriting of aliases
 
@@ -11,7 +13,7 @@
 
 * Let compilations store the name of the project from which they were compiled
 
-* Make stub compilation incremental
+* Make stub generation incremental
     
 * interactive migrate (or restore) of database
 

@@ -280,6 +280,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
     val xethNamedAbis = taskKey[immutable.Map[String,Abi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
+    val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
     val xethSqlQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
     val xethSqlUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
@@ -664,6 +665,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethOnLoadSolicitCompilerInstall := { xethOnLoadSolicitCompilerInstallTask.value },
 
+    xethOnLoadSolicitWalletV3Generation := { xethOnLoadSolicitWalletV3GenerationTask.value },
+
     xethNamedAbis in Compile := { xethNamedAbisTask( Compile ).value },
 
     xethNamedAbis in Test := { xethNamedAbisTask( Test ).value },
@@ -710,8 +713,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val lastState = origF( state )
         val state1 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Compile,           lastState )
         val state2 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Test,              state1    )
-        val state3 = attemptAdvanceStateWithTask( xethOnLoadSolicitCompilerInstall,                    state2    )
-        val state4 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state3    )
+        val state3 = attemptAdvanceStateWithTask( xethOnLoadSolicitWalletV3Generation,                 state2    )
+        val state4 = attemptAdvanceStateWithTask( xethOnLoadSolicitCompilerInstall,                    state3    )
+        val state5 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state4    )
         state4
       }
       newF
@@ -1764,11 +1768,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val keystoresV3  = ethcfgKeystoreLocationsV3.value
     val log          = streams.value.log
     val blockchainId = (ethcfgBlockchainId in config).value
-    val combined = {
-      keystoresV3
-        .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory: ${dir}" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
-        .foldLeft( Map.empty[EthAddress,wallet.V3] )( ( accum, next ) => accum ++ next )
-    }
+
+    val combined = combinedKeystoresMap( keystoresV3 )
 
     val out = {
       def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( repository.Database.findAliasesByAddress( blockchainId, address ).get : _* )
@@ -2687,6 +2688,34 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def xethOnLoadSolicitWalletV3GenerationTask : Initialize[Task[Unit]] = Def.task {
+    val s = state.value
+    val is = interactionService.value
+    val keystoresV3  = ethcfgKeystoreLocationsV3.value
+    val combined = combinedKeystoresMap( keystoresV3 )
+    if ( combined.isEmpty ) {
+      def prompt : Option[String] = is.readLine( s"There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] ", mask = false )
+
+      @tailrec
+      def checkInstall : Boolean = {
+        prompt match {
+          case None                                  => false
+          case Some( str ) if str.toLowerCase == "y" => true
+          case Some( str ) if str.toLowerCase == "n" => false
+          case _                                     => {
+            println( "Please type 'y' or 'n'." )
+            checkInstall
+          }
+        }
+      }
+
+      if ( checkInstall ) {
+        val extract = Project.extract(s)
+        val (_, result) = extract.runTask(ethKeystoreWalletV3Create, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
+      }
+    }
+  }
+
   private def xethSqlQueryRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log   = streams.value.log
     val query = DbQueryParser.parsed
@@ -2839,6 +2868,12 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   // helper functions
+
+  private def combinedKeystoresMap( keystoresV3 : Seq[File] ) : immutable.Map[EthAddress, wallet.V3] = {
+    keystoresV3
+      .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory: ${dir}" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
+      .foldLeft( Map.empty[EthAddress,wallet.V3] )( ( accum, next ) => accum ++ next )
+  }
 
   private def installLocalSolcJ( log : sbt.Logger, rootSolcJDir : File, versionToInstall : String ) : Unit = {
     val versionDir = new File( rootSolcJDir, versionToInstall )
