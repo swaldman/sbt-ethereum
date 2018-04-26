@@ -1766,7 +1766,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val blockchainId = (ethcfgBlockchainId in config).value
     val combined = {
       keystoresV3
-        .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xwarning( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
+        .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory: ${dir}" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
         .foldLeft( Map.empty[EthAddress,wallet.V3] )( ( accum, next ) => accum ++ next )
     }
 
