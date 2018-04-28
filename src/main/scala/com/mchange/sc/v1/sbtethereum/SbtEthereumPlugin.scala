@@ -2692,6 +2692,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val s = state.value
     val is = interactionService.value
     val keystoresV3  = ethcfgKeystoreLocationsV3.value
+    val nontestConfig = Compile                                      // XXX: if you change this, change the hardcoded Compile value in the line below!
+    val nontestBlockchainId = ( Compile / ethcfgBlockchainId ).value // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
     val combined = combinedKeystoresMap( keystoresV3 )
     if ( combined.isEmpty ) {
       def prompt : Option[String] = is.readLine( s"There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] ", mask = false )
@@ -2712,6 +2714,34 @@ object SbtEthereumPlugin extends AutoPlugin {
       if ( checkInstall ) {
         val extract = Project.extract(s)
         val (_, result) = extract.runTask(ethKeystoreWalletV3Create, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
+
+        if ( mbDefaultSender( nontestBlockchainId ).isEmpty ) {
+          val address = result.address
+          def prompt2 : Option[String] = is.readLine( s"Would you like the new address '${hexString(address)}' to be the default sender on nontest blockchain '${nontestBlockchainId}'? [y/n] ", mask = false )
+
+          @tailrec
+          def checkSetDefault : Boolean = {
+            prompt2 match {
+              case None                                  => false
+              case Some( str ) if str.toLowerCase == "y" => true
+              case Some( str ) if str.toLowerCase == "n" => false
+              case _                                     => {
+                println( "Please type 'y' or 'n'." )
+                checkSetDefault
+              }
+            }
+          }
+
+          if ( checkSetDefault ) {
+            extract.runInputTask( nontestConfig / ethAddressAliasSet, s"${DefaultSenderAlias} ${address.hex}", s )
+          }
+          else {
+            println(s"No '${DefaultSenderAlias}' alias defined. To create one later, use the command 'ethAddressAliasSet ${DefaultSenderAlias} <address>'.")
+          }
+        }
+      }
+      else {
+        println("No wallet created. To create one later, use the command 'ethKeystoreWalletV3Create'.")
       }
     }
   }
@@ -2874,6 +2904,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory: ${dir}" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
       .foldLeft( Map.empty[EthAddress,wallet.V3] )( ( accum, next ) => accum ++ next )
   }
+
+  private def mbDefaultSender( blockchainId : String ) = repository.Database.findAddressByAlias( blockchainId, DefaultSenderAlias ).get
 
   private def installLocalSolcJ( log : sbt.Logger, rootSolcJDir : File, versionToInstall : String ) : Unit = {
     val versionDir = new File( rootSolcJDir, versionToInstall )

@@ -1,6 +1,6 @@
 # TODO
 
-* Inquire to auto-set 'defaultSender' when a autogenerating a wallet on startup
+* 'ethAddressSenderDefaultSet' and 'ethAddressSenderDefaultDrop'
 
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
 
@@ -55,7 +55,11 @@
 * Hide keystore stuff behind a facade, maybe incorporate local keystore in DB (only after revision of consuela keystore stuff)
 * Incorporate transaction log in DB (?)
 * add type resriction to log / event Topic Seq, to limit length to four elements
+
 * Integrate keystore into database? (?)
+  - Maybe just backup all wallets into the keystore (?)
+  - Maybe just copy externally discovered wallets into the repository keystore?
+  
 * Generate Java stubs
 * More consistency about when tasks use println(...) vs log.info(...)
 
