@@ -2,8 +2,6 @@
 
 * 'ethAddressSenderDefaultSet', 'ethAddressSenderDefaultDrop', 'ethAddressSenderDefaultPrint'
 
-* 'ethKeystoreWalletV3FromJsonImport' and 'ethKeystoreWalletV3FromPrivateKeyImport'
-
 * 'ethContractSpawn' => 'ethTransactionDeploy'
 
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn

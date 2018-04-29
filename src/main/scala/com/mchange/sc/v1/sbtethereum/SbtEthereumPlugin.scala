@@ -238,12 +238,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethGasPriceOverrideDrop  = taskKey [Unit] ("Removes any previously set gas price override, reverting to the usual automatic marked-up default.")
     val ethGasPriceOverridePrint = taskKey [Unit] ("Displays the current gas price override, if set.")
 
-    val ethKeystoreList = taskKey[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
-    val ethKeystorePrivateKeyReveal = inputKey[Unit]      ("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
-    val ethKeystoreWalletV3Create   = taskKey [wallet.V3] ("Generates a new V3 wallet, using ethcfgEntropySource as a source of randomness")
-    val ethKeystoreWalletV3Memorize = taskKey [Unit]      ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
-    val ethKeystoreWalletV3Print    = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
-    val ethKeystoreWalletV3Validate = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
+    val ethKeystoreList                         = taskKey[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
+    val ethKeystorePrivateKeyReveal             = inputKey[Unit]      ("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
+    val ethKeystoreWalletV3Create               = taskKey [wallet.V3] ("Generates a new V3 wallet, using ethcfgEntropySource as a source of randomness")
+    val ethKeystoreWalletV3FromJsonImport       = taskKey [Unit]      ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
+    val ethKeystoreWalletV3FromPrivateKeyImport = taskKey [Unit]      ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
+    val ethKeystoreWalletV3Print                = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
+    val ethKeystoreWalletV3Validate             = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
     val ethSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
     val ethSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
@@ -561,7 +562,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethKeystoreWalletV3Create := { xethKeystoreWalletV3CreateScrypt.value },
 
-    ethKeystoreWalletV3Memorize := { ethKeystoreWalletV3MemorizeTask.value },
+    ethKeystoreWalletV3FromJsonImport := { ethKeystoreWalletV3FromJsonImportTask.value },
+
+    ethKeystoreWalletV3FromPrivateKeyImport := { ethKeystoreWalletV3FromPrivateKeyImportTask.value },
 
     ethKeystoreWalletV3Print in Compile := { ethKeystoreWalletV3PrintTask( Compile ).evaluated },
 
@@ -1820,7 +1823,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethKeystoreWalletV3MemorizeTask : Initialize[Task[Unit]] = Def.task {
+  private def ethKeystoreWalletV3FromJsonImportTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val is = interactionService.value
     val w = readV3Wallet( is )
@@ -1828,6 +1831,38 @@ object SbtEthereumPlugin extends AutoPlugin {
     repository.Keystore.V3.storeWallet( w ).get // asserts success
     log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
     log.info( s"Consider validating the JSON using 'ethKeystoreWalletV3Validate 0x${address.hex}." )
+  }
+
+  private def ethKeystoreWalletV3FromPrivateKeyImportTask : Initialize[Task[wallet.V3]] = Def.task {
+    val log   = streams.value.log
+    val c     = xethcfgWalletV3Pbkdf2C.value
+    val dklen = xethcfgWalletV3Pbkdf2DkLen.value
+
+    val is = interactionService.value
+    val entropySource = ethcfgEntropySource.value
+
+    val privateKeyStr = {
+      val raw = is.readLine( "Please enter the private key you would like to import (as 32 hex bytes): ", mask = true ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
+      if ( raw.startsWith( "0x" ) ) raw.substring(2) else raw
+    }
+    val privateKey = EthPrivateKey( privateKeyStr )
+
+    val confirm = {
+      is.readLine( s"The imported private key corresponds to address '${hexString( privateKey.address )}'. Is this correct? [y/n] ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
+    }
+
+    if (! confirm ) {
+      log.info( "Import aborted." )
+      throw new SbtEthereumException( "Import aborted." )
+    }
+    else {
+      log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
+      val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
+      val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( privateKey ), random = entropySource )
+      repository.Keystore.V3.storeWallet( w ).get // asserts success
+      log.info( "Wallet created and imported into sbt-ethereum keystore." )
+      w
+    }
   }
 
   private def ethKeystoreWalletV3PrintTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
