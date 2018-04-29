@@ -2,8 +2,6 @@
 
 * 'ethAddressSenderDefaultSet', 'ethAddressSenderDefaultDrop', 'ethAddressSenderDefaultPrint'
 
-* 'ethContractSpawn' => 'ethTransactionDeploy'
-
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
 
 * Some form of logging of overwriting of aliases

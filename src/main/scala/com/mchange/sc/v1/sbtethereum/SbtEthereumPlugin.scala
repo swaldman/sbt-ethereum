@@ -157,7 +157,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val enscfgNameServiceReverseTld        = settingKey[String]       ("The top-level domain under which reverse lookups are supported in the ENS name service smart contract at 'enscfgNameServiceAddress'.")
     val enscfgNameServicePublicResolver    = settingKey[EthAddress]   ("The address of a publically accessible resolver (if any is available) that can be used to map names to addresses.")
 
-    val ethcfgAutoSpawnContracts            = settingKey[Seq[String]]  ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
+    val ethcfgAutoDeployContracts           = settingKey[Seq[String]]  ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
     val ethcfgBaseCurrencyCode              = settingKey[String]       ("Currency code for currency in which prices of ETH and other tokens should be displayed.")
     val ethcfgBlockchainId                  = settingKey[String]       ("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
     val ethcfgEntropySource                 = settingKey[SecureRandom] ("The source of randomness that will be used for key generation")
@@ -226,7 +226,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractCompilationCull    = taskKey [Unit] ("Removes never-deployed compilations from the repository database.")
     val ethContractCompilationInspect = inputKey[Unit] ("Dumps to the console full information about a compilation, based on either a code hash or contract address")
     val ethContractCompilationList    = taskKey [Unit] ("Lists summary information about compilations known in the repository")
-    val ethContractSpawn              = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]](""""Spawns" (deploys) the specified named contract, or contracts via 'ethcfgAutoSpawnContracts'""")
 
     val ethDebugGanacheStart = taskKey[Unit] (s"Starts a local ganache environment (if the command '${testing.Default.Ganache.Executable}' is in your PATH)")
     val ethDebugGanacheStop  = taskKey[Unit] ("Stops any local ganache environment that may have been started previously")
@@ -250,6 +249,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
     val ethSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
 
+    val ethTransactionDeploy = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]("""Deploys the named contract, if specified, or else all contracts in 'ethcfgAutoDeployContracts'""")
     val ethTransactionInvoke = inputKey[Option[Client.TransactionReceipt]]           ("Calls a function on a deployed smart contract")
     val ethTransactionSend   = inputKey[Option[Client.TransactionReceipt]]           ("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
     val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
@@ -306,7 +306,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private val ethDebugGanacheTestCommand = Command.command( "ethDebugGanacheTest" ) { state =>
-    "Test/compile" :: "ethDebugGanacheStop" :: "ethDebugGanacheStart" :: "Test/ethContractSpawn" :: "test" :: "ethDebugGanacheStop" :: state
+    "Test/compile" :: "ethDebugGanacheStop" :: "ethDebugGanacheStart" :: "Test/ethTransactionDeploy" :: "test" :: "ethDebugGanacheStop" :: state
   }
 
   // definitions
@@ -529,10 +529,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractCompilationList := { ethContractCompilationListTask.value },
 
-    ethContractSpawn in Compile := { ethContractSpawnTask( Compile ).evaluated },
-
-    ethContractSpawn in Test := { ethContractSpawnTask( Test ).evaluated },
-
     ethDebugGanacheStart in Test := { ethDebugGanacheStartTask.value },
 
     ethDebugGanacheStop in Test := { ethDebugGanacheStopTask.value },
@@ -579,6 +575,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethSolidityCompilerInstall in Compile := { ethSolidityCompilerInstallTask.evaluated },
 
     ethSolidityCompilerPrint in Compile := { ethSolidityCompilerPrintTask.value },
+
+    ethTransactionDeploy in Compile := { ethTransactionDeployTask( Compile ).evaluated },
+
+    ethTransactionDeploy in Test := { ethTransactionDeployTask( Test ).evaluated },
 
     ethTransactionInvoke in Compile := { ethTransactionInvokeTask( Compile ).evaluated },
 
@@ -1327,7 +1327,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     println( cap )
     filteredRecords.foreach { record =>
       val ka = s"0x${record.address.hex}"
-      val source = if ( record.source == AbiListRecord.Memorized ) "Memorized" else "Spawned"
+      val source = if ( record.source == AbiListRecord.Memorized ) "Memorized" else "Deployed"
       val aliasesPart = {
         record.aliases match {
           case Seq( alias ) => s"""alias "${alias}""""
@@ -1506,167 +1506,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       println( f"| $id%-10s | $ca%-42s | $nm%-20s | $ch%-66s | $ts%-28s |" )
     }
     println( cap )
-  }
-
-  private def ethContractSpawnTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]] = {
-    val parser = Defaults.loadForParser(xethFindCacheSeeds in config)( genContractSpawnParser )
-
-    Def.inputTaskDyn {
-      val s = state.value
-      val is = interactionService.value
-      val log = streams.value.log
-      val blockchainId = (ethcfgBlockchainId in config).value
-      val ephemeralBlockchains = xethcfgEphemeralBlockchains.value
-      val ephemeralDeployment = ephemeralBlockchains.contains( blockchainId )
-
-      val sender = (xethFindCurrentSender in config).value.get
-      val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-
-      // lazy so if we have nothing to sign, we don't bother to prompt for passcode
-      lazy val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
-
-      // at the time of parsing, a compiled contract may not not available.
-      // in that case, we force compilation now, but can't accept contructor arguments
-      //
-      // alternatively, even if at the time of parsing a compilation WAS available
-      // it may be out of date if the source for the prior compilation has changed
-      // to be safe, we have to reload the compilation, rather than use the one found
-      // by the parser
-      val currentCompilationsMap = (xethLoadCurrentCompilationsOmitDupsCumulative in config).value
-      val updateChangedDb = (xethUpdateContractDatabase in config).value
-
-      def anySourceFreshSeed( deploymentAlias : String ) : MaybeSpawnable.Seed = {
-        val mbCurrentCompilationSeed = {
-          for {
-            cc <- currentCompilationsMap.get( deploymentAlias )
-          } yield {
-            MaybeSpawnable.Seed( deploymentAlias, cc.code, cc.info.mbAbi.get, true /* this is a current compilation */ )  // asserts that we've generated an ABI
-          }
-        }
-
-        // TODO: lookup archived compilation in case no current compilation is found
-
-        mbCurrentCompilationSeed match {
-          case Some( seed ) => seed
-          case None         => throw new NoSuchCompilationException( s"""Could not find compilation '${deploymentAlias}' among available compilations [${currentCompilationsMap.keys.mkString(", ")}]""" )
-        }
-      }
-
-      val mbAutoNameInputs = (ethcfgAutoSpawnContracts in config).?.value
-
-      def createQuartetFull( full : SpawnInstruction.Full ) : (String, String, immutable.Seq[String], Abi ) = {
-        if ( full.seed.currentCompilation ) {
-          assert(
-            full.deploymentAlias == full.seed.contractName,
-            s"For current compilations, we expect deployment aliases and contract names to be identical! [deployment alias: ${full.deploymentAlias}, contract name: ${full.seed.contractName}]"
-          )
-          val compilation = currentCompilationsMap( full.seed.contractName ) // use the most recent compilation, in case source changed after the seed was cached
-          ( full.deploymentAlias, compilation.code, full.args, compilation.info.mbAbi.get ) // asserts that we've generated an ABI, but note that args may not be consistent with this latest ABI
-        }
-        else {
-          ( full.deploymentAlias, full.seed.codeHex, full.args, full.seed.abi )
-        }
-      }
-
-      def createQuartetUncompiled( uncompiledName : SpawnInstruction.UncompiledName ) : (String, String, immutable.Seq[String], Abi ) = {
-        val deploymentAlias = uncompiledName.name
-        val seed = anySourceFreshSeed( deploymentAlias ) // use the most recent compilation, in case source changed after the seed was cached
-        ( deploymentAlias, seed.codeHex, Nil, seed.abi ) // we can only handle uncompiled names if there are no constructor inputs
-      }
-
-      def createAutoQuartets() : immutable.Seq[(String, String, immutable.Seq[String], Abi )] = {
-        mbAutoNameInputs match {
-          case None => {
-            log.warn("No contract name or compilation alias provided. No 'ethcfgAutoSpawnContracts' set, so no automatic contracts to spawn.")
-            Nil
-          }
-          case Some ( autoNameInputs ) => {
-            autoNameInputs.toList.map { nameAndArgs =>
-              val words = nameAndArgs.split("""\s+""")
-              require( words.length >= 1, s"Each element of 'ethcfgAutoSpawnContracts' must contain at least a contract name! [word length: ${words.length}")
-              val deploymentAlias = words.head
-              val args = words.tail.toList
-              val seed = anySourceFreshSeed( deploymentAlias )
-              ( deploymentAlias, seed.codeHex, args, seed.abi )
-            }
-          }
-        }
-      }
-
-      val instruction = parser.parsed
-      val quartets = {
-        instruction match {
-          case SpawnInstruction.Auto                        => createAutoQuartets()
-          case uncompiled : SpawnInstruction.UncompiledName => immutable.Seq( createQuartetUncompiled( uncompiled ) )
-          case full : SpawnInstruction.Full                 => immutable.Seq( createQuartetFull( full ) )
-        }
-      }
-
-      val interactive = instruction != SpawnInstruction.Auto
-
-      implicit val invokerContext = (xethInvokerContext in config).value
-
-      def doSpawn( deploymentAlias : String, codeHex : String, inputs : immutable.Seq[String], abi : Abi ) : ( String, Either[EthHash,Client.TransactionReceipt] ) = {
-
-        val inputsBytes = ethabi.constructorCallData( inputs, abi ).get // asserts that we've found a meaningful ABI, and can parse the constructor inputs
-        val inputsHex = inputsBytes.hex
-        val dataHex = codeHex ++ inputsHex
-
-        if ( inputsHex.nonEmpty ) {
-          log.debug( s"Contract constructor inputs encoded to the following hex: '${inputsHex}'" )
-        }
-
-        val f_out = {
-          for {
-            txnHash <- Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq )
-            mbReceipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
-          } yield {
-            log.info( s"Contract '${deploymentAlias}' deployed in transaction '0x${txnHash.hex}'." )
-            mbReceipt match {
-              case Some( receipt ) => {
-                receipt.contractAddress.foreach { ca =>
-                  log.info( s"Contract '${deploymentAlias}' has been assigned address '0x${ca.hex}'." )
-
-                  if (! ephemeralDeployment ) {
-                    val dbCheck = {
-                      repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
-                    }
-                    if ( dbCheck.isFailed ) {
-                      dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
-                      log.warn("Could not insert information about deployed contract into the repository database. See 'sbt-ethereum.log' for more information.")
-                    }
-                  }
-                }
-                Right( receipt ) : Either[EthHash,Client.TransactionReceipt]
-              }
-              case None => Left( txnHash )
-            }
-          }
-        }
-        val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete internally, with a warning, on a timeout
-
-        if ( !ephemeralDeployment && interactive ) {
-          out match {
-            case Right( ctr ) => {
-              val address = ctr.contractAddress.getOrElse( throw new SbtEthereumException("Huh? We deployed a contract, but the transaction receipt contains no contract address!") )
-              interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the newly deployed '${deploymentAlias}' contract at '${hexString(address)}'", address )
-            }
-            case Left( _ ) => ()
-          }
-        }
-
-        ( deploymentAlias, out )
-      }
-
-      val result = quartets.map( (doSpawn _).tupled )
-
-      Def.taskDyn {
-        Def.task {
-          val force = xethTriggerDirtyAliasCache.value
-          result
-        }
-      }
-    }
   }
 
   private def ethDebugGanacheStartTask : Initialize[Task[Unit]] = Def.task {
@@ -1939,6 +1778,167 @@ object SbtEthereumPlugin extends AutoPlugin {
       val newCompilerTuple = mbNewCompiler.map( nc => ( key, nc ) )
       Mutables.CurrentSolidityCompiler.set( newCompilerTuple )
       log.info( s"Set compiler to '$key'" )
+    }
+  }
+
+  private def ethTransactionDeployTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]] = {
+    val parser = Defaults.loadForParser(xethFindCacheSeeds in config)( genContractSpawnParser )
+
+    Def.inputTaskDyn {
+      val s = state.value
+      val is = interactionService.value
+      val log = streams.value.log
+      val blockchainId = (ethcfgBlockchainId in config).value
+      val ephemeralBlockchains = xethcfgEphemeralBlockchains.value
+      val ephemeralDeployment = ephemeralBlockchains.contains( blockchainId )
+
+      val sender = (xethFindCurrentSender in config).value.get
+      val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
+
+      // lazy so if we have nothing to sign, we don't bother to prompt for passcode
+      lazy val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
+
+      // at the time of parsing, a compiled contract may not not available.
+      // in that case, we force compilation now, but can't accept contructor arguments
+      //
+      // alternatively, even if at the time of parsing a compilation WAS available
+      // it may be out of date if the source for the prior compilation has changed
+      // to be safe, we have to reload the compilation, rather than use the one found
+      // by the parser
+      val currentCompilationsMap = (xethLoadCurrentCompilationsOmitDupsCumulative in config).value
+      val updateChangedDb = (xethUpdateContractDatabase in config).value
+
+      def anySourceFreshSeed( deploymentAlias : String ) : MaybeSpawnable.Seed = {
+        val mbCurrentCompilationSeed = {
+          for {
+            cc <- currentCompilationsMap.get( deploymentAlias )
+          } yield {
+            MaybeSpawnable.Seed( deploymentAlias, cc.code, cc.info.mbAbi.get, true /* this is a current compilation */ )  // asserts that we've generated an ABI
+          }
+        }
+
+        // TODO: lookup archived compilation in case no current compilation is found
+
+        mbCurrentCompilationSeed match {
+          case Some( seed ) => seed
+          case None         => throw new NoSuchCompilationException( s"""Could not find compilation '${deploymentAlias}' among available compilations [${currentCompilationsMap.keys.mkString(", ")}]""" )
+        }
+      }
+
+      val mbAutoNameInputs = (ethcfgAutoDeployContracts in config).?.value
+
+      def createQuartetFull( full : SpawnInstruction.Full ) : (String, String, immutable.Seq[String], Abi ) = {
+        if ( full.seed.currentCompilation ) {
+          assert(
+            full.deploymentAlias == full.seed.contractName,
+            s"For current compilations, we expect deployment aliases and contract names to be identical! [deployment alias: ${full.deploymentAlias}, contract name: ${full.seed.contractName}]"
+          )
+          val compilation = currentCompilationsMap( full.seed.contractName ) // use the most recent compilation, in case source changed after the seed was cached
+          ( full.deploymentAlias, compilation.code, full.args, compilation.info.mbAbi.get ) // asserts that we've generated an ABI, but note that args may not be consistent with this latest ABI
+        }
+        else {
+          ( full.deploymentAlias, full.seed.codeHex, full.args, full.seed.abi )
+        }
+      }
+
+      def createQuartetUncompiled( uncompiledName : SpawnInstruction.UncompiledName ) : (String, String, immutable.Seq[String], Abi ) = {
+        val deploymentAlias = uncompiledName.name
+        val seed = anySourceFreshSeed( deploymentAlias ) // use the most recent compilation, in case source changed after the seed was cached
+        ( deploymentAlias, seed.codeHex, Nil, seed.abi ) // we can only handle uncompiled names if there are no constructor inputs
+      }
+
+      def createAutoQuartets() : immutable.Seq[(String, String, immutable.Seq[String], Abi )] = {
+        mbAutoNameInputs match {
+          case None => {
+            log.warn("No contract name or compilation alias provided. No 'ethcfgAutoDeployContracts' set, so no automatic contracts to deploy.")
+            Nil
+          }
+          case Some ( autoNameInputs ) => {
+            autoNameInputs.toList.map { nameAndArgs =>
+              val words = nameAndArgs.split("""\s+""")
+              require( words.length >= 1, s"Each element of 'ethcfgAutoDeployContracts' must contain at least a contract name! [word length: ${words.length}")
+              val deploymentAlias = words.head
+              val args = words.tail.toList
+              val seed = anySourceFreshSeed( deploymentAlias )
+              ( deploymentAlias, seed.codeHex, args, seed.abi )
+            }
+          }
+        }
+      }
+
+      val instruction = parser.parsed
+      val quartets = {
+        instruction match {
+          case SpawnInstruction.Auto                        => createAutoQuartets()
+          case uncompiled : SpawnInstruction.UncompiledName => immutable.Seq( createQuartetUncompiled( uncompiled ) )
+          case full : SpawnInstruction.Full                 => immutable.Seq( createQuartetFull( full ) )
+        }
+      }
+
+      val interactive = instruction != SpawnInstruction.Auto
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      def doSpawn( deploymentAlias : String, codeHex : String, inputs : immutable.Seq[String], abi : Abi ) : ( String, Either[EthHash,Client.TransactionReceipt] ) = {
+
+        val inputsBytes = ethabi.constructorCallData( inputs, abi ).get // asserts that we've found a meaningful ABI, and can parse the constructor inputs
+        val inputsHex = inputsBytes.hex
+        val dataHex = codeHex ++ inputsHex
+
+        if ( inputsHex.nonEmpty ) {
+          log.debug( s"Contract constructor inputs encoded to the following hex: '${inputsHex}'" )
+        }
+
+        val f_out = {
+          for {
+            txnHash <- Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq )
+            mbReceipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
+          } yield {
+            log.info( s"Contract '${deploymentAlias}' deployed in transaction '0x${txnHash.hex}'." )
+            mbReceipt match {
+              case Some( receipt ) => {
+                receipt.contractAddress.foreach { ca =>
+                  log.info( s"Contract '${deploymentAlias}' has been assigned address '0x${ca.hex}'." )
+
+                  if (! ephemeralDeployment ) {
+                    val dbCheck = {
+                      repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
+                    }
+                    if ( dbCheck.isFailed ) {
+                      dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
+                      log.warn("Could not insert information about deployed contract into the repository database. See 'sbt-ethereum.log' for more information.")
+                    }
+                  }
+                }
+                Right( receipt ) : Either[EthHash,Client.TransactionReceipt]
+              }
+              case None => Left( txnHash )
+            }
+          }
+        }
+        val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete internally, with a warning, on a timeout
+
+        if ( !ephemeralDeployment && interactive ) {
+          out match {
+            case Right( ctr ) => {
+              val address = ctr.contractAddress.getOrElse( throw new SbtEthereumException("Huh? We deployed a contract, but the transaction receipt contains no contract address!") )
+              interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the newly deployed '${deploymentAlias}' contract at '${hexString(address)}'", address )
+            }
+            case Left( _ ) => ()
+          }
+        }
+
+        ( deploymentAlias, out )
+      }
+
+      val result = quartets.map( (doSpawn _).tupled )
+
+      Def.taskDyn {
+        Def.task {
+          val force = xethTriggerDirtyAliasCache.value
+          result
+        }
+      }
     }
   }
 
@@ -2522,7 +2522,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   // differ. we keep the shortest-source version that generates identical (pre-swarm-hash) EVM code
 
   // we also omit any compilations whose EVM code differs but that have identical names, as there is
-  // no way to unambigous select one of these compilations to spawn
+  // no way to unambigous select one of these compilations to deploy
 
   private def xethLoadCurrentCompilationsOmitDupsTask( cumulative : Boolean )( config : Configuration ) : Initialize[Task[immutable.Map[String,jsonrpc.Compilation.Contract]]] = Def.task {
     require( config == Compile || config == Test, "For now we expect to load compilations for deployment selection or stub generation only in Compile and Test configurations." )
