@@ -1,6 +1,10 @@
 # TODO
 
-* 'ethAddressSenderDefaultSet' and 'ethAddressSenderDefaultDrop'
+* 'ethAddressSenderDefaultSet', 'ethAddressSenderDefaultDrop', 'ethAddressSenderDefaultPrint'
+
+* 'ethKeystoreWalletV3FromJsonImport' and 'ethKeystoreWalletV3FromPrivateKeyImport'
+
+* 'ethContractSpawn' => 'ethTransactionDeploy'
 
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
 
@@ -17,11 +21,9 @@
     
 * interactive migrate (or restore) of database
 
-* Setting for turning optimization on / off in compilation
-
 * Generalize reasoning surrounding when interactive transaction approver should be used
 
-* enable libraries to deploy as well as interact with already-deployed contracts
+* enable Scala libraries to deploy as well as interact with already-deployed contracts
   * embed compilations as a resource in jar files
   * add method in jsonrpc.Invoker for contract creation
 
