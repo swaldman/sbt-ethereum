@@ -6,11 +6,6 @@
 
 * Some form of logging of overwriting of aliases
 
-* Redo failable
-  * Afterwards, undo temporary extra protection in SolidityEvent
-  * type parameterized fail?
-  * assert / assertoStackTrace / assertRecover
-
 * Let compilations store the name of the project from which they were compiled
 
 * Make stub generation incremental
