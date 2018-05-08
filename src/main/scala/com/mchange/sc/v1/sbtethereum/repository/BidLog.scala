@@ -2,7 +2,7 @@ package com.mchange.sc.v1.sbtethereum.repository
 
 import com.mchange.sc.v2.ens
 
-import com.mchange.sc.v2.failable._
+import com.mchange.sc.v3.failable._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, EthTransaction}

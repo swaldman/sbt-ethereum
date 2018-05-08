@@ -21,7 +21,8 @@ import java.security.SecureRandom
 import java.util.Date
 import java.util.concurrent.atomic.AtomicReference
 import play.api.libs.json.{JsObject, Json}
-import com.mchange.sc.v2.failable._
+import com.mchange.sc.v3.failable._
+import com.mchange.sc.v3.failable.logging._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.io._
 import com.mchange.sc.v2.util.Platform
@@ -365,7 +366,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgKeystoreLocationsV3 := {
       def debug( location : String ) : String = s"Failed to find V3 keystore in ${location}"
-      def listify( fd : Failable[File] ) = fd.fold( _ => Nil, f => List(f) )
+      def listify( fd : Failable[File] ) = fd.fold( _ => (Nil : List[File]))( f => List(f) )
       listify( repository.Keystore.V3.Directory.xdebug( debug("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xdebug( debug("geth home directory") ) ) ::: Nil
     },
 
@@ -1121,10 +1122,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val blockchainId = (ethcfgBlockchainId in config).value
     val faliases = repository.Database.findAllAliases( blockchainId )
-    faliases.fold(
-      _ => log.warn("Could not read aliases from repository database."),
-      aliases => aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
-    )
+    faliases.fold( _ => log.warn("Could not read aliases from repository database.") ) { aliases =>
+      aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
+    }
   }
 
   private def ethAddressAliasSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
@@ -1135,12 +1135,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val blockchainId = (ethcfgBlockchainId in config).value
       val ( alias, address ) = parser.parsed
       val check = repository.Database.createUpdateAlias( blockchainId, alias, address )
-      check.fold(
-        _.vomit,
-        _ => {
-          log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${blockchainId}')." )
-        }
-      )
+      check.fold( _.vomit ){ _ => 
+        log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${blockchainId}')." )
+      }
 
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -1217,7 +1214,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbSenderOverride = getSenderOverride( config )( log, blockchainId )
 
     val message = mbSenderOverride.fold( s"No sender override is currently set (for configuration '${config}')." ) { address =>
-      val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases $str)" ) )
+      val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "" )( _.fold("")( str => s", aliases $str)" ) )
       s"A sender override is set, address '${address.hex}' (on blockchain '$blockchainId'${aliasesPart}, configuration '${config}')."
     }
 
@@ -1233,7 +1230,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val log = streams.value.log
         val blockchainId = (ethcfgBlockchainId in config).value
         val address = parser.parsed
-        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s", aliases $str)" ) )
+        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "")( _.fold("")( str => s", aliases $str)" ) )
 
         configSenderOverride.set( Some( ( blockchainId, address ) ) )
 
@@ -2005,8 +2002,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log = streams.value.log
 
-      val from = (xethFindCurrentSender in config).value.recover { fail : Fail =>
-        log.info( s"Failed to find a current sender, using the zero address as a default.\nCause: ${fail}" )
+      val from = (xethFindCurrentSender in config).value.recover { failed =>
+        log.info( s"Failed to find a current sender, using the zero address as a default.\nCause: ${failed}" )
         EthAddress.Zero
       }.get
 
@@ -2638,13 +2635,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       val address = parser.parsed
       val out = {
         keystoresV3
-          .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
+          .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory" ).recoverWith( Map.empty[EthAddress,wallet.V3] ).get )
           .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
           if ( mb.isEmpty ) nextKeystore.get( address ) else mb
         }
       }
       val message = {
-        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s" (aliases $str)" ) )
+        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "" )( _.fold("")( str => s" (aliases $str)" ) )
         out.fold( s"""No V3 wallet found for '0x${address.hex}'${aliasesPart}. Directories checked: ${keystoresV3.mkString(", ")}""" )( _ => s"V3 wallet found for '0x${address.hex}'${aliasesPart}" )
       }
       log.info( message )
@@ -2936,7 +2933,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def combinedKeystoresMap( keystoresV3 : Seq[File] ) : immutable.Map[EthAddress, wallet.V3] = {
     keystoresV3
-      .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory: ${dir}" ).recover( Map.empty[EthAddress,wallet.V3] ).get )
+      .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory: ${dir}" ).recoverWith( Map.empty[EthAddress,wallet.V3] ).get )
       .foldLeft( Map.empty[EthAddress,wallet.V3] )( ( accum, next ) => accum ++ next )
   }
 
@@ -3051,7 +3048,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       // it also slows down automated attempts to guess passwords, i guess...
       Thread.sleep(1000)
 
-      val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( commasep => s", aliases $commasep" ) )
+      val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "" )( _.fold("")( commasep => s", aliases $commasep" ) )
 
       log.info( s"Unlocking address '0x${address.hex}' (on blockchain '$blockchainId'$aliasesPart)" )
 
@@ -3071,7 +3068,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val now = System.currentTimeMillis
       Mutables.CurrentAddress.get match {
         case UnlockedAddress( BlockchainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if blockchainId and/or ethcfgSender has changed, this will no longer match
-          val aliasesPart = commaSepAliasesForAddress( BlockchainId, Address ).fold( _ => "", _.fold("")( commasep => s", aliases $commasep" ) )
+          val aliasesPart = commaSepAliasesForAddress( BlockchainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
           val ok = {
             if ( userValidateIfCached ) {
               is.readLine( s"Using sender address '0x${address.hex}' (on blockchain '${blockchainId}'${aliasesPart}). OK? [y/n] ", false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
@@ -3221,12 +3218,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     query match {
       case Some( alias ) => {
         val check = repository.Database.createUpdateAlias( blockchainId, alias, address )
-        check.fold(
-          _.vomit,
-          _ => {
-            log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${blockchainId}')." )
-          }
-        )
+        check.fold( _.vomit ){ _ => 
+          log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${blockchainId}')." )
+        }
       }
       case None => log.info( s"No alias set for ${describedAddress}." )
     }
@@ -3248,19 +3242,19 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def assertSomeSender( log : Logger, fsender : Failable[EthAddress] ) : Option[EthAddress] = {
-    val onFail : Fail => Nothing = fail => {
+    val onFailed : Failed[EthAddress] => Nothing = failed => {
       val errMsg = {
         val base = "No sender found. Please define a 'defaultSender' alias, or the setting 'ethcfgSender', or use 'ethAddressSenderOverrideSet' for a temporary sender."
-        val extra = fail.source match {
+        val extra = failed.source match {
           case _ : SenderNotAvailableException => ""
-          case _                               => s" [Cause: ${fail.message}]"
+          case _                               => s" [Cause: ${failed.message}]"
         }
         base + extra
       }
       log.error( errMsg )
       throw new SenderNotAvailableException( errMsg )
     }
-    fsender.xmap( onFail ).toOption
+    fsender.fold( onFailed )( Some(_) )
   }
 
   // some formatting functions for ascii tables
@@ -3276,7 +3270,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def verboseAddress( blockchainId : String, address : EthAddress ) : String = {
-    val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "", _.fold("")( str => s"with aliases $str " ) )
+    val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "" )( _.fold("")( str => s"with aliases $str " ) )
     s"'0x${address.hex}' (${aliasesPart}on blockchain '$blockchainId')"
   }
 

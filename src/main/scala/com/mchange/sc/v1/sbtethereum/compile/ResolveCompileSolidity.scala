@@ -8,8 +8,8 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.io.{Codec, Source}
 import scala.math.max
 import scala.util.matching.Regex.Match
-import com.mchange.sc.v2.failable._
-import com.mchange.sc.v2.failable.fail
+import com.mchange.sc.v3.failable._
+import com.mchange.sc.v3.failable.logging._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.literal._
 import com.mchange.sc.v2.concurrent._
@@ -51,7 +51,7 @@ object ResolveCompileSolidity {
     @tailrec
     def loadResolve( localKey : String, remainingSourceLocations : Seq[SourceFile.Location] ) : Failable[SourceFile] = {
       if ( remainingSourceLocations.isEmpty ){
-        fail( s"""Could not resolve file for '$localKey', checked source locations: '${allSourceLocations.mkString(", ")}'""" )
+        Failable.fail( s"""Could not resolve file for '$localKey', checked source locations: '${allSourceLocations.mkString(", ")}'""" )
       } else {
         val nextSrcLoc = remainingSourceLocations.head
         def premessage( from : String = nextSrcLoc.toString ) = s"Failed to load '$localKey' from '$from': "
@@ -66,7 +66,7 @@ object ResolveCompileSolidity {
             substituteImports( sourceFile )
           }
           else {
-            succeed( SourceFile( SourceFile.Location.Empty, safeComment(s"Skipping duplicate text via import from '${nextSrcLoc}' with key '${localKey}'."), Long.MinValue ) )
+            Failable.succeed( SourceFile( SourceFile.Location.Empty, safeComment(s"Skipping duplicate text via import from '${nextSrcLoc}' with key '${localKey}'."), Long.MinValue ) )
           }
         }
       }
@@ -106,7 +106,7 @@ object ResolveCompileSolidity {
 
       val resolved = ImportRegex.replaceAllIn( normalized, replaceMatch _ )
 
-      succeed( SourceFile( input.immediateParent, resolved, lastModified ) )
+      Failable.succeed( SourceFile( input.immediateParent, resolved, lastModified ) )
     }
 
     loadResolve( key, allSourceLocations )

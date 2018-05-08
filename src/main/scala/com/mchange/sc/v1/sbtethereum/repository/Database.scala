@@ -10,7 +10,7 @@ import com.mchange.v2.c3p0.ComboPooledDataSource
 import com.mchange.sc.v1.sbtethereum.repository
 import com.mchange.sc.v1.sbtethereum.util.BaseCodeAndSuffix
 import com.mchange.sc.v2.sql._
-import com.mchange.sc.v2.failable._
+import com.mchange.sc.v3.failable._
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
@@ -213,7 +213,7 @@ object Database {
           }
         }
       }
-      compiledContracts.toSeq.foldLeft( succeed( false ) )( ( failable, tup ) => failable.flatMap( last => doUpdate( conn, tup ).map( next => last || next ) ) )
+      compiledContracts.toSeq.foldLeft( Failable.succeed( false ) )( ( failable, tup ) => failable.flatMap( last => doUpdate( conn, tup ).map( next => last || next ) ) )
     }
 
     DataSource.flatMap { ds =>
@@ -471,12 +471,12 @@ object Database {
     Failable {
       borrow( ds.getConnection() ) { conn =>
         val mbRaw = Table.EnsBidStore.selectByBidHash( conn, blockchainId, bidHash )
-        mbRaw.fold( fail( s"Bid hash '0x${bidHash.hex} does not exist in the database." ) : Failable[( Bid, BidStore.State )] ) { rawBid =>
+        mbRaw.fold( Failable.fail( s"Bid hash '0x${bidHash.hex} does not exist in the database." ) : Failable[( Bid, BidStore.State )] ) { rawBid =>
           if ( rawBid.removed ) {
-            fail( s"Bid hash '0x${bidHash.hex} did exist in the database, but it has been removed.")
+            Failable.fail( s"Bid hash '0x${bidHash.hex} did exist in the database, but it has been removed.")
           }
           else {
-            succeed( ensBidBidStateTupleFromRawBid( rawBid ) )
+            Failable.succeed( ensBidBidStateTupleFromRawBid( rawBid ) )
           }
         }
       }

@@ -15,7 +15,7 @@ import jsonrpc.Abi
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v2.ens.NoResolverSetException
 
-import com.mchange.sc.v2.failable._
+import com.mchange.sc.v3.failable._
 
 import com.mchange.sc.v1.log.MLevel._
 
@@ -54,7 +54,7 @@ object Parsers {
         Tuple2( ensClient.address( name ).toFailable( s"No address has been associated with ENS name '${name}'." ), ts )
       }
       catch {
-        case NonFatal( nfe ) => ( fail( s"Exception while looking up ENS name '${name}': ${nfe}", includeStackTrace = false ), ts )
+        case NonFatal( nfe ) => ( Failable.fail( s"Exception while looking up ENS name '${name}': ${nfe}", includeStackTrace = false ), ts )
       }
     }
 
@@ -146,7 +146,7 @@ object Parsers {
   private [sbtethereum] def ensNameToAddressParser( api : AddressParserInfo ) : Parser[EthAddress] = {
     ensNameParser( api.nameServiceTld ).flatMap { name =>
       val faddress = EnsAddressCache.lookup( api, name )
-      if ( faddress.isSucceeded ) success( faddress.get ) else failure( faddress.fail.toString )
+      if ( faddress.isSucceeded ) success( faddress.get ) else failure( faddress.assertFailed.toString )
     }
   }
 

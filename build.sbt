@@ -32,7 +32,7 @@ publishTo := version {
   }
 }.value
 
-val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.5"
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.6-SNAPSHOT" changing()
 
 libraryDependencies ++= Seq(
   consuelaArtifact,

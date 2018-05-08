@@ -6,7 +6,7 @@ import java.net.URL
 import scala.collection._
 import scala.io.{Codec, Source}
 import com.mchange.sc.v2.lang.borrow
-import com.mchange.sc.v2.failable._
+import com.mchange.sc.v3.failable._
 import scala.util.matching.Regex
 
 object SourceFile {
@@ -60,7 +60,7 @@ object SourceFile {
 
     // Empty can be used to resolve ABSOLUTE filenames and URLs only
     final case object Empty extends Location {
-      def resolveLocalKey( key : String ) : Failable[SourceFile] = fail( s"Key '$key' could not be found, because nothing can be found, locally from Location.Empty" )
+      def resolveLocalKey( key : String ) : Failable[SourceFile] = Failable.fail( s"Key '$key' could not be found, because nothing can be found, locally from Location.Empty" )
       def child( spec : String ) : Location = this
     }
 

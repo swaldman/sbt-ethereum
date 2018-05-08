@@ -1,7 +1,7 @@
 package com.mchange.sc.v1
 
 import com.mchange.sc.v1.log.MLevel._
-import com.mchange.sc.v2.failable._
+import com.mchange.sc.v3.failable._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.consuela._
@@ -124,8 +124,8 @@ package object sbtethereum {
         }
       }
       val f_seq_events = {
-        Failable.sequence( seq_f_events ) recover { fail : Fail =>
-          WARNING.log( s"Failed to interpret events! Failure: $fail" )
+        Failable.sequence( seq_f_events ) recover { failed =>
+          WARNING.log( s"Failed to interpret events! Failure: $failed" )
           Nil
         }
       }
