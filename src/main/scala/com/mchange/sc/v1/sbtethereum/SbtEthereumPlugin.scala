@@ -221,9 +221,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgSender' or defaultSender that may be set.")
     val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
 
-    val ethContractAbiForget          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiMemorize")
+    val ethContractAbiForget          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
-    val ethContractAbiMemorize        = taskKey [Unit] ("Prompts for an ABI definition for a contract and inserts it into the sbt-ethereum database")
+    val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
     val ethContractAbiPrint           = inputKey[Unit] ("Prints the contract ABI associated with a provided address, if known.")
     val ethContractAbiPrintPretty     = inputKey[Unit] ("Pretty prints the contract ABI associated with a provided address, if known.")
     val ethContractAbiPrintCompact    = inputKey[Unit] ("Compactly prints the contract ABI associated with a provided address, if known.")
@@ -513,9 +513,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractAbiList in Test := { ethContractAbiListTask( Test ).evaluated },
 
-    ethContractAbiMemorize in Compile := { ethContractAbiMemorizeTask( Compile ).value },
+    ethContractAbiImport in Compile := { ethContractAbiImportTask( Compile ).evaluated },
 
-    ethContractAbiMemorize in Test := { ethContractAbiMemorizeTask( Test ).value },
+    ethContractAbiImport in Test := { ethContractAbiImportTask( Test ).evaluated },
 
     ethContractAbiPrint in Compile := { ethContractAbiPrintTask( Compile ).evaluated },
 
@@ -1382,30 +1382,32 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   }
 
-  private def ethContractAbiMemorizeTask( config : Configuration ) : Initialize[Task[Unit]] = {
-    val mainTask = {
-      Def.task {
-        val blockchainId = (ethcfgBlockchainId in config).value
-        val s = state.value
-        val log = streams.value.log
-        val is = interactionService.value
-        val ( address, abi ) = readAddressAndAbi( log, is )
-        val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
-        mbKnownCompilation match {
-          case Some( knownCompilation ) => {
-            log.info( s"The contract at address '$address' was already associated with a deployed compilation." )
-            // TODO, maybe, check if the deployed compilation includes a non-null ABI
-          }
-          case None => {
-            repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // throw an Exception if there's a database issue
-            log.info( s"ABI is now known for the contract at address ${address.hex}" )
-            interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly memorized ABI", address )
-          }
+  private def ethContractAbiImportTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genGenericAddressParser )
+
+    Def.inputTaskDyn {
+      val blockchainId = (ethcfgBlockchainId in config).value
+      val s = state.value
+      val log = streams.value.log
+      val is = interactionService.value
+      val address = parser.parsed
+      val abi = parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+      val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
+      mbKnownCompilation match {
+        case Some( knownCompilation ) => {
+          log.info( s"The contract at address '$address' was already associated with a deployed compilation, cannot import a new ABI." )
+          // TODO, maybe, check if the deployed compilation includes a non-null ABI
+        }
+        case None => {
+          repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // throw an Exception if there's a database issue
+          log.info( s"ABI is now known for the contract at address ${address.hex}" )
+          interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly memorized ABI", address )
         }
       }
+      Def.taskDyn {
+        xethTriggerDirtyAliasCache
+      }
     }
-
-    Def.sequential( mainTask, xethTriggerDirtyAliasCache )
   }
 
   private def ethContractCompilationCullTask : Initialize[Task[Unit]] = Def.task {
@@ -3227,12 +3229,6 @@ object SbtEthereumPlugin extends AutoPlugin {
   }( ec )
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
-
-  private def readAddressAndAbi( log : sbt.Logger, is : sbt.InteractionService ) : ( EthAddress, Abi ) = {
-    val address = EthAddress( is.readLine( "Contract address in hex: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
-    val abi = parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
-    ( address, abi )
-  }
 
   private def interactiveSetAliasForAddress( blockchainId : String )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
     def rawFetch : String = is.readLine( s"Enter an optional alias for ${describedAddress} (or [return] for none): ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
