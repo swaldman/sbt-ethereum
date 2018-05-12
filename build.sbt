@@ -36,6 +36,7 @@ val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.6-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   consuelaArtifact,
+  "com.mchange"    %% "etherscan-utils"       % "0.0.1-SNAPSHOT" changing(),
   "com.mchange"    %% "mlog-scala"            % "0.3.10",
   "com.mchange"    %% "literal"               % "0.0.2",
   "com.mchange"    %% "danburkert-continuum"  % "0.3.99",

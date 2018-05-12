@@ -21,6 +21,7 @@ import java.security.SecureRandom
 import java.util.Date
 import java.util.concurrent.atomic.AtomicReference
 import play.api.libs.json.{JsObject, Json}
+import com.mchange.sc.v1.etherscan
 import com.mchange.sc.v3.failable._
 import com.mchange.sc.v3.failable.logging._
 import com.mchange.sc.v2.lang.borrow
@@ -46,6 +47,7 @@ import scala.concurrent.{Await,Future}
 import scala.concurrent.duration._
 import scala.sys.process.{Process, ProcessLogger}
 import scala.io.Source
+import scala.util.{Try,Success,Failure}
 import scala.util.matching.Regex
 
 import scala.concurrent.ExecutionContext
@@ -1382,6 +1384,23 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   }
 
+  private def queryYN( is : InteractionService, query : String ) : Boolean = {
+    def prompt = is.readLine( query, mask = false ).get
+    def doPrompt : Boolean = {
+      def redo = {
+        println( "Please enter 'y' or 'n'." )
+        doPrompt
+      }
+      prompt.toLowerCase match {
+        case ""                     => redo
+        case s if s.startsWith("y") => true
+        case s if s.startsWith("n") => false
+        case _                      => redo
+      }
+    }
+    doPrompt
+  }
+
   private def ethContractAbiImportTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genGenericAddressParser )
 
@@ -1391,7 +1410,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val is = interactionService.value
       val address = parser.parsed
-      val abi = parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
       val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
       mbKnownCompilation match {
         case Some( knownCompilation ) => {
@@ -1399,6 +1417,51 @@ object SbtEthereumPlugin extends AutoPlugin {
           // TODO, maybe, check if the deployed compilation includes a non-null ABI
         }
         case None => {
+          val abi = {
+            val mbEtherscanAbi : Option[Abi] = {
+              val fmbApiKey = repository.Database.getEtherscanApiKey()
+              fmbApiKey match {
+                case Succeeded( mbApiKey ) => {
+                  mbApiKey match {
+                    case Some( apiKey ) => {
+                      val tryIt = queryYN( is, "An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] " )
+                      if ( tryIt ) {
+                        println( "Attempting to fetch ABI for address '${hexString(address)}' from Etherscan." )
+                        val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( address )
+                        Await.ready( fAbi, Duration.Inf )
+                        fAbi.value.get match {
+                          case Success( abi ) => {
+                            println( "ABI found:" )
+                            println( Json.stringify( Json.toJson( abi ) ) )
+                            val useIt = queryYN( is, "Use this ABI? [y/n] ")
+                            if (useIt) Some( abi ) else None
+                          }
+                          case Failure( e ) => {
+                            println( s"Failed to import ABI from Etherscan: ${e}" )
+                            None
+                          }
+                        }
+                      }
+                      else {
+                        None
+                      }
+                    }
+                    case None => {
+                      None
+                    }
+                  }
+                }
+                case failed : Failed[_] => {
+                  log.warn( s"An error occurred while trying to check if the database contains an Etherscan API key: '${failed.message}'" )
+                  None
+                }
+              }
+            }
+            mbEtherscanAbi match {
+              case Some( abi ) => abi
+              case None        => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+            }
+          }
           repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // throw an Exception if there's a database issue
           log.info( s"ABI is now known for the contract at address ${address.hex}" )
           interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly memorized ABI", address )
