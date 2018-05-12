@@ -1451,6 +1451,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                           }
                           case Failure( e ) => {
                             println( s"Failed to import ABI from Etherscan: ${e}" )
+                            DEBUG.log( "Etherscan verified ABI import failure.", e )
                             None
                           }
                         }
@@ -1460,12 +1461,15 @@ object SbtEthereumPlugin extends AutoPlugin {
                       }
                     }
                     case None => {
+                      log.warn("No Etherscan API key has been set, so you will have to directly paste the ABI.")
+                      log.warn("Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeyImport'.")
                       None
                     }
                   }
                 }
                 case failed : Failed[_] => {
                   log.warn( s"An error occurred while trying to check if the database contains an Etherscan API key: '${failed.message}'" )
+                  failed.xdebug("An error occurred while trying to check if the database contains an Etherscan API key")
                   None
                 }
               }
