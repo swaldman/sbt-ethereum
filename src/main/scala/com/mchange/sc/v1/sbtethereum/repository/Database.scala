@@ -428,6 +428,16 @@ object Database {
   }
 
   private [sbtethereum]
+  def getEtherscanApiKey() : Failable[Option[String]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.Metadata.select( _, Table.Metadata.Key.EtherscanApiKey ) ) )
+  }
+
+  private [sbtethereum]
+  def setEtherscanApiKey( apiKey : String ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.Metadata.upsert( _, Table.Metadata.Key.EtherscanApiKey, apiKey ) ) )
+  }
+
+  private [sbtethereum]
   def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
   }

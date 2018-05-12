@@ -171,7 +171,12 @@ package object sbtethereum {
   def hexString( address : EthAddress ) = s"0x${address.hex}"
   def hexString( hash : EthHash )       = s"0x${hash.hex}"
 
+  val EmptyStackTrace = Array.empty[StackTraceElement]
 
+  def nst( t : Throwable ) : Throwable = {
+    t.setStackTrace( EmptyStackTrace )
+    t
+  }
 
   case class AddressParserInfo(
     blockchainId          : String,

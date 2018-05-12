@@ -215,7 +215,8 @@ object Schema_h2 {
       }
 
       final object Key {
-        val SchemaVersion = "SchemaVersion"
+        val SchemaVersion   = "SchemaVersion"
+        val EtherscanApiKey = "EtherscanApiKey"
       }
     }
 

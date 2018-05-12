@@ -208,6 +208,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensResolverLookup   = inputKey[Option[EthAddress]]("Prints the address of the resolver associated with a given name.")
     val ensResolverSet      = inputKey[Unit]              ("Sets the resolver for a given name to an address.")
 
+    val etherscanApiKeyImport = taskKey[Unit] ("Imports an API key for etherscan services.")
+    val etherscanApiKeyReveal = taskKey[Unit] ("Reveals the currently set API key for etherscan services, if any.")
+
     val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
     val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
     val ethAddressAliasSet            = inputKey[Unit]                             ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
@@ -461,6 +464,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensResolverSet in Compile := { ensResolverSetTask( Compile ).evaluated },
 
     ensResolverSet in Test := { ensResolverSetTask( Test ).evaluated },
+
+    etherscanApiKeyImport := { etherscanApiKeyImportTask.value },
+
+    etherscanApiKeyReveal := { etherscanApiKeyRevealTask.value },
 
     ethAddressAliasDrop in Compile := { ethAddressAliasDropTask( Compile ).evaluated },
 
@@ -1094,6 +1101,32 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  // etherscan tasks
+
+  private def etherscanApiKeyImportTask : Initialize[Task[Unit]] = Def.task {
+    val is = interactionService.value
+    val apiKey = is.readLine( "Please enter your Etherscan API key: ", mask = true ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
+    repository.Database.setEtherscanApiKey( apiKey ).assert
+    println("Etherscan API key successfully set.")
+  }
+
+  private def etherscanApiKeyRevealTask : Initialize[Task[Unit]] = Def.task {
+    val is = interactionService.value
+    val confirmation = {
+      is.readLine(s"Are you sure you want to reveal your Etherscan API key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
+        .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
+    }
+    if ( confirmation == "YES" ) {
+      val mbApiKey = repository.Database.getEtherscanApiKey().assert
+      mbApiKey match {
+        case Some( apiKey ) => println( s"The currently set Etherscan API key is ${apiKey}" )
+        case None           => println(  "No Etherscan API key has been set." )
+      }
+    } else {
+      throw notConfirmedByUser
+    }
+  }
+
   // eth tasks
 
   private def ethAddressAliasDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
@@ -1654,7 +1687,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       if ( confirmation == "YES" ) {
         println( s"0x${privateKey.bytes.widen.hex}" )
       } else {
-        throw new Exception("Not confirmed by user. Aborted.")
+        throw notConfirmedByUser
       }
     }
   }
@@ -3032,6 +3065,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private final val CantReadInteraction = "InteractionService failed to read"
+
+  private final def notConfirmedByUser  = nst( new Exception("Not confirmed by user. Aborted.") )
 
   private def findCachePrivateKey(
     state                : sbt.State,
