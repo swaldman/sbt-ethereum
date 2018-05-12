@@ -214,6 +214,13 @@ object Schema_h2 {
         }
       }
 
+      def delete( conn : Connection, key : String ) : Boolean = {
+        borrow( conn.prepareStatement( "DELETE FROM metadata WHERE key = ?" ) ) { ps =>
+          ps.setString(1, key)
+          ps.executeUpdate() == 1
+        }
+      }
+
       final object Key {
         val SchemaVersion   = "SchemaVersion"
         val EtherscanApiKey = "EtherscanApiKey"

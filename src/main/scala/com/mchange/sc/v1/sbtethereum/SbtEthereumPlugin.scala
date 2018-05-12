@@ -210,6 +210,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensResolverLookup   = inputKey[Option[EthAddress]]("Prints the address of the resolver associated with a given name.")
     val ensResolverSet      = inputKey[Unit]              ("Sets the resolver for a given name to an address.")
 
+    val etherscanApiKeyDrop   = taskKey[Unit] ("Removes the API key for etherscan services from the sbt-ethereum database.")
     val etherscanApiKeyImport = taskKey[Unit] ("Imports an API key for etherscan services.")
     val etherscanApiKeyReveal = taskKey[Unit] ("Reveals the currently set API key for etherscan services, if any.")
 
@@ -466,6 +467,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensResolverSet in Compile := { ensResolverSetTask( Compile ).evaluated },
 
     ensResolverSet in Test := { ensResolverSetTask( Test ).evaluated },
+
+    etherscanApiKeyDrop := { etherscanApiKeyDropTask.value },
 
     etherscanApiKeyImport := { etherscanApiKeyImportTask.value },
 
@@ -1104,6 +1107,16 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   // etherscan tasks
+
+  private def etherscanApiKeyDropTask : Initialize[Task[Unit]] = Def.task {
+    val deleted = repository.Database.deleteEtherscanApiKey().assert
+    if ( deleted ) {
+      println("Etherscan API key successfully dropped.")
+    }
+    else {
+      println("Nothing to do. No Etherscan API key was set.")
+    }
+  }
 
   private def etherscanApiKeyImportTask : Initialize[Task[Unit]] = Def.task {
     val is = interactionService.value
