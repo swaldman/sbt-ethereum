@@ -224,7 +224,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgSender' or defaultSender that may be set.")
     val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
 
-    val ethContractAbiForget          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
+    val ethContractAbiDrop            = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
     val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
     val ethContractAbiPrint           = inputKey[Unit] ("Prints the contract ABI associated with a provided address, if known.")
@@ -510,9 +510,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethAddressSenderOverrideSet in Test := { ethAddressSenderOverrideSetTask( Test ).evaluated },
 
-    ethContractAbiForget in Compile := { ethContractAbiForgetTask( Compile ).evaluated },
+    ethContractAbiDrop in Compile := { ethContractAbiDropTask( Compile ).evaluated },
 
-    ethContractAbiForget in Test := { ethContractAbiForgetTask( Test ).evaluated },
+    ethContractAbiDrop in Test := { ethContractAbiDropTask( Test ).evaluated },
 
     ethContractAbiList in Compile := { ethContractAbiListTask( Compile ).evaluated },
 
@@ -1287,7 +1287,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethContractAbiForgetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethContractAbiDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
@@ -1300,7 +1300,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       } else {
         val mbDeployment = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get  // throw an Exception if there's a database issue
         mbDeployment match {
-          case Some( _ ) => throw new SbtEthereumException( s"Contract at address '0x${address.hex}' (on blockchain '${blockchainId}') is not a memorized ABI but our own deployment. Cannot forget." )
+          case Some( _ ) => throw new SbtEthereumException( s"Contract at address '0x${address.hex}' (on blockchain '${blockchainId}') is not an imported ABI but our own deployment. Cannot drop." )
           case None      => throw new SbtEthereumException( s"We have not memorized an ABI for the contract at address '0x${address.hex}' (on blockchain '${blockchainId}')." )
         }
       }
