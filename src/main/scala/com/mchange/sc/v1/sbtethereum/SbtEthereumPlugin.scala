@@ -2797,7 +2797,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val address = parser.parsed
 
       val combined = combinedKeystoresMultiMap( keystoresV3 )
-      val out = combined( address )
+      val out = combined.get( address ).getOrElse( immutable.Set.empty )
 
       val message = {
         val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "" )( _.fold("")( str => s" (aliases $str)" ) )
@@ -3093,8 +3093,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def combinedKeystoresMultiMap( keystoresV3 : Seq[File] ) : immutable.Map[EthAddress, immutable.Set[wallet.V3]] = {
     def combineMultiMaps( base : immutable.Map[EthAddress, immutable.Set[wallet.V3]], next : immutable.Map[EthAddress, immutable.Set[wallet.V3]] ) : immutable.Map[EthAddress, immutable.Set[wallet.V3]] = {
-      val newTuples = next.map { case ( key, valueSet ) => Tuple2( key, valueSet ++ base(key) ) }
-      base ++ newTuples
+      val newTuples = next.map { case ( key, valueSet ) =>
+        Tuple2( key, valueSet ++ base.get(key).getOrElse( immutable.Set.empty ) )
+      }
+
+      (base ++ newTuples)
     }
 
     keystoresV3
