@@ -48,6 +48,7 @@ import scala.concurrent.duration._
 import scala.sys.process.{Process, ProcessLogger}
 import scala.io.Source
 import scala.util.{Try,Success,Failure}
+import scala.util.control.NonFatal
 import scala.util.matching.Regex
 
 import scala.concurrent.ExecutionContext
@@ -152,6 +153,18 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   java.lang.Runtime.getRuntime.addShutdownHook( GanacheDestroyer )
 
+
+  /*
+   * Transitioning from supporting a user-configurable list of keystore dirs
+   * to letting users define a set of wallet V3 keystore dirs from which
+   * wallets will automatically be imported.
+   * 
+   * The goal is to make sure that all wallets SBT ethereum ever uses
+   * are available in the repository (so that backing up the repository is
+   * sufficient to back up the wallets.
+   */ 
+  lazy val OnlyRepositoryKeystoreV3 = repository.Keystore.V3.Directory.map( dir => immutable.Seq( dir ) ).assert
+
   object autoImport {
 
     // settings
@@ -172,8 +185,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgGasPriceMarkup                = settingKey[Double]       ("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
     val ethcfgIncludeLocations              = settingKey[Seq[String]]  ("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
     val ethcfgJsonRpcUrl                    = settingKey[String]       ("URL of the Ethereum JSON-RPC service build should work with")
+    val ethcfgKeystoreAutoImportLocationsV3 = settingKey[Seq[File]]    ("Directories from which V3 wallets will be automatically imported into the sbt-ethereum repository")
     val ethcfgKeystoreAutoRelockSeconds     = settingKey[Int]          ("Number of seconds after which an unlocked private key should automatically relock")
-    val ethcfgKeystoreLocationsV3           = settingKey[Seq[File]]    ("Directories from which V3 wallets can be loaded")
     val ethcfgNetcompileUrl                 = settingKey[String]       ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
     val ethcfgScalaStubsPackage             = settingKey[String]       ("Package into which Scala stubs of Solidity compilations should be generated")
     val ethcfgSender                        = settingKey[String]       ("The address from which transactions will be sent")
@@ -284,8 +297,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethLoadCurrentCompilationsKeepDups = taskKey[immutable.Iterable[(String,jsonrpc.Compilation.Contract)]]("Loads compiled solidity contracts, permitting multiple nonidentical contracts of the same name")
     val xethLoadCurrentCompilationsOmitDupsCumulative = taskKey[immutable.Map[String,jsonrpc.Compilation.Contract]]("Loads compiled solidity contracts, omitting contracts with multiple nonidentical contracts of the same name")
     val xethLoadSeeds = taskKey[immutable.Map[String,MaybeSpawnable.Seed]]("""Loads compilations available for deployment (or "spawning"), which may include both current and archived compilations""")
-    val xethLoadWalletV3 = taskKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
-    val xethLoadWalletV3For = inputKey[Option[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
+    val xethLoadWalletsV3 = taskKey[immutable.Set[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
+    val xethLoadWalletsV3For = inputKey[immutable.Set[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
     val xethNamedAbis = taskKey[immutable.Map[String,Abi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
@@ -368,13 +381,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgJsonRpcUrl in Test := DefaultTestEthJsonRpcUrl,
 
-    ethcfgKeystoreAutoRelockSeconds := 300,
-
-    ethcfgKeystoreLocationsV3 := {
+    ethcfgKeystoreAutoImportLocationsV3 := {
       def debug( location : String ) : String = s"Failed to find V3 keystore in ${location}"
       def listify( fd : Failable[File] ) = fd.fold( _ => (Nil : List[File]))( f => List(f) )
-      listify( repository.Keystore.V3.Directory.xdebug( debug("sbt-ethereum repository") ) ) ::: listify( clients.geth.KeyStore.Directory.xdebug( debug("geth home directory") ) ) ::: Nil
+      listify( clients.geth.KeyStore.Directory.xdebug( debug("geth home directory") ) ) ::: Nil
     },
+
+    ethcfgKeystoreAutoRelockSeconds := 300,
 
     ethcfgSolidityCompilerOptimize := true,
 
@@ -671,13 +684,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethLoadSeeds in Test := { xethLoadSeedsTask( Test ).value },
 
-    xethLoadWalletV3 in Compile := { xethLoadWalletV3Task( Compile ).value },
+    xethLoadWalletsV3 in Compile := { xethLoadWalletsV3Task( Compile ).value },
 
-    xethLoadWalletV3 in Test := { xethLoadWalletV3Task( Test ).value },
+    xethLoadWalletsV3 in Test := { xethLoadWalletsV3Task( Test ).value },
 
-    xethLoadWalletV3For in Compile := { xethLoadWalletV3ForTask( Compile ).evaluated },
+    xethLoadWalletsV3For in Compile := { xethLoadWalletsV3ForTask( Compile ).evaluated },
 
-    xethLoadWalletV3For in Test := { xethLoadWalletV3ForTask( Test ).evaluated },
+    xethLoadWalletsV3For in Test := { xethLoadWalletsV3ForTask( Test ).evaluated },
 
     xethOnLoadSolicitCompilerInstall := { xethOnLoadSolicitCompilerInstallTask.value },
 
@@ -1719,11 +1732,11 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethKeystoreListTask( config : Configuration ) : Initialize[Task[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]] = Def.task {
-    val keystoresV3  = ethcfgKeystoreLocationsV3.value
+    val keystoresV3  = OnlyRepositoryKeystoreV3
     val log          = streams.value.log
     val blockchainId = (ethcfgBlockchainId in config).value
 
-    val combined = combinedKeystoresMap( keystoresV3 )
+    val combined = combinedKeystoresMultiMap( keystoresV3 )
 
     val out = {
       def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( repository.Database.findAliasesByAddress( blockchainId, address ).get : _* )
@@ -1758,10 +1771,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val s = state.value
       val extract = Project.extract(s)
-      val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For in config, addressStr, s) // config doesn't really matter here, since we provide hex, not a config dependent alias
+      val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, addressStr, s) // config doesn't really matter here, since we provide hex, not a config dependent alias
 
       val credential = readCredential( is, address )
-      val privateKey = findPrivateKey( log, mbWallet, credential )
+      val privateKey = findPrivateKey( log, wallets, credential )
       val confirmation = {
         is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
           .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
@@ -1817,9 +1830,17 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethKeystoreWalletV3PrintTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
-    val keystoreDirs = ethcfgKeystoreLocationsV3.value
-    val w = (xethLoadWalletV3For in config).evaluated.getOrElse( unknownWallet( keystoreDirs ) )
-    println( Json.stringify( w.withLowerCaseKeys ) )
+    val log = streams.value.log
+    val keystoreDirs = OnlyRepositoryKeystoreV3
+    val wallets = (xethLoadWalletsV3For in config).evaluated
+    val sz = wallets.size
+    if ( sz == 0 ) unknownWallet( keystoreDirs )
+    else if ( sz > 1 ) log.warn( s"Multiple (${sz}) wallets found." )
+    wallets.zip( Stream.from(1) ) foreach { case ( w, idx ) =>
+      if ( sz > 1 ) println( s"==== V3 Wallet #${idx} ====" )
+      println( Json.stringify( w.withLowerCaseKeys ) )
+      if ( sz > 1 ) println()
+    }
   }
 
   private def ethKeystoreWalletV3ValidateTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
@@ -1828,21 +1849,47 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log = streams.value.log
       val is = interactionService.value
-      val keystoreDirs = ethcfgKeystoreLocationsV3.value
+      val keystoreDirs = OnlyRepositoryKeystoreV3
       val s = state.value
       val extract = Project.extract(s)
       val inputAddress = parser.parsed
-      val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For in config, inputAddress.hex, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
-      val w = mbWallet.getOrElse( unknownWallet( keystoreDirs ) )
-      val credential = readCredential( is, inputAddress )
-      val privateKey = wallet.V3.decodePrivateKey( w, credential )
-      val derivedAddress = privateKey.toPublicKey.toAddress
-      if ( derivedAddress != inputAddress ) {
-        throw new Exception(
-          s"The wallet loaded for '0x${inputAddress.hex}' decodes with the credential given, but to a private key associated with a different address, 0x${derivedAddress}! Keystore files may be mislabeled or corrupted."
-        )
+      val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, inputAddress.hex, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
+      if ( wallets.isEmpty ) {
+        unknownWallet( keystoreDirs )
       }
-      log.info( s"A wallet for address '0x${derivedAddress.hex}' is valid and decodable with the credential supplied." )
+      else {
+        val credential = readCredential( is, inputAddress )
+
+        def validateWallet( w : wallet.V3 ) : Failable[Unit] = Failable {
+          val privateKey = wallet.V3.decodePrivateKey( w, credential )
+          val derivedAddress = privateKey.toPublicKey.toAddress
+          if ( derivedAddress != inputAddress ) {
+            throw new Exception(
+              s"The wallet loaded for '0x${inputAddress.hex}' decodes with the credential given, but to a private key associated with a different address, 0x${derivedAddress}! Keystore files may be mislabeled or corrupted."
+            )
+          }
+        }
+
+        def happy = log.info( s"A wallet for address '0x${inputAddress.hex}' is valid and decodable with the credential supplied." )
+
+        if ( wallets.size == 1 ) {
+          validateWallet( wallets.head ).assert
+          happy
+        }
+        else {
+          log.warn( s"Multiple wallets found for '${hexString(inputAddress)}'." )
+          val failables = wallets.map( validateWallet )
+          if ( failables.exists( _.isFailed ) ) {
+            log.warn( "Some wallets failed to decode with the credential supplied." )
+            failables.filter( _.isFailed ).foreach { failed =>
+              log.warn( s"Failure: ${failed.assertFailed.message}" )
+            }
+          }
+          val success = failables.exists( _.isSucceeded )
+          if ( success ) log.info( s"At least one wallet for '${hexString(inputAddress)}' did decode with the credential supplied." )
+          else throw nst( new SbtEthereumException( s"No wallet for '${hexString(inputAddress)}' could be unlocked with the credential provided." ) )
+        }
+      }
     }
   }
 
@@ -2730,34 +2777,32 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
 
-  private def xethLoadWalletV3Task( config : Configuration ) : Initialize[Task[Option[wallet.V3]]] = Def.task {
+  private def xethLoadWalletsV3Task( config : Configuration ) : Initialize[Task[immutable.Set[wallet.V3]]] = Def.task {
     val s = state.value
     val addressStr = (xethFindCurrentSender in config).value.get.hex
     val extract = Project.extract(s)
-    val (_, result) = extract.runInputTask((xethLoadWalletV3For in config), addressStr, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
+    val (_, result) = extract.runInputTask((xethLoadWalletsV3For in config), addressStr, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
     result
   }
 
-  private def xethLoadWalletV3ForTask( config : Configuration ) : Initialize[InputTask[Option[wallet.V3]]] = {
+  private def xethLoadWalletsV3ForTask( config : Configuration ) : Initialize[InputTask[immutable.Set[wallet.V3]]] = {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
-      val keystoresV3 = ethcfgKeystoreLocationsV3.value
+      val keystoresV3 = OnlyRepositoryKeystoreV3
       val log         = streams.value.log
 
       val blockchainId = (ethcfgBlockchainId in config).value
 
       val address = parser.parsed
-      val out = {
-        keystoresV3
-          .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory" ).recoverWith( Map.empty[EthAddress,wallet.V3] ).get )
-          .foldLeft( None : Option[wallet.V3] ){ ( mb, nextKeystore ) =>
-          if ( mb.isEmpty ) nextKeystore.get( address ) else mb
-        }
-      }
+
+      val combined = combinedKeystoresMultiMap( keystoresV3 )
+      val out = combined( address )
+
       val message = {
         val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "" )( _.fold("")( str => s" (aliases $str)" ) )
-        out.fold( s"""No V3 wallet found for '0x${address.hex}'${aliasesPart}. Directories checked: ${keystoresV3.mkString(", ")}""" )( _ => s"V3 wallet found for '0x${address.hex}'${aliasesPart}" )
+        if ( out.isEmpty ) s"""No V3 wallet found for '0x${address.hex}'${aliasesPart}. Directories checked: ${keystoresV3.mkString(", ")}"""
+        else s"V3 wallet(s) found for '0x${address.hex}'${aliasesPart}"
       }
       log.info( message )
       out
@@ -2838,10 +2883,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethOnLoadSolicitWalletV3GenerationTask : Initialize[Task[Unit]] = Def.task {
     val s = state.value
     val is = interactionService.value
-    val keystoresV3  = ethcfgKeystoreLocationsV3.value
+    val keystoresV3  = OnlyRepositoryKeystoreV3
     val nontestConfig = Compile                                      // XXX: if you change this, change the hardcoded Compile value in the line below!
     val nontestBlockchainId = ( Compile / ethcfgBlockchainId ).value // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
-    val combined = combinedKeystoresMap( keystoresV3 )
+    val combined = combinedKeystoresMultiMap( keystoresV3 )
     if ( combined.isEmpty ) {
       def prompt : Option[String] = is.readLine( s"There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] ", mask = false )
 
@@ -3046,10 +3091,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // helper functions
 
-  private def combinedKeystoresMap( keystoresV3 : Seq[File] ) : immutable.Map[EthAddress, wallet.V3] = {
+  private def combinedKeystoresMultiMap( keystoresV3 : Seq[File] ) : immutable.Map[EthAddress, immutable.Set[wallet.V3]] = {
+    def combineMultiMaps( base : immutable.Map[EthAddress, immutable.Set[wallet.V3]], next : immutable.Map[EthAddress, immutable.Set[wallet.V3]] ) : immutable.Map[EthAddress, immutable.Set[wallet.V3]] = {
+      val newTuples = next.map { case ( key, valueSet ) => Tuple2( key, valueSet ++ base(key) ) }
+      base ++ newTuples
+    }
+
     keystoresV3
-      .map( dir => Failable( wallet.V3.keyStoreMap(dir) ).xdebug( "Failed to read keystore directory: ${dir}" ).recoverWith( Map.empty[EthAddress,wallet.V3] ).get )
-      .foldLeft( Map.empty[EthAddress,wallet.V3] )( ( accum, next ) => accum ++ next )
+      .map( dir => Failable( wallet.V3.keyStoreMultiMap(dir) ).xdebug( "Failed to read keystore directory: ${dir}" ).recoverWith( immutable.Map.empty[EthAddress,immutable.Set[wallet.V3]] ).get )
+      .foldLeft( immutable.Map.empty[EthAddress,immutable.Set[wallet.V3]] )( combineMultiMaps )
   }
 
   private def mbDefaultSender( blockchainId : String ) = repository.Database.findAddressByAlias( blockchainId, DefaultSenderAlias ).get
@@ -3116,31 +3166,50 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def findPrivateKey( log : sbt.Logger, mbGethWallet : Option[wallet.V3], credential : String ) : EthPrivateKey = {
+  private def findPrivateKey( log : sbt.Logger, gethWallets : immutable.Set[wallet.V3], credential : String ) : EthPrivateKey = {
     def forceKey = {
       try {
         EthPrivateKey( credential )
       }
       catch {
-        case _ : NumberFormatException | _ : IllegalArgumentException => throw new BadCredentialException()
+        case NonFatal(e) => {
+          DEBUG.log( s"Converting an Exception that occurred while trying to interpret a credential as hex into a BadCredentialException.", e )
+          throw new BadCredentialException()
+        }
       }
     }
-    mbGethWallet.fold {
+
+    if ( gethWallets.isEmpty ) {
       log.info( "No wallet available. Trying passphrase as hex private key." )
       forceKey
-    }{ gethWallet =>
-      try {
-        wallet.V3.decodePrivateKey( gethWallet, credential )
-      } catch {
-        case v3e : wallet.V3.Exception => {
-          log.warn("Credential is not correct geth wallet passphrase. Trying as hex private key.")
-          val maybe = forceKey
-          val desiredAddress = gethWallet.address
-          if (maybe.toPublicKey.toAddress != desiredAddress) {
-            throw new BadCredentialException( desiredAddress )
-          } else {
-            maybe
+    }
+    else {
+      def tryWallet( gethWallet : wallet.V3 ) : Failable[EthPrivateKey] = Failable {
+        val desiredAddress = gethWallet.address
+        try {
+          wallet.V3.decodePrivateKey( gethWallet, credential )
+         } catch {
+          case v3e : wallet.V3.Exception => {
+            DEBUG.log( s"Converting an Exception that occurred while trying to decode the private key of a geth wallet into a BadCredentialException.", v3e )
+            val maybe = forceKey
+            if (maybe.toPublicKey.toAddress != desiredAddress) {
+              throw new BadCredentialException( desiredAddress )
+            } else {
+              maybe
+            }
           }
+        }
+      }
+      val lazyAllAttempts = gethWallets.toStream.map( tryWallet )
+      val mbGood = lazyAllAttempts.find( _.isSucceeded )
+      mbGood match {
+        case Some( succeeded ) => succeeded.assert
+        case None              => {
+          log.warn( "Tried and failed to decode a private key from multiple wallets." )
+          lazyAllAttempts.foreach { underachiever =>
+            log.warn( s"Failed to decode private key from wallet: ${underachiever.assertFailed.message}" )
+          }
+          throw new BadCredentialException()
         }
       }
     }
@@ -3172,9 +3241,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val credential = readCredential( is, address )
 
       val extract = Project.extract(state)
-      val (_, mbWallet) = extract.runInputTask(xethLoadWalletV3For in Compile, address.hex, state) // the config scope of xethLoadWalletV3For doesn't matter here, since we provide hex, not an alias
+      val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in Compile, address.hex, state) // the config scope of xethLoadWalletV3For doesn't matter here, since we provide hex, not an alias
 
-      val privateKey = findPrivateKey( log, mbWallet, credential )
+      val privateKey = findPrivateKey( log, wallets, credential )
       Mutables.CurrentAddress.set( UnlockedAddress( blockchainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
       privateKey
     }
