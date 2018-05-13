@@ -38,6 +38,7 @@ import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
 import com.mchange.sc.v1.consuela.ethereum.ethabi.{Decoded, Encoder, abiFunctionForFunctionNameAndArgs, callDataForAbiFunctionFromStringArgs, decodeReturnValuesForFunction}
 import com.mchange.sc.v1.consuela.ethereum.stub
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker
+import com.mchange.sc.v1.consuela.ethereum.clients
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.log.MLogger
 import com.mchange.sc.v1.texttable
@@ -300,6 +301,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethLoadWalletsV3 = taskKey[immutable.Set[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
     val xethLoadWalletsV3For = inputKey[immutable.Set[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
     val xethNamedAbis = taskKey[immutable.Map[String,Abi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
+    val xethOnLoadAutoImportWalletsV3 = taskKey[Unit]("Import any not-yet-imported wallets from directories specified in 'ethcfgKeystoreAutoImportLocationsV3'")
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
@@ -692,6 +694,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethLoadWalletsV3For in Test := { xethLoadWalletsV3ForTask( Test ).evaluated },
 
+    xethOnLoadAutoImportWalletsV3 := { xethOnLoadAutoImportWalletsV3Task.value },
+
     xethOnLoadSolicitCompilerInstall := { xethOnLoadSolicitCompilerInstallTask.value },
 
     xethOnLoadSolicitWalletV3Generation := { xethOnLoadSolicitWalletV3GenerationTask.value },
@@ -740,12 +744,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       val origF : State => State = (onLoad in Global).value
       val newF  : State => State = ( state : State ) => {
         val lastState = origF( state )
-        val state1 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Compile,           lastState )
-        val state2 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Test,              state1    )
-        val state3 = attemptAdvanceStateWithTask( xethOnLoadSolicitWalletV3Generation,                 state2    )
-        val state4 = attemptAdvanceStateWithTask( xethOnLoadSolicitCompilerInstall,                    state3    )
-        val state5 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state4    )
-        state4
+        val state1 = attemptAdvanceStateWithTask( xethOnLoadAutoImportWalletsV3,                       lastState )
+        val state2 = attemptAdvanceStateWithTask( xethOnLoadSolicitWalletV3Generation,                 state1    )
+        val state3 = attemptAdvanceStateWithTask( xethOnLoadSolicitCompilerInstall,                    state2    )
+        val state4 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state3    )
+        val state5 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Compile,           state4    )
+        val state6 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Test,              state5    )
+        state6
       }
       newF
     },
@@ -2840,6 +2845,19 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log        = streams.value.log
     val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
     doGetTransactionCount( log, jsonRpcUrl, (xethFindCurrentSender in config).value.get , jsonrpc.Client.BlockNumber.Pending )
+  }
+
+  private def xethOnLoadAutoImportWalletsV3Task : Initialize[Task[Unit]] = Def.task {
+    val log         = streams.value.log
+    val importFroms = ethcfgKeystoreAutoImportLocationsV3.value
+    repository.Keystore.V3.Directory.foreach { keyStoreDir =>
+      importFroms.foreach { importFrom => 
+        val imported = clients.geth.KeyStore.importAll( keyStoreDir = keyStoreDir, srcDir = importFrom ).assert
+        if ( imported.nonEmpty ) {
+          log.info( s"""Imported from '${importFrom}' wallets for addresses [${imported.map( _.address ).map( hexString ).mkString(", ")}]""" )
+        }
+      }
+    }
   }
 
   private def xethOnLoadSolicitCompilerInstallTask : Initialize[Task[Unit]] = Def.task {
