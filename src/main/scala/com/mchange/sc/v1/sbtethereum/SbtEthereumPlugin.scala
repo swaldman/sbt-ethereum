@@ -267,9 +267,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreWalletV3Print                = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
     val ethKeystoreWalletV3Validate             = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
-    val ethSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
-    val ethSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
-    val ethSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
+    val ethLanguageSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
+    val ethLanguageSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
+    val ethLanguageSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
 
     val ethTransactionDeploy = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]("""Deploys the named contract, if specified, or else all contracts in 'ethcfgAutoDeployContracts'""")
     val ethTransactionInvoke = inputKey[Option[Client.TransactionReceipt]]           ("Calls a function on a deployed smart contract")
@@ -284,10 +284,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val xethDefaultGasPrice = taskKey[BigInt]("Finds the current default gas price")
     val xethFindCacheAddressParserInfo = taskKey[AddressParserInfo]("Finds and caches information (aliases, ens info) needed by address parsers")
-    val xethFindCacheSessionSolidityCompilerKeys = taskKey[immutable.Set[String]]("Finds and caches keys for available compilers for use by the parser for ethSolidityCompilerSelect")
+    val xethFindCacheSessionSolidityCompilerKeys = taskKey[immutable.Set[String]]("Finds and caches keys for available compilers for use by the parser for ethLanguageSolidityCompilerSelect")
     val xethFindCacheSeeds = taskKey[immutable.Map[String,MaybeSpawnable.Seed]]("Finds and caches compiled, deployable contracts, omitting ambiguous duplicates. Triggered by compileSolidity")
     val xethFindCurrentSender = taskKey[Failable[EthAddress]]("Finds the address that should be used to send ether or messages")
-    val xethFindCurrentSolidityCompiler = taskKey[Compiler.Solidity]("Finds and caches keys for available compilers for use parser for ethSolidityCompilerSelect")
+    val xethFindCurrentSolidityCompiler = taskKey[Compiler.Solidity]("Finds and caches keys for available compilers for use parser for ethLanguageSolidityCompilerSelect")
     val xethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
     val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethcfgEntropySource as a source of randomness")
     val xethGenScalaStubsAndTestingResources = taskKey[immutable.Seq[File]]("Generates stubs for compiled Solidity contracts, and resources helpful in testing them.")
@@ -603,11 +603,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethKeystoreWalletV3Validate in Test := { ethKeystoreWalletV3ValidateTask( Test ).evaluated },
 
-    ethSolidityCompilerSelect in Compile := { ethSolidityCompilerSelectTask.evaluated },
+    ethLanguageSolidityCompilerSelect in Compile := { ethLanguageSolidityCompilerSelectTask.evaluated },
 
-    ethSolidityCompilerInstall in Compile := { ethSolidityCompilerInstallTask.evaluated },
+    ethLanguageSolidityCompilerInstall in Compile := { ethLanguageSolidityCompilerInstallTask.evaluated },
 
-    ethSolidityCompilerPrint in Compile := { ethSolidityCompilerPrintTask.value },
+    ethLanguageSolidityCompilerPrint in Compile := { ethLanguageSolidityCompilerPrintTask.value },
 
     ethTransactionDeploy in Compile := { ethTransactionDeployTask( Compile ).evaluated },
 
@@ -1949,7 +1949,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethSolidityCompilerInstallTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
+  private def ethLanguageSolidityCompilerInstallTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
     val log = streams.value.log
 
     val mbVersion = SolcJVersionParser.parsed
@@ -1976,14 +1976,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethSolidityCompilerPrintTask : Initialize[Task[Unit]] = Def.task {
+  private def ethLanguageSolidityCompilerPrintTask : Initialize[Task[Unit]] = Def.task {
     val log       = streams.value.log
     val ensureSet = (xethFindCurrentSolidityCompiler in Compile).value
     val ( key, compiler ) = Mutables.CurrentSolidityCompiler.get.get
     log.info( s"Current solidity compiler '$key', which refers to $compiler." )
   }
 
-  private def ethSolidityCompilerSelectTask : Initialize[InputTask[Unit]] = {
+  private def ethLanguageSolidityCompilerSelectTask : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheSessionSolidityCompilerKeys)( genLiteralSetParser )
 
     Def.inputTask {
