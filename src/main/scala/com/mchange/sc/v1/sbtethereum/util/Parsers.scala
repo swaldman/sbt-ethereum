@@ -330,12 +330,25 @@ object Parsers {
     genRecipientAddressParser( state, mbApi ).flatMap( addr => valueInWeiParser("<amount>").map( valueInWei => Tuple2( addr, valueInWei ) ) )
   }
 
-  private [sbtethereum] def genContractAddressOrCodeHashParser(
+  private [sbtethereum] def _genContractAddressOrCodeHashParser( prefix : String )(
     state : State,
     mbApi : Option[AddressParserInfo]
   ) : Parser[Either[EthAddress,EthHash]] = {
-    val chp = ethHashParser( "<contract-code-hash>" )
-    genGenericAddressParser( state, mbApi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+    val chp = ethHashParser( s"<${prefix}contract-code-hash>" )
+    createAddressParser( "<${prefix}address-hex>", mbApi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+  }
+
+  private [sbtethereum] def genContractAddressOrCodeHashParser(
+    state : State,
+    mbApi : Option[AddressParserInfo]
+  ) : Parser[Either[EthAddress,EthHash]] = _genContractAddressOrCodeHashParser( "" )( state, mbApi )
+
+
+  private [sbtethereum] def genContractAbiMatchParser(
+    state : State,
+    mbApi : Option[AddressParserInfo]
+  ) : Parser[Tuple2[EthAddress,Either[EthAddress,EthHash]]] = {
+    createAddressParser( "<address-to-associate-with-abi>", mbApi ).flatMap( addr => (token(Space.+) ~> _genContractAddressOrCodeHashParser("abi-source-")(state, mbApi)).map( either => Tuple2( addr, either ) ) )
   }
 
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(

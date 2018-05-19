@@ -24,6 +24,7 @@ package object sbtethereum {
 
   final class NoSolidityCompilerException( msg : String ) extends SbtEthereumException( msg )
   final class SchemaVersionException( msg : String )      extends SbtEthereumException( msg )
+  final class AbiUnknownException( msg : String )    extends SbtEthereumException( msg )
   final class ContractUnknownException( msg : String )    extends SbtEthereumException( msg )
   final class BadCodeFormatException( msg : String )      extends SbtEthereumException( msg )
   final class RepositoryException( msg : String )         extends SbtEthereumException( msg )
@@ -65,8 +66,11 @@ package object sbtethereum {
     mbAbiForAddress( blockchainId, address ).getOrElse( defaultNotInDatabase )
   }
 
-  def abiForAddress( blockchainId : String, address : EthAddress ) : Abi = {
-    def defaultNotInDatabase = throw new ContractUnknownException( s"A contract at address ${ address.hex } is not known in the sbt-ethereum repository." )
+  def abiForAddress( blockchainId : String, address : EthAddress, suppressStackTrace : Boolean = false ) : Abi = {
+    def defaultNotInDatabase : Abi = {
+      val e = new AbiUnknownException( s"An ABI for a contract at address '${ hexString(address) }' is not known in the sbt-ethereum repository." )
+      throw ( if ( suppressStackTrace ) nst(e) else e )
+    }
     abiForAddress( blockchainId, address, defaultNotInDatabase )
   }
 

@@ -241,6 +241,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiDrop            = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
     val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
+    val ethContractAbiMatch           = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address.")
     val ethContractAbiPrint           = inputKey[Unit] ("Prints the contract ABI associated with a provided address, if known.")
     val ethContractAbiPrintPretty     = inputKey[Unit] ("Pretty prints the contract ABI associated with a provided address, if known.")
     val ethContractAbiPrintCompact    = inputKey[Unit] ("Compactly prints the contract ABI associated with a provided address, if known.")
@@ -532,6 +533,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethContractAbiList in Compile := { ethContractAbiListTask( Compile ).evaluated },
 
     ethContractAbiList in Test := { ethContractAbiListTask( Test ).evaluated },
+
+    ethContractAbiMatch in Compile := { ethContractAbiMatchTask( Compile ).evaluated },
+
+    ethContractAbiMatch in Test := { ethContractAbiMatchTask( Test ).evaluated },
 
     ethContractAbiImport in Compile := { ethContractAbiImportTask( Compile ).evaluated },
 
@@ -1314,7 +1319,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val address = parser.parsed
       val found = repository.Database.deleteMemorizedContractAbi( blockchainId, address ).get // throw an Exception if there's a database issue
       if ( found ) {
-        log.info( s"Previously memorized ABI for contract with address '0x${address.hex}' (on blockchain '${blockchainId}') has been forgotten." )
+        log.info( s"Previously imported or matched ABI for contract with address '0x${address.hex}' (on blockchain '${blockchainId}') has been forgotten." )
       } else {
         val mbDeployment = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get  // throw an Exception if there's a database issue
         mbDeployment match {
@@ -1324,6 +1329,52 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
   }
+
+  private def ethContractAbiMatchTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genContractAbiMatchParser )
+
+    Def.inputTaskDyn {
+      val blockchainId = (ethcfgBlockchainId in config).value
+      val s = state.value
+      val log = streams.value.log
+      val is = interactionService.value
+      val ( toLinkAddress, abiSource ) = parser.parsed
+      
+      val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( blockchainId, toLinkAddress ).assert
+      mbKnownCompilation match {
+        case Some( knownCompilation ) => {
+          val msg = s"The contract at address '${hexString(toLinkAddress)}' was already associated with a deployed compilation, cannot associate with a new ABI."
+          log.warn( msg )
+          // TODO, maybe, check if the deployed compilation includes a non-null ABI
+          throw nst( new SbtEthereumException( msg ) )
+        }
+        case None => {
+          val abi = {
+            abiSource match {
+              case Left( address ) => {
+                abiForAddress( blockchainId, address, suppressStackTrace = true ) // asserts success
+              }
+              case Right( hash ) => {
+                val mbinfo = repository.Database.compilationInfoForCodeHash( hash ).assert // throw any db problem
+                mbinfo.get.mbAbi.get // asserts success
+              }
+            }
+          }
+          repository.Database.setMemorizedContractAbi( blockchainId, toLinkAddress, abi  ).assert // throw an Exception if there's a database issue
+          log.info( s"ABI is now known for the contract at address ${hexString(toLinkAddress)}." )
+          abiSource match {
+            case Left( address ) => log.warn( s"(It has been copied from the ABI previously associated with address '${hexString(address)}'.)" )
+            case Right( hash )   => log.warn( s"(It has been copied from the ABI previously associated with the compilation with code hash '${hexString(hash)}'.)" )
+          }
+          interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
+        }
+      }
+      Def.taskDyn {
+        xethTriggerDirtyAliasCache
+      }
+    }
+  }
+
 
   private def ethContractAbiAnyPrintTask( pretty : Boolean )( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo)( genGenericAddressParser )
@@ -1499,7 +1550,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
           repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // throw an Exception if there's a database issue
           log.info( s"ABI is now known for the contract at address ${address.hex}" )
-          interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly memorized ABI", address )
+          interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
         }
       }
       Def.taskDyn {
