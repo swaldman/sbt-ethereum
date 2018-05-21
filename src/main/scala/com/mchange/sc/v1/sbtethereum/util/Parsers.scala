@@ -335,7 +335,7 @@ object Parsers {
     mbApi : Option[AddressParserInfo]
   ) : Parser[Either[EthAddress,EthHash]] = {
     val chp = ethHashParser( s"<${prefix}contract-code-hash>" )
-    createAddressParser( "<${prefix}address-hex>", mbApi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+    createAddressParser( s"<${prefix}address-hex>", mbApi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
   }
 
   private [sbtethereum] def genContractAddressOrCodeHashParser(
