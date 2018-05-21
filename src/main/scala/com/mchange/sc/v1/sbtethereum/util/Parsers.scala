@@ -27,6 +27,8 @@ import scala.util.control.NonFatal
 
 import play.api.libs.json._
 
+import java.io.File
+
 object Parsers {
   private implicit lazy val logger = mlogger( this )
 
@@ -335,7 +337,7 @@ object Parsers {
     mbApi : Option[AddressParserInfo]
   ) : Parser[Either[EthAddress,EthHash]] = {
     val chp = ethHashParser( s"<${prefix}contract-code-hash>" )
-    createAddressParser( "<${prefix}address-hex>", mbApi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+    createAddressParser( s"<${prefix}address-hex>", mbApi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
   }
 
   private [sbtethereum] def genContractAddressOrCodeHashParser(
@@ -384,4 +386,48 @@ object Parsers {
   ) : Parser[String] = {
     Space.* ~> token( mbLiterals.fold( failure("Failed to load acceptable values") : Parser[String] )( _.foldLeft( failure("No acceptable values") : Parser[String] )( ( nascent, next ) => nascent | literal(next) ) ) )
   }
+
+  private val fsep = File.separator
+
+  private val thisDot = "."
+  private val upDot   = ".."
+
+  private [sbtethereum] def genDirectoryParser( file : File, acceptNewFiles : Boolean ) : Parser[File] = {
+    token( Space.* ) ~> token( _genDirectoryParser( file, acceptNewFiles ) )
+  }
+
+  private def _genDirectoryParser( file : File, acceptNewFiles : Boolean ) : Parser[File] = {
+    def parsersFromMap( m : immutable.TreeMap[String,File] ) : immutable.Seq[Parser[File]] = {
+      immutable.Seq.empty[Parser[File]] ++ m.map { case ( input, f ) => literal( input ).flatMap( _ => _genDirectoryParser( f, acceptNewFiles ) ) }
+    }
+
+    if (!file.exists() || !file.isDirectory() || !file.canRead() ) {
+      failure( s"'${file.getPath} must exist, and be a readable directory." )
+    }
+    else {
+      val baseParser = Space.*.map( _ => file )
+      val subdirs = file.list.map( new File( file, _ ) ).filter( _.isDirectory ).map( _.getName )
+      val subdirsMap = immutable.TreeMap.empty[String,File] ++ subdirs.map( name => Tuple2( name + fsep, new File( file, name ) ) )
+      val subdirParsers = parsersFromMap( subdirsMap )
+      val roots = File.listRoots
+      val rootsMap = immutable.TreeMap.empty[String,File] ++ roots.map( r => Tuple2( r.getAbsolutePath, r ) )
+      val rootParsers = parsersFromMap( rootsMap )
+      val dotsMap = immutable.TreeMap( (thisDot + fsep) -> file, (upDot + fsep) -> file.getParentFile )
+      val dotsParsers = parsersFromMap( dotsMap )
+
+      val examples = immutable.TreeSet.empty[String] ++ subdirsMap.keySet ++ rootsMap.keySet ++ dotsMap.keySet
+
+      val residualParser = if ( acceptNewFiles ) {
+        def okChar( c : Char ) = ( c >= 48 && c < 58 ) || ( c >= 65 && c < 123 ) || (".-_".indexOf(c) >= 0)
+        val fileChar = charClass( okChar, "Acceptable filename characters" )
+        fileChar.+.map( chars => new File( file, chars.mkString ) )
+      }
+      else {
+        failure( "Not an existing directory" )
+      }
+
+      ( (subdirParsers ++ rootParsers ++ dotsParsers :+ residualParser).foldLeft( baseParser ){ ( last, next ) => last | next } ).examples( examples, !acceptNewFiles )
+    }
+  }
+
 }

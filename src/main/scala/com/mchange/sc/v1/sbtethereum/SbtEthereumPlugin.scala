@@ -271,6 +271,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethLanguageSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
     val ethLanguageSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
 
+    val ethRepositoryBackup = inputKey[Unit]( "Creates a backup in the specified directory." )
+
     val ethTransactionDeploy = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]("""Deploys the named contract, if specified, or else all contracts in 'ethcfgAutoDeployContracts'""")
     val ethTransactionInvoke = inputKey[Option[Client.TransactionReceipt]]           ("Calls a function on a deployed smart contract")
     val ethTransactionSend   = inputKey[Option[Client.TransactionReceipt]]           ("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
@@ -608,6 +610,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethLanguageSolidityCompilerInstall in Compile := { ethLanguageSolidityCompilerInstallTask.evaluated },
 
     ethLanguageSolidityCompilerPrint in Compile := { ethLanguageSolidityCompilerPrintTask.value },
+
+    ethRepositoryBackup := { ethRepositoryBackupTask.evaluated },
 
     ethTransactionDeploy in Compile := { ethTransactionDeployTask( Compile ).evaluated },
 
@@ -1994,6 +1998,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       Mutables.CurrentSolidityCompiler.set( newCompilerTuple )
       log.info( s"Set compiler to '$key'" )
     }
+  }
+
+  private def ethRepositoryBackupTask : Initialize[InputTask[Unit]] = Def.inputTask {
+    val file = genDirectoryParser( HomeDir, acceptNewFiles = false ).parsed
+    println( s"File selected: ${file} ${file.getAbsolutePath}" )
   }
 
   private def ethTransactionDeployTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]] = {
