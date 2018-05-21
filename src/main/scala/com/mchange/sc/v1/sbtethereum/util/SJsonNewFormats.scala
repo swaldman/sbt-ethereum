@@ -45,18 +45,19 @@ object SJsonNewFormats {
       immutable.TreeMap.empty[String, EthAddress] ++ inner.read( jsOpt, unbuilder )
     }
   }
-  implicit object AddressParserInfoFormat extends JsonFormat[AddressParserInfo] {
-    def write[J](api : AddressParserInfo, builder: Builder[J]) : Unit = {
+  implicit object AddressAbiParserInfoFormat extends JsonFormat[AddressAbiParserInfo] {
+    def write[J](aapi : AddressAbiParserInfo, builder: Builder[J]) : Unit = {
       builder.beginObject()
-      builder.addField("blockchainId", api.blockchainId)
-      builder.addField("jsonRpcUrl", api.jsonRpcUrl)
-      builder.addField("mbAliases", api.mbAliases)
-      builder.addField("nameServiceAddressHex", api.nameServiceAddress.hex)
-      builder.addField("nameServiceTld", api.nameServiceTld)
-      builder.addField("nameServiceReverseTld", api.nameServiceReverseTld)
+      builder.addField("blockchainId", aapi.blockchainId)
+      builder.addField("jsonRpcUrl", aapi.jsonRpcUrl)
+      builder.addField("mbAliases", aapi.mbAliases)
+      builder.addField("nameServiceAddressHex", aapi.nameServiceAddress.hex)
+      builder.addField("nameServiceTld", aapi.nameServiceTld)
+      builder.addField("nameServiceReverseTld", aapi.nameServiceReverseTld)
+      builder.addField("namedAbis", aapi.namedAbis )
       builder.endObject()
     }
-    def read[J](jsOpt: Option[J], unbuilder: Unbuilder[J]) : AddressParserInfo = {
+    def read[J](jsOpt: Option[J], unbuilder: Unbuilder[J]) : AddressAbiParserInfo = {
       jsOpt match {
         case Some(js) =>
           unbuilder.beginObject(js)
@@ -66,8 +67,9 @@ object SJsonNewFormats {
           val nameServiceAddressHex = unbuilder.readField[String]("nameServiceAddressHex")
           val nameServiceTld = unbuilder.readField[String]("nameServiceTld")
           val nameServiceReverseTld = unbuilder.readField[String]("nameServiceReverseTld")
+          val namedAbis = unbuilder.readField[immutable.Map[String,jsonrpc.Abi]]("namedAbis")
           unbuilder.endObject()
-          AddressParserInfo(blockchainId, jsonRpcUrl, mbAliases, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
+          AddressAbiParserInfo(blockchainId, jsonRpcUrl, mbAliases, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld, abiNames)
         case None =>
           deserializationError("Expected JsObject but found None")
       }

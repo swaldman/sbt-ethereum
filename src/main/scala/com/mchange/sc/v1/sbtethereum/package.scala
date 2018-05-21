@@ -182,13 +182,14 @@ package object sbtethereum {
     t
   }
 
-  case class AddressParserInfo(
+  case class AddressAbiParserInfo(
     blockchainId          : String,
     jsonRpcUrl            : String,
     mbAliases             : Option[immutable.SortedMap[String,EthAddress]],
     nameServiceAddress    : EthAddress,
     nameServiceTld        : String,
-    nameServiceReverseTld : String
+    nameServiceReverseTld : String,
+    namedAbis             : immutable.Map[String,Abi]
   )
 
   // due to ClassLoader issues, we have to load the java.util.logging config file manually. grrrr.
