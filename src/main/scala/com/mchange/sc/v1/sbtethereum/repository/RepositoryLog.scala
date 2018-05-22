@@ -15,7 +15,7 @@ abstract class RepositoryLog[T]( logName : String ) {
 
   lazy val File : Failable[File] = {
     def prepare( file : File ) : Failable[File] = Failable {
-      if (file.exists()) setUserReadOnlyFilePermissions( file ) else createUserOnlyEmptyFile( file )
+      if (file.exists()) setUserOnlyFilePermissions( file ) else createUserOnlyEmptyFile( file )
       file
     }
     Directory.map(dir => new java.io.File(dir, logName) ).flatMap( prepare )
