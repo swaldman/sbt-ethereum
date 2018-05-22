@@ -6,13 +6,20 @@ import java.text.SimpleDateFormat
 import com.mchange.sc.v3.failable._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela._
+import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.consuela.ethereum.{EthHash, EthTransaction}
 import scala.io.Codec
 
 abstract class RepositoryLog[T]( logName : String ) {
   private val TimestampPattern = "yyyy-MM-dd'T'HH:mm:ssZ"
 
-  lazy val File : Failable[File] = Directory.map(dir => new java.io.File(dir, logName) )
+  lazy val File : Failable[File] = {
+    def prepare( file : File ) : Failable[File] = Failable {
+      if (file.exists()) setUserReadOnlyFilePermissions( file ) else createUserOnlyEmptyFile( file )
+      file
+    }
+    Directory.map(dir => new java.io.File(dir, logName) ).flatMap( prepare )
+  }
 
   def toLine( timestamp : String, t : T ) : String
 
