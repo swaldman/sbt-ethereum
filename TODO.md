@@ -10,6 +10,8 @@
     
 * interactive migrate (or restore) of database
 
+* The parser for ethTransactionDeploy should handle aliases / ens-names etc when ctor args are addresses
+
 * Generalize reasoning surrounding when interactive transaction approver should be used
 
 * enable Scala libraries to deploy as well as interact with already-deployed contracts

@@ -1884,7 +1884,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       throw new SbtEthereumException( "Import aborted." )
     }
     else {
-      log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
+      println( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" ) // use println rather than log info to be sure this prints before the credential query
       val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
       val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( privateKey ), random = entropySource )
       repository.Keystore.V3.storeWallet( w ).get // asserts success
