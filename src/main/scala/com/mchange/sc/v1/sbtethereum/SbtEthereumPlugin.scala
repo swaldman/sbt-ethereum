@@ -29,6 +29,7 @@ import com.mchange.sc.v2.io._
 import com.mchange.sc.v2.util.Platform
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.consuela._
+import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.consuela.ethereum._
 import jsonrpc.{Abi,Client,MapStringCompilationContractFormat}
 import specification.Denominations
@@ -270,6 +271,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethLanguageSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
     val ethLanguageSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
     val ethLanguageSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
+
+    val ethRepositoryBackup = taskKey[Unit] ("Backs up the sbt-ethereum repository.")
 
     val ethTransactionDeploy = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]("""Deploys the named contract, if specified, or else all contracts in 'ethcfgAutoDeployContracts'""")
     val ethTransactionInvoke = inputKey[Option[Client.TransactionReceipt]]           ("Calls a function on a deployed smart contract")
@@ -608,6 +611,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethLanguageSolidityCompilerInstall in Compile := { ethLanguageSolidityCompilerInstallTask.evaluated },
 
     ethLanguageSolidityCompilerPrint in Compile := { ethLanguageSolidityCompilerPrintTask.value },
+
+    ethRepositoryBackup := { ethRepositoryBackupTask.value },
 
     ethTransactionDeploy in Compile := { ethTransactionDeployTask( Compile ).evaluated },
 
@@ -1996,6 +2001,106 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ethRepositoryBackupTask : Initialize[Task[Unit]] = Def.task {
+    val is = interactionService.value
+    val log = streams.value.log
+
+    def updateBackupDir( f : File ) : Unit = repository.Database.setRepositoryBackupDir( f.getAbsolutePath )
+    def queryCreateBackupDir( bd : File, alreadyDefault : Boolean ) : Option[File] = {
+      val prefix = if (alreadyDefault) "Default b" else "B"
+      val create = queryYN( is, s"${prefix}ackup directory '${bd.getAbsolutePath}' does not exist. Create? [y/n] " )
+      if ( create ) {
+        Some( ensureUserOnlyDirectory( bd ).assert )
+      }
+      else {
+        None
+      }
+    }
+    def promptForNewBackupDir( promptToSave : Boolean = true ) : File = {
+      val rawPath = is.readLine( "Enter the path of the directory into which you wish to create a backup? ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
+      val checkAbsolute = new File( rawPath )
+      val putativeDir = {
+        if ( checkAbsolute.isAbsolute) {
+          checkAbsolute
+        }
+        else {
+          log.warn("A relative directory path was provided, interpreting relative to user home directory '${HomeDir.getAbsolutePath}'.")
+          new File( HomeDir, rawPath )
+        }
+      }
+      val existingDir = {
+        if ( !putativeDir.exists() ) {
+          queryCreateBackupDir( putativeDir, alreadyDefault = false ) match {
+            case Some( f ) => f
+            case None => throw nst( new SbtEthereumException( s"User aborted creation of selected directory for backups '${putativeDir.getAbsolutePath}'." ) )
+          }
+        }
+        else {
+          putativeDir
+        }
+      }
+      if ( promptToSave ) {
+        val makeDefault = {
+          val currentDefault = repository.Database.getRepositoryBackupDir.assert
+          val replacingPart = {
+            currentDefault match {
+              case Some( path ) => s" (replacing current default '${path}')"
+              case None         =>  ""
+            }
+          }
+          queryYN( is, s"Make directory '${existingDir.getAbsolutePath}' as the default sbt-ethereum repository backup directory${replacingPart}? [y/n] ")
+        }
+        if ( makeDefault ) updateBackupDir( existingDir )
+      }
+      existingDir
+    }
+
+    var databaseFailureDetected = false
+    val dir = {
+      val fmbPrior = repository.Database.getRepositoryBackupDir().xwarn("An error occurred while trying to read the default repository backup directory from the database.")
+      fmbPrior match {
+        case ok : Succeeded[Option[String]] => {
+          ok.result match {
+            case Some( path ) => {
+              val dd = new File( path ).getAbsoluteFile()
+              ( dd.exists, dd.isDirectory, dd.canWrite ) match {
+                case ( true, true, true ) => {
+                  val useDefault = queryYN( is, s"Create backup in default repository backup directory '${dd.getAbsolutePath}'? [y/n] " )
+                  if ( useDefault ) dd else promptForNewBackupDir()
+                }
+                case ( false, _, _ ) => {
+                  queryCreateBackupDir( dd, alreadyDefault = true ) match {
+                    case Some( f ) => f
+                    case None      => promptForNewBackupDir ()
+                  }
+                }
+                case ( _, false, _ ) => {
+                  log.warn( s"Selected default repository backup directory '${dd.getAbsolutePath}' exists, but is not a directory. Please select a new repository backup directory." )
+                  promptForNewBackupDir()
+                }
+                case ( _, _, false ) => {
+                  log.warn( s"Selected default repository backup directory '${dd.getAbsolutePath}' is not writable. Please select a new repository backup directory." )
+                  promptForNewBackupDir()
+                }
+              }
+            }
+            case None => {
+              log.warn( s"No default repository backup directory has been selected. Please select a new repository backup directory." )
+              promptForNewBackupDir()
+            }
+          }
+        }
+        case failed : Failed[_] => {
+          val msg = "sbt-ethereum experienced a failure while trying to read the default repository backup directory from the sbt-ethereum database!"
+          failed.xwarn( msg )
+          databaseFailureDetected = true
+          promptForNewBackupDir( promptToSave = false )
+        }
+      }
+    }
+    repository.Backup.perform( Some( log ), databaseFailureDetected, dir )
+  }
+
   private def ethTransactionDeployTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]] = {
     val parser = Defaults.loadForParser(xethFindCacheSeeds in config)( genContractSpawnParser )
 
@@ -2902,10 +3007,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log         = streams.value.log
     val importFroms = ethcfgKeystoreAutoImportLocationsV3.value
     repository.Keystore.V3.Directory.foreach { keyStoreDir =>
-      importFroms.foreach { importFrom => 
-        val imported = clients.geth.KeyStore.importAll( keyStoreDir = keyStoreDir, srcDir = importFrom ).assert
-        if ( imported.nonEmpty ) {
-          log.info( s"""Imported from '${importFrom}' wallets for addresses [${imported.map( _.address ).map( hexString ).mkString(", ")}]""" )
+      importFroms.foreach { importFrom =>
+        if ( importFrom.exists() && importFrom.isDirectory() && importFrom.canRead() ) {
+          val imported = clients.geth.KeyStore.importAll( keyStoreDir = keyStoreDir, srcDir = importFrom ).assert
+          if ( imported.nonEmpty ) {
+            log.info( s"""Imported from '${importFrom}' wallets for addresses [${imported.map( _.address ).map( hexString ).mkString(", ")}]""" )
+          }
         }
       }
     }

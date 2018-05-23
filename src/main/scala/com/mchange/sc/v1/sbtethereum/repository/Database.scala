@@ -11,8 +11,10 @@ import com.mchange.sc.v1.sbtethereum.repository
 import com.mchange.sc.v1.sbtethereum.util.BaseCodeAndSuffix
 import com.mchange.sc.v2.sql._
 import com.mchange.sc.v3.failable._
+import com.mchange.sc.v3.failable.logging._
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.consuela._
+import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
 import jsonrpc.{Abi, Compilation}
 import com.mchange.sc.v2.ens.{Bid,BidStore}
@@ -20,20 +22,25 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 import play.api.libs.json.Json
 
-object Database {
+object Database extends PermissionsOverrideSource {
   import Schema_h2._
 
   private val DirName = "database"
+
+  private def repositoryToDatabase( repositoryDir : File ) : File = new File( repositoryDir, DirName )
 
   private var _Directory : Failable[File] = null
 
   private var _DataSource : Failable[ComboPooledDataSource] = null
   private var _UncheckedDataSource : Failable[ComboPooledDataSource] = null;
 
+  private [repository]
+  lazy val Directory_ExistenceAndPermissionsUnenforced : Failable[File] = repository.Directory_ExistenceAndPermissionsUnenforced.map( repositoryToDatabase )
+
   private [sbtethereum]
   def Directory : Failable[File] = this.synchronized {
     if ( _Directory == null ) {
-      _Directory = repository.Directory.flatMap( mainDir => ensureUserOnlyDirectory( new File( mainDir, DirName ) ) )
+      _Directory = repository.Directory.map( repositoryToDatabase ).flatMap( ensureUserOnlyDirectory )
     }
     _Directory
   }
@@ -65,6 +72,9 @@ object Database {
       _UncheckedDataSource = null
     }
   }
+
+  def userReadOnlyFiles  : immutable.Set[File] = h2.userReadOnlyFiles
+  def userExecutableFiles : immutable.Set[File] = h2.userExecutableFiles
 
   private [sbtethereum]
   def insertCompilation(
@@ -428,6 +438,11 @@ object Database {
   }
 
   private [sbtethereum]
+  def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
+  }
+
+  private [sbtethereum]
   def deleteEtherscanApiKey() : Failable[Boolean] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.Metadata.delete( _, Table.Metadata.Key.EtherscanApiKey ) ) )
   }
@@ -443,8 +458,13 @@ object Database {
   }
 
   private [sbtethereum]
-  def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
+  def getRepositoryBackupDir() : Failable[Option[String]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.Metadata.select( _, Table.Metadata.Key.RepositoryBackupDir ) ) )
+  }
+
+  private [sbtethereum]
+  def setRepositoryBackupDir( absolutePath : String ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.Metadata.upsert( _, Table.Metadata.Key.RepositoryBackupDir, absolutePath ) ) )
   }
 
   private [sbtethereum]
@@ -532,23 +552,40 @@ object Database {
   private [sbtethereum]
   def backupDatabaseH2( conn : Connection, schemaVersion : Int ) : Failable[Unit] = h2.makeBackup( conn, schemaVersion )
 
-  private final object h2 {
+  private final object h2 extends PermissionsOverrideSource {
     val DirName = "h2"
     val DbName  = "sbt-ethereum"
 
     private val BackupsDirName = "h2-backups"
 
-    lazy val Directory : Failable[File] = Database.Directory.flatMap( dbDir => ensureUserOnlyDirectory( new File( dbDir, DirName ) ) )
+    private def databaseToH2( databaseDir : File ) : File = new File( databaseDir, DirName )
+
+    private def databaseToH2Backups( databaseDir : File ) : File = new File( databaseDir, BackupsDirName )
+
+    private [repository]
+    lazy val Directory_ExistenceAndPermissionsUnenforced : Failable[File] = Database.Directory_ExistenceAndPermissionsUnenforced.map( databaseToH2  )
+
+    private [repository]
+    lazy val BackupsDir_ExistenceAndPermissionsUnenforced : Failable[File] = Database.Directory_ExistenceAndPermissionsUnenforced.map( databaseToH2Backups )
+
+    lazy val Directory : Failable[File] = Database.Directory.map( databaseToH2 ).flatMap( ensureUserOnlyDirectory )
+
+    lazy val BackupsDir : Failable[File] = Database.Directory.map( databaseToH2Backups ).flatMap( ensureUserOnlyDirectory )
 
     lazy val DbAsFile : Failable[File] = Directory.map( dir => new File( dir, DbName ) ) // the db will make files of this name, with various suffixes appended
 
-    lazy val BackupsDir : Failable[File] = Database.Directory.flatMap( dbDir => ensureUserOnlyDirectory( new File( dbDir, BackupsDirName ) ) )
+    lazy val JdbcUrl : Failable[String] = DbAsFile.map( f => s"jdbc:h2:${f.getAbsolutePath};AUTO_SERVER=TRUE" )
 
-    lazy val JdbcUrl : Failable[String] = h2.DbAsFile.map( f => s"jdbc:h2:${f.getAbsolutePath};AUTO_SERVER=TRUE" )
+    def userReadOnlyFiles  : immutable.Set[File] = {
+      BackupsDir_ExistenceAndPermissionsUnenforced.map { backupsDir =>
+        if ( backupsDir.exists() && backupsDir.canRead() ) backupsDir.listFiles.toSet else immutable.Set.empty[File]
+      }.xwarn( "Failed to read h2-backups dir.").getOrElse( immutable.Set.empty[File] )
+    }
+    val userExecutableFiles : immutable.Set[File] = immutable.Set.empty[File]
 
     def initializeDataSource( ensureSchema : Boolean ) : Failable[ComboPooledDataSource] = {
       for {
-        _       <- Directory
+        dir       <- Directory
         jdbcUrl <- JdbcUrl
       } yield {
         val ds = new ComboPooledDataSource
@@ -563,6 +600,9 @@ object Database {
             try ds.close() catch suppressInto(t)
             throw t
         }
+        finally {
+          dir.listFiles.filter( _.isFile ).foreach( setUserOnlyFilePermissions )
+        }
       }
     }
 
@@ -576,6 +616,7 @@ object Database {
         val ts = df.format( new Date() )
         val targetFile = new File( pmbDir, s"$DbName-v$schemaVersion-$ts.sql" )
         borrow( conn.prepareStatement( s"SCRIPT TO '${targetFile.getAbsolutePath}' CHARSET 'UTF8'" ) )( _.executeQuery().close() ) // we don't need the result set, just want the file
+        setUserReadOnlyFilePermissions( targetFile )
       }
     }
   }

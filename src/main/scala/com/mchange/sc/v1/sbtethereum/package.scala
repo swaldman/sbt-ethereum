@@ -49,6 +49,8 @@ package object sbtethereum {
 
   val EmptyAbi: Abi = Abi.empty
 
+  val HomeDir = new java.io.File( sys.props( "user.home" ) ).getAbsoluteFile
+
   def rounded( bd : BigDecimal ) : BigInt = bd.setScale( 0, BigDecimal.RoundingMode.HALF_UP ).toBigInt
 
   def mbAbiForAddress( blockchainId : String, address : EthAddress ) : Option[Abi] = {
