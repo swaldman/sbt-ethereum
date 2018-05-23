@@ -1,7 +1,5 @@
 # TODO
 
-* 'ethAddressSenderDefaultSet', 'ethAddressSenderDefaultDrop', 'ethAddressSenderDefaultPrint'
-
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
 
 * Some form of logging of overwriting of aliases
@@ -29,6 +27,7 @@
 * ethContractCompilationsAlias*
 * xethEstimateGas
 * xethSendMessage
+* xethSignMessage
 * Prettify output of log items in client transactions
 * Excise Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
 * ens TTL, and Deed stuff
@@ -37,6 +36,7 @@
 * add getEvents [backed by RPC getLogs(...)] methods to stub events
 * Move stub.ScalaParameterHelper somewhere more sensible
 * Uncloseable wrappers for default Poller (done!), Exchanger.Factory, jsonrpc.Client.Factory
+*   -- Also, maybe eliminate global-implicit by default status for these factories, require some ceremony to import them
 
 * built-in solcJ-based eth-netcompile
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup!
@@ -59,4 +59,7 @@
 * Maybe someday put logging configuration into sbt-ethereum repository directory (where it can be easily edited). (maybe put log files there too?)
 
 * Warn if no 'defaultSender' is set?
+
+* Factor the `Directory`, `Directory_ExistenceAndPermissionsUnenforced` pattern used to manage repository directories and permissions into
+  some abstraction.
 
