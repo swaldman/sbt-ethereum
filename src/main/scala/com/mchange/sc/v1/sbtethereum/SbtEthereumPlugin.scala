@@ -309,6 +309,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
+    val xethRepositoryRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's repository to its required user-only values.")
     val xethSqlQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
     val xethSqlUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
     val xethTriggerDirtyAliasCache = taskKey[Unit]("Indirectly provokes an update of the cache of aliases used for tab completions.")
@@ -717,6 +718,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethNextNonce in Compile := { xethNextNonceTask( Compile ).value },
 
     xethNextNonce in Test := { xethNextNonceTask( Test ).value },
+
+    xethRepositoryRepairPermissions := { xethRepositoryRepairPermissionsTask.value },
 
     xethSqlQueryRepositoryDatabase := { xethSqlQueryRepositoryDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
 
@@ -3112,6 +3115,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         println("No wallet created. To create one later, use the command 'ethKeystoreWalletV3Create'.")
       }
     }
+  }
+
+  private def xethRepositoryRepairPermissionsTask : Initialize[Task[Unit]] = Def.task {
+    val log   = streams.value.log
+    log.info( "Repairing repository permissions..." )
+    repository.repairPermissions().assert
+    log.info( "Repository permissions repaired." )
   }
 
   private def xethSqlQueryRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
