@@ -1,11 +1,11 @@
 package com.mchange.sc.v1.sbtethereum.repository
 
-import com.mchange.sc.v1.sbtethereum.repository
+import com.mchange.sc.v1.sbtethereum.{nst, repository, SbtEthereumException}
 
 import java.io.{ BufferedInputStream, BufferedOutputStream, File, FileInputStream, FileOutputStream }
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.zip.{ ZipEntry, ZipOutputStream }
+import java.util.zip.{ ZipEntry, ZipFile, ZipOutputStream }
 
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.log.MLevel._
@@ -16,11 +16,12 @@ object Backup {
 
   private val fsep = File.separator
 
-  def backupFileName = {
+  def timestamp = {
     val df = new SimpleDateFormat("yyyyMMdd'T'HHmmss.SSSZ")
-    val ts = df.format( new Date() )
-    s"sbt-ethereum-repository-backup-$ts.zip"
+    df.format( new Date() )
   }
+
+  def backupFileName = s"sbt-ethereum-repository-backup-${timestamp}.zip"
 
   def perform( mbLog : Option[sbt.Logger], priorDatabaseFailureDetected : Boolean, backupsDir : File ) : Unit = this.synchronized {
     def info( msg : String ) : Unit = {
@@ -41,6 +42,37 @@ object Backup {
     info( s"Backing up sbt-ethereum repository. Reinstallable compilers will be excluded." )
     zip( outFile, repository.Directory_ExistenceAndPermissionsUnenforced.assert, cf => !cf.getPath.startsWith( solcJCanonicalPrefix ) )
     info( s"sbt-ethereum repository successfully backed up to '${outFile}'." )
+  }
+
+  def restore( mbLog : Option[sbt.Logger], backupZipFile : File ) : Unit = {
+    def info( msg : String ) : Unit = {
+      mbLog.foreach( _.info( msg ) )
+      INFO.log( msg )
+    }
+    def warn( msg : String ) : Unit = {
+      mbLog.foreach( _.warn( msg ) )
+      WARNING.log( msg )
+    }
+    val repoDir         = repository.Directory_ExistenceAndPermissionsUnenforced.assert
+    val repoName        = repoDir.getName
+    val repoParent      = repoDir.getParentFile
+    val oldRepoRenameTo = repoName + s"-superceded-${timestamp}"
+
+    if (! repoDir.exists()) {
+      warn( s"Repository directory '${repoDir}' does not exist. Restoring." )
+    }
+    else {
+      val renameTo = new File( repoParent, oldRepoRenameTo )
+      repoDir.renameTo( renameTo )
+      warn( s"Superceded existing repository directory renamed to '${renameTo}'. Consider deleting, eventually." )
+    }
+    unzip( repoParent, backupZipFile )
+    if (! repoDir.exists() ) {
+      val msg = s"Something strange happened. After restoring from a backup, the expected repository directory '${repoDir}' does not exist. Please inspect parent directory '${repoParent}'."
+      throw nst( new SbtEthereumException( msg ) )
+    } else {
+      info( s"sbt-ethereum repository restored from '${backupZipFile}" )
+    }
   }
 
   def zip( dest : File, srcDir : File, canonicalFileFilter : ( File ) => Boolean ) : Unit = {
@@ -100,6 +132,28 @@ object Backup {
         }
         finally {
           zip.closeEntry()
+        }
+      }
+    }
+  }
+  private def unzip( destDir : File, zipFile : File ) : Unit = {
+    borrow( new ZipFile( zipFile ) ) { zf =>
+      val entries = {
+        import collection.JavaConverters._
+        zf.entries.asScala
+      }
+      entries foreach { entry =>
+        val path = entry.getName().map( c => if (c == '\\' || c == '/') fsep else c ).mkString
+        INFO.log( s"zip: Writing '${path}'" )
+        val destFile = new File( destDir, path )
+        borrow ( new BufferedInputStream( zf.getInputStream( entry ) ) ) { is =>
+          borrow( new BufferedOutputStream( new FileOutputStream( destFile ) ) ) { os =>
+            var b = is.read()
+            while ( b >= 0 ) {
+              os.write(b)
+              b = is.read()
+            }
+          }
         }
       }
     }
