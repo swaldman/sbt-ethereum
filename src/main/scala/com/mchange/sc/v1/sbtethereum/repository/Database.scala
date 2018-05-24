@@ -550,7 +550,19 @@ object Database extends PermissionsOverrideSource {
   }
 
   private [sbtethereum]
-  def backupDatabaseH2( conn : Connection, schemaVersion : Int ) : Failable[Unit] = h2.makeBackup( conn, schemaVersion )
+  def backupDatabaseH2( conn : Connection, schemaVersion : Int ) : Failable[File] = h2.makeBackup( conn, schemaVersion )
+
+  private [sbtethereum]
+  def backup() : Failable[File] = {
+    DataSource.flatMap { ds =>
+      borrow( ds.getConnection() ) { conn =>
+        Table.Metadata.select( conn, Table.Metadata.Key.SchemaVersion ) match {
+          case None                  => Failable.fail( "Could not find the database schema version to backup the database!" )
+          case Some( schemaVersion ) => backupDatabaseH2( conn, schemaVersion.toInt )
+        }
+      }
+    }
+  }
 
   private final object h2 extends PermissionsOverrideSource {
     val DirName = "h2"
@@ -610,13 +622,15 @@ object Database extends PermissionsOverrideSource {
       case t : Throwable => original.addSuppressed( t )
     }
 
-    def makeBackup( conn : Connection, schemaVersion : Int ) : Failable[Unit] = {
+    def makeBackup( conn : Connection, schemaVersion : Int ) : Failable[File] = {
       BackupsDir.map { pmbDir =>
         val df = new SimpleDateFormat("yyyyMMdd'T'HHmmssZ")
         val ts = df.format( new Date() )
-        val targetFile = new File( pmbDir, s"$DbName-v$schemaVersion-$ts.sql" )
+        val targetFileName = s"$DbName-v$schemaVersion-$ts.sql"
+        val targetFile = new File( pmbDir, targetFileName )
         borrow( conn.prepareStatement( s"SCRIPT TO '${targetFile.getAbsolutePath}' CHARSET 'UTF8'" ) )( _.executeQuery().close() ) // we don't need the result set, just want the file
         setUserReadOnlyFilePermissions( targetFile )
+        targetFile
       }
     }
   }

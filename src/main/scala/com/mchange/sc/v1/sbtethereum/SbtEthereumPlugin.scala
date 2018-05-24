@@ -2051,7 +2051,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               case None         =>  ""
             }
           }
-          queryYN( is, s"Make directory '${existingDir.getAbsolutePath}' as the default sbt-ethereum repository backup directory${replacingPart}? [y/n] ")
+          queryYN( is, s"Use directory '${existingDir.getAbsolutePath}' as the default sbt-ethereum repository backup directory${replacingPart}? [y/n] ")
         }
         if ( makeDefault ) updateBackupDir( existingDir )
       }
