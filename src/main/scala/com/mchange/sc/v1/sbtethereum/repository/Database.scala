@@ -438,6 +438,9 @@ object Database extends PermissionsOverrideSource {
   }
 
   private [sbtethereum]
+  def hasAliases( blockchainId : String, address : EthAddress ) : Failable[Boolean] = findAliasesByAddress( blockchainId, address ).map( _.nonEmpty )
+
+  private [sbtethereum]
   def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
   }

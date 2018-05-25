@@ -225,9 +225,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensResolverLookup   = inputKey[Option[EthAddress]]("Prints the address of the resolver associated with a given name.")
     val ensResolverSet      = inputKey[Unit]              ("Sets the resolver for a given name to an address.")
 
-    val etherscanApiKeyDrop   = taskKey[Unit] ("Removes the API key for etherscan services from the sbt-ethereum database.")
-    val etherscanApiKeyImport = taskKey[Unit] ("Imports an API key for etherscan services.")
-    val etherscanApiKeyReveal = taskKey[Unit] ("Reveals the currently set API key for etherscan services, if any.")
+    val etherscanApiKeyDrop       = taskKey[Unit]  ("Removes the API key for etherscan services from the sbt-ethereum database.")
+    val etherscanApiKeyImport     = taskKey[Unit]  ("Imports an API key for etherscan services.")
+    val etherscanApiKeyReveal     = taskKey[Unit]  ("Reveals the currently set API key for etherscan services, if any.")
+    val etherscanContactAbiImport = inputKey[Unit] ("An alias to ethContractAbiImport, which permits etherscan imports if an etherscan API key is set.")
 
     val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
     val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
@@ -326,7 +327,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   import autoImport._
 
-  // commands
+  // commands... don't forget to add them to the commands key!
+
+  // could i replace some or all of these with addCommandAlias(...)? hasn't worked so far. how should it be done?
 
   private val ethDebugGanacheRestartCommand = Command.command( "ethDebugGanacheRestart" ) { state =>
     "ethDebugGanacheStop" :: "ethDebugGanacheStart" :: state
@@ -493,6 +496,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     etherscanApiKeyImport := { etherscanApiKeyImportTask.value },
 
     etherscanApiKeyReveal := { etherscanApiKeyRevealTask.value },
+
+    etherscanContactAbiImport in Compile := { ethContractAbiImportTask( Compile ).evaluated }, // basically an alias
+
+    etherscanContactAbiImport in Test := { ethContractAbiImportTask( Test ).evaluated }, // basically an alias
 
     ethAddressAliasDrop in Compile := { ethAddressAliasDropTask( Compile ).evaluated },
 
@@ -1152,6 +1159,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def etherscanApiKeyImportTask : Initialize[Task[Unit]] = Def.task {
     val is = interactionService.value
     val apiKey = is.readLine( "Please enter your Etherscan API key: ", mask = true ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
+    if ( apiKey.isEmpty ) throw nst( new SbtEthereumException( "Invalid empty key provided. Etherscan API key import aborted." ) )
     repository.Database.setEtherscanApiKey( apiKey ).assert
     println("Etherscan API key successfully set.")
   }
@@ -1374,7 +1382,9 @@ object SbtEthereumPlugin extends AutoPlugin {
             case Left( address ) => log.warn( s"(It has been copied from the ABI previously associated with address '${hexString(address)}'.)" )
             case Right( hash )   => log.warn( s"(It has been copied from the ABI previously associated with the compilation with code hash '${hexString(hash)}'.)" )
           }
-          interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
+          if (! repository.Database.hasAliases( blockchainId, toLinkAddress ).assert ) {
+            interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
+          }
         }
       }
       Def.taskDyn {
@@ -1508,6 +1518,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         case None => {
           val abi = {
+            mbAbiForAddress( blockchainId, address ).foreach { _ =>
+              val overwrite = queryYN( is, s"An ABI for '${hexString(address)}' on blockchain '${blockchainId}' is already known. Overwrite? [y/n] " )
+              if (! overwrite) throw new OperationAbortedByUserException( "Will not overwrite already defined contact ABI." )
+            }
             val mbEtherscanAbi : Option[Abi] = {
               val fmbApiKey = repository.Database.getEtherscanApiKey()
               fmbApiKey match {
@@ -1558,7 +1572,9 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
           repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // throw an Exception if there's a database issue
           log.info( s"ABI is now known for the contract at address ${address.hex}" )
-          interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
+          if (! repository.Database.hasAliases( blockchainId, address ).assert ) {
+            interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
+          }
         }
       }
       Def.taskDyn {

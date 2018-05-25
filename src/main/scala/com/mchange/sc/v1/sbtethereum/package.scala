@@ -20,17 +20,20 @@ package object sbtethereum {
 
   private implicit lazy val logger = mlogger( "com.mchange.sc.v1.sbtethereum.package" )
 
-  class SbtEthereumException( msg : String, cause : Throwable = null ) extends Exception( msg, cause )
+  class SbtEthereumException( msg : String, cause : Throwable = null, noStackTrace : Boolean = false ) extends Exception( msg, cause ) {
+    if ( noStackTrace ) this.setStackTrace( EmptyStackTrace )
+  }
 
-  final class NoSolidityCompilerException( msg : String ) extends SbtEthereumException( msg )
-  final class SchemaVersionException( msg : String )      extends SbtEthereumException( msg )
-  final class AbiUnknownException( msg : String )    extends SbtEthereumException( msg )
-  final class ContractUnknownException( msg : String )    extends SbtEthereumException( msg )
-  final class BadCodeFormatException( msg : String )      extends SbtEthereumException( msg )
-  final class RepositoryException( msg : String )         extends SbtEthereumException( msg )
-  final class CompilationFailedException( msg : String )  extends SbtEthereumException( msg )
-  final class SenderNotAvailableException( msg : String ) extends SbtEthereumException( msg )
-  final class NoSuchCompilationException( msg : String )  extends SbtEthereumException( msg )
+  final class NoSolidityCompilerException( msg : String )     extends SbtEthereumException( msg )
+  final class SchemaVersionException( msg : String )          extends SbtEthereumException( msg )
+  final class AbiUnknownException( msg : String )             extends SbtEthereumException( msg )
+  final class ContractUnknownException( msg : String )        extends SbtEthereumException( msg )
+  final class BadCodeFormatException( msg : String )          extends SbtEthereumException( msg )
+  final class RepositoryException( msg : String )             extends SbtEthereumException( msg )
+  final class CompilationFailedException( msg : String )      extends SbtEthereumException( msg )
+  final class SenderNotAvailableException( msg : String )     extends SbtEthereumException( msg )
+  final class NoSuchCompilationException( msg : String )      extends SbtEthereumException( msg )
+  final class OperationAbortedByUserException( msg : String ) extends SbtEthereumException( s"Aborted by user: ${msg}", null, noStackTrace = true )
 
   final class NotCurrentlyUnderAuctionException( name : String, status : ens.NameStatus ) extends SbtEthereumException( s"ENS name '${name}' is not currently under auction. Its status is '${status}'." )
 
