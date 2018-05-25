@@ -1,6 +1,6 @@
 # SBT-Ethereum
 
-#### An SBT-based develoment environment and command line for Ethereum
+#### An SBT-based development environment and command line for Ethereum
 
 The documentation that was in this README is too outdated and embarrassing to leave here.
 
