@@ -6,6 +6,8 @@
 
 * Let compilations store the name of the project from which they were compiled
 
+* Let schema metadata store the version of the last successful sbt-ethereum client
+
 * Make stub generation incremental
     
 * interactive migrate (or restore) of database

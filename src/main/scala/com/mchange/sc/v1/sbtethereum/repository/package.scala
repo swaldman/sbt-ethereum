@@ -15,8 +15,6 @@ import com.mchange.sc.v1.log.MLevel._
 package object repository extends PermissionsOverrideSource {
   implicit lazy val logger : com.mchange.sc.v1.log.MLogger = mlogger( this )
 
-  class CannotReadDirectoryException( msg : String, cause : Throwable = null ) extends SbtEthereumException( msg, cause )
-
   private val SystemProperty      = "sbt.ethereum.repository"
   private val EnvironmentVariable = "SBT_ETHEREUM_REPOSITORY"
 
@@ -69,17 +67,4 @@ package object repository extends PermissionsOverrideSource {
     Failable.sequence( failables ).map( _ => () )
   }
 
-  // modified from Rex Kerr, https://stackoverflow.com/questions/2637643/how-do-i-list-all-files-in-a-subdirectory-in-scala
-  private [repository]
-  def recursiveListBeneath( dir : File ) : Array[File] = {
-    assert( dir.isDirectory )
-    if (! dir.canRead() ) throw new CannotReadDirectoryException( s"'${dir}' is not readable!" )
-    val these = dir.listFiles
-    these ++ these.filter(_.isDirectory).flatMap(recursiveListBeneath)
-  }
-
-  private [repository]
-  def recursiveListIncluding( dir : File ) : Array[File] ={
-    dir +: recursiveListBeneath( dir )
-  }
 }

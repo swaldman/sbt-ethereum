@@ -1,6 +1,7 @@
 package com.mchange.sc.v1.sbtethereum.repository
 
 import com.mchange.sc.v1.sbtethereum.repository
+import com.mchange.sc.v1.sbtethereum.recursiveListBeneath
 
 import java.io.File
 import scala.collection._

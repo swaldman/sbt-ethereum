@@ -1,14 +1,17 @@
 package com.mchange.sc.v1.sbtethereum.repository
 
-import com.mchange.sc.v1.sbtethereum.{nst, repository, SbtEthereumException}
+import com.mchange.sc.v1.sbtethereum.{nst, recursiveListBeneath, repository, SbtEthereumException}
 
 import java.io.{ BufferedInputStream, BufferedOutputStream, File, FileInputStream, FileOutputStream }
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.zip.{ ZipEntry, ZipFile, ZipOutputStream }
 
+import com.mchange.sc.v3.failable._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.log.MLevel._
+
+import scala.collection._
 
 object Backup {
 
@@ -16,32 +19,75 @@ object Backup {
 
   private val fsep = File.separator
 
-  def timestamp = {
-    val df = new SimpleDateFormat("yyyyMMdd'T'HHmmss.SSSZ")
-    df.format( new Date() )
+  private final val TimestampSimpleDateFormatPattern = "yyyyMMdd'T'HHmmss.SSSZ"
+
+  private def newDateFormat = new SimpleDateFormat( TimestampSimpleDateFormatPattern )
+
+  private def timestamp = newDateFormat.format( new Date() )
+
+  val BackupFileRegex = """sbt\-ethereum\-repository\-backup\-([\d\-\.T]+)(-DB-DUMP-FAILED)?\.zip$""".r
+
+  final case class BackupFile( file : File, timestamp : Long, dbDumpSucceeded : Boolean )
+
+  private def _attemptAsBackupFile( df : SimpleDateFormat, f : File ) : Option[BackupFile] = {
+    BackupFileRegex.findFirstMatchIn(f.getName()) match {
+      case Some( m ) if f.isFile => Some( BackupFile( f, df.parse( m.group(1) ).getTime, m.group(2) == null ) )
+      case None                  => None
+    }
   }
 
-  def backupFileName = s"sbt-ethereum-repository-backup-${timestamp}.zip"
+  def attemptAsBackupFile( f : File ) : Option[BackupFile] = _attemptAsBackupFile( newDateFormat, f )
+
+  def backupFilesOrderedByMostRecent( candidateList : Iterable[File] ) : immutable.SortedSet[BackupFile] = {
+    val df = new SimpleDateFormat( TimestampSimpleDateFormatPattern )
+    val rawBackupFiles = candidateList.map( attemptAsBackupFile ).filter( _.nonEmpty ).map( _.get )
+    immutable.TreeSet.empty[BackupFile]( Ordering.by( (bf : BackupFile) => bf.timestamp ).reverse ) ++ rawBackupFiles
+  }
+
+  def backupFileName( dbDumpSucceeded : Boolean ) = {
+    val dbDumpExtra = if (dbDumpSucceeded) "" else "-DB-DUMP-FAILED"
+    s"sbt-ethereum-repository-backup-${timestamp}${dbDumpExtra}.zip"
+  }
 
   def perform( mbLog : Option[sbt.Logger], priorDatabaseFailureDetected : Boolean, backupsDir : File ) : Unit = this.synchronized {
     def info( msg : String ) : Unit = {
       mbLog.foreach( _.info( msg ) )
       INFO.log( msg )
     }
+    def warn( msg : String ) : Unit = {
+      mbLog.foreach( _.warn( msg ) )
+      WARNING.log( msg )
+    }
 
     Thread.sleep( 10 ) // with synchronization, kind of a hacksh way to make sure we don't generate backups with identical names
 
-    info( "Backing up sbt-ethereum repository database..." )
-    val dbBackup = Database.backup().assert
-    info( s"Successfully created sbt-ethereum back up '${dbBackup}'" )
+    val dbDumpSucceeded = {
+      info( "Creating SQL dump of sbt-ethereum repository database..." )
+      val fsuccess = Database.backup() map { dbDump =>
+        info( s"Successfully created SQL dump of the sbt-ethereum repository database: '${dbDump}'" )
+        true
+      } recover { failed : Failed[_] =>
+        warn( s"Failed to create SQL dump of the sbt-ethereum repository database. Failure: ${failed}" )
+        false
+      }
+      fsuccess.assert
+    }
 
-    val outFile = new File( backupsDir, backupFileName )
+    val outFile = new File( backupsDir, backupFileName( dbDumpSucceeded ) )
 
     val solcJCanonicalPrefix = SolcJ.Directory_ExistenceAndPermissionsUnenforced.assert.getCanonicalFile().getPath
 
+    def canonicalFileFilter( cf : File ) : Boolean = {
+      !cf.getPath.startsWith( solcJCanonicalPrefix )
+    }
+
     info( s"Backing up sbt-ethereum repository. Reinstallable compilers will be excluded." )
-    zip( outFile, repository.Directory_ExistenceAndPermissionsUnenforced.assert, cf => !cf.getPath.startsWith( solcJCanonicalPrefix ) )
+    zip( outFile, repository.Directory_ExistenceAndPermissionsUnenforced.assert, canonicalFileFilter _ )
     info( s"sbt-ethereum repository successfully backed up to '${outFile}'." )
+
+    if ( priorDatabaseFailureDetected || !dbDumpSucceeded ) {
+      warn( "Some database errors were noted while performing this backup. (This does not affect the integrity of wallet files.)" )
+    }
   }
 
   def restore( mbLog : Option[sbt.Logger], backupZipFile : File ) : Unit = {
@@ -71,6 +117,7 @@ object Backup {
       val msg = s"Something strange happened. After restoring from a backup, the expected repository directory '${repoDir}' does not exist. Please inspect parent directory '${repoParent}'."
       throw nst( new SbtEthereumException( msg ) )
     } else {
+      repository.repairPermissions
       info( s"sbt-ethereum repository restored from '${backupZipFile}" )
     }
   }
@@ -146,6 +193,7 @@ object Backup {
         val path = entry.getName().map( c => if (c == '\\' || c == '/') fsep else c ).mkString
         INFO.log( s"zip: Writing '${path}'" )
         val destFile = new File( destDir, path )
+        destFile.getParentFile.mkdirs()
         borrow ( new BufferedInputStream( zf.getInputStream( entry ) ) ) { is =>
           borrow( new BufferedOutputStream( new FileOutputStream( destFile ) ) ) { os =>
             var b = is.read()

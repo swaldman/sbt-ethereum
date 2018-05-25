@@ -13,6 +13,7 @@ import specification.Types.Unsigned256
 import scala.collection._
 import scala.concurrent.duration.Duration
 import scala.util.control.NonFatal
+import java.io.File
 import java.time.{Instant, ZoneId}
 import java.time.format.{FormatStyle, DateTimeFormatter}
 
@@ -33,8 +34,9 @@ package object sbtethereum {
   final class CompilationFailedException( msg : String )      extends SbtEthereumException( msg )
   final class SenderNotAvailableException( msg : String )     extends SbtEthereumException( msg )
   final class NoSuchCompilationException( msg : String )      extends SbtEthereumException( msg )
-  final class OperationAbortedByUserException( msg : String ) extends SbtEthereumException( s"Aborted by user: ${msg}", null, noStackTrace = true )
 
+  final class CannotReadDirectoryException( msg : String, cause : Throwable = null ) extends SbtEthereumException( msg, cause )
+  final class OperationAbortedByUserException( msg : String ) extends SbtEthereumException( s"Aborted by user: ${msg}", null, noStackTrace = true )
   final class NotCurrentlyUnderAuctionException( name : String, status : ens.NameStatus ) extends SbtEthereumException( s"ENS name '${name}' is not currently under auction. Its status is '${status}'." )
 
 
@@ -211,6 +213,19 @@ package object sbtethereum {
         e.printStackTrace()
       }
     }
+  }
+
+  // modified from Rex Kerr, https://stackoverflow.com/questions/2637643/how-do-i-list-all-files-in-a-subdirectory-in-scala
+  // should I use sbt.Path stuff instead?
+  def recursiveListBeneath( dir : File ) : Array[File] = {
+    assert( dir.isDirectory )
+    if (! dir.canRead() ) throw new CannotReadDirectoryException( s"'${dir}' is not readable!" )
+    val these = dir.listFiles
+    these ++ these.filter(_.isDirectory).flatMap(recursiveListBeneath)
+  }
+
+  def recursiveListIncluding( dir : File ) : Array[File] ={
+    dir +: recursiveListBeneath( dir )
   }
 }
 
