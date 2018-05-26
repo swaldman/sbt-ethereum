@@ -424,7 +424,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgTransactionReceiptPollPeriod := 3.seconds,
 
-    ethcfgTransactionReceiptTimeout := 2.minutes,
+    ethcfgTransactionReceiptTimeout := 5.minutes,
 
     // xeth settings
 
