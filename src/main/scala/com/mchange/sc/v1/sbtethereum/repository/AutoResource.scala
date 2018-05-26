@@ -16,9 +16,9 @@ object AutoResource {
       val DirectoryManager : UserOnlyDirectory;
 
       private [repository]
-      lazy val Directory_ExistenceAndPermissionsUnenforced : Failable[File] = DirectoryManager.existenceAndPermissionsUnenforced
+      def Directory_ExistenceAndPermissionsUnenforced : Failable[File] = DirectoryManager.existenceAndPermissionsUnenforced
 
-      lazy val Directory : Failable[File] = DirectoryManager.existenceAndPermissionsEnforced
+      def Directory : Failable[File] = DirectoryManager.existenceAndPermissionsEnforced
 
     }
 
