@@ -22,55 +22,29 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 import play.api.libs.json.Json
 
-object Database extends PermissionsOverrideSource {
+object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
   import Schema_h2._
 
   private val DirName = "database"
 
-  private def repositoryToDatabase( repositoryDir : File ) : File = new File( repositoryDir, DirName )
+  private [repository] lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=repository.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => repository.Directory), dirName=DirName )
 
-  private var _Directory : Failable[File] = null
+  private val UncheckedDataSourceManager = AutoResource[Unit,Failable[ComboPooledDataSource]]( (), _ => h2.initializeDataSource( false ), _.map( _.close() ) )
+  private val CheckedDataSourceManager   = AutoResource[Unit,Failable[ComboPooledDataSource]]( (), _ => h2.initializeDataSource( true ),  _.map( _.close() ) )
 
-  private var _DataSource : Failable[ComboPooledDataSource] = null
-  private var _UncheckedDataSource : Failable[ComboPooledDataSource] = null;
-
-  private [repository]
-  lazy val Directory_ExistenceAndPermissionsUnenforced : Failable[File] = repository.Directory_ExistenceAndPermissionsUnenforced.map( repositoryToDatabase )
 
   private [sbtethereum]
-  def Directory : Failable[File] = this.synchronized {
-    if ( _Directory == null ) {
-      _Directory = repository.Directory.map( repositoryToDatabase ).flatMap( ensureUserOnlyDirectory )
-    }
-    _Directory
-  }
+  def DataSource : Failable[ComboPooledDataSource] = CheckedDataSourceManager.active 
 
   private [sbtethereum]
-  def DataSource : Failable[ComboPooledDataSource] = this.synchronized {
-    if ( _DataSource == null ) {
-      _DataSource = h2.initializeDataSource( true )
-    }
-    _DataSource
-  }
-  private [sbtethereum]
-  def UncheckedDataSource : Failable[ComboPooledDataSource] = this.synchronized {
-    if ( _UncheckedDataSource == null ) {
-      _UncheckedDataSource = h2.initializeDataSource( false )
-    }
-    _UncheckedDataSource
-  }
+  def UncheckedDataSource : Failable[ComboPooledDataSource] = UncheckedDataSourceManager.active
 
   private [sbtethereum]
   def reset() : Unit = this.synchronized {
-    _Directory = null
-    if ( _DataSource != null ) {
-      _DataSource.foreach { _.close() }
-      _DataSource = null
-    }
-    if ( _UncheckedDataSource != null ) {
-      _UncheckedDataSource.foreach { _.close() }
-      _UncheckedDataSource = null
-    }
+    DirectoryManager.reset()
+    UncheckedDataSourceManager.reset()
+    CheckedDataSourceManager.reset()
+    h2.reset()
   }
 
   def userReadOnlyFiles  : immutable.Set[File] = h2.userReadOnlyFiles
@@ -567,25 +541,22 @@ object Database extends PermissionsOverrideSource {
     }
   }
 
-  private final object h2 extends PermissionsOverrideSource {
+  private final object h2 extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
     val DirName = "h2"
     val DbName  = "sbt-ethereum"
+    val BackupsDirName = "h2-backups"
 
-    private val BackupsDirName = "h2-backups"
-
-    private def databaseToH2( databaseDir : File ) : File = new File( databaseDir, DirName )
-
-    private def databaseToH2Backups( databaseDir : File ) : File = new File( databaseDir, BackupsDirName )
+    private [repository] lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DirName )
+    private [repository] lazy val BackupsDirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=BackupsDirName )
 
     private [repository]
-    lazy val Directory_ExistenceAndPermissionsUnenforced : Failable[File] = Database.Directory_ExistenceAndPermissionsUnenforced.map( databaseToH2  )
+    lazy val BackupsDir_ExistenceAndPermissionsUnenforced : Failable[File] = BackupsDirectoryManager.existenceAndPermissionsUnenforced
+    lazy val BackupsDir : Failable[File]                                   = BackupsDirectoryManager.existenceAndPermissionsEnforced
 
-    private [repository]
-    lazy val BackupsDir_ExistenceAndPermissionsUnenforced : Failable[File] = Database.Directory_ExistenceAndPermissionsUnenforced.map( databaseToH2Backups )
-
-    lazy val Directory : Failable[File] = Database.Directory.map( databaseToH2 ).flatMap( ensureUserOnlyDirectory )
-
-    lazy val BackupsDir : Failable[File] = Database.Directory.map( databaseToH2Backups ).flatMap( ensureUserOnlyDirectory )
+    def reset() : Unit = {
+      DirectoryManager.reset()
+      BackupsDirectoryManager.reset()
+    }
 
     lazy val DbAsFile : Failable[File] = Directory.map( dir => new File( dir, DbName ) ) // the db will make files of this name, with various suffixes appended
 

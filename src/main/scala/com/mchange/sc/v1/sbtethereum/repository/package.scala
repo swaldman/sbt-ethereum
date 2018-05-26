@@ -32,8 +32,13 @@ package object repository extends PermissionsOverrideSource {
     (mbProperty orElse mbEnvVar).fold( defaultLocation )( dir => Failable.succeed( new File( dir ) ) )
   }
 
-
   lazy val Directory = Directory_ExistenceAndPermissionsUnenforced.flatMap( ensureUserOnlyDirectory )
+
+  def reset() : Unit = {
+    repository.Database.reset()
+    repository.Keystore.reset()
+    repository.SolcJ.reset()
+  }
 
   def userReadOnlyFiles   : immutable.Set[File] = Database.userReadOnlyFiles ++ Keystore.userReadOnlyFiles ++ SolcJ.userReadOnlyFiles
   def userExecutableFiles : immutable.Set[File] = Database.userExecutableFiles ++ Keystore.userExecutableFiles ++ SolcJ.userExecutableFiles

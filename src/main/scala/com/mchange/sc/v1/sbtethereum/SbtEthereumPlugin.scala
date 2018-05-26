@@ -115,7 +115,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def resetAllState() : Unit = {
     Mutables.reset()
-    repository.Database.reset()
+    repository.reset()
     util.Parsers.reset()
   }
 
@@ -2182,6 +2182,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethRepositoryRestoreTask : Initialize[Task[Unit]] = Def.task {
+    val s = state.value
     val is = interactionService.value
     val log = streams.value.log
 
@@ -2344,6 +2345,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       case Some( backupFile ) => {
         resetAllState()
         repository.Backup.restore( Some( log ), backupFile )
+        val extract = Project.extract(s)
+        val (_, result) = extract.runTask( xethOnLoadSolicitCompilerInstall, s)
       }
       case None => throw new OperationAbortedByUserException( s"No sbt-ethereum repository backup file selected. Restore aborted." )
     }

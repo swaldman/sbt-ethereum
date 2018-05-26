@@ -9,29 +9,28 @@ import com.mchange.sc.v3.failable.logging._
 import com.mchange.sc.v1.consuela.ethereum.{clients, wallet}
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 
-object Keystore extends PermissionsOverrideSource {
+object Keystore extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
 
   val DirName = "keystore"
 
-  private def repositoryToKeystore( repositoryDir : File ) : File = new File( repositoryDir, Keystore.DirName )
-
   private [repository]
-  lazy val Directory_ExistenceAndPermissionsUnenforced : Failable[File] = repository.Directory_ExistenceAndPermissionsUnenforced.map( repositoryToKeystore  )
+  lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=repository.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => repository.Directory), dirName=DirName )
 
-  lazy val Directory : Failable[File] = repository.Directory.map( repositoryToKeystore  ).flatMap( ensureUserOnlyDirectory )
+  def reset() : Unit = {
+    DirectoryManager.reset()
+    V3.reset()
+  }
 
   def userReadOnlyFiles   : immutable.Set[File] = V3.userReadOnlyFiles
   def userExecutableFiles : immutable.Set[File] = V3.userExecutableFiles
 
-  final object V3 extends PermissionsOverrideSource {
+  final object V3 extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
     val DirName = "V3"
 
-    private def keystoreToV3( keystoreDir : File ) : File = new File( keystoreDir, V3.DirName )
-
     private [repository]
-    lazy val Directory_ExistenceAndPermissionsUnenforced : Failable[File] = Keystore.Directory_ExistenceAndPermissionsUnenforced.map( keystoreToV3 )
+    lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Keystore.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Keystore.Directory), dirName=DirName )
 
-    lazy val Directory : Failable[File] = Keystore.Directory.map( keystoreToV3 ).flatMap( ensureUserOnlyDirectory )
+    def reset() : Unit = DirectoryManager.reset()
 
     def userReadOnlyFiles  : immutable.Set[File] = {
       V3.Directory_ExistenceAndPermissionsUnenforced.map { dir =>

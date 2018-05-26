@@ -64,6 +64,4 @@
 
 * Warn if no 'defaultSender' is set?
 
-* Factor the `Directory`, `Directory_ExistenceAndPermissionsUnenforced` pattern used to manage repository directories and permissions into
-  some abstraction.
 
