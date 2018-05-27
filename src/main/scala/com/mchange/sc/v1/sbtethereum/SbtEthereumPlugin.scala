@@ -313,6 +313,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethLoadWalletsV3 = taskKey[immutable.Set[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
     val xethLoadWalletsV3For = inputKey[immutable.Set[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
     val xethNamedAbis = taskKey[immutable.Map[String,Abi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
+    val xethOnLoadBanner = taskKey[Unit]( "Prints the sbt-ethereum post-initialization banner." )
     val xethOnLoadAutoImportWalletsV3 = taskKey[Unit]("Import any not-yet-imported wallets from directories specified in 'ethcfgKeystoreAutoImportLocationsV3'")
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
@@ -721,6 +722,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethLoadWalletsV3For in Test := { xethLoadWalletsV3ForTask( Test ).evaluated },
 
+    xethOnLoadBanner := { xethOnLoadBannerTask.value },
+
     xethOnLoadAutoImportWalletsV3 := { xethOnLoadAutoImportWalletsV3Task.value },
 
     xethOnLoadSolicitCompilerInstall := { xethOnLoadSolicitCompilerInstallTask.value },
@@ -779,6 +782,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val state4 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state3    )
         val state5 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Compile,           state4    )
         val state6 = attemptAdvanceStateWithTask( xethFindCacheAddressParserInfo in Test,              state5    )
+        val state7 = attemptAdvanceStateWithTask( xethOnLoadBanner,                                    state6    )
         state6
       }
       newF
@@ -1927,7 +1931,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val address = w.address // a very cursory check of the wallet, NOT full validation
     repository.Keystore.V3.storeWallet( w ).get // asserts success
     log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
-    log.info( s"Consider validating the JSON using 'ethKeystoreWalletV3Validate 0x${address.hex}." )
+    log.info( s"Consider validating the JSON using 'ethKeystoreWalletV3Validate 0x${address.hex}'." )
   }
 
   private def ethKeystoreWalletV3FromPrivateKeyImportTask : Initialize[Task[wallet.V3]] = Def.task {
@@ -1957,7 +1961,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
       val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( privateKey ), random = entropySource )
       repository.Keystore.V3.storeWallet( w ).get // asserts success
-      log.info( "Wallet created and imported into sbt-ethereum keystore." )
+      log.info( s"Wallet created and imported into sbt-ethereum repository: '${repository.Directory.assert}'. Please backup, via 'ethRepositoryBackup' or manually." )
+      log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
       w
     }
   }
@@ -3020,7 +3025,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
     val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
     val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-    repository.Keystore.V3.storeWallet( w ).get // asserts success
+    val out = repository.Keystore.V3.storeWallet( w ).get // asserts success
+    log.info( s"Wallet generated into sbt-ethereum repository: '${repository.Directory.assert}'. Please backup, via 'ethRepositoryBackup' or manually." )
+    log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
+    out
   }
 
   private def xethKeystoreWalletV3CreateScryptTask : Initialize[Task[wallet.V3]] = Def.task {
@@ -3037,7 +3045,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( s"Generating V3 wallet, alogorithm=scrypt, n=${n}, r=${r}, p=${p}, dklen=${dklen}" )
     val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
     val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-    repository.Keystore.V3.storeWallet( w ).get // asserts success
+    val out = repository.Keystore.V3.storeWallet( w ).get // asserts success
+    log.info( s"Wallet generated into sbt-ethereum repository: '${repository.Directory.assert}'. Please backup, via 'ethRepositoryBackup' or manually." )
+    log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
+    out
   }
 
   private def xethLoadAbiForTask( config : Configuration ) : Initialize[InputTask[Abi]] = {
@@ -3252,6 +3263,23 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log        = streams.value.log
     val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
     doGetTransactionCount( log, jsonRpcUrl, (xethFindCurrentSender in config).value.get , jsonrpc.Client.BlockNumber.Pending )
+  }
+
+  private def xethOnLoadBannerTask : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+    // val mainEthJsonRpcUrl = (ethcfgJsonRpcUrl in Compile).value
+    // val testEthJsonRpcUrl = (ethcfgJsonRpcUrl in Test).value
+    // val blockchainId      = (ethcfgBlockchainId in Compile).value
+    // val mbCurrentSender   = (xethFindCurrentSender in Compile).value
+    
+    log.info( s"sbt-ethereum-${generated.SbtEthereum.Version} successfully initialized (built ${SbtEthereum.BuildTimestamp})" )
+    // log.info( s"sbt-ethereum repository: '${repository.Directory.assert}' <-- Please backup, via 'ethRepositoryBackup' or manually" )
+    // log.info( s"sbt-ethereum main json-rpc endpoint configured to '${mainEthJsonRpcUrl}'" )
+    // log.info( s"sbt-ethereum test json-rpc endpoint configured to '${testEthJsonRpcUrl}'" )
+    // mbCurrentSender foreach { currentSender => 
+    //   val aliasesPart = commaSepAliasesForAddress( blockchainId, currentSender ).fold( _ => "" )( _.fold("")( commasep => s", with aliases $commasep" ) )
+    //   log.info( s"sbt-ethereum main current sender address: ${hexString(currentSender)}${aliasesPart}" )
+    // }
   }
 
   private def xethOnLoadAutoImportWalletsV3Task : Initialize[Task[Unit]] = Def.task {
@@ -3854,8 +3882,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def unknownWallet( loadDirs : Seq[File] ) : Nothing = {
-    val dirs = loadDirs.map( _.getAbsolutePath() ).mkString(", ")
-    throw new Exception( s"Could not find V3 wallet for the specified address in the specified keystore directories: ${dirs}}" )
+    val dirs = loadDirs.map( _.getAbsolutePath() ).map( "'" + _ + "'" ).mkString(", ")
+    throw new Exception( s"Could not find V3 wallet for the specified address in availble keystore directories: ${dirs}" )
   }
 
   private def assertSomeSender( log : Logger, fsender : Failable[EthAddress] ) : Option[EthAddress] = {

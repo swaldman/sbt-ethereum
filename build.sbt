@@ -57,6 +57,9 @@ sourceGenerators in Compile += Def.task{
 
   import scala.io.Codec
 
+  import java.time._
+  import java.time.format._
+
   val srcManaged    = (sourceManaged in Compile).value
   val sbtEthVersion = version.value
 
@@ -64,6 +67,8 @@ sourceGenerators in Compile += Def.task{
   val consuelaName          = consuelaArtifact.name
   val consuelaVersion       = consuelaArtifact.revision
   val consuelaMaybeChanging = if (consuelaVersion.endsWith("SNAPSHOT")) " changing()" else ""
+
+  val ts = DateTimeFormatter.RFC_1123_DATE_TIME.withZone( ZoneId.systemDefault() ).format(java.time.Instant.now)
 
   val sep = File.separator
   val outDir = new File( srcManaged, generatedCodePackageDir.mkString( sep ) )
@@ -74,7 +79,7 @@ sourceGenerators in Compile += Def.task{
         |package object ${generatedCodePackageDir.last} {
         |  final object SbtEthereum {
         |    val Version        = "${sbtEthVersion}"
-        |    val BuildTimestamp = "${java.time.Instant.now}"
+        |    val BuildTimestamp = "${ts}"
         |  }
         |  final object Consuela {
         |    import sbt._
