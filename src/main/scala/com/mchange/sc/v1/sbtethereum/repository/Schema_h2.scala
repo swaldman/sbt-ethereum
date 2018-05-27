@@ -51,6 +51,7 @@ object Schema_h2 {
         stmt.executeUpdate( Table.EnsBidStore.CreateIndex )
       }
       Table.Metadata.ensureSchemaVersion( conn )
+      Table.Metadata.updateLastSuccessfulSbtEthereumVersion( conn )
       true
     }
   }
@@ -189,15 +190,19 @@ object Schema_h2 {
           if ( v < SchemaVersion ) {
             migrateSchema( conn, v, SchemaVersion )
           } else if ( v > SchemaVersion ) {
+            val lastSuccessfulVersion = select( conn, Key.LastSuccessfulSbtEthereumVersion ).getOrElse( "<<Version Unknown>>" )
             throw new SchemaVersionException(
               s"""|Database schema version ${v} is higher than the latest version known to this version of sbt-ethereum, ${SchemaVersion}.
-                  | ==> Please update this project to the latest version of sbt-ethereum!
+                  | ==> Please update this project to a more recent version of sbt-ethereum!
+                  |      - This database was last successfully used by version sbt-ethereum verion '${lastSuccessfulVersion}'. Please try that version or higher.
                   |      - Usually this just means modifying 'project/plugin.sbt'.
                   |      - If you still see this message afterwards, try 'reload plugins', then 'update', then restart sbt.""".stripMargin
             )
           }
         }
       }
+
+      def updateLastSuccessfulSbtEthereumVersion( conn : Connection ) : Unit = upsert( conn, Key.LastSuccessfulSbtEthereumVersion, generated.SbtEthereum.Version )
 
       def upsert( conn : Connection, key : String, value : String ) : Unit = {
         borrow( conn.prepareStatement( "MERGE INTO metadata ( key, value ) VALUES ( ?, ? )" ) ) { ps =>
@@ -222,9 +227,10 @@ object Schema_h2 {
       }
 
       final object Key {
-        val SchemaVersion       = "SchemaVersion"
-        val EtherscanApiKey     = "EtherscanApiKey"
-        val RepositoryBackupDir = "RepositoryBackupDir"
+        val SchemaVersion                    = "SchemaVersion"
+        val EtherscanApiKey                  = "EtherscanApiKey"
+        val RepositoryBackupDir              = "RepositoryBackupDir"
+        val LastSuccessfulSbtEthereumVersion = "LastSuccessfulSbtEthereumVersion"
       }
     }
 

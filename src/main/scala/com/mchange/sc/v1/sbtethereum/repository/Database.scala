@@ -571,7 +571,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
     def initializeDataSource( ensureSchema : Boolean ) : Failable[ComboPooledDataSource] = {
       for {
-        dir       <- Directory
+        dir     <- Directory
         jdbcUrl <- JdbcUrl
       } yield {
         val ds = new ComboPooledDataSource
