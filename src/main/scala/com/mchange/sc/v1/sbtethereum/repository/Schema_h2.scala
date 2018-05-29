@@ -1,7 +1,7 @@
 package com.mchange.sc.v1.sbtethereum.repository
 
 import com.mchange.sc.v1.sbtethereum._
-import util.BaseCodeAndSuffix
+import com.mchange.sc.v1.sbtethereum.util.BaseCodeAndSuffix
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash}
@@ -31,6 +31,8 @@ object Schema_h2 {
   def setTimestampOption( ps : PreparedStatement, i : Int, mbl : Option[Long] ): Unit = {
     mbl.fold( ps.setNull( i, Types.TIMESTAMP ) ){ l =>  ps.setTimestamp( i, new Timestamp(l) ) }
   }
+
+  final val InconsistentSchemaVersion : Int = -1
 
   // Increment this value and add a migration to migrateUpOne(...)
   // to modify the schema
@@ -145,7 +147,7 @@ object Schema_h2 {
     repository.Database.backupDatabaseH2( conn, versionFrom ).get // throw if something goes wrong
 
     DEBUG.log( s"Migrating sbt-ethereum database schema from version $versionFrom to version $versionTo." )
-    Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, "-1" )
+    Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, InconsistentSchemaVersion.toString )
     migrateUpTo( conn, versionFrom, versionTo )
     Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, versionTo.toString )
     DEBUG.log( s"Migration complete." )

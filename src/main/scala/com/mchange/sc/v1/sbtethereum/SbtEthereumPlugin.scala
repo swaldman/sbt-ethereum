@@ -3297,6 +3297,103 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def xethOnLoadRecoverInconsistentSchema : Initialize[Task[Unit]] = Def.task {
+    val schemaOkay = repository.Database.DataSource
+    val log        = streams.value.log
+    val is         = interactionService.value
+
+    if ( schemaOkay.isFailed ) {
+      val msg = "Failed to initialize the sbt-ethereum repository database."
+      SEVERE.log( msg, schemaOkay.assertThrowable )
+      log.error( msg )
+
+      if ( repository.Database.schemaVersionInconsistentUnchecked.assert ) {
+        val mbLastSuccessful = repository.Database.getLastSuccessfulSbtEthereumVersionUnchecked().assert
+
+        log.error( "The sbt-ethereum repository database schema is in an inconsistent state (probably because an upgrade failed)." )
+        val mbLastBackup = repository.Database.latestBackupIfAny.assert
+        mbLastBackup match {
+          case Some( backup ) => {
+            val backupTime = formatInstant( backup.timestamp.getTime )
+            val recover = queryYN( is, s"The most recent backup available was taken at ${backupTime}. Attempt recovery? [y/n] " )
+            if ( recover ) {
+              val attemptedRecovery = repository.Database.restoreBackup( backup )
+              if ( attemptedRecovery.isFailed ) {
+                val msg = s"Could not restore the database from backup file '${backup.file.getCanonicalPath}'."
+                val t = attemptedRecovery.assertThrowable
+                log.error( msg )
+                SEVERE.log( msg, t )
+                throw t
+              }
+              else {
+                repository.Database.reset()
+                val fmbPostRecoverySchemaVersionUnchecked = repository.Database.getSchemaVersionUnchecked()
+                val targetSchemaVersion = repository.Database.TargetSchemaVersion
+
+                val schemaOkayNow = repository.Database.DataSource.isSucceeded
+                val inconsistent   = repository.Database.schemaVersionInconsistentUnchecked.assert
+
+                ( schemaOkayNow, inconsistent ) match {
+                  case ( true, false ) => log.info( "Recovery of sbt-ethereum repository database succeeded." )
+                  case ( true, true )  => {
+                    val msg = "Internal inconsistency. The database simultaneously is reporting itself to be okay while the schema version is inconsistent. Probably an sbt-ethereum bug."
+                    log.error( msg )
+                    SEVERE.log( msg )
+                    throw new SbtEthereumException( msg )
+                  }
+                  case ( false, true ) => {
+                    val baseMsg = {
+                      if ( fmbPostRecoverySchemaVersionUnchecked.isSucceeded && fmbPostRecoverySchemaVersionUnchecked.assert != None ) { // we have the schema version we recovered to
+                        val dbSchemaVersion = fmbPostRecoverySchemaVersionUnchecked.assert.get
+                        s"""|The database restore seems to have succeeded, but the schema version is still inconsistent.
+                            |A failure seems to be occurring while upgrading the restored database from schema version ${dbSchemaVersion} to ${targetSchemaVersion}.""".stripMargin
+                      }
+                      else {
+                        s"""|The database restore seems to have succeeded, but the schema version is still inconsistent.
+                            |A failure seems to be occurring while upgrading the restored database to ${targetSchemaVersion}.""".stripMargin
+                      }
+                    }
+                    val versionSuggestion = {
+                      mbLastSuccessful match {
+                        case Some( lastSuccessful ) =>{
+                          """|
+                             |The last version of sbt-ethereum to successfully use the recovered database was ${lastSuccessful}.
+                             |Perhaps try restoring from that version.""".stripMargin
+                        }
+                        case None => ""
+                      }
+                    }
+
+                    val msg =  baseMsg + versionSuggestion
+                    log.error( msg )
+                    SEVERE.log( msg )
+                    throw new SbtEthereumException( msg )
+                  }
+                  case ( false, false ) => {
+                    val msg = "The schema of the recovered database does not seem inconsistent, but access to the database is still failing, for unknown reasons."
+                    log.error( msg )
+                    SEVERE.log( msg )
+                    throw new SbtEthereumException( msg )
+                  }
+                }
+              }
+            }
+            else {
+              throw new OperationAbortedByUserException( "Offer to attempted recovery refused by user." )
+            }
+          }
+          case None => throw new SbtEthereumException( "No database backups are available in the repository from which to attempt a recover." )
+        }
+      }
+      else {
+        val msg = "The schema of the database does not seem inconsistent, but access to the database is still failing, for unknown reasons."
+        log.error( msg )
+        SEVERE.log( msg )
+        throw new SbtEthereumException( msg )
+      }
+    }
+  }
+
   private def xethOnLoadSolicitCompilerInstallTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val is  = interactionService.value

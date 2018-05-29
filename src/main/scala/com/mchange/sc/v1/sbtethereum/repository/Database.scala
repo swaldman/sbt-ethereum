@@ -6,6 +6,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import javax.sql.DataSource
 import scala.collection._
+import scala.util.matching.Regex.Match
 import com.mchange.v2.c3p0.ComboPooledDataSource
 import com.mchange.sc.v1.sbtethereum.repository
 import com.mchange.sc.v1.sbtethereum.util.BaseCodeAndSuffix
@@ -32,12 +33,13 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   private val UncheckedDataSourceManager = AutoResource[Unit,Failable[ComboPooledDataSource]]( (), _ => h2.initializeDataSource( false ), _.map( _.close() ) )
   private val CheckedDataSourceManager   = AutoResource[Unit,Failable[ComboPooledDataSource]]( (), _ => h2.initializeDataSource( true ),  _.map( _.close() ) )
 
-
   private [sbtethereum]
   def DataSource : Failable[ComboPooledDataSource] = CheckedDataSourceManager.active 
 
   private [sbtethereum]
   def UncheckedDataSource : Failable[ComboPooledDataSource] = UncheckedDataSourceManager.active
+
+  val TargetSchemaVersion = h2.SchemaVersion
 
   private [sbtethereum]
   def reset() : Unit = this.synchronized {
@@ -445,6 +447,19 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
+  def getSchemaVersionUnchecked() : Failable[Option[Int]] = UncheckedDataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.Metadata.select( _, Table.Metadata.Key.SchemaVersion ).map( _.toInt ) ) )
+  }
+
+  private [sbtethereum]
+  def getLastSuccessfulSbtEthereumVersionUnchecked() : Failable[Option[String]] = UncheckedDataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.Metadata.select( _, Table.Metadata.Key.LastSuccessfulSbtEthereumVersion ) ) )
+  }
+
+  private [sbtethereum]
+  def schemaVersionInconsistentUnchecked : Failable[Boolean] = getSchemaVersionUnchecked().map( _.get == Schema_h2.InconsistentSchemaVersion )
+
+  private [sbtethereum]
   def ensStoreBid( blockchainId : String, tld : String, ensAddress : EthAddress, bid : Bid ) : Failable[Unit] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.EnsBidStore.insert( _, blockchainId, bid.bidHash, bid.simpleName, bid.bidderAddress, bid.valueInWei, bid.salt, tld, ensAddress ) ) )
   }
@@ -526,11 +541,11 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     }
   }
 
-  private [sbtethereum]
-  def backupDatabaseH2( conn : Connection, schemaVersion : Int ) : Failable[File] = h2.makeBackup( conn, schemaVersion )
+  final case class Backup( timestamp : Date, schemaVersion : Int, file : File )
 
-  private [sbtethereum]
-  def backup() : Failable[File] = {
+  def backupDatabaseH2( conn : Connection, schemaVersion : Int ) : Failable[Backup] = h2.makeBackup( conn, schemaVersion )
+
+  def backup() : Failable[Backup] = {
     DataSource.flatMap { ds =>
       borrow( ds.getConnection() ) { conn =>
         Table.Metadata.select( conn, Table.Metadata.Key.SchemaVersion ) match {
@@ -541,10 +556,24 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     }
   }
 
+  def restoreBackup( backup : Backup ) : Failable[Unit] = UncheckedDataSource.map { ds =>
+    borrow( ds.getConnection() ){ conn =>
+      conn.setAutoCommit( false )
+      h2.restoreBackup( conn, backup )
+      conn.commit()
+    }
+  }
+
+  def latestBackupIfAny : Failable[Option[Backup]] = h2.mostRecentBackup
+
+  def restoreLatestBackup() : Failable[Unit] = latestBackupIfAny.map( _.fold( Failable.fail( s"There are no backups available to restore." ) : Failable[Unit] )( restoreBackup ) )
+
   private final object h2 extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
     val DirName = "h2"
     val DbName  = "sbt-ethereum"
     val BackupsDirName = "h2-backups"
+
+    val SchemaVersion = Schema_h2.SchemaVersion
 
     private [repository] lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DirName )
     private [repository] lazy val BackupsDirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=BackupsDirName )
@@ -596,15 +625,61 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
       case t : Throwable => original.addSuppressed( t )
     }
 
-    def makeBackup( conn : Connection, schemaVersion : Int ) : Failable[File] = {
+    def makeBackup( conn : Connection, schemaVersion : Int ) : Failable[Backup] = {
       BackupsDir.map { pmbDir =>
         val df = new SimpleDateFormat("yyyyMMdd'T'HHmmssZ")
-        val ts = df.format( new Date() )
+        val now = new Date()
+        val ts = df.format( now )
         val targetFileName = s"$DbName-v$schemaVersion-$ts.sql"
         val targetFile = new File( pmbDir, targetFileName )
-        borrow( conn.prepareStatement( s"SCRIPT TO '${targetFile.getAbsolutePath}' CHARSET 'UTF8'" ) )( _.executeQuery().close() ) // we don't need the result set, just want the file
-        setUserReadOnlyFilePermissions( targetFile )
-        targetFile
+        try {
+          borrow( conn.prepareStatement( s"SCRIPT TO '${targetFile.getCanonicalPath}' CHARSET 'UTF8'" ) )( _.executeQuery().close() ) // we don't need the result set, just want the file
+          setUserReadOnlyFilePermissions( targetFile )
+          Backup( now, schemaVersion, targetFile )
+        }
+        catch {
+          case t : Throwable => {
+            try if ( targetFile.exists() ) targetFile.renameTo( new File( targetFile.getCanonicalPath + "-INCOMPLETE" ) ) catch suppressInto( t )
+            throw t
+          }
+        }
+      }
+    }
+
+    // careful! this will delete the current database, then attempt to backup!
+    def restoreBackup( conn : Connection, backup : Backup ) : Failable[Unit] = Failable {
+      val cf = backup.file.getCanonicalFile
+      assert( !conn.getAutoCommit(), "Please execute restore backup within a transactional context, and commit on success." )
+      require ( cf.exists() && cf.canRead() && cf.length > 0, "A backup file should exist, be readable, and contain data." )
+      borrow( conn.createStatement() ) { stmt =>
+        stmt.executeUpdate("DROP ALL OBJECTS")
+        stmt.execute( s"RUNSCRIPT FROM '${cf.getCanonicalPath}'" )
+      }
+    }
+
+    val BackupFileRegex = s"""${DbName}-v(\d+)-(.*)\.sql$$""".r
+
+    private def createBackup( path : String, m : Match ) : Backup = {
+      val df = new SimpleDateFormat("yyyyMMdd'T'HHmmssZ")
+      Backup( df.parse( m.group(2) ), m.group(1).toInt, new File( path ) )
+    }
+
+    def backupsOrderedByMostRecent : Failable[immutable.SortedSet[Backup]] = {
+      BackupsDir.map { pmbDir =>
+        val tuples = {
+          pmbDir.listFiles
+            .map( _.getCanonicalPath )
+            .map( path => ( path, BackupFileRegex.findFirstMatchIn(path) ) )
+            .filter { case ( path, mbMatch ) => mbMatch.nonEmpty }
+            .map { case ( path, mbMatch ) => createBackup( path, mbMatch.get ) }
+        }
+        immutable.TreeSet.empty[Backup]( Ordering.by[Backup,Date]( _.timestamp ).reverse )
+      }
+    }
+
+    def mostRecentBackup : Failable[Option[Backup]] = {
+      backupsOrderedByMostRecent.map { backups =>
+        if ( backups.isEmpty ) None else Some( backups.head )
       }
     }
   }
