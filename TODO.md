@@ -1,17 +1,15 @@
 # TODO
 
+* ethHelp
+
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
 
 * Some form of logging of overwriting of aliases
 
 * Let compilations store the name of the project from which they were compiled
 
-* Let schema metadata store the version of the last successful sbt-ethereum client
-
 * Make stub generation incremental
     
-* interactive migrate (or restore) of database
-
 * The parser for ethTransactionDeploy should handle aliases / ens-names etc when ctor args are addresses
 
 * Generalize reasoning surrounding when interactive transaction approver should be used
@@ -37,7 +35,7 @@
 * ens TTL, and Deed stuff
 * erc20*
 
-* add getEvents [backed by RPC getLogs(...)] methods to stub events
+* fetch (accessing events bia RPC getLogs(...)) in stub utilities is async by default. Consistent with rest of design, define asyncFetch(...) and fetch(...)
 * Move stub.ScalaParameterHelper somewhere more sensible
 * Uncloseable wrappers for default Poller (done!), Exchanger.Factory, jsonrpc.Client.Factory
 *   -- Also, maybe eliminate global-implicit by default status for these factories, require some ceremony to import them
@@ -45,18 +43,10 @@
 * built-in solcJ-based eth-netcompile
 * Place a time limit on compiler checks, so that a freeze doesn't prevent sbt startup!
 * Support for compiling and deploying solidity libraries and linking contracts that reference them
-* Import raw private key as wallet
-* Backup / restore of repository (especially db)
-  * use DROP ALL OBJECTS then RUNSCRIPT to restore
 * Import/Export of contract metadata between repositories
-* Hide keystore stuff behind a facade, maybe incorporate local keystore in DB (only after revision of consuela keystore stuff)
 * Incorporate transaction log in DB (?)
 * add type resriction to log / event Topic Seq, to limit length to four elements
 
-* Integrate keystore into database? (?)
-  - Maybe just backup all wallets into the keystore (?)
-  - Maybe just copy externally discovered wallets into the repository keystore?
-  
 * Generate Java stubs
 * More consistency about when tasks use println(...) vs log.info(...)
 
