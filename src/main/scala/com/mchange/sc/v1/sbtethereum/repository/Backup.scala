@@ -61,7 +61,7 @@ object Backup {
 
     val dbDumpSucceeded = {
       info( "Creating SQL dump of sbt-ethereum repository database..." )
-      val fsuccess = Database.backup() map { dbDump =>
+      val fsuccess = Database.dump() map { dbDump =>
         info( s"Successfully created SQL dump of the sbt-ethereum repository database: '${dbDump}'" )
         true
       } recover { failed : Failed[_] =>

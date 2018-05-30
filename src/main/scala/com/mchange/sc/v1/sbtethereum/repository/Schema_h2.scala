@@ -141,10 +141,10 @@ object Schema_h2 {
     // we don't check whether versionFrom is the current version in the database, because
     // we should have just gotten the current version from the database
 
-    require( versionFrom >= 0, s"Please restore database from backup! Valid schema versions begin are non-negative, version $versionFrom is invalid, may indicate database corruption." )
+    require( versionFrom >= 0, s"Please restore database from dump! Valid schema versions begin are non-negative, version $versionFrom is invalid, may indicate database corruption." )
     require( versionFrom < versionTo, s"We can only upmigrate schemas, can't transition from $versionFrom to $versionTo" )
 
-    repository.Database.backupDatabaseH2( conn, versionFrom ).get // throw if something goes wrong
+    repository.Database.dumpDatabaseH2( conn, versionFrom ).get // throw if something goes wrong
 
     DEBUG.log( s"Migrating sbt-ethereum database schema from version $versionFrom to version $versionTo." )
     Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, InconsistentSchemaVersion.toString )

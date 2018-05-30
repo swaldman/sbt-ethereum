@@ -542,50 +542,50 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     }
   }
 
-  final case class Backup( timestamp : Long, schemaVersion : Int, file : File )
+  final case class Dump( timestamp : Long, schemaVersion : Int, file : File )
 
-  def backupDatabaseH2( conn : Connection, schemaVersion : Int ) : Failable[Backup] = h2.makeBackup( conn, schemaVersion )
+  def dumpDatabaseH2( conn : Connection, schemaVersion : Int ) : Failable[Dump] = h2.dump( conn, schemaVersion )
 
-  def backup() : Failable[Backup] = {
+  def dump() : Failable[Dump] = {
     DataSource.flatMap { ds =>
       borrow( ds.getConnection() ) { conn =>
         Table.Metadata.select( conn, Table.Metadata.Key.SchemaVersion ) match {
-          case None                  => Failable.fail( "Could not find the database schema version to backup the database!" )
-          case Some( schemaVersion ) => backupDatabaseH2( conn, schemaVersion.toInt )
+          case None                  => Failable.fail( "Could not find the database schema version to dump the database!" )
+          case Some( schemaVersion ) => dumpDatabaseH2( conn, schemaVersion.toInt )
         }
       }
     }
   }
 
-  def restoreBackup( backup : Backup ) : Failable[Unit] = UncheckedDataSource.map { ds =>
+  def restoreFromDump( dump : Dump ) : Failable[Unit] = UncheckedDataSource.map { ds =>
     borrow( ds.getConnection() ){ conn =>
       conn.setAutoCommit( false )
-      h2.restoreBackup( conn, backup )
+      h2.restoreFromDump( conn, dump )
       conn.commit()
     }
   }
 
-  def latestBackupIfAny : Failable[Option[Backup]] = h2.mostRecentBackup
+  def latestDumpIfAny : Failable[Option[Dump]] = h2.mostRecentDump
 
-  def restoreLatestBackup() : Failable[Unit] = latestBackupIfAny.map( _.fold( Failable.fail( s"There are no backups available to restore." ) : Failable[Unit] )( restoreBackup ) )
+  def restoreLatestDump() : Failable[Unit] = latestDumpIfAny.map( _.fold( Failable.fail( s"There are no dumps available to restore." ) : Failable[Unit] )( restoreFromDump ) )
 
   private final object h2 extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
     val DirName = "h2"
     val DbName  = "sbt-ethereum"
-    val BackupsDirName = "h2-backups"
+    val DumpsDirName = "h2-dumps"
 
     val SchemaVersion = Schema_h2.SchemaVersion
 
     private [repository] lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DirName )
-    private [repository] lazy val BackupsDirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=BackupsDirName )
+    private [repository] lazy val DumpsDirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DumpsDirName )
 
     private [repository]
-    lazy val BackupsDir_ExistenceAndPermissionsUnenforced : Failable[File] = BackupsDirectoryManager.existenceAndPermissionsUnenforced
-    lazy val BackupsDir : Failable[File]                                   = BackupsDirectoryManager.existenceAndPermissionsEnforced
+    lazy val DumpsDir_ExistenceAndPermissionsUnenforced : Failable[File] = DumpsDirectoryManager.existenceAndPermissionsUnenforced
+    lazy val DumpsDir : Failable[File]                                   = DumpsDirectoryManager.existenceAndPermissionsEnforced
 
     def reset() : Unit = {
       DirectoryManager.reset()
-      BackupsDirectoryManager.reset()
+      DumpsDirectoryManager.reset()
     }
 
     lazy val DbAsFile : Failable[File] = Directory.map( dir => new File( dir, DbName ) ) // the db will make files of this name, with various suffixes appended
@@ -593,9 +593,9 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     lazy val JdbcUrl : Failable[String] = DbAsFile.map( f => s"jdbc:h2:${f.getAbsolutePath};AUTO_SERVER=TRUE" )
 
     def userReadOnlyFiles  : immutable.Set[File] = {
-      BackupsDir_ExistenceAndPermissionsUnenforced.map { backupsDir =>
-        if ( backupsDir.exists() && backupsDir.canRead() ) backupsDir.listFiles.toSet else immutable.Set.empty[File]
-      }.xwarn( "Failed to read h2-backups dir.").getOrElse( immutable.Set.empty[File] )
+      DumpsDir_ExistenceAndPermissionsUnenforced.map { dumpsDir =>
+        if ( dumpsDir.exists() && dumpsDir.canRead() ) dumpsDir.listFiles.toSet else immutable.Set.empty[File]
+      }.xwarn( "Failed to read h2-dumps dir.").getOrElse( immutable.Set.empty[File] )
     }
     val userExecutableFiles : immutable.Set[File] = immutable.Set.empty[File]
 
@@ -626,8 +626,8 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
       case t : Throwable => original.addSuppressed( t )
     }
 
-    def makeBackup( conn : Connection, schemaVersion : Int ) : Failable[Backup] = {
-      BackupsDir.map { pmbDir =>
+    def dump( conn : Connection, schemaVersion : Int ) : Failable[Dump] = {
+      DumpsDir.map { pmbDir =>
         val now = Instant.now()
         val ts = InFilenameTimestamp.generate( now )
         val targetFileName = s"$DbName-v$schemaVersion-$ts.sql"
@@ -635,7 +635,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
         try {
           borrow( conn.prepareStatement( s"SCRIPT TO '${targetFile.getCanonicalPath}' CHARSET 'UTF8'" ) )( _.executeQuery().close() ) // we don't need the result set, just want the file
           setUserReadOnlyFilePermissions( targetFile )
-          Backup( now.toEpochMilli, schemaVersion, targetFile )
+          Dump( now.toEpochMilli, schemaVersion, targetFile )
         }
         catch {
           case t : Throwable => {
@@ -646,39 +646,43 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
       }
     }
 
-    // careful! this will delete the current database, then attempt to backup!
-    def restoreBackup( conn : Connection, backup : Backup ) : Failable[Unit] = Failable {
-      val cf = backup.file.getCanonicalFile
-      assert( !conn.getAutoCommit(), "Please execute restore backup within a transactional context, and commit on success." )
-      require ( cf.exists() && cf.canRead() && cf.length > 0, "A backup file should exist, be readable, and contain data." )
+    // careful! this will delete the current database, then attempt to restore!
+    def restoreFromDump( conn : Connection, dump : Dump ) : Failable[Unit] = Failable {
+      val cf = dump.file.getCanonicalFile
+      assert( !conn.getAutoCommit(), "Please execute restore from dump within a transactional context, and commit on success." )
+      require ( cf.exists() && cf.canRead() && cf.length > 0, "A dump file should exist, be readable, and contain data." )
       borrow( conn.createStatement() ) { stmt =>
         stmt.executeUpdate("DROP ALL OBJECTS")
         stmt.execute( s"RUNSCRIPT FROM '${cf.getCanonicalPath}'" )
       }
     }
 
-    val BackupFileRegex = s"""${DbName}-v(\d+)-(\p{Alnum}+)\.sql$$""".r
+    // not sure why this doesn't work...
+    // adding string interpolation to """ strings seems to restore escaping
+    // val DumpFileRegex = s"""${DbName}-v(\d+)-(\p{Alnum}+)\.sql$$""".r
 
-    private def createBackup( path : String, m : Match ) : Backup = {
-      Backup( InFilenameTimestamp.parse( m.group(2) ).toEpochMilli, m.group(1).toInt, new File( path ) )
+    val DumpFileRegex = s"${DbName}-v(\\d+)-(\\p{Alnum}+)\\.sql$$".r
+
+    private def createDump( path : String, m : Match ) : Dump = {
+      Dump( InFilenameTimestamp.parse( m.group(2) ).toEpochMilli, m.group(1).toInt, new File( path ) )
     }
 
-    def backupsOrderedByMostRecent : Failable[immutable.SortedSet[Backup]] = {
-      BackupsDir.map { pmbDir =>
+    def dumpsOrderedByMostRecent : Failable[immutable.SortedSet[Dump]] = {
+      DumpsDir.map { pmbDir =>
         val tuples = {
           pmbDir.listFiles
             .map( _.getCanonicalPath )
-            .map( path => ( path, BackupFileRegex.findFirstMatchIn(path) ) )
+            .map( path => ( path, DumpFileRegex.findFirstMatchIn(path) ) )
             .filter { case ( path, mbMatch ) => mbMatch.nonEmpty }
-            .map { case ( path, mbMatch ) => createBackup( path, mbMatch.get ) }
+            .map { case ( path, mbMatch ) => createDump( path, mbMatch.get ) }
         }
-        immutable.TreeSet.empty[Backup]( Ordering.by[Backup,Long]( _.timestamp ).reverse )
+        immutable.TreeSet.empty[Dump]( Ordering.by[Dump,Long]( _.timestamp ).reverse )
       }
     }
 
-    def mostRecentBackup : Failable[Option[Backup]] = {
-      backupsOrderedByMostRecent.map { backups =>
-        if ( backups.isEmpty ) None else Some( backups.head )
+    def mostRecentDump : Failable[Option[Dump]] = {
+      dumpsOrderedByMostRecent.map { dumps =>
+        if ( dumps.isEmpty ) None else Some( dumps.head )
       }
     }
   }
