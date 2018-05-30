@@ -1,4 +1,4 @@
-package com.mchange.sc.v1.sbtethereum.repository.util
+package com.mchange.sc.v1.sbtethereum.repository
 
 import java.time.{Instant,ZoneId}
 import java.time.format.DateTimeFormatter

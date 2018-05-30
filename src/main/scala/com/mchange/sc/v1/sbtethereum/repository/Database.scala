@@ -629,7 +629,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     def makeBackup( conn : Connection, schemaVersion : Int ) : Failable[Backup] = {
       BackupsDir.map { pmbDir =>
         val now = Instant.now()
-        val ts = util.InFilenameTimestamp.generate( now )
+        val ts = InFilenameTimestamp.generate( now )
         val targetFileName = s"$DbName-v$schemaVersion-$ts.sql"
         val targetFile = new File( pmbDir, targetFileName )
         try {
@@ -660,7 +660,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     val BackupFileRegex = s"""${DbName}-v(\d+)-(\p{Alnum}+)\.sql$$""".r
 
     private def createBackup( path : String, m : Match ) : Backup = {
-      Backup( util.InFilenameTimestamp.parse( m.group(2) ).toEpochMilli, m.group(1).toInt, new File( path ) )
+      Backup( InFilenameTimestamp.parse( m.group(2) ).toEpochMilli, m.group(1).toInt, new File( path ) )
     }
 
     def backupsOrderedByMostRecent : Failable[immutable.SortedSet[Backup]] = {

@@ -20,9 +20,9 @@ object Backup {
 
   private val fsep = File.separator
 
-  private def timestamp = util.InFilenameTimestamp.generate()
+  private def timestamp = InFilenameTimestamp.generate()
 
-  private def parseTimestamp( ts : String ) : Long = util.InFilenameTimestamp.parse( ts ).toEpochMilli
+  private def parseTimestamp( ts : String ) : Long = InFilenameTimestamp.parse( ts ).toEpochMilli
 
   val BackupFileRegex = """sbt\-ethereum\-repository\-backup\-(\p{Alnum}+)(-DB-DUMP-FAILED)?\.zip$""".r
 
