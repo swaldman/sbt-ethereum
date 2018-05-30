@@ -557,10 +557,12 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     }
   }
 
-  def restoreFromDump( dump : Dump ) : Failable[Unit] = UncheckedDataSource.map { ds =>
+  def restoreFromDump( dump : Dump ) : Failable[Unit] = restoreFromDump( dump.file )
+
+  def restoreFromDump( file : File ) : Failable[Unit] = UncheckedDataSource.map { ds =>
     borrow( ds.getConnection() ){ conn =>
       conn.setAutoCommit( false )
-      h2.restoreFromDump( conn, dump )
+      h2.restoreFromDump( conn, file )
       conn.commit()
     }
   }
@@ -569,23 +571,34 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
   def restoreLatestDump() : Failable[Unit] = latestDumpIfAny.map( _.fold( Failable.fail( s"There are no dumps available to restore." ) : Failable[Unit] )( restoreFromDump ) )
 
+  def dumpsOrderedByMostRecent : Failable[immutable.SortedSet[Dump]] = h2.dumpsOrderedByMostRecent
+
+  def supercededByDumpDirectory : Failable[File] = h2.SupercededDir
+
   private final object h2 extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
-    val DirName = "h2"
-    val DbName  = "sbt-ethereum"
-    val DumpsDirName = "h2-dumps"
+    val DirName           = "h2"
+    val DbName            = "sbt-ethereum"
+    val DumpsDirName      = "h2-dumps"
+    val SupercededDirName = "h2-superceded"
 
     val SchemaVersion = Schema_h2.SchemaVersion
 
-    private [repository] lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DirName )
-    private [repository] lazy val DumpsDirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DumpsDirName )
+    private [repository] lazy val DirectoryManager           = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DirName )
+    private [repository] lazy val DumpsDirectoryManager      = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DumpsDirName )
+    private [repository] lazy val SupercededDirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=SupercededDirName )
 
     private [repository]
     lazy val DumpsDir_ExistenceAndPermissionsUnenforced : Failable[File] = DumpsDirectoryManager.existenceAndPermissionsUnenforced
-    lazy val DumpsDir : Failable[File]                                   = DumpsDirectoryManager.existenceAndPermissionsEnforced
+    lazy val DumpsDir                                   : Failable[File] = DumpsDirectoryManager.existenceAndPermissionsEnforced
+
+    private [repository]
+    lazy val SupercededDir_ExistenceAndPermissionsUnenforced : Failable[File] = SupercededDirectoryManager.existenceAndPermissionsUnenforced
+    lazy val SupercededDir                                   : Failable[File] = SupercededDirectoryManager.existenceAndPermissionsEnforced
 
     def reset() : Unit = {
       DirectoryManager.reset()
       DumpsDirectoryManager.reset()
+      SupercededDirectoryManager.reset()
     }
 
     lazy val DbAsFile : Failable[File] = Directory.map( dir => new File( dir, DbName ) ) // the db will make files of this name, with various suffixes appended
@@ -647,10 +660,18 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     }
 
     // careful! this will delete the current database, then attempt to restore!
-    def restoreFromDump( conn : Connection, dump : Dump ) : Failable[Unit] = Failable {
-      val cf = dump.file.getCanonicalFile
+    def restoreFromDump( conn : Connection, dump : Dump ) : Failable[Unit] = restoreFromDump( conn, dump.file )
+
+    // careful! this will delete the current database, then attempt to restore!
+    def restoreFromDump( conn : Connection, file : File ) : Failable[Unit] = Failable {
+      val cf = file.getCanonicalFile
       assert( !conn.getAutoCommit(), "Please execute restore from dump within a transactional context, and commit on success." )
       require ( cf.exists() && cf.canRead() && cf.length > 0, "A dump file should exist, be readable, and contain data." )
+
+      // create a zip file of the superceded database before overwriting
+      val superceded = new File( SupercededDir.assert, s"h2-superceded-${InFilenameTimestamp.generate()}.zip" )
+      Backup.zip( superceded, h2.Directory.assert, _ => true )
+
       borrow( conn.createStatement() ) { stmt =>
         stmt.executeUpdate("DROP ALL OBJECTS")
         stmt.execute( s"RUNSCRIPT FROM '${cf.getCanonicalPath}'" )
@@ -668,15 +689,15 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     }
 
     def dumpsOrderedByMostRecent : Failable[immutable.SortedSet[Dump]] = {
-      DumpsDir.map { pmbDir =>
+      DumpsDir.map { dd =>
         val tuples = {
-          pmbDir.listFiles
+          dd.listFiles
             .map( _.getCanonicalPath )
             .map( path => ( path, DumpFileRegex.findFirstMatchIn(path) ) )
             .filter { case ( path, mbMatch ) => mbMatch.nonEmpty }
             .map { case ( path, mbMatch ) => createDump( path, mbMatch.get ) }
         }
-        immutable.TreeSet.empty[Dump]( Ordering.by[Dump,Long]( _.timestamp ).reverse )
+        immutable.TreeSet.empty[Dump]( Ordering.by[Dump,Long]( _.timestamp ).reverse ) ++ tuples
       }
     }
 
