@@ -3314,7 +3314,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val mbLastBackup = repository.Database.latestBackupIfAny.assert
         mbLastBackup match {
           case Some( backup ) => {
-            val backupTime = formatInstant( backup.timestamp.getTime )
+            val backupTime = formatInstant( backup.timestamp )
             val recover = queryYN( is, s"The most recent backup available was taken at ${backupTime}. Attempt recovery? [y/n] " )
             if ( recover ) {
               val attemptedRecovery = repository.Database.restoreBackup( backup )

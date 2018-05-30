@@ -3,6 +3,7 @@ package com.mchange.sc.v1.sbtethereum.repository
 import java.io.File
 import java.sql.{Connection, Timestamp}
 import java.text.SimpleDateFormat
+import java.time.Instant
 import java.util.Date
 import javax.sql.DataSource
 import scala.collection._
@@ -541,7 +542,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     }
   }
 
-  final case class Backup( timestamp : Date, schemaVersion : Int, file : File )
+  final case class Backup( timestamp : Long, schemaVersion : Int, file : File )
 
   def backupDatabaseH2( conn : Connection, schemaVersion : Int ) : Failable[Backup] = h2.makeBackup( conn, schemaVersion )
 
@@ -627,15 +628,14 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
     def makeBackup( conn : Connection, schemaVersion : Int ) : Failable[Backup] = {
       BackupsDir.map { pmbDir =>
-        val df = new SimpleDateFormat("yyyyMMdd'T'HHmmssZ")
-        val now = new Date()
-        val ts = df.format( now )
+        val now = Instant.now()
+        val ts = util.InFilenameTimestamp.generate( now )
         val targetFileName = s"$DbName-v$schemaVersion-$ts.sql"
         val targetFile = new File( pmbDir, targetFileName )
         try {
           borrow( conn.prepareStatement( s"SCRIPT TO '${targetFile.getCanonicalPath}' CHARSET 'UTF8'" ) )( _.executeQuery().close() ) // we don't need the result set, just want the file
           setUserReadOnlyFilePermissions( targetFile )
-          Backup( now, schemaVersion, targetFile )
+          Backup( now.toEpochMilli, schemaVersion, targetFile )
         }
         catch {
           case t : Throwable => {
@@ -657,11 +657,10 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
       }
     }
 
-    val BackupFileRegex = s"""${DbName}-v(\d+)-(.*)\.sql$$""".r
+    val BackupFileRegex = s"""${DbName}-v(\d+)-(\p{Alnum}+)\.sql$$""".r
 
     private def createBackup( path : String, m : Match ) : Backup = {
-      val df = new SimpleDateFormat("yyyyMMdd'T'HHmmssZ")
-      Backup( df.parse( m.group(2) ), m.group(1).toInt, new File( path ) )
+      Backup( util.InFilenameTimestamp.parse( m.group(2) ).toEpochMilli, m.group(1).toInt, new File( path ) )
     }
 
     def backupsOrderedByMostRecent : Failable[immutable.SortedSet[Backup]] = {
@@ -673,7 +672,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
             .filter { case ( path, mbMatch ) => mbMatch.nonEmpty }
             .map { case ( path, mbMatch ) => createBackup( path, mbMatch.get ) }
         }
-        immutable.TreeSet.empty[Backup]( Ordering.by[Backup,Date]( _.timestamp ).reverse )
+        immutable.TreeSet.empty[Backup]( Ordering.by[Backup,Long]( _.timestamp ).reverse )
       }
     }
 

@@ -11,6 +11,7 @@ import com.mchange.sc.v3.failable._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.log.MLevel._
 
+import java.time.Instant
 import scala.collection._
 
 object Backup {
@@ -19,27 +20,24 @@ object Backup {
 
   private val fsep = File.separator
 
-  private final val TimestampSimpleDateFormatPattern = "yyyyMMdd'T'HHmmss.SSSZ"
+  private def timestamp = util.InFilenameTimestamp.generate()
 
-  private def newDateFormat = new SimpleDateFormat( TimestampSimpleDateFormatPattern )
+  private def parseTimestamp( ts : String ) : Long = util.InFilenameTimestamp.parse( ts ).toEpochMilli
 
-  private def timestamp = newDateFormat.format( new Date() )
-
-  val BackupFileRegex = """sbt\-ethereum\-repository\-backup\-([\d\-\.T]+)(-DB-DUMP-FAILED)?\.zip$""".r
+  val BackupFileRegex = """sbt\-ethereum\-repository\-backup\-(\p{Alnum}+)(-DB-DUMP-FAILED)?\.zip$""".r
 
   final case class BackupFile( file : File, timestamp : Long, dbDumpSucceeded : Boolean )
 
-  private def _attemptAsBackupFile( df : SimpleDateFormat, f : File ) : Option[BackupFile] = {
+  private def _attemptAsBackupFile( f : File ) : Option[BackupFile] = {
     BackupFileRegex.findFirstMatchIn(f.getName()) match {
-      case Some( m ) if f.isFile => Some( BackupFile( f, df.parse( m.group(1) ).getTime, m.group(2) == null ) )
+      case Some( m ) if f.isFile => Some( BackupFile( f, parseTimestamp( m.group(1) ), m.group(2) == null ) )
       case None                  => None
     }
   }
 
-  def attemptAsBackupFile( f : File ) : Option[BackupFile] = _attemptAsBackupFile( newDateFormat, f )
+  def attemptAsBackupFile( f : File ) : Option[BackupFile] = _attemptAsBackupFile( f )
 
   def backupFilesOrderedByMostRecent( candidateList : Iterable[File] ) : immutable.SortedSet[BackupFile] = {
-    val df = new SimpleDateFormat( TimestampSimpleDateFormatPattern )
     val rawBackupFiles = candidateList.map( attemptAsBackupFile ).filter( _.nonEmpty ).map( _.get )
     immutable.TreeSet.empty[BackupFile]( Ordering.by( (bf : BackupFile) => bf.timestamp ).reverse ) ++ rawBackupFiles
   }

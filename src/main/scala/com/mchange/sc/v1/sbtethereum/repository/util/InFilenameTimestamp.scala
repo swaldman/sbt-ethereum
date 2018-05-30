@@ -7,7 +7,7 @@ object InFilenameTimestamp {
   private val Pattern   = "yyyyMMdd'T'HH'h'mm'm'ss's'SSS'ms'zzz"
   private val Formatter = DateTimeFormatter.ofPattern( Pattern ).withZone( ZoneId.systemDefault() )
 
-  def generate( instant : Instant ) : String = Formatter.format( instant )
+  def generate( instant : Instant = Instant.now() ) : String = Formatter.format( instant )
 
   def parse( s : String ) : Instant = Instant.from( Formatter.parse( s ) ) 
 }
