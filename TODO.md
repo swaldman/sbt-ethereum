@@ -1,5 +1,23 @@
 # TODO
 
+* Fully implement EIP-155 chain IDs in consuela.
+
+* change ethBlockchainId to ethChainId, let it accept EIP-155-based EthChainId rather than String.
+  - update string blockchain_id to int identifiers, in API and in database. grrr.
+
+* Implement EIP-191 and EIP-712 signing.
+
+* Warn prominently when waiting for a transaction times out, rather than successfully getting receipt. (Observed problem in ensAuctionFinalize.)
+
+* aybe remove stack trace from jsonrpc.Invoker$TransactionDisapprovedExceptions generated from the transaction approver function?
+
+* ethTransactionExportInvoke / ethTransactionExportSend  
+
+* The parser for ethTransactionDeploy should handle aliases / ens-names etc when ctor args are addresses
+
+* make price feeds sensitive to blockchainId
+* better formatting of currency amounts (fewer decimals)
+
 * ethHelp
 
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
@@ -10,18 +28,12 @@
 
 * Make stub generation incremental
     
-* The parser for ethTransactionDeploy should handle aliases / ens-names etc when ctor args are addresses
-
 * Generalize reasoning surrounding when interactive transaction approver should be used
 
 * enable Scala libraries to deploy as well as interact with already-deployed contracts
   * embed compilations as a resource in jar files
   * add method in jsonrpc.Invoker for contract creation
 
-* make price feeds sensitive to blockchainId
-* better formatting of currency amounts (fewer decimals)
-
-* ethTransactionExportInvoke / ethTransactionExportSend  
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
   * also for stubs and testing resources
@@ -31,7 +43,7 @@
 * xethSendMessage
 * xethSignMessage
 * Prettify output of log items in client transactions
-* Excise Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
+* Excise jsonrpc.Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
 * ens TTL, and Deed stuff
 * erc20*
 
