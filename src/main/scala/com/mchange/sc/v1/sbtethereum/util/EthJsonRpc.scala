@@ -38,20 +38,21 @@ object EthJsonRpc {
     doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => client.eth.compileSolidity( source ) )
   }
 
-  def doGetBalance( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc.Client.BlockNumber )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.getBalance( address, blockNumber ), Duration.Inf ) )
+  def doGetBalance( log : sbt.Logger, jsonRpcUrl : String, timeout : Duration, address : EthAddress, blockNumber : jsonrpc.Client.BlockNumber )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
+    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.getBalance( address, blockNumber ), timeout ) )
   }
 
   def doPrintingGetBalance(
-    log : sbt.Logger,
+    log          : sbt.Logger,
     jsonRpcUrl   : String,
+    timeout      : Duration,
     address      : EthAddress,
     blockNumber  : jsonrpc.Client.BlockNumber,
     denomination : Denomination
   )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : EthValue = {
     import jsonrpc.Client.BlockNumber._
 
-    val wei = doGetBalance( log, jsonRpcUrl, address, blockNumber )( clientFactory, ec )
+    val wei = doGetBalance( log, jsonRpcUrl, timeout, address, blockNumber )( clientFactory, ec )
     val out = EthValue( wei, denomination )
     val msg = blockNumber match {
       case Earliest       => s"${out.denominated} ${denomination.unitName} (at the earliest available block, address 0x${address.hex})"
@@ -63,13 +64,20 @@ object EthJsonRpc {
     out
   }
 
-  def doCodeForAddress( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc.Client.BlockNumber )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : immutable.Seq[Byte] = {
-    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.getCode( address, blockNumber ), Duration.Inf ) )
+  def doCodeForAddress(
+    log : sbt.Logger,
+    jsonRpcUrl : String,
+    timeout : Duration,
+    address : EthAddress,
+    blockNumber : jsonrpc.Client.BlockNumber
+  )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : immutable.Seq[Byte] = {
+    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.getCode( address, blockNumber ), timeout ) )
   }
 
   private [sbtethereum] def doEthCallEphemeral(
     log         : sbt.Logger,
     jsonRpcUrl  : String,
+    timeout     : Duration,
     from        : Option[EthAddress],
     to          : EthAddress,
     gas         : Option[BigInt],
@@ -78,27 +86,34 @@ object EthJsonRpc {
     data        : Option[Seq[Byte]],
     blockNumber : jsonrpc.Client.BlockNumber
   )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : immutable.Seq[Byte] = {
-    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.call( from, Some(to), gas, gasPrice, value, data, blockNumber), Duration.Inf ) )
+    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.call( from, Some(to), gas, gasPrice, value, data, blockNumber), timeout ) )
   }
 
-  def doGetDefaultGasPrice( log : sbt.Logger, jsonRpcUrl : String )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.gasPrice(), Duration.Inf ) )
+  def doGetDefaultGasPrice( log : sbt.Logger, jsonRpcUrl : String, timeout : Duration )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
+    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.gasPrice(), timeout ) )
   }
 
-  def doGetTransactionCount( log : sbt.Logger, jsonRpcUrl : String, address : EthAddress, blockNumber : jsonrpc.Client.BlockNumber )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), Duration.Inf ) )
+  def doGetTransactionCount(
+    log : sbt.Logger,
+    jsonRpcUrl : String,
+    timeout : Duration,
+    address : EthAddress,
+    blockNumber : jsonrpc.Client.BlockNumber
+  )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
+    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), timeout ) )
   }
 
   def doEstimateGas(
     log : sbt.Logger,
     jsonRpcUrl : String,
+    timeout : Duration,
     from : Option[EthAddress],
     to : Option[EthAddress],
     value : Option[BigInt],
     data : Option[Seq[Byte]],
     blockNumber : jsonrpc.Client.BlockNumber
   )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.estimateGas( from = from, to = to, value = value, data = data ), Duration.Inf ) )
+    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.estimateGas( from = from, to = to, value = value, data = data ), timeout ) )
   }
 
   /*
@@ -118,6 +133,7 @@ object EthJsonRpc {
   def doEstimateAndMarkupGas(
     log : sbt.Logger,
     jsonRpcUrl : String,
+    timeout : Duration,
     from : Option[EthAddress],
     to : Option[EthAddress],
     value : Option[BigInt],
@@ -125,7 +141,7 @@ object EthJsonRpc {
     blockNumber : jsonrpc.Client.BlockNumber,
     markup : Double
   )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-    val rawEstimate = doEstimateGas( log, jsonRpcUrl, from, to, value, data, blockNumber )( clientFactory, ec )
+    val rawEstimate = doEstimateGas( log, jsonRpcUrl, timeout, from, to, value, data, blockNumber )( clientFactory, ec )
     rounded(BigDecimal(rawEstimate) * BigDecimal(1 + markup))
   }
 

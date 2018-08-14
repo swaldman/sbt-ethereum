@@ -206,6 +206,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgTransactionReceiptPollPeriod  = settingKey[Duration]     ("Length of period after which sbt-ethereum will poll and repoll for a Client.TransactionReceipt after a transaction")
     val ethcfgTransactionReceiptTimeout     = settingKey[Duration]     ("Length of period after which sbt-ethereum will give up on polling for a Client.TransactionReceipt after a transaction")
 
+    val xethcfgAsyncOperationTimeout      = settingKey[Duration]    ("Length of time to wait for asynchronous operations, like HTTP calls and external processes.")
     val xethcfgEphemeralBlockchains       = settingKey[Seq[String]] ("IDs of blockchains that should be considered ephemeral (so their deployments should not be retained).")
     val xethcfgNamedAbiSource             = settingKey[File]        ("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
     val xethcfgTestingResourcesObjectName = settingKey[String]      ("The name of the Scala object that will be automatically generated with resources for tests.")
@@ -431,6 +432,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethcfgTransactionReceiptTimeout := 5.minutes,
 
     // xeth settings
+
+    xethcfgAsyncOperationTimeout := 30.seconds,
 
     xethcfgEphemeralBlockchains := immutable.Seq( GanacheIdentifier ),
 
@@ -1259,10 +1262,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log = streams.value.log
       val jsonRpcUrl       = (ethcfgJsonRpcUrl in config).value
+      val timeout          = xethcfgAsyncOperationTimeout.value
       val baseCurrencyCode = ethcfgBaseCurrencyCode.value
       val mbAddress        = parser.parsed
       val address          = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
-      val result           = doPrintingGetBalance( log, jsonRpcUrl, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
+      val result           = doPrintingGetBalance( log, jsonRpcUrl, timeout, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
       val ethValue         = result.denominated
 
       priceFeed.ethPriceInCurrency( baseCurrencyCode ).foreach { datum =>
@@ -1576,6 +1580,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
+      val timeout = xethcfgAsyncOperationTimeout.value
       val address = parser.parsed
       val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
       mbKnownCompilation match {
@@ -1599,7 +1604,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                       if ( tryIt ) {
                         println( "Attempting to fetch ABI for address '${hexString(address)}' from Etherscan." )
                         val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( address )
-                        Await.ready( fAbi, Duration.Inf )
+                        Await.ready( fAbi, timeout )
                         fAbi.value.get match {
                           case Success( abi ) => {
                             println( "ABI found:" )
@@ -2044,6 +2049,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethLanguageSolidityCompilerInstallTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
     val log = streams.value.log
 
+    val testTimeout = xethcfgAsyncOperationTimeout.value
+
     val mbVersion = SolcJVersionParser.parsed
 
     val versionToInstall = mbVersion.getOrElse( SolcJInstaller.DefaultSolcJVersion )
@@ -2057,7 +2064,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           throw new TaskFailure( s"Cannot overwrite existing installation in '${versionDir.getAbsolutePath}'. Please delete this directory by hand if you wish to reinstall." )
         }
         else {
-          installLocalSolcJ( log, rootSolcJDir, versionToInstall )
+          installLocalSolcJ( log, rootSolcJDir, versionToInstall, testTimeout )
         }
       }
     }
@@ -2623,6 +2630,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
+      val timeout = xethcfgAsyncOperationTimeout.value
 
       val from = (xethFindCurrentSender in config).value.recover { failed =>
         log.info( s"Failed to find a current sender, using the zero address as a default.\nCause: ${failed}" )
@@ -2674,7 +2682,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         ( abiFunction, results )
       }
-      Await.result( f_out, Duration.Inf )
+      Await.result( f_out, timeout )
     }
   }
 
@@ -2699,7 +2707,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethDefaultGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
     val log        = streams.value.log
     val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
-    doGetDefaultGasPrice( log, jsonRpcUrl )
+    val timeout    = xethcfgAsyncOperationTimeout.value
+    doGetDefaultGasPrice( log, jsonRpcUrl, timeout )
   }
 
   private def xethFindCacheAddressParserInfoTask( config : Configuration ) : Initialize[Task[AddressParserInfo]] = Def.task {
@@ -3305,7 +3314,9 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethNextNonceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
     val log        = streams.value.log
     val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
-    doGetTransactionCount( log, jsonRpcUrl, (xethFindCurrentSender in config).value.get , jsonrpc.Client.BlockNumber.Pending )
+    val timeout    = xethcfgAsyncOperationTimeout.value
+    val sender     = (xethFindCurrentSender in config).value.get
+    doGetTransactionCount( log, jsonRpcUrl, timeout, sender, jsonrpc.Client.BlockNumber.Pending )
   }
 
   private def xethOnLoadBannerTask : Initialize[Task[Unit]] = Def.task {
@@ -3440,8 +3451,11 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethOnLoadSolicitCompilerInstallTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val is  = interactionService.value
+
+    val testTimeout = xethcfgAsyncOperationTimeout.value
+
     val currentDefaultCompilerVersion = SolcJInstaller.DefaultSolcJVersion
-    val currentSolcJDirectory  = repository.SolcJ.Directory
+    val currentSolcJDirectory         = repository.SolcJ.Directory
 
     if ( currentSolcJDirectory.isFailed ) {
       log.warn( s"Cannot find or create '${repository.SolcJ.DirName}' directory in the sbt-ethereum repository directory. This is not a good sign." )
@@ -3470,7 +3484,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
 
-        if ( checkInstall ) installLocalSolcJ( log, DirSolcJ, currentDefaultCompilerVersion )
+        if ( checkInstall ) installLocalSolcJ( log, DirSolcJ, currentDefaultCompilerVersion, testTimeout )
       }
     }
   }
@@ -3631,8 +3645,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val netcompileUrl = ethcfgNetcompileUrl.?.value
     val jsonRpcUrl    = (ethcfgJsonRpcUrl in Compile).value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
 
+    val testTimeout = xethcfgAsyncOperationTimeout.value
+
     def check( key : String, compiler : Compiler.Solidity ) : Option[ ( String, Compiler.Solidity ) ] = {
-      val test = Compiler.Solidity.test( compiler )
+      val test = Compiler.Solidity.test( compiler, testTimeout )
       if ( test ) {
         Some( Tuple2( key, compiler ) )
       } else {
@@ -3709,11 +3725,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def mbDefaultSender( blockchainId : String ) = repository.Database.findAddressByAlias( blockchainId, DefaultSenderAlias ).get
 
-  private def installLocalSolcJ( log : sbt.Logger, rootSolcJDir : File, versionToInstall : String ) : Unit = {
+  private def installLocalSolcJ( log : sbt.Logger, rootSolcJDir : File, versionToInstall : String, testTimeout : Duration ) : Unit = {
     val versionDir = new File( rootSolcJDir, versionToInstall )
     SolcJInstaller.installLocalSolcJ( rootSolcJDir.toPath, versionToInstall )
     log.info( s"Installed local solcJ compiler, version ${versionToInstall} in '${rootSolcJDir}'." )
-    val test = Compiler.Solidity.test( new Compiler.Solidity.LocalSolc( Some( versionDir ) ) )
+    val test = Compiler.Solidity.test( new Compiler.Solidity.LocalSolc( Some( versionDir ) ), testTimeout )
     if ( test ) {
       log.info( "Testing newly installed compiler... ok." )
     } else {
@@ -3745,28 +3761,6 @@ object SbtEthereumPlugin extends AutoPlugin {
           None
         }
         case None => None
-      }
-    }
-  }
-
-  private def computeGas(
-    log         : sbt.Logger,
-    jsonRpcUrl  : String,
-    from        : Option[EthAddress],
-    to          : Option[EthAddress],
-    value       : Option[BigInt],
-    data        : Option[Seq[Byte]],
-    blockNumber : jsonrpc.Client.BlockNumber,
-    markup      : Double
-  )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-    Mutables.GasLimitOverride.get match {
-      case Some( overrideValue ) => {
-        log.info( s"Gas override set: ${overrideValue}")
-        log.info( "Using gas override.")
-        overrideValue
-      }
-      case None => {
-        doEstimateAndMarkupGas( log, jsonRpcUrl, from, to, value, data, blockNumber, markup )( clientFactory, ec )
       }
     }
   }

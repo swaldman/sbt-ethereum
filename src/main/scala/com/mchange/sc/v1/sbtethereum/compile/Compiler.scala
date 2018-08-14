@@ -33,12 +33,12 @@ object Compiler {
   }
 
   final object Solidity {
-    def test( compiler : Compiler.Solidity )( implicit ec : ExecutionContext ) : Boolean = {
+    def test( compiler : Compiler.Solidity, timeout : Duration )( implicit ec : ExecutionContext ) : Boolean = {
       try {
         val fcompilation: Future[Compilation] = {
           compiler.compile( new TestLogger( compiler.toString ), None, "pragma solidity ^0.4.7;\ncontract Test {}" )( ec )
         }
-        Await.ready( fcompilation, Duration.Inf )
+        Await.ready( fcompilation, timeout )
         fcompilation.value.get.isSuccess
       } catch {
         case e : Exception => false
