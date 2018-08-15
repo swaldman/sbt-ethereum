@@ -54,7 +54,9 @@ import scala.util.control.NonFatal
 import scala.util.matching.Regex
 
 import scala.concurrent.ExecutionContext
-import com.mchange.sc.v2.jsonrpc.Exchanger.Factory.Default
+
+import com.mchange.sc.v2.jsonrpc.Exchanger
+import com.mchange.sc.v2.jsonrpc.Exchanger.Factory.{Default => DefaultExchangerFactory}
 
 // global implicits
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -848,6 +850,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     )( ec )
   }
 
+  private def findExchangerConfigTask( config : Configuration ) : Initialize[Task[Exchanger.Config]] = Def.task {
+    val httpUrl = ( config / ethcfgJsonRpcUrl ).value
+    val timeout = xethcfgAsyncOperationTimeout.value
+    Exchanger.Config( new URL(httpUrl), timeout ) 
+  }
+
   // task definitions
 
   // ens tasks
@@ -1266,7 +1274,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       val baseCurrencyCode = ethcfgBaseCurrencyCode.value
       val mbAddress        = parser.parsed
       val address          = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
-      val result           = doPrintingGetBalance( log, jsonRpcUrl, timeout, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
+
+      val exchangerConfig = findExchangerConfigTask( config ).value
+
+      val result           = doPrintingGetBalance( exchangerConfig, log, timeout, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
       val ethValue         = result.denominated
 
       priceFeed.ethPriceInCurrency( baseCurrencyCode ).foreach { datum =>
@@ -1815,9 +1826,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     log.info("Awaiting availability of testing jsonrpc interface.")
 
-    val cfactory = implicitly[jsonrpc.Client.Factory]
+    val efactory = implicitly[Exchanger.Factory]
     val poller = implicitly[Poller]
-    borrow( cfactory( testing.Default.EthJsonRpc.Url ) ) { client =>
+    borrow( Client.forExchanger( efactory( testing.Default.EthJsonRpc.Url ) ) ) { client =>
       val task = Poller.Task( "await-ganache-jsonrpc", 1.seconds, () => Await.result( client.eth.blockNumber().map( Option.apply _ ) recover { case _ => None }, 1.seconds ) )
       Await.result( poller.addTask( task ), 5.seconds )
     }
@@ -2538,7 +2549,15 @@ object SbtEthereumPlugin extends AutoPlugin {
                 }
                 Right( receipt ) : Either[EthHash,Client.TransactionReceipt]
               }
-              case None => Left( txnHash )
+              case None => {
+                log.warn( s"Failed to retrieve a transaction receipt for the creation of contract '${deploymentAlias}'!" )
+                log.warn(  "The contract may have been created, but without a receipt, the compilation and ABI could not be associated with an address.")
+                log.warn( s"You may wish to check sender adddress '0x${sender.hex}' in a blockchain explorer (e.g. etherscan), and manually associate the ABI with the address of the transaction succeeded." )
+                log.warn(  "Contract ABI" )
+                log.warn(  "============" )
+                log.warn( Json.stringify( Json.toJson( abi ) ) )
+                Left( txnHash )
+              }
             }
           }
         }
@@ -2706,9 +2725,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethDefaultGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
     val log        = streams.value.log
-    val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
     val timeout    = xethcfgAsyncOperationTimeout.value
-    doGetDefaultGasPrice( log, jsonRpcUrl, timeout )
+
+    val exchangerConfig = findExchangerConfigTask( config ).value
+
+    doGetDefaultGasPrice( exchangerConfig, log, timeout )
   }
 
   private def xethFindCacheAddressParserInfoTask( config : Configuration ) : Initialize[Task[AddressParserInfo]] = Def.task {
@@ -3015,6 +3036,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val pollPeriod      = ethcfgTransactionReceiptPollPeriod.value
     val timeout         = ethcfgTransactionReceiptTimeout.value
 
+    val httpTimeout     = xethcfgAsyncOperationTimeout.value
+
     val gasLimitMarkup  = ethcfgGasLimitMarkup.value
     val gasLimitCap     = ethcfgGasLimitCap.?.value
     val gasLimitFloor   = ethcfgGasLimitFloor.?.value
@@ -3060,6 +3083,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       gasPriceTweak = gasPriceTweak, gasLimitTweak = gasLimitTweak,
       pollPeriod = pollPeriod,
       pollTimeout = timeout,
+      httpTimeout = httpTimeout,
       transactionApprover = approver,
       transactionLogger = transactionLogger
     )
@@ -3316,7 +3340,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
     val timeout    = xethcfgAsyncOperationTimeout.value
     val sender     = (xethFindCurrentSender in config).value.get
-    doGetTransactionCount( log, jsonRpcUrl, timeout, sender, jsonrpc.Client.BlockNumber.Pending )
+
+    val exchangerConfig = findExchangerConfigTask( config ).value
+
+    doGetTransactionCount( exchangerConfig, log, timeout, sender, jsonrpc.Client.BlockNumber.Pending )
   }
 
   private def xethOnLoadBannerTask : Initialize[Task[Unit]] = Def.task {

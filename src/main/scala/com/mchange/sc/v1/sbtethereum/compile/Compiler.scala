@@ -61,7 +61,9 @@ object Compiler {
     final case class EthJsonRpc( jsonRpcUrl : String ) extends Compiler.Solidity {
       def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         warnOptimizationUnsupported( optimizerRuns )
-        util.EthJsonRpc.doAsyncCompileSolidity( log, jsonRpcUrl, source )( jsonrpc.Client.Factory.Default, ec )
+
+        // the hard-coded values here suck, but since json-rpc compilation is long deprecated, we'll let this do
+        util.EthJsonRpc.doAsyncCompileSolidity( Exchanger.Config( new URL(jsonRpcUrl) ), log, source )( Exchanger.Factory.Default, ec ) 
       }
     }
 

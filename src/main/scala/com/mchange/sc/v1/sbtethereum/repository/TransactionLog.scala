@@ -9,12 +9,12 @@ object TransactionLog extends RepositoryLog[ ( String, String, EthTransaction.Si
   def toLine( timestamp : String, tuple : ( String, String, EthTransaction.Signed, EthHash ) ) : String = {
     val ( blockchainId, jsonRpcUrl, txn, transactionHash ) = tuple
     val ( ttype, payloadKey, payload ) = txn match {
-      case m  : EthTransaction.Signed.Message          => ("Message", "data", m.data)
-      case cc : EthTransaction.Signed.ContractCreation => ("ContractCreation", "init", cc.init)
+      case m  : EthTransaction.Message          => ("Message", "data", m.data)
+      case cc : EthTransaction.ContractCreation => ("ContractCreation", "init", cc.init)
     }
     val first  = s"$timestamp:blockchainId=${blockchainId};jsonRpcUrl=${jsonRpcUrl}:type=$ttype;nonce=${ txn.nonce.widen };gasPrice=${ txn.gasPrice.widen };gasLimit=${ txn.gasLimit.widen };value=${ txn.value.widen };"
     val middle = if ( payload.nonEmpty ) s"$payloadKey=${payload.hex};" else ""
-    val last   = s"v=${txn.v.widen};r=${txn.r.widen};s=${txn.s.widen};transactionHash=${transactionHash.bytes.hex}"
+    val last   = s"v=${txn.untypedV.widen};r=${txn.r.widen};s=${txn.s.widen};transactionHash=${transactionHash.bytes.hex}"
     first + middle + last
   }
 

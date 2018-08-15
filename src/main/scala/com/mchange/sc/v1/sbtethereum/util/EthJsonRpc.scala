@@ -11,6 +11,8 @@ import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.sbtethereum._
 import repository.TransactionLog
 
+import com.mchange.sc.v2.jsonrpc.Exchanger
+
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc, specification, EthAddress, EthHash, EthPrivateKey, EthTransaction}
 import jsonrpc.{Compilation, Client}
@@ -23,36 +25,42 @@ object EthJsonRpc {
 
   private implicit lazy val logger = mlogger( this )
 
-  private def doWithJsonClient[T]( log : sbt.Logger, jsonRpcUrl : String, clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext )( operation : jsonrpc.Client => T ) : T = {
+  private def doWithJsonClient[T]( efactory : Exchanger.Factory, exchangerConfig : Exchanger.Config, log : sbt.Logger, ec : ExecutionContext )( operation : jsonrpc.Client => T ) : T = {
     try {
-      borrow( clientFactory( jsonRpcUrl ) )( operation )
+      borrow( Client.forExchanger( efactory( exchangerConfig ) ) )( operation )
     } catch {
       case e : java.net.ConnectException => {
-        log.error( s"Failed to connect to JSON-RPC client at '${jsonRpcUrl}': ${e}" )
+        log.error( s"Failed to connect to JSON-RPC client at '${exchangerConfig.httpUrl}': ${e}" )
         throw e
       }
     }
   }
 
-  def doAsyncCompileSolidity( log : sbt.Logger, jsonRpcUrl : String, source : String )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : Future[Compilation] = {
-    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => client.eth.compileSolidity( source ) )
+  def doAsyncCompileSolidity( exchangerConfig : Exchanger.Config, log : sbt.Logger, source : String )( implicit efactory : Exchanger.Factory, ec : ExecutionContext ) : Future[Compilation] = {
+    doWithJsonClient( efactory, exchangerConfig, log, ec )( client => client.eth.compileSolidity( source ) )
   }
 
-  def doGetBalance( log : sbt.Logger, jsonRpcUrl : String, timeout : Duration, address : EthAddress, blockNumber : jsonrpc.Client.BlockNumber )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.getBalance( address, blockNumber ), timeout ) )
+  def doGetBalance(
+    exchangerConfig : Exchanger.Config,
+    log             : sbt.Logger,
+    awaitTimeout    : Duration,
+    address         : EthAddress,
+    blockNumber     : jsonrpc.Client.BlockNumber
+  )( implicit efactory : Exchanger.Factory, ec : ExecutionContext ) : BigInt = {
+    doWithJsonClient( efactory, exchangerConfig, log, ec )( client => Await.result( client.eth.getBalance( address, blockNumber ), awaitTimeout ) )
   }
 
   def doPrintingGetBalance(
-    log          : sbt.Logger,
-    jsonRpcUrl   : String,
-    timeout      : Duration,
-    address      : EthAddress,
-    blockNumber  : jsonrpc.Client.BlockNumber,
-    denomination : Denomination
-  )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : EthValue = {
+    exchangerConfig : Exchanger.Config,
+    log             : sbt.Logger,
+    awaitTimeout    : Duration,
+    address         : EthAddress,
+    blockNumber     : jsonrpc.Client.BlockNumber,
+    denomination    : Denomination
+  )( implicit efactory : Exchanger.Factory, ec : ExecutionContext ) : EthValue = {
     import jsonrpc.Client.BlockNumber._
 
-    val wei = doGetBalance( log, jsonRpcUrl, timeout, address, blockNumber )( clientFactory, ec )
+    val wei = doGetBalance( exchangerConfig, log, awaitTimeout, address, blockNumber )( efactory, ec )
     val out = EthValue( wei, denomination )
     val msg = blockNumber match {
       case Earliest       => s"${out.denominated} ${denomination.unitName} (at the earliest available block, address 0x${address.hex})"
@@ -64,6 +72,22 @@ object EthJsonRpc {
     out
   }
 
+  def doGetDefaultGasPrice( exchangerConfig : Exchanger.Config, log : sbt.Logger, timeout : Duration )( implicit efactory : Exchanger.Factory, ec : ExecutionContext ) : BigInt = {
+    doWithJsonClient( efactory, exchangerConfig, log, ec )( client => Await.result( client.eth.gasPrice(), timeout ) )
+  }
+
+  def doGetTransactionCount(
+    exchangerConfig : Exchanger.Config,
+    log : sbt.Logger,
+    timeout : Duration,
+    address : EthAddress,
+    blockNumber : jsonrpc.Client.BlockNumber
+  )( implicit efactory : Exchanger.Factory, ec : ExecutionContext ) : BigInt = {
+    doWithJsonClient( efactory, exchangerConfig, log, ec )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), timeout ) )
+  }
+
+
+  /*
   def doCodeForAddress(
     log : sbt.Logger,
     jsonRpcUrl : String,
@@ -73,7 +97,9 @@ object EthJsonRpc {
   )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : immutable.Seq[Byte] = {
     doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.getCode( address, blockNumber ), timeout ) )
   }
+  */ 
 
+  /*
   private [sbtethereum] def doEthCallEphemeral(
     log         : sbt.Logger,
     jsonRpcUrl  : String,
@@ -88,21 +114,9 @@ object EthJsonRpc {
   )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : immutable.Seq[Byte] = {
     doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.call( from, Some(to), gas, gasPrice, value, data, blockNumber), timeout ) )
   }
+  */ 
 
-  def doGetDefaultGasPrice( log : sbt.Logger, jsonRpcUrl : String, timeout : Duration )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.gasPrice(), timeout ) )
-  }
-
-  def doGetTransactionCount(
-    log : sbt.Logger,
-    jsonRpcUrl : String,
-    timeout : Duration,
-    address : EthAddress,
-    blockNumber : jsonrpc.Client.BlockNumber
-  )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
-    doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.getTransactionCount( address, blockNumber ), timeout ) )
-  }
-
+  /*
   def doEstimateGas(
     log : sbt.Logger,
     jsonRpcUrl : String,
@@ -115,6 +129,7 @@ object EthJsonRpc {
   )( implicit clientFactory : jsonrpc.Client.Factory, ec : ExecutionContext ) : BigInt = {
     doWithJsonClient( log, jsonRpcUrl, clientFactory, ec )( client => Await.result( client.eth.estimateGas( from = from, to = to, value = value, data = data ), timeout ) )
   }
+  */ 
 
   /*
    * // we use jsonrpc.Invoker rather than this method now... no longer maintaining.
@@ -130,6 +145,7 @@ object EthJsonRpc {
    * 
    */
 
+  /*
   def doEstimateAndMarkupGas(
     log : sbt.Logger,
     jsonRpcUrl : String,
@@ -144,6 +160,7 @@ object EthJsonRpc {
     val rawEstimate = doEstimateGas( log, jsonRpcUrl, timeout, from, to, value, data, blockNumber )( clientFactory, ec )
     rounded(BigDecimal(rawEstimate) * BigDecimal(1 + markup))
   }
+  */ 
 
   /*
   private [sbtethereum] def awaitTransactionReceipt(
