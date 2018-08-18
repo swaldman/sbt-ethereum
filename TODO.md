@@ -1,9 +1,9 @@
 # TODO
 
-* Fully implement EIP-155 chain IDs in consuela.
-
-* change ethBlockchainId to ethChainId, let it accept EIP-155-based EthChainId rather than String.
+* change ethcfgBlockchainId to ethcfgChainId, let it accept EIP-155-based EthChainId rather than String.
   - update string blockchain_id to int identifiers, in API and in database. grrr.
+
+* Let aliases be ethcfgChainId dependent
 
 * Implement EIP-191 and EIP-712 signing.
 
