@@ -1,15 +1,30 @@
 # TODO
 
+* ethTransactionAsync*
+
+* Wrap Poller.TimoutException as Invoker.TimeoutException, or define a cross-cutting Timeout trait (so users of Invoker or stubs don't have to work with an Exception representing an implementation detail)
+  - Note that we currently have defined a stub.TransactionInfo.TimeoutException
+  - or maybe we should just alias Poller.TimeoutException everywher that seems convenient?
+
+* Capture AST in database, offer useful analyses (e.g. linearization) a la Surya
+  ( see https://ethereum.stackexchange.com/questions/56802/a-solidity-linearization-puzzle/56803?noredirect=1#comment67743_56803 )
+
+* segregate ABIs into a separate table, make them aliasable, overridable for an address
+
 * change ethcfgBlockchainId to ethcfgChainId, let it accept EIP-155-based EthChainId rather than String.
   - update string blockchain_id to int identifiers, in API and in database. grrr.
 
-* Let aliases be ethcfgChainId dependent
+* change (or alias) `contractAddress` field in stubs to simple address
+
+* Factory methods for sol.Bytes and sol.String?
+
+* stub.Sender -- synchronous versions of convenience methods?
 
 * Implement EIP-191 and EIP-712 signing.
 
 * Warn prominently when waiting for a transaction times out, rather than successfully getting receipt. (Observed problem in ensAuctionFinalize.)
 
-* aybe remove stack trace from jsonrpc.Invoker$TransactionDisapprovedExceptions generated from the transaction approver function?
+* Maybe remove stack trace from jsonrpc.Invoker$TransactionDisapprovedExceptions generated from the transaction approver function?
 
 * ethTransactionExportInvoke / ethTransactionExportSend  
 

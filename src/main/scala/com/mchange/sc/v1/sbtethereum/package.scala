@@ -168,6 +168,11 @@ package object sbtethereum {
     mbctr
   }
 
+  def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], txnHash : EthHash, timeout : Duration, ctr : Client.TransactionReceipt ) : Client.TransactionReceipt = {
+    log.info( prettyClientTransactionReceipt( mbabi, ctr ) )
+    ctr
+  }
+
   private val InstantFormatter = DateTimeFormatter.RFC_1123_DATE_TIME.withZone( ZoneId.systemDefault() )
   private val TimeFormatter    = DateTimeFormatter.ofLocalizedTime( FormatStyle.SHORT ).withZone( ZoneId.systemDefault() )
 
