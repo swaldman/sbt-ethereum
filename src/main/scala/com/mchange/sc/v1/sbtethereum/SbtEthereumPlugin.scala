@@ -133,7 +133,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val EmptyBytes = List.empty[Byte]
 
-  private val DefaultEthJsonRpcUrl = "http://ethjsonrpc.mchange.com:8545"
+  private val DefaultEthJsonRpcUrl = "https://ethjsonrpc.mchange.com/"
 
   private val DefaultTestEthJsonRpcUrl = testing.Default.EthJsonRpc.Url
 
