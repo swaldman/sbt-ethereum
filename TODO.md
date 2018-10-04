@@ -1,5 +1,9 @@
 # TODO
 
+* Prompt for alias after ethKeystoreWalletV3Create?
+
+* Fix "nontest blockchain" in prompt for defaultSender alias on startup, as in ropsten/rinkeby configure projects, they are not quite nontest. Maybe "nonephemeral"?
+
 * ethTransactionAsync*
 
 * Wrap Poller.TimoutException as Invoker.TimeoutException, or define a cross-cutting Timeout trait (so users of Invoker or stubs don't have to work with an Exception representing an implementation detail)

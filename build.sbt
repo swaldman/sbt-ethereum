@@ -6,7 +6,7 @@ organization := "com.mchange"
 
 name := "sbt-ethereum"
 
-version := "0.1.3-SNAPSHOT" // 0.0.x is for sbt-0.13 versions
+version := "0.1.4-SNAPSHOT"
 
 sbtPlugin := true
 
@@ -32,7 +32,7 @@ publishTo := version {
   }
 }.value
 
-val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.7-SNAPSHOT"
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.7"
 
 libraryDependencies ++= Seq(
   consuelaArtifact,
@@ -40,7 +40,7 @@ libraryDependencies ++= Seq(
   "com.mchange"    %% "mlog-scala"            % "0.3.10",
   "com.mchange"    %% "literal"               % "0.0.2",
   "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
-  "com.mchange"    %% "ens-scala"             % "0.0.4-SNAPSHOT",
+  "com.mchange"    %% "ens-scala"             % "0.0.4",
   "com.mchange"    %% "texttable"             % "0.0.1",
   "com.mchange"    %  "c3p0"                  % "0.9.5.2",
   "com.h2database" %  "h2"                    % "1.4.192",
