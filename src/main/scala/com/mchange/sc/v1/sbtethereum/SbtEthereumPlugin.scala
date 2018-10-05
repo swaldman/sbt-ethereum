@@ -289,6 +289,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethTransactionDeploy = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]("""Deploys the named contract, if specified, or else all contracts in 'ethcfgAutoDeployContracts'""")
     val ethTransactionInvoke = inputKey[Client.TransactionReceipt]                   ("Calls a function on a deployed smart contract")
+    val ethTransactionRaw    = inputKey[Client.TransactionReceipt]                   ("Sends a transaction with user-specified bytes, amount, and optional nonce")
     val ethTransactionSend   = inputKey[Client.TransactionReceipt]                   ("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
     val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
@@ -651,6 +652,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionInvoke in Compile := { ethTransactionInvokeTask( Compile ).evaluated },
 
     ethTransactionInvoke in Test := { ethTransactionInvokeTask( Test ).evaluated },
+
+    ethTransactionRaw in Compile := { ethTransactionRawTask( Compile ).evaluated },
+
+    ethTransactionRaw in Test := { ethTransactionRawTask( Test ).evaluated },
 
     ethTransactionSend in Compile := { ethTransactionSendTask( Compile ).evaluated },
 
@@ -2638,6 +2643,31 @@ object SbtEthereumPlugin extends AutoPlugin {
         Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will throw a TimeoutException internally on time out
+    }
+  }
+
+  private def ethTransactionRawTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
+    val parser = Defaults.loadForParser( xethFindCacheAddressParserInfo in config )( genToAddressBytesAmountOptionalNonceParser )
+
+    Def.inputTask {
+      val s = state.value
+      val log = streams.value.log
+      val is = interactionService.value
+      val blockchainId = (ethcfgBlockchainId in config).value
+      val from = (xethFindCurrentSender in config).value.get
+      val (to, data, amount, mbNonce) = parser.parsed
+      val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
+      val privateKey = findCachePrivateKey( s, log, is, blockchainId, from, autoRelockSeconds, true )
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val f_out = Invoker.transaction.sendMessage( privateKey, to, Unsigned256( amount ), data, mbNonce.map( Unsigned256.apply ) ) flatMap { txnHash =>
+        log.info( s"""Sending data '0x${data.hex}' with ${amount} wei to address '0x${to.hex}' ${mbNonce.fold("")( n => s"with nonce $n" )}in transaction '0x${txnHash.hex}'.""" )
+        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None, txnHash, invokerContext.pollTimeout, _ ) )
+      }
+      val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
+      log.info("Transaction mined.")
+      out
     }
   }
 

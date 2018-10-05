@@ -117,6 +117,12 @@ object Parsers {
 
   private [sbtethereum] val RawAmountParser = ((Digit|literal('.')).+).map( chars => BigDecimal( chars.mkString ) )
 
+  private [sbtethereum] val RawByteParser = Parser.repeat( HexDigit, 2, 2 ).map( _.mkString.decodeHexAsSeq.head )
+
+  private [sbtethereum] val RawBytesParser = literal("0x") ~> RawByteParser.*
+
+  private [sbtethereum] val RawNonceParser = Digit.+.map( digits => BigInt( digits.mkString ) )
+
   //private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )
   private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.*) ~> token(RawAmountParser, tabHelp)
 
@@ -377,6 +383,13 @@ object Parsers {
         success( ( afia, None ) )
       }
     }
+  }
+  private [sbtethereum] def genToAddressBytesAmountOptionalNonceParser(
+    state : State,
+    mbApi : Option[AddressParserInfo]
+  ) = {
+    val raw = createAddressParser( "<to-address>", mbApi ) ~ token((Space.+) ~> RawBytesParser, "<0x-prefixed-txn-data-bytes>") ~ valueInWeiParser("<ETH-to-pay>") ~ token(((Space.+) ~> RawNonceParser).?, "[optional nonce]")
+    raw.map { case ((( to, bytes ), amount), mbNonce ) => (to, bytes.toVector, amount, mbNonce ) }
   }
   private [sbtethereum] def genLiteralSetParser(
     state : State,

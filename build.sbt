@@ -32,7 +32,7 @@ publishTo := version {
   }
 }.value
 
-val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.7"
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.8-SNAPSHOT" changing()
 
 libraryDependencies ++= Seq(
   consuelaArtifact,
@@ -40,7 +40,7 @@ libraryDependencies ++= Seq(
   "com.mchange"    %% "mlog-scala"            % "0.3.10",
   "com.mchange"    %% "literal"               % "0.0.2",
   "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
-  "com.mchange"    %% "ens-scala"             % "0.0.4",
+  "com.mchange"    %% "ens-scala"             % "0.0.5-SNAPSHOT" changing(),
   "com.mchange"    %% "texttable"             % "0.0.1",
   "com.mchange"    %  "c3p0"                  % "0.9.5.2",
   "com.h2database" %  "h2"                    % "1.4.192",
