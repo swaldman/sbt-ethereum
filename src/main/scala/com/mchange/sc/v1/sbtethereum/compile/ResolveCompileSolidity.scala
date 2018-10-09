@@ -177,7 +177,7 @@ object ResolveCompileSolidity {
         }
         Files.write( debugDestFile.toPath, combinedSource.getBytes( Codec.UTF8.charSet ) )
         log.info( s"Compiling '${ file.getName }'. (Debug source: '${ debugDestFile.getPath }')" )
-        file -> compiler.compile( log, optimizerRuns, combinedSource ).map( result => ( destFile, result ) )
+        file -> compiler.compile( log, optimizerRuns, combinedSource, Some( debugDestFile.lastModified ) ).map( result => ( destFile, result ) )
       }
       waitForFiles( compileLabeledFuts, count => s"compileSolidity failed. [${count} failures]" )
 

@@ -21,6 +21,10 @@ import scala.util.matching.Regex
 object Compiler {
   private implicit val logger: MLogger = mlogger( this )
 
+  private [sbtethereum] def overwriteSourceTimestamp( sourceTimestamp : Option[Long] ) : PartialFunction[Tuple2[String,Contract],Tuple2[String,Contract]] = {
+    case ( name : String , contract : Contract ) => ( name, contract.copy( info = contract.info.copy( sourceTimestamp = sourceTimestamp ) ) )
+  }
+
   // for testing whether compilation succeeds
   private final class TestLogger( compilerName : String ) extends sbt.Logger {
     import sbt._
@@ -36,7 +40,7 @@ object Compiler {
     def test( compiler : Compiler.Solidity, timeout : Duration )( implicit ec : ExecutionContext ) : Boolean = {
       try {
         val fcompilation: Future[Compilation] = {
-          compiler.compile( new TestLogger( compiler.toString ), None, "pragma solidity ^0.4.7;\ncontract Test {}" )( ec )
+          compiler.compile( new TestLogger( compiler.toString ), None, "pragma solidity ^0.4.7;\ncontract Test {}", Some( System.currentTimeMillis ) )( ec )
         }
         Await.ready( fcompilation, timeout )
         fcompilation.value.get.isSuccess
@@ -59,11 +63,11 @@ object Compiler {
     }
 
     final case class EthJsonRpc( jsonRpcUrl : String ) extends Compiler.Solidity {
-      def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
+      def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String, sourceTimestamp : Option[Long] )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         warnOptimizationUnsupported( optimizerRuns )
 
         // the hard-coded values here suck, but since json-rpc compilation is long deprecated, we'll let this do
-        util.EthJsonRpc.doAsyncCompileSolidity( Exchanger.Config( new URL(jsonRpcUrl) ), log, source )( Exchanger.Factory.Default, ec ) 
+        util.EthJsonRpc.doAsyncCompileSolidity( Exchanger.Config( new URL(jsonRpcUrl) ), log, source, sourceTimestamp )( Exchanger.Factory.Default, ec ) 
       }
     }
 
@@ -74,7 +78,7 @@ object Compiler {
     final case class EthNetcompile( ethNetcompileUrl : String ) extends Compiler.Solidity {
       val url = new URL( ethNetcompileUrl )
 
-      def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
+      def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String, sourceTimestamp : Option[Long] )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         warnOptimizationUnsupported( optimizerRuns )
 
         borrow( Exchanger.Factory.Simple( url ) ) { exchanger =>
@@ -84,7 +88,7 @@ object Compiler {
                                                "sourceFile" -> JsString(source) ) ) ) ) )
           fsuccess map {
             case Yin( error )    => error.vomit
-            case Yang( success ) => compilationFromEthNetcompileResult( log, source, success.result.as[JsObject] )
+            case Yang( success ) => compilationFromEthNetcompileResult( log, source, success.result.as[JsObject] ).map( overwriteSourceTimestamp(sourceTimestamp) )
           }
         }
       }
@@ -136,7 +140,7 @@ object Compiler {
           case None        => "solc" // resolve via PATH environment variable
         }
       }
-      def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String )( implicit ec : ExecutionContext ) : Future[Compilation] = {
+      def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String, sourceTimestamp : Option[Long] )( implicit ec : ExecutionContext ) : Future[Compilation] = {
         import java.io._
         import scala.sys.process._
 
@@ -223,7 +227,7 @@ object Compiler {
           if ( exitValue != 0 || mbOut.isEmpty || sse.get.isDefined || lsee.get.isDefined || gcfsoe.get.isDefined ) {
             throw new CompilationFailedException( s"solc exit value: $exitValue. See messages logged previously." )
           }
-          mbOut.get
+          mbOut.get.map( overwriteSourceTimestamp( sourceTimestamp ) )
         }
       }
     }
@@ -256,7 +260,7 @@ object Compiler {
         val developerDoc: Option[Compilation.Doc.Developer] = omap.flatMap( _.get("devdoc").map( _.as[Compilation.Doc.Developer] ) )
 
         val info: Compilation.Contract.Info = {
-          Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abi, userDoc, developerDoc, Some( metadata ) )
+          Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abi, userDoc, developerDoc, Some( metadata ), None ) // overwrite sourceTimestamp later
         }
         Compilation.Contract( code, info )
       }
@@ -273,5 +277,5 @@ object Compiler {
 }
 
 trait Compiler {
-  def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String )( implicit ec : ExecutionContext ) : Future[Compilation]
+  def compile( log : sbt.Logger, optimizerRuns : Option[Int], source : String, sourceTimestamp : Option[Long] )( implicit ec : ExecutionContext ) : Future[Compilation]
 }

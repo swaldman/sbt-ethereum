@@ -2990,9 +2990,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     val allMbAbis = {
       val sureNamedAbis = namedAbis map { case ( name, abi ) => ( name, Some( abi ) ) }
-      val mbCompilationAbis = currentCompilations map { case ( name, contract ) =>
-        ( name,  contract.info.mbAbi )
-      }
+      val mbCompilationAbis = currentCompilations map { case ( name, contract ) => ( name,  contract.info.mbAbi ) }
       sureNamedAbis ++ mbCompilationAbis
     }
 

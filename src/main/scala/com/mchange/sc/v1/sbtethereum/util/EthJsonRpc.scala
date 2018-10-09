@@ -10,6 +10,7 @@ import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.sbtethereum._
 import repository.TransactionLog
+import compile.Compiler.overwriteSourceTimestamp
 
 import com.mchange.sc.v2.jsonrpc.Exchanger
 
@@ -36,8 +37,8 @@ object EthJsonRpc {
     }
   }
 
-  def doAsyncCompileSolidity( exchangerConfig : Exchanger.Config, log : sbt.Logger, source : String )( implicit efactory : Exchanger.Factory, ec : ExecutionContext ) : Future[Compilation] = {
-    doWithJsonClient( efactory, exchangerConfig, log, ec )( client => client.eth.compileSolidity( source ) )
+  def doAsyncCompileSolidity( exchangerConfig : Exchanger.Config, log : sbt.Logger, source : String, sourceTimestamp : Option[Long] )( implicit efactory : Exchanger.Factory, ec : ExecutionContext ) : Future[Compilation] = {
+    doWithJsonClient( efactory, exchangerConfig, log, ec )( client => client.eth.compileSolidity( source ).map( compilation => compilation.map( overwriteSourceTimestamp( sourceTimestamp ) ) ) )
   }
 
   def doGetBalance(
