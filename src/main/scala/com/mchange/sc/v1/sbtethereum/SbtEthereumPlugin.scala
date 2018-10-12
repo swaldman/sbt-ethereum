@@ -74,6 +74,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private final case object NoAddress                                                                                                         extends AddressInfo
   private final case class  UnlockedAddress( blockchainId : String, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
 
+  final case class TimestampedAbi( abi : Abi, timestamp : Option[Long] )
+
   private final object Mutables {
     // MT: protected by CurrentAddress' lock
     val CurrentAddress = new AtomicReference[AddressInfo]( NoAddress )
@@ -318,7 +320,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethLoadSeeds = taskKey[immutable.Map[String,MaybeSpawnable.Seed]]("""Loads compilations available for deployment (or "spawning"), which may include both current and archived compilations""")
     val xethLoadWalletsV3 = taskKey[immutable.Set[wallet.V3]]("Loads a V3 wallet from ethWalletsV3 for current sender")
     val xethLoadWalletsV3For = inputKey[immutable.Set[wallet.V3]]("Loads a V3 wallet from ethWalletsV3")
-    val xethNamedAbis = taskKey[immutable.Map[String,Abi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
+    val xethNamedAbis = taskKey[immutable.Map[String,TimestampedAbi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
     val xethOnLoadAutoImportWalletsV3 = taskKey[Unit]("Import any not-yet-imported wallets from directories specified in 'ethcfgKeystoreAutoImportLocationsV3'")
     val xethOnLoadBanner = taskKey[Unit]( "Prints the sbt-ethereum post-initialization banner." )
     val xethOnLoadRecoverInconsistentSchema = taskKey[Unit]( "Checks to see if the repository database schema is in an inconsistent state, and offers to recover a consistent version from dump." )
@@ -2988,9 +2990,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     if ( !overlappingNames.isEmpty ) {
       throw new SbtEthereumException( s"""Names conflict (overlap) between compilations and named ABIs. Conflicting names: ${overlappingNames.mkString(", ")}""" )
     }
-    val allMbAbis = {
+    val allMbTsAbis : immutable.Map[String,Option[TimestampedAbi]] = {
       val sureNamedAbis = namedAbis map { case ( name, abi ) => ( name, Some( abi ) ) }
-      val mbCompilationAbis = currentCompilations map { case ( name, contract ) => ( name,  contract.info.mbAbi ) }
+      val mbCompilationAbis = currentCompilations map { case ( name, contract ) => ( name,  contract.info.mbAbi.map( abi => TimestampedAbi( abi, contract.info.sourceTimestamp ) ) ) }
       sureNamedAbis ++ mbCompilationAbis
     }
 
@@ -3027,22 +3029,28 @@ object SbtEthereumPlugin extends AutoPlugin {
               val stubsDirFilePath = packages.mkString( File.separator )
               val stubsDir = new File( scalaStubsTarget, stubsDirFilePath )
               stubsDir.mkdirs()
-              val mbFileSets = allMbAbis map { case ( className, mbAbi ) =>
-                mbAbi map { abi =>
-                  stub.Generator.generateStubClasses( className, abi, stubPackage ) map { generated =>
-                    val srcFile = new File( stubsDir, s"${generated.className}.scala" )
-                    srcFile.replaceContents( generated.sourceCode, scala.io.Codec.UTF8 )
-                    srcFile
+              val mbFileSets : immutable.Iterable[Option[immutable.Set[File]]] = allMbTsAbis map { case ( className, mbTsAbi ) =>
+                mbTsAbi flatMap { tsabi =>
+                  val regenerated = stub.Generator.regenerateStubClasses( stubsDir, className, stubPackage, tsabi.abi, tsabi.timestamp )
+                  val fileset = regenerated map { regen =>
+                    regen match {
+                      case stub.Generator.Regenerated.Updated( srcFile, sourceCode ) => {
+                        srcFile.replaceContents( sourceCode, scala.io.Codec.UTF8 )
+                        srcFile
+                      }
+                      case stub.Generator.Regenerated.Unchanged( srcFile ) => srcFile
+                    }
                   }
+                  if ( fileset.isEmpty ) None else Some( fileset )
                 } orElse {
                   log.warn( s"No ABI definition found for contract '${className}'. Skipping Scala stub generation." )
-                  None
+                  None : Option[immutable.Set[File]]
                 }
               }
               val stubFiles = mbFileSets.filter( _.nonEmpty ).map( _.get ).foldLeft( Vector.empty[File])( _ ++ _ ).toVector
               val testingResourceFiles : immutable.Seq[File] = {
                 if ( config == Test ) {
-                  if ( allMbAbis.contains( testingResourcesObjectName ) ) { // TODO: A case insensitive check
+                  if ( allMbTsAbis.contains( testingResourcesObjectName ) ) { // TODO: A case insensitive check
                     log.warn( s"The name of the requested testing resources object '${testingResourcesObjectName}' conflicts with the name of a contract." )
                     log.warn(  "The testing resources object '${testingResourcesObjectName}' will not be generated." )
                     immutable.Seq.empty[File]
@@ -3358,21 +3366,21 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def xethNamedAbisTask( config : Configuration ) : Initialize[Task[immutable.Map[String,Abi]]] = Def.task {
+  private def xethNamedAbisTask( config : Configuration ) : Initialize[Task[immutable.Map[String,TimestampedAbi]]] = Def.task {
     val log    = streams.value.log
     val srcDir = (xethcfgNamedAbiSource in config).value
 
-    def empty = immutable.Map.empty[String,Abi]
+    def empty = immutable.Map.empty[String,TimestampedAbi]
 
     if ( srcDir.exists) {
       if ( srcDir.isDirectory ) {
         val files = srcDir.listFiles( JsonFilter )
 
-        def toTuple( f : File ) : ( String, Abi ) = {
+        def toTuple( f : File ) : ( String, TimestampedAbi ) = {
           val filename = f.getName()
           val name = filename.take( filename.length - JsonFilter.DotSuffix.length ) // the filter ensures they do have the suffix
           val json = borrow ( Source.fromFile( f ) )( _.mkString ) // is there a better way
-          ( name, Json.parse( json ).as[Abi] )
+          ( name, TimestampedAbi( Json.parse( json ).as[Abi], Some(f.lastModified) ) )
         }
 
         files.map( toTuple ).toMap // the directory ensures there should be no dups!
