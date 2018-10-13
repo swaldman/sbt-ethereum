@@ -2,8 +2,6 @@
 
 * Prompt for alias after ethKeystoreWalletV3Create?
 
-* Fix "nontest blockchain" in prompt for defaultSender alias on startup, as in ropsten/rinkeby configure projects, they are not quite nontest. Maybe "nonephemeral"?
-
 * ethTransactionAsync*
 
 * Wrap Poller.TimoutException as Invoker.TimeoutException, or define a cross-cutting Timeout trait (so users of Invoker or stubs don't have to work with an Exception representing an implementation detail)
@@ -35,6 +33,7 @@
 * The parser for ethTransactionDeploy should handle aliases / ens-names etc when ctor args are addresses
 
 * make price feeds sensitive to blockchainId
+
 * better formatting of currency amounts (fewer decimals)
 
 * ethHelp
@@ -45,8 +44,6 @@
 
 * Let compilations store the name of the project from which they were compiled
 
-* Make stub generation incremental
-    
 * Generalize reasoning surrounding when interactive transaction approver should be used
 
 * enable Scala libraries to deploy as well as interact with already-deployed contracts

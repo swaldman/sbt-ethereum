@@ -3603,7 +3603,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         if ( mbDefaultSender( nontestBlockchainId ).isEmpty ) {
           val address = result.address
-          def prompt2 : Option[String] = is.readLine( s"Would you like the new address '${hexString(address)}' to be the default sender on nontest blockchain '${nontestBlockchainId}'? [y/n] ", mask = false )
+          def prompt2 : Option[String] = is.readLine( s"Would you like the new address '${hexString(address)}' to be the default sender on blockchain '${nontestBlockchainId}'? [y/n] ", mask = false )
 
           @tailrec
           def checkSetDefault : Boolean = {
