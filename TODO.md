@@ -1,12 +1,6 @@
 # TODO
 
-* Prompt for alias after ethKeystoreWalletV3Create?
-
-* ethTransactionAsync*
-
-* Wrap Poller.TimoutException as Invoker.TimeoutException, or define a cross-cutting Timeout trait (so users of Invoker or stubs don't have to work with an Exception representing an implementation detail)
-  - Note that we currently have defined a stub.TransactionInfo.TimeoutException
-  - or maybe we should just alias Poller.TimeoutException everywher that seems convenient?
+DB schema upates
 
 * Capture AST in database, offer useful analyses (e.g. linearization) a la Surya
   ( see https://ethereum.stackexchange.com/questions/56802/a-solidity-linearization-puzzle/56803?noredirect=1#comment67743_56803 )
@@ -15,6 +9,16 @@
 
 * change ethcfgBlockchainId to ethcfgChainId, let it accept EIP-155-based EthChainId rather than String.
   - update string blockchain_id to int identifiers, in API and in database. grrr.
+
+Other
+
+* Prompt for alias after ethKeystoreWalletV3Create?
+
+* ethTransactionAsync*
+
+* Wrap Poller.TimoutException as Invoker.TimeoutException, or define a cross-cutting Timeout trait (so users of Invoker or stubs don't have to work with an Exception representing an implementation detail)
+  - Note that we currently have defined a stub.TransactionInfo.TimeoutException
+  - or maybe we should just alias Poller.TimeoutException everywher that seems convenient?
 
 * change (or alias) `contractAddress` field in stubs to simple address
 
@@ -56,7 +60,6 @@
 * richer balances (multi-unit, fiat balances)
 * ethContractCompilationsAlias*
 * xethEstimateGas
-* xethSendMessage
 * xethSignMessage
 * Prettify output of log items in client transactions
 * Excise jsonrpc.Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
