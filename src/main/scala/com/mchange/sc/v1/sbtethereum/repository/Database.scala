@@ -94,55 +94,55 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def insertNewDeployment( blockchainId : String, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash, constructorInputs : immutable.Seq[Byte] ) : Failable[Unit] = {
+  def insertNewDeployment( chainId : Int, contractAddress : EthAddress, code : String, deployerAddress : EthAddress, transactionHash : EthHash, constructorInputs : immutable.Seq[Byte] ) : Failable[Unit] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
-          Table.DeployedCompilations.insertNewDeployment( conn, blockchainId, contractAddress, code, deployerAddress, transactionHash, constructorInputs )
+          Table.DeployedCompilations.insertNewDeployment( conn, chainId, contractAddress, code, deployerAddress, transactionHash, constructorInputs )
         }
       }
     }
   }
 
   private [sbtethereum]
-  def setMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress, abi : Abi ) : Failable[Unit] = {
+  def setMemorizedContractAbi( chainId : Int, contractAddress : EthAddress, abi : Abi ) : Failable[Unit] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
-          Table.MemorizedAbis.insert( conn, blockchainId, contractAddress, abi )
+          Table.MemorizedAbis.insert( conn, chainId, contractAddress, abi )
         }
       }
     }
   }
 
   private [sbtethereum]
-  def deleteMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress ) : Failable[Boolean] = {
+  def deleteMemorizedContractAbi( chainId : Int, contractAddress : EthAddress ) : Failable[Boolean] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
-          Table.MemorizedAbis.delete( conn, blockchainId, contractAddress )
+          Table.MemorizedAbis.delete( conn, chainId, contractAddress )
         }
       }
     }
   }
 
   private [sbtethereum]
-  def getMemorizedContractAbiAddresses( blockchainId : String ) : Failable[immutable.Seq[EthAddress]] = {
+  def getMemorizedContractAbiAddresses( chainId : Int ) : Failable[immutable.Seq[EthAddress]] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
-          Table.MemorizedAbis.selectAddressesForBlockchainId( conn, blockchainId )
+          Table.MemorizedAbis.selectAddressesForChainId( conn, chainId )
         }
       }
     }
   }
 
   private [sbtethereum]
-  def getMemorizedContractAbi( blockchainId : String, contractAddress : EthAddress ) : Failable[Option[Abi]] = {
+  def getMemorizedContractAbi( chainId : Int, contractAddress : EthAddress ) : Failable[Option[Abi]] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
-          Table.MemorizedAbis.select( conn, blockchainId, contractAddress )
+          Table.MemorizedAbis.select( conn, chainId, contractAddress )
         }
       }
     }
@@ -210,7 +210,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
   private [sbtethereum]
   case class DeployedContractInfo (
-    blockchainId        : String,
+    chainId             : Int,
     contractAddress     : EthAddress,
     codeHash            : EthHash,
     code                : String,
@@ -231,17 +231,17 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   )
 
   private [sbtethereum]
-  def deployedContractInfoForAddress( blockchainId : String, address : EthAddress ) : Failable[Option[DeployedContractInfo]] =  {
+  def deployedContractInfoForAddress( chainId : Int, address : EthAddress ) : Failable[Option[DeployedContractInfo]] =  {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection ) { conn =>
           for {
-            deployedCompilation <- Table.DeployedCompilations.select( conn, blockchainId, address )
+            deployedCompilation <- Table.DeployedCompilations.select( conn, chainId, address )
             knownCode           <- Table.KnownCode.select( conn, deployedCompilation.baseCodeHash )
             knownCompilation    <- Table.KnownCompilations.select( conn, deployedCompilation.fullCodeHash )
           } yield {
             DeployedContractInfo (
-              blockchainId         = deployedCompilation.blockchainId,
+              chainId              = deployedCompilation.chainId,
               contractAddress      = deployedCompilation.contractAddress,
               codeHash             = deployedCompilation.fullCodeHash,
               code                 = knownCode ++ knownCompilation.codeSuffix,
@@ -267,15 +267,15 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def allDeployedContractInfosForBlockchainId( blockchainId : String ) : Failable[immutable.Seq[DeployedContractInfo]] = {
+  def allDeployedContractInfosForChainId( chainId : Int ) : Failable[immutable.Seq[DeployedContractInfo]] = {
 
     def deployedContractInfosForAddresses( addresses : immutable.Seq[EthAddress] ) : Failable[immutable.Seq[DeployedContractInfo]] = {
-      Failable.sequence( addresses.map( deployedContractInfoForAddress( blockchainId, _ ) ) ).map( optSeq => optSeq.map( opt => opt.get ) ) // asserts that all deploymens are known compilations
+      Failable.sequence( addresses.map( deployedContractInfoForAddress( chainId, _ ) ) ).map( optSeq => optSeq.map( opt => opt.get ) ) // asserts that all deploymens are known compilations
     }
 
     DataSource.flatMap { ds =>
       borrow( ds.getConnection ) { conn =>
-        Failable( Table.DeployedCompilations.allAddressesForBlockchainIdSeq( conn, blockchainId ) ) flatMap { addresses =>
+        Failable( Table.DeployedCompilations.allAddressesForChainIdSeq( conn, chainId ) ) flatMap { addresses =>
           deployedContractInfosForAddresses( addresses )
         }
       }
@@ -328,29 +328,29 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def contractAddressesForCodeHash( blockchainId : String, codeHash : EthHash ) : Failable[immutable.Set[EthAddress]] = {
+  def contractAddressesForCodeHash( chainId : Int, codeHash : EthHash ) : Failable[immutable.Set[EthAddress]] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ) { conn =>
-          Table.DeployedCompilations.allForFullCodeHash( conn, blockchainId, codeHash ).map( _.contractAddress )
+          Table.DeployedCompilations.allForFullCodeHash( conn, chainId, codeHash ).map( _.contractAddress )
         }
       }
     }
   }
 
   private [sbtethereum]
-  def blockchainIdContractAddressesForCodeHash( codeHash : EthHash ) : Failable[immutable.Set[(String,EthAddress)]] = {
+  def chainIdContractAddressesForCodeHash( codeHash : EthHash ) : Failable[immutable.Set[(String,EthAddress)]] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ) { conn =>
-          Table.DeployedCompilations.allForFullCodeHashAnyBlockchainId( conn, codeHash ).map( dc => ( dc.blockchainId, dc.contractAddress ) )
+          Table.DeployedCompilations.allForFullCodeHashAnyChainId( conn, codeHash ).map( dc => ( dc.chainId, dc.contractAddress ) )
         }
       }
     }
   }
 
   private [sbtethereum]
-  case class ContractsSummaryRow( blockchain_id : String, contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
+  case class ContractsSummaryRow( chain_id : Int, contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
 
   private [sbtethereum]
   def contractsSummary : Failable[immutable.Seq[ContractsSummaryRow]] = {
@@ -366,7 +366,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
               def mbformat( ts : Timestamp ) : String = if ( ts == null ) null else df.format( ts )
               while( rs.next() ) {
                 buffer += ContractsSummaryRow(
-                  rs.getString(Column.blockchain_id),
+                  rs.getString(Column.chain_id),
                   rs.getString(Column.contract_address),
                   rs.getString(Column.name),
                   rs.getString(Column.deployer_address),
@@ -395,31 +395,31 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def createUpdateAlias( blockchainId : String, alias : String, address : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, blockchainId, alias, address ) ) )
+  def createUpdateAlias( chainId : Int, alias : String, address : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, chainId, alias, address ) ) )
   }
 
   private [sbtethereum]
-  def findAllAliases( blockchainId : String ) : Failable[immutable.SortedMap[String,EthAddress]] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectAllForBlockchainId( _, blockchainId ) ) )
+  def findAllAliases( chainId : Int ) : Failable[immutable.SortedMap[String,EthAddress]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectAllForChainId( _, chainId ) ) )
   }
 
   private [sbtethereum]
-  def findAddressByAlias( blockchainId : String, alias : String ) : Failable[Option[EthAddress]] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, blockchainId, alias ) ) )
+  def findAddressByAlias( chainId : Int, alias : String ) : Failable[Option[EthAddress]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, chainId, alias ) ) )
   }
 
   private [sbtethereum]
-  def findAliasesByAddress( blockchainId : String, address : EthAddress ) : Failable[immutable.Seq[String]] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAddress( _, blockchainId, address ) ) )
+  def findAliasesByAddress( chainId : Int, address : EthAddress ) : Failable[immutable.Seq[String]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAddress( _, chainId, address ) ) )
   }
 
   private [sbtethereum]
-  def hasAliases( blockchainId : String, address : EthAddress ) : Failable[Boolean] = findAliasesByAddress( blockchainId, address ).map( _.nonEmpty )
+  def hasAliases( chainId : Int, address : EthAddress ) : Failable[Boolean] = findAliasesByAddress( chainId, address ).map( _.nonEmpty )
 
   private [sbtethereum]
-  def dropAlias( blockchainId : String, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, blockchainId, alias ) ) )
+  def dropAlias( chainId : Int, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, chainId, alias ) ) )
   }
 
   private [sbtethereum]
@@ -461,23 +461,23 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   def schemaVersionInconsistentUnchecked : Failable[Boolean] = getSchemaVersionUnchecked().map( _.get == Schema_h2.InconsistentSchemaVersion )
 
   private [sbtethereum]
-  def ensStoreBid( blockchainId : String, tld : String, ensAddress : EthAddress, bid : Bid ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.insert( _, blockchainId, bid.bidHash, bid.simpleName, bid.bidderAddress, bid.valueInWei, bid.salt, tld, ensAddress ) ) )
+  def ensStoreBid( chainId : Int, tld : String, ensAddress : EthAddress, bid : Bid ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.insert( _, chainId, bid.bidHash, bid.simpleName, bid.bidderAddress, bid.valueInWei, bid.salt, tld, ensAddress ) ) )
   }
 
   private [sbtethereum]
-  def ensRemoveBid( blockchainId : String, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markRemoved( _, blockchainId, bidHash ) ) )
+  def ensRemoveBid( chainId : Int, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markRemoved( _, chainId, bidHash ) ) )
   }
 
   private [sbtethereum]
-  def ensMarkAccepted( blockchainId : String, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markAccepted( _, blockchainId, bidHash ) ) )
+  def ensMarkAccepted( chainId : Int, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markAccepted( _, chainId, bidHash ) ) )
   }
 
   private [sbtethereum]
-  def ensMarkRevealed( blockchainId : String, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markRevealed( _, blockchainId, bidHash ) ) )
+  def ensMarkRevealed( chainId : Int, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markRevealed( _, chainId, bidHash ) ) )
   }
 
   private
@@ -495,10 +495,10 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def ensFindByHash( blockchainId : String, bidHash : EthHash ) : Failable[( Bid, BidStore.State )] = DataSource.flatMap { ds =>
+  def ensFindByHash( chainId : Int, bidHash : EthHash ) : Failable[( Bid, BidStore.State )] = DataSource.flatMap { ds =>
     Failable {
       borrow( ds.getConnection() ) { conn =>
-        val mbRaw = Table.EnsBidStore.selectByBidHash( conn, blockchainId, bidHash )
+        val mbRaw = Table.EnsBidStore.selectByBidHash( conn, chainId, bidHash )
         mbRaw.fold( Failable.fail( s"Bid hash '0x${bidHash.hex} does not exist in the database." ) : Failable[( Bid, BidStore.State )] ) { rawBid =>
           if ( rawBid.removed ) {
             Failable.fail( s"Bid hash '0x${bidHash.hex} did exist in the database, but it has been removed.")
@@ -512,33 +512,33 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def ensFindByNameBidderAddress( blockchainId : String, simpleName : String, bidderAddress : EthAddress ) : Failable[immutable.Seq[(Bid, BidStore.State)]] = DataSource.flatMap { ds =>
+  def ensFindByNameBidderAddress( chainId : Int, simpleName : String, bidderAddress : EthAddress ) : Failable[immutable.Seq[(Bid, BidStore.State)]] = DataSource.flatMap { ds =>
     Failable {
       borrow( ds.getConnection() ) { conn =>
-        val rawBids = Table.EnsBidStore.selectByNameBidderAddress( conn, blockchainId, simpleName, bidderAddress )
+        val rawBids = Table.EnsBidStore.selectByNameBidderAddress( conn, chainId, simpleName, bidderAddress )
         rawBids.filterNot( _.removed ).map( ensBidBidStateTupleFromRawBid )
       }
     }
   }
 
   private [sbtethereum]
-  def ensAllRawBidsForBlockchainId( blockchainId : String ) : Failable[immutable.Seq[Table.EnsBidStore.RawBid]] = DataSource.flatMap { ds =>
+  def ensAllRawBidsForChainId( chainId : Int ) : Failable[immutable.Seq[Table.EnsBidStore.RawBid]] = DataSource.flatMap { ds =>
     Failable {
       borrow( ds.getConnection() ) { conn =>
-        Table.EnsBidStore.selectAllForBlockchainId( conn, blockchainId )
+        Table.EnsBidStore.selectAllForChainId( conn, chainId )
       }
     }
   }
 
   private [sbtethereum]
-  def ensBidStore( blockchainId : String, tld : String, ensAddress : EthAddress ) = new BidStore {
-    def store( bid : Bid ) : Unit = ensStoreBid( blockchainId, tld, ensAddress, bid ).get
-    def remove( bid : Bid ) : Unit = ensRemoveBid( blockchainId, bid.bidHash ).get
-    def markAccepted( bidHash : EthHash ) : Unit = ensMarkAccepted( blockchainId, bidHash ).get
-    def markRevealed( bidHash : EthHash ) : Unit = ensMarkRevealed( blockchainId, bidHash ).get
-    def findByHash( bidHash : EthHash ) : ( Bid, BidStore.State ) = ensFindByHash( blockchainId, bidHash ).get
+  def ensBidStore( chainId : Int, tld : String, ensAddress : EthAddress ) = new BidStore {
+    def store( bid : Bid ) : Unit = ensStoreBid( chainId, tld, ensAddress, bid ).get
+    def remove( bid : Bid ) : Unit = ensRemoveBid( chainId, bid.bidHash ).get
+    def markAccepted( bidHash : EthHash ) : Unit = ensMarkAccepted( chainId, bidHash ).get
+    def markRevealed( bidHash : EthHash ) : Unit = ensMarkRevealed( chainId, bidHash ).get
+    def findByHash( bidHash : EthHash ) : ( Bid, BidStore.State ) = ensFindByHash( chainId, bidHash ).get
     def findByNameBidderAddress( simpleName : String, bidderAddress : EthAddress ) : immutable.Seq[( Bid, BidStore.State )] = {
-      ensFindByNameBidderAddress( blockchainId, simpleName, bidderAddress ).get
+      ensFindByNameBidderAddress( chainId, simpleName, bidderAddress ).get
     }
   }
 
