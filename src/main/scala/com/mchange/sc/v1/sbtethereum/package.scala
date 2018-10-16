@@ -47,8 +47,8 @@ package object sbtethereum {
   val Zero256 = Unsigned256( 0 )
   val One256  = Unsigned256( 1 )
 
-  val MainnetIdentifier = "mainnet"
-  val GanacheIdentifier = "ganache"
+  val MainnetChainId          =  1
+  val DefaultEphemeralChainId = -1 // negative chain IDs revert to non-identified pre-EIP-155 behavior and are ephemeral, do not permit aliases or compilation info to be stored
 
   val DefaultSenderAlias = "defaultSender"
 
@@ -58,31 +58,31 @@ package object sbtethereum {
 
   def rounded( bd : BigDecimal ) : BigInt = bd.setScale( 0, BigDecimal.RoundingMode.HALF_UP ).toBigInt
 
-  def mbAbiForAddress( blockchainId : String, address : EthAddress ) : Option[Abi] = {
+  def mbAbiForAddress( chainId : Int, address : EthAddress ) : Option[Abi] = {
     def findMemorizedAbi = {
-      repository.Database.getMemorizedContractAbi( blockchainId, address ).get // again, throw if database problem
+      repository.Database.getMemorizedContractAbi( chainId, address ).get // again, throw if database problem
     }
 
-    val mbDeployedContractInfo = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw an Exception if there's a database problem
+    val mbDeployedContractInfo = repository.Database.deployedContractInfoForAddress( chainId, address ).get // throw an Exception if there's a database problem
     mbDeployedContractInfo.fold( findMemorizedAbi ) { deployedContractInfo =>
       deployedContractInfo.mbAbi orElse findMemorizedAbi
     }
   }
 
-  def abiForAddress( blockchainId : String, address : EthAddress, defaultNotInDatabase : => Abi ) : Abi = {
-    mbAbiForAddress( blockchainId, address ).getOrElse( defaultNotInDatabase )
+  def abiForAddress( chainId : Int, address : EthAddress, defaultNotInDatabase : => Abi ) : Abi = {
+    mbAbiForAddress( chainId, address ).getOrElse( defaultNotInDatabase )
   }
 
-  def abiForAddress( blockchainId : String, address : EthAddress, suppressStackTrace : Boolean = false ) : Abi = {
+  def abiForAddress( chainId : Int, address : EthAddress, suppressStackTrace : Boolean = false ) : Abi = {
     def defaultNotInDatabase : Abi = {
       val e = new AbiUnknownException( s"An ABI for a contract at address '${ hexString(address) }' is not known in the sbt-ethereum repository." )
       throw ( if ( suppressStackTrace ) nst(e) else e )
     }
-    abiForAddress( blockchainId, address, defaultNotInDatabase )
+    abiForAddress( chainId, address, defaultNotInDatabase )
   }
 
-  def abiForAddressOrEmpty( blockchainId : String, address : EthAddress ) : Abi = {
-    abiForAddress( blockchainId, address, EmptyAbi )
+  def abiForAddressOrEmpty( chainId : Int, address : EthAddress ) : Abi = {
+    abiForAddress( chainId, address, EmptyAbi )
   }
 
   final object SpawnInstruction {
@@ -195,7 +195,7 @@ package object sbtethereum {
   }
 
   case class AddressParserInfo(
-    blockchainId          : String,
+    chainId               : Int,
     jsonRpcUrl            : String,
     mbAliases             : Option[immutable.SortedMap[String,EthAddress]],
     nameServiceAddress    : EthAddress,

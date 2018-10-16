@@ -71,8 +71,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private implicit val logger = mlogger( this )
 
   private trait AddressInfo
-  private final case object NoAddress                                                                                                         extends AddressInfo
-  private final case class  UnlockedAddress( blockchainId : String, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
+  private final case object NoAddress                                                                                                 extends AddressInfo
+  private final case class  UnlockedAddress( chainId : Int, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
 
   final case class TimestampedAbi( abi : Abi, timestamp : Option[Long] )
 
@@ -187,7 +187,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethcfgAutoDeployContracts           = settingKey[Seq[String]]  ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
     val ethcfgBaseCurrencyCode              = settingKey[String]       ("Currency code for currency in which prices of ETH and other tokens should be displayed.")
-    val ethcfgBlockchainId                  = settingKey[String]       ("A name for the network represented by ethJsonRpcUrl (e.g. 'mainnet', 'morden', 'ropsten')")
+    val ethcfgChainId                       = settingKey[Int]          ("The EIP-155 chain ID for the network with which the application will interact ('mainnet' = 1, 'ropsten' = 3, 'rinkeby' = 4, etc.)")
     val ethcfgEntropySource                 = settingKey[SecureRandom] ("The source of randomness that will be used for key generation")
     val ethcfgGasLimitCap                   = settingKey[BigInt]       ("Maximum gas limit to use in transactions")
     val ethcfgGasLimitFloor                 = settingKey[BigInt]       ("Minimum gas limit to use in transactions (usually left unset)")
@@ -386,9 +386,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgBaseCurrencyCode := "USD",
 
-    ethcfgBlockchainId := MainnetIdentifier,
+    ethcfgChainId := MainnetChainId,
 
-    ethcfgBlockchainId in Test := GanacheIdentifier,
+    ethcfgChainId in Test := DefaultEphemeralChainId,
 
     ethcfgEntropySource := new java.security.SecureRandom,
 
@@ -843,17 +843,17 @@ object SbtEthereumPlugin extends AutoPlugin {
     val s = state.value
     val log = streams.value.log
     val is = interactionService.value
-    val blockchainId = (ethcfgBlockchainId in config).value
+    val chainId = (ethcfgChainId in config).value
     val caller = (xethFindCurrentSender in config).value.get
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-    findCachePrivateKey(s, log, is, blockchainId, caller, autoRelockSeconds, true )
+    findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
   }
 
   private def findTransactionLoggerTask( config : Configuration ) : Initialize[Task[Invoker.TransactionLogger]] = Def.task {
-    val blockchainId = (ethcfgBlockchainId in config).value
+    val chainId = (ethcfgChainId in config).value
 
     ( tle : Invoker.TransactionLogEntry, ec : ExecutionContext ) => Future (
-      repository.TransactionLog.logTransaction( blockchainId, tle.jsonRpcUrl, tle.transaction, tle.transactionHash ).get
+      repository.TransactionLog.logTransaction( chainId, tle.jsonRpcUrl, tle.transaction, tle.transactionHash ).get
     )( ec )
   }
 
@@ -868,13 +868,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   // ens tasks
 
   private def ensAddressLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
-    val blockchainId = (ethcfgBlockchainId in config).value
-    val ensClient    = ( config / xensClient).value
-    val name         = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
-    val mbAddress      = ensClient.address( name )
+    val chainId   = (ethcfgChainId in config).value
+    val ensClient = ( config / xensClient).value
+    val name      = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
+    val mbAddress = ensClient.address( name )
 
     mbAddress match {
-      case Some( address ) => println( s"The name '${name}' resolves to address ${verboseAddress(blockchainId, address)}." )
+      case Some( address ) => println( s"The name '${name}' resolves to address ${verboseAddress(chainId, address)}." )
       case None            => println( s"The name '${name}' does not currently resolve to any address." )
     }
 
@@ -887,7 +887,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log               = streams.value.log
       val privateKey        = findPrivateKeyTask( config ).value
-      val blockchainId      = ( config / ethcfgBlockchainId ).value
+      val chainId           = ( config / ethcfgChainId ).value
       val ensClient         = ( config / xensClient).value
       val is                = interactionService.value
       val mbDefaultResolver = ( config / enscfgNameServicePublicResolver).?.value
@@ -938,15 +938,15 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
       }
-      log.info( s"The name '${ensName}' now resolves to ${verboseAddress(blockchainId, address)}." )
+      log.info( s"The name '${ensName}' now resolves to ${verboseAddress(chainId, address)}." )
     }
   }
 
   private def ensAuctionBidListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     import repository.Schema_h2.Table.EnsBidStore.RawBid
 
-    val blockchainId = (ethcfgBlockchainId in config).value
-    val rawBids = repository.Database.ensAllRawBidsForBlockchainId( blockchainId ).get
+    val chainId = (ethcfgChainId in config).value
+    val rawBids = repository.Database.ensAllRawBidsForChainId( chainId ).get
     val columns = immutable.Vector( "Bid Hash", "Simple Name", "Bidder Address", "ETH", "Salt", "Timestamp", "Accepted", "Revealed", "Removed" ).map( texttable.Column.apply( _ ) )
 
     def extract( rawBid : RawBid ) : Seq[String] = immutable.Vector(
@@ -966,11 +966,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ensAuctionBidPlaceTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
-    val blockchainId = (config / ethcfgBlockchainId).value
+    val chainId = (config / ethcfgChainId).value
     val ensClient = ( config / xensClient ).value
     val privateKey = findPrivateKeyTask( config ).value
 
-    implicit val bidStore = repository.Database.ensBidStore( blockchainId, ensClient.tld, ensClient.nameServiceAddress )
+    implicit val bidStore = repository.Database.ensBidStore( chainId, ensClient.tld, ensClient.nameServiceAddress )
 
     val ( name, valueInWei, mbOverpaymentInWei ) = ensPlaceNewBidParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
 
@@ -990,13 +990,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
 
-      repository.BidLog.logBid( bid, blockchainId, ensClient.tld, ensClient.nameServiceAddress )
+      repository.BidLog.logBid( bid, chainId, ensClient.tld, ensClient.nameServiceAddress )
 
       log.warn( s"A bid has been placed on name '${name}' for ${valueInWei} wei." )
       mbOverpaymentInWei.foreach( opw => log.warn( s"An additional ${opw} wei was transmitted to obscure the value of your bid." ) )
       log.warn( s"YOU MUST REVEAL THIS BID BETWEEN ${ formatInstant(revealStart) } AND ${ formatInstant(auctionFinalized) }. IF YOU DO NOT, YOUR FUNDS WILL BE LOST!" )
       log.warn(  "Bid details, which are required to reveal, have been automatically stored in the sbt-ethereum repository," )
-      log.warn( s"and will be provided automatically if revealed by this client, configured with blockchain ID '${blockchainId}'." )
+      log.warn( s"and will be provided automatically if revealed by this client, configured with chain ID '${chainId}'." )
       log.warn(  "However, it never hurts to be neurotic. You may wish to note:" )
       log.warn( s"    Simple Name:      ${bid.simpleName}" )
       log.warn( s"    Simple Name Hash: 0x${ ens.componentHash( bid.simpleName ).hex }" )
@@ -1009,14 +1009,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ensAuctionBidRevealTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
-    val blockchainId = (config / ethcfgBlockchainId).value
+    val chainId = (config / ethcfgChainId).value
     val ensClient = ( config / xensClient).value
     val privateKey = findPrivateKeyTask( config ).value
     val tld = ensClient.tld
     val ensAddress = ensClient.nameServiceAddress
     val is = interactionService.value
 
-    implicit val bidStore = repository.Database.ensBidStore( blockchainId, tld, ensAddress )
+    implicit val bidStore = repository.Database.ensBidStore( chainId, tld, ensAddress )
 
     def revealBidForHash( hash : EthHash ) : Unit = {
       try { ensClient.revealBid( privateKey, hash, force=false ) }
@@ -1128,13 +1128,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ensOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
-    val blockchainId = (ethcfgBlockchainId in config).value
-    val ensClient    = ( config / xensClient).value
-    val name         = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
-    val mbOwner      = ensClient.owner( name )
+    val chainId   = (ethcfgChainId in config).value
+    val ensClient = ( config / xensClient).value
+    val name      = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
+    val mbOwner   = ensClient.owner( name )
 
     mbOwner match {
-      case Some( address ) => println( s"The name '${name}' is owned by address ${verboseAddress(blockchainId, address)}'." )
+      case Some( address ) => println( s"The name '${name}' is owned by address ${verboseAddress(chainId, address)}'." )
       case None            => println( s"No owner has been assigned to the name '${name}'." )
     }
 
@@ -1145,24 +1145,24 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(config / xethFindCacheAddressParserInfo)( genEnsNameOwnerAddressParser )
 
     Def.inputTask {
-      val log          = streams.value.log
-      val privateKey   = findPrivateKeyTask( config ).value
-      val blockchainId = (config / ethcfgBlockchainId).value
-      val ensClient    = ( config / xensClient).value
+      val log        = streams.value.log
+      val privateKey = findPrivateKeyTask( config ).value
+      val chainId    = (config / ethcfgChainId).value
+      val ensClient  = ( config / xensClient).value
       val ( ensName, ownerAddress ) = parser.parsed
       ensClient.setOwner( privateKey, ensName, ownerAddress )
-      log.info( s"The name '${ensName}' is now owned by ${verboseAddress(blockchainId, ownerAddress)}. (However, this has not affected the Deed owner associated with the name!)" )
+      log.info( s"The name '${ensName}' is now owned by ${verboseAddress(chainId, ownerAddress)}. (However, this has not affected the Deed owner associated with the name!)" )
     }
   }
 
   private def ensResolverLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
-    val blockchainId = (ethcfgBlockchainId in config).value
-    val ensClient    = ( config / xensClient).value
-    val name         = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
-    val mbResolver   = ensClient.resolver( name )
+    val chainId    = (ethcfgChainId in config).value
+    val ensClient  = ( config / xensClient).value
+    val name       = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
+    val mbResolver = ensClient.resolver( name )
 
     mbResolver match {
-      case Some( address ) => println( s"The name '${name}' is associated with a resolver at address ${verboseAddress(blockchainId, address)}'." )
+      case Some( address ) => println( s"The name '${name}' is associated with a resolver at address ${verboseAddress(chainId, address)}'." )
       case None            => println( s"No resolver has been associated with the name '${name}'." )
     }
 
@@ -1173,13 +1173,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(config / xethFindCacheAddressParserInfo)( genEnsNameResolverAddressParser )
 
     Def.inputTask {
-      val log          = streams.value.log
-      val privateKey   = findPrivateKeyTask( config ).value
-      val blockchainId = (config / ethcfgBlockchainId).value
-      val ensClient    = ( config / xensClient).value
+      val log        = streams.value.log
+      val privateKey = findPrivateKeyTask( config ).value
+      val chainId    = (config / ethcfgChainId).value
+      val ensClient  = ( config / xensClient).value
       val ( ensName, resolverAddress ) = parser.parsed
       ensClient.setResolver( privateKey, ensName, resolverAddress )
-      log.info( s"The name '${ensName}' is now set to be resolved by a contract at ${verboseAddress(blockchainId, resolverAddress)}." )
+      log.info( s"The name '${ensName}' is now set to be resolved by a contract at ${verboseAddress(chainId, resolverAddress)}." )
     }
   }
 
@@ -1227,16 +1227,16 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTaskDyn {
       val log = streams.value.log
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
 
       // not sure why, but without this xethFindCacheAddressParserInfo, which should be triggered by the parser,
       // sometimes fails initialize the parser
       val ensureAliases = (xethFindCacheAddressParserInfo in config)
 
       val alias = parser.parsed
-      val check = repository.Database.dropAlias( blockchainId, alias ).get // assert no database problem
-      if (check) log.info( s"Alias '${alias}' successfully dropped (for blockchain '${blockchainId}').")
-      else log.warn( s"Alias '${alias}' is not defined (on blockchain '${blockchainId}'), and so could not be dropped." )
+      val check = repository.Database.dropAlias( chainId, alias ).get // assert no database problem
+      if (check) log.info( s"Alias '${alias}' successfully dropped (for blockchain '${chainId}').")
+      else log.warn( s"Alias '${alias}' is not defined (on blockchain '${chainId}'), and so could not be dropped." )
 
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -1245,9 +1245,9 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethAddressAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
-    val log = streams.value.log
-    val blockchainId = (ethcfgBlockchainId in config).value
-    val faliases = repository.Database.findAllAliases( blockchainId )
+    val log      = streams.value.log
+    val chainId  = (ethcfgChainId in config).value
+    val faliases = repository.Database.findAllAliases( chainId )
     faliases.fold( _ => log.warn("Could not read aliases from repository database.") ) { aliases =>
       aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
     }
@@ -1258,11 +1258,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTaskDyn {
       val log = streams.value.log
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
       val ( alias, address ) = parser.parsed
-      val check = repository.Database.createUpdateAlias( blockchainId, alias, address )
+      val check = repository.Database.createUpdateAlias( chainId, alias, address )
       check.fold( _.vomit ){ _ => 
-        log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${blockchainId}')." )
+        log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${chainId}')." )
       }
 
       Def.taskDyn {
@@ -1349,13 +1349,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressSenderOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
 
-    val blockchainId = (ethcfgBlockchainId in config).value
+    val chainId = (ethcfgChainId in config).value
 
-    val mbSenderOverride = getSenderOverride( config )( log, blockchainId )
+    val mbSenderOverride = getSenderOverride( config )( log, chainId )
 
     val message = mbSenderOverride.fold( s"No sender override is currently set (for configuration '${config}')." ) { address =>
-      val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "" )( _.fold("")( str => s", aliases $str)" ) )
-      s"A sender override is set, address '${address.hex}' (on blockchain '$blockchainId'${aliasesPart}, configuration '${config}')."
+      val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s", aliases $str)" ) )
+      s"A sender override is set, address '${address.hex}' (on chain with ID ${chainId}${aliasesPart}, configuration '${config}')."
     }
 
     log.info( message )
@@ -1368,13 +1368,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       configSenderOverride.synchronized {
         val log = streams.value.log
-        val blockchainId = (ethcfgBlockchainId in config).value
+        val chainId = (ethcfgChainId in config).value
         val address = parser.parsed
-        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "")( _.fold("")( str => s", aliases $str)" ) )
+        val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "")( _.fold("")( str => s", aliases $str)" ) )
 
-        configSenderOverride.set( Some( ( blockchainId, address ) ) )
+        configSenderOverride.set( Some( ( chainId, address ) ) )
 
-        log.info( s"Sender override set to '0x${address.hex}' (on blockchain '$blockchainId'${aliasesPart})." )
+        log.info( s"Sender override set to '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart})." )
       }
     }
   }
@@ -1383,17 +1383,17 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
       val log = streams.value.log
       val address = parser.parsed
-      val found = repository.Database.deleteMemorizedContractAbi( blockchainId, address ).get // throw an Exception if there's a database issue
+      val found = repository.Database.deleteMemorizedContractAbi( chainId, address ).get // throw an Exception if there's a database issue
       if ( found ) {
-        log.info( s"Previously imported or matched ABI for contract with address '0x${address.hex}' (on blockchain '${blockchainId}') has been forgotten." )
+        log.info( s"Previously imported or matched ABI for contract with address '0x${address.hex}' (on chain with ID ${chainId}) has been forgotten." )
       } else {
-        val mbDeployment = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get  // throw an Exception if there's a database issue
+        val mbDeployment = repository.Database.deployedContractInfoForAddress( chainId, address ).get  // throw an Exception if there's a database issue
         mbDeployment match {
-          case Some( _ ) => throw new SbtEthereumException( s"Contract at address '0x${address.hex}' (on blockchain '${blockchainId}') is not an imported ABI but our own deployment. Cannot drop." )
-          case None      => throw new SbtEthereumException( s"We have not memorized an ABI for the contract at address '0x${address.hex}' (on blockchain '${blockchainId}')." )
+          case Some( _ ) => throw new SbtEthereumException( s"Contract at address '0x${address.hex}' (on chain with ID ${chainId}) is not an imported ABI but our own deployment. Cannot drop." )
+          case None      => throw new SbtEthereumException( s"We have not memorized an ABI for the contract at address '0x${address.hex}' (on chain with ID ${chainId})." )
         }
       }
     }
@@ -1403,13 +1403,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genContractAbiMatchParser )
 
     Def.inputTaskDyn {
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
       val ( toLinkAddress, abiSource ) = parser.parsed
       
-      val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( blockchainId, toLinkAddress ).assert
+      val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( chainId, toLinkAddress ).assert
       mbKnownCompilation match {
         case Some( knownCompilation ) => {
           val msg = s"The contract at address '${hexString(toLinkAddress)}' was already associated with a deployed compilation, cannot associate with a new ABI."
@@ -1421,7 +1421,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           val abi = {
             abiSource match {
               case Left( address ) => {
-                abiForAddress( blockchainId, address, suppressStackTrace = true ) // asserts success
+                abiForAddress( chainId, address, suppressStackTrace = true ) // asserts success
               }
               case Right( hash ) => {
                 val mbinfo = repository.Database.compilationInfoForCodeHash( hash ).assert // throw any db problem
@@ -1429,14 +1429,14 @@ object SbtEthereumPlugin extends AutoPlugin {
               }
             }
           }
-          repository.Database.setMemorizedContractAbi( blockchainId, toLinkAddress, abi  ).assert // throw an Exception if there's a database issue
+          repository.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi  ).assert // throw an Exception if there's a database issue
           log.info( s"ABI is now known for the contract at address ${hexString(toLinkAddress)}." )
           abiSource match {
             case Left( address ) => log.warn( s"(It has been copied from the ABI previously associated with address '${hexString(address)}'.)" )
             case Right( hash )   => log.warn( s"(It has been copied from the ABI previously associated with the compilation with code hash '${hexString(hash)}'.)" )
           }
-          if (! repository.Database.hasAliases( blockchainId, toLinkAddress ).assert ) {
-            interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
+          if (! repository.Database.hasAliases( chainId, toLinkAddress ).assert ) {
+            interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
           }
         }
       }
@@ -1451,10 +1451,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo)( genGenericAddressParser )
 
     Def.inputTask {
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
       val log = streams.value.log
       val address = parser.parsed
-      val mbAbi = mbAbiForAddress( blockchainId, address )
+      val mbAbi = mbAbiForAddress( chainId, address )
       mbAbi match {
         case None        => println( s"No contract ABI known for address '0x${address.hex}'." )
         case Some( abi ) => {
@@ -1484,20 +1484,20 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractAbiListTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
-    val blockchainId = (ethcfgBlockchainId in config).value
+    val chainId = (ethcfgChainId in config).value
     val log = streams.value.log
 
     val mbRegex = regexParser( defaultToCaseInsensitive = true ).parsed
 
-    val memorizedAddresses = repository.Database.getMemorizedContractAbiAddresses( blockchainId ).get
-    val deployedContracts = repository.Database.allDeployedContractInfosForBlockchainId( blockchainId ).get
+    val memorizedAddresses = repository.Database.getMemorizedContractAbiAddresses( chainId ).get
+    val deployedContracts = repository.Database.allDeployedContractInfosForChainId( chainId ).get
 
     val allRecords = {
-      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Memorized, repository.Database.findAliasesByAddress( blockchainId, address ).get ) )
+      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Memorized, repository.Database.findAliasesByAddress( chainId, address ).get ) )
       val deployedRecords  = {
         deployedContracts
           .filter( _.mbAbi.nonEmpty )
-          .map( dci => AbiListRecord( dci.contractAddress, AbiListRecord.Deployed( dci.mbName ), repository.Database.findAliasesByAddress( blockchainId, dci.contractAddress ).get ) )
+          .map( dci => AbiListRecord( dci.contractAddress, AbiListRecord.Deployed( dci.mbName ), repository.Database.findAliasesByAddress( chainId, dci.contractAddress ).get ) )
       }
       memorizedRecords ++ deployedRecords
     }
@@ -1604,13 +1604,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genGenericAddressParser )
 
     Def.inputTaskDyn {
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
       val timeout = xethcfgAsyncOperationTimeout.value
       val address = parser.parsed
-      val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get
+      val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( chainId, address ).get
       mbKnownCompilation match {
         case Some( knownCompilation ) => {
           log.info( s"The contract at address '$address' was already associated with a deployed compilation, cannot import a new ABI." )
@@ -1618,8 +1618,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         case None => {
           val abi = {
-            mbAbiForAddress( blockchainId, address ).foreach { _ =>
-              val overwrite = queryYN( is, s"An ABI for '${hexString(address)}' on blockchain '${blockchainId}' is already known. Overwrite? [y/n] " )
+            mbAbiForAddress( chainId, address ).foreach { _ =>
+              val overwrite = queryYN( is, s"An ABI for '${hexString(address)}' on chain with ID ${chainId} is already known. Overwrite? [y/n] " )
               if (! overwrite) throw new OperationAbortedByUserException( "Will not overwrite already defined contact ABI." )
             }
             val mbEtherscanAbi : Option[Abi] = {
@@ -1670,10 +1670,10 @@ object SbtEthereumPlugin extends AutoPlugin {
               case None        => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
             }
           }
-          repository.Database.setMemorizedContractAbi( blockchainId, address, abi  ).get // throw an Exception if there's a database issue
+          repository.Database.setMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
           log.info( s"ABI is now known for the contract at address ${address.hex}" )
-          if (! repository.Database.hasAliases( blockchainId, address ).assert ) {
-            interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
+          if (! repository.Database.hasAliases( chainId, address ).assert ) {
+            interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
           }
         }
       }
@@ -1694,7 +1694,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genContractAddressOrCodeHashParser )
 
     Def.inputTask {
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
       val log = streams.value.log
 
       println()
@@ -1713,8 +1713,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       def addressSection( title : String, body : Set[ (String,EthAddress) ] ) : Unit = {
         val ordered = immutable.SortedSet.empty[String] ++ body.map { tup =>
-          val ( blockchainId, address ) = tup
-          s"0x${address.hex} (on blockchain '${blockchainId}')"
+          val ( chainId, address ) = tup
+          s"0x${address.hex} (on chain with ID ${chainId})"
         }
         val bodyOpt = if ( ordered.size == 0 ) None else Some( ordered.mkString(", ") )
         section( title, bodyOpt, false )
@@ -1742,9 +1742,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val source = parser.parsed
       source match {
         case Left( address ) => {
-          val mbinfo = repository.Database.deployedContractInfoForAddress( blockchainId, address ).get // throw any db problem
+          val mbinfo = repository.Database.deployedContractInfoForAddress( chainId, address ).get // throw any db problem
           mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
-            section( s"Contract Address (on blockchain '${info.blockchainId}')", Some( info.contractAddress.hex ), true )
+            section( s"Contract Address (on blockchain '${info.chainId}')", Some( info.contractAddress.hex ), true )
             section( "Deployer Address", info.mbDeployerAddress.map( _.hex ), true )
             section( "Transaction Hash", info.mbTransactionHash.map( _.hex ), true )
             section( "Deployment Timestamp", info.mbDeployedWhen.map( l => (new Date(l)).toString ) )
@@ -1778,7 +1778,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             jsonSection( "User Documentation", info.mbUserDoc )
             jsonSection( "Developer Documentation", info.mbDeveloperDoc )
             section( "Metadata", info.mbMetadata )
-            addressSection( "Deployments", repository.Database.blockchainIdContractAddressesForCodeHash( hash ).get )
+            addressSection( "Deployments", repository.Database.chainIdContractAddressesForCodeHash( hash ).get )
           }
         }
       }
@@ -1790,7 +1790,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethContractCompilationListTask : Initialize[Task[Unit]] = Def.task {
     val contractsSummary = repository.Database.contractsSummary.get // throw for any db problem
 
-    val Blockchain = "Blockchain"
+    val ChainId    = "Chain ID"
     val Address    = "Contract Address"
     val Name       = "Name"
     val CodeHash   = "Code Hash"
@@ -1798,12 +1798,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val cap = "+" + span(12) + "+" + span(44) + "+" + span(22) + "+" + span(68) + "+" + span(30) + "+"
     println( cap )
-    println( f"| $Blockchain%-10s | $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
+    println( f"| $ChainId%-10s | $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
     println( cap )
 
     contractsSummary.foreach { row =>
       import row._
-      val id = blankNull( blockchain_id )
+      val id = blankNull( chain_id )
       val ca = emptyOrHex( contract_address )
       val nm = blankNull( name )
       val ch = emptyOrHex( code_hash )
@@ -1912,14 +1912,14 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethKeystoreListTask( config : Configuration ) : Initialize[Task[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]] = Def.task {
-    val keystoresV3  = OnlyRepositoryKeystoreV3
-    val log          = streams.value.log
-    val blockchainId = (ethcfgBlockchainId in config).value
+    val keystoresV3 = OnlyRepositoryKeystoreV3
+    val log         = streams.value.log
+    val chainId     = (ethcfgChainId in config).value
 
     val combined = combinedKeystoresMultiMap( keystoresV3 )
 
     val out = {
-      def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( repository.Database.findAliasesByAddress( blockchainId, address ).get : _* )
+      def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( repository.Database.findAliasesByAddress( chainId, address ).get : _* )
       immutable.TreeMap( combined.map { case ( address : EthAddress, _ ) => ( address, aliasesSet( address ) ) }.toSeq : _* )( Ordering.by( _.hex ) )
     }
     val cap = "+" + span(44) + "+"
@@ -2442,15 +2442,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val is = interactionService.value
       val log = streams.value.log
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
       val ephemeralBlockchains = xethcfgEphemeralBlockchains.value
-      val ephemeralDeployment = ephemeralBlockchains.contains( blockchainId )
+      val ephemeralDeployment = ephemeralBlockchains.contains( chainId )
 
       val sender = (xethFindCurrentSender in config).value.get
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
 
       // lazy so if we have nothing to sign, we don't bother to prompt for passcode
-      lazy val privateKey = findCachePrivateKey( s, log, is, blockchainId, sender, autoRelockSeconds, true )
+      lazy val privateKey = findCachePrivateKey( s, log, is, chainId, sender, autoRelockSeconds, true )
 
       // at the time of parsing, a compiled contract may not not available.
       // in that case, we force compilation now, but can't accept contructor arguments
@@ -2556,7 +2556,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
               if (! ephemeralDeployment ) {
                 val dbCheck = {
-                  repository.Database.insertNewDeployment( blockchainId, ca, codeHex, sender, txnHash, inputsBytes )
+                  repository.Database.insertNewDeployment( chainId, ca, codeHex, sender, txnHash, inputsBytes )
                 }
                 if ( dbCheck.isFailed ) {
                   dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
@@ -2600,7 +2600,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           out match {
             case Right( ctr ) => {
               val address = ctr.contractAddress.getOrElse( throw new SbtEthereumException("Huh? We deployed a contract, but the transaction receipt contains no contract address!") )
-              interactiveSetAliasForAddress( blockchainId )( s, log, is, s"the newly deployed '${deploymentAlias}' contract at '${hexString(address)}'", address )
+              interactiveSetAliasForAddress( chainId )( s, log, is, s"the newly deployed '${deploymentAlias}' contract at '${hexString(address)}'", address )
             }
             case Left( _ ) => ()
           }
@@ -2627,10 +2627,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
       val caller = (xethFindCurrentSender in config).value.get
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findCachePrivateKey(s, log, is, blockchainId, caller, autoRelockSeconds, true )
+      val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
       val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
       val amount = mbWei.getOrElse( Zero )
       val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
@@ -2655,11 +2655,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
       val from = (xethFindCurrentSender in config).value.get
       val (to, data, amount, mbNonce) = parser.parsed
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findCachePrivateKey( s, log, is, blockchainId, from, autoRelockSeconds, true )
+      val privateKey = findCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -2680,11 +2680,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
       val from = (xethFindCurrentSender in config).value.get
       val (to, amount) = parser.parsed
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findCachePrivateKey( s, log, is, blockchainId, from, autoRelockSeconds, true )
+      val privateKey = findCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -2787,13 +2787,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def xethFindCacheAddressParserInfoTask( config : Configuration ) : Initialize[Task[AddressParserInfo]] = Def.task {
-    val blockchainId       = (config / ethcfgBlockchainId).value
+    val chainId            = (config / ethcfgChainId).value
     val jsonRpcUrl         = (config / ethcfgJsonRpcUrl).value
-    val mbAliases          = repository.Database.findAllAliases( blockchainId ).toOption
+    val mbAliases          = repository.Database.findAllAliases( chainId ).toOption
     val nameServiceAddress = (config / enscfgNameServiceAddress).value
     val tld                = (config / enscfgNameServiceTld).value
     val reverseTld         = (config / enscfgNameServiceReverseTld).value
-    AddressParserInfo( blockchainId, jsonRpcUrl, mbAliases, nameServiceAddress, tld, reverseTld )
+    AddressParserInfo( chainId, jsonRpcUrl, mbAliases, nameServiceAddress, tld, reverseTld )
   }
 
   private def xethFindCacheSeedsTask( config : Configuration ) : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
@@ -2813,13 +2813,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     def ifPrint( msg : => String ) = if ( printEffectiveSender ) println( msg )
     Failable {
       val log = streams.value.log
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
 
-      val mbSenderOverride = getSenderOverride( config )( log, blockchainId )
+      val mbSenderOverride = getSenderOverride( config )( log, chainId )
       mbSenderOverride match {
         case Some( address ) => {
           ifPrint(
-            s"""|The current effective sender is ${verboseAddress(blockchainId, address)}.
+            s"""|The current effective sender is ${verboseAddress(chainId, address)}.
                 |It has been set as a sender override.""".stripMargin
           )
           address
@@ -2830,7 +2830,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             case Some( addrStr ) => {
               val address = EthAddress( addrStr )
               ifPrint (
-                s"""|The current effective sender is ${verboseAddress(blockchainId, address)}.
+                s"""|The current effective sender is ${verboseAddress(chainId, address)}.
                     |It has been set by build setting 'ethcfgSender'.
                     | + No sender override has been set.""".stripMargin
               )
@@ -2840,7 +2840,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               ExternalValue.EthSender.map( EthAddress.apply ) match {
                 case Some( address ) => {
                   ifPrint (
-                    s"""|The current effective sender is ${verboseAddress(blockchainId, address)}.
+                    s"""|The current effective sender is ${verboseAddress(chainId, address)}.
                         |It has been set by an external value -- either System property 'eth.sender' or environment variable 'ETH_SENDER'.
                         | + No sender override has been set.
                         | + Build setting 'ethcfgSender has not been defined.""".stripMargin
@@ -2848,12 +2848,12 @@ object SbtEthereumPlugin extends AutoPlugin {
                   address
                 }
                 case None => {
-                  val mbDefaultSenderAddress = repository.Database.findAddressByAlias( blockchainId, DefaultSenderAlias ).get
+                  val mbDefaultSenderAddress = repository.Database.findAddressByAlias( chainId, DefaultSenderAlias ).get
 
                   mbDefaultSenderAddress match {
                     case Some( address ) => {
                       ifPrint (
-                        s"""|The current effective sender is ${verboseAddress(blockchainId, address)}.
+                        s"""|The current effective sender is ${verboseAddress(chainId, address)}.
                             |It has been set by the special alias '${DefaultSenderAlias}'.
                             | + No sender override has been set.
                             | + Build setting 'ethcfgSender has not been defined. 
@@ -2871,19 +2871,19 @@ object SbtEthereumPlugin extends AutoPlugin {
                               | + No sender override has been set.
                               | + Build setting 'ethcfgSender has not been defined. 
                               | + Neither the System property 'eth.sender' nor the environment variable 'ETH_SENDER' are defined.
-                              | + No '${DefaultSenderAlias}' address alias has been defined for blockchain '${blockchainId}'.""".stripMargin
+                              | + No '${DefaultSenderAlias}' address alias has been defined for chain with ID ${chainId}.""".stripMargin
                         )
                         defaultTestAddress
                       }
                       else {
                         val msg ={
-                          s"""|No effective sender is defined. (blockchain '${blockchainId}', configuration '${config}')
+                          s"""|No effective sender is defined. (chain with ID ${chainId}, configuration '${config}')
                               |Cannot find any of...
                               | + a sender override
                               | + a value for build setting 'ethcfgSender' 
                               | + an 'eth.sender' System property
                               | + an 'ETH_SENDER' environment variable
-                              | + a '${DefaultSenderAlias}' address alias defined for blockchain '${blockchainId}'""".stripMargin
+                              | + a '${DefaultSenderAlias}' address alias defined for chain with ID ${chainId}""".stripMargin
                         }
                         ifPrint( msg )
                         throw new SenderNotAvailableException( msg )
@@ -3189,8 +3189,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
-      val blockchainId = (ethcfgBlockchainId in config).value
-      abiForAddress( blockchainId, parser.parsed )
+      val chainId = (ethcfgChainId in config).value
+      abiForAddress( chainId, parser.parsed )
     }
   }
 
@@ -3349,7 +3349,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val keystoresV3 = OnlyRepositoryKeystoreV3
       val log         = streams.value.log
 
-      val blockchainId = (ethcfgBlockchainId in config).value
+      val chainId = (ethcfgChainId in config).value
 
       val address = parser.parsed
 
@@ -3357,7 +3357,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val out = combined.get( address ).getOrElse( immutable.Set.empty )
 
       val message = {
-        val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "" )( _.fold("")( str => s" (aliases $str)" ) )
+        val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s" (aliases $str)" ) )
         if ( out.isEmpty ) s"""No V3 wallet found for '0x${address.hex}'${aliasesPart}. Directories checked: ${keystoresV3.mkString(", ")}"""
         else s"V3 wallet(s) found for '0x${address.hex}'${aliasesPart}"
       }
@@ -3408,7 +3408,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     // val mainEthJsonRpcUrl = (ethcfgJsonRpcUrl in Compile).value
     // val testEthJsonRpcUrl = (ethcfgJsonRpcUrl in Test).value
-    // val blockchainId      = (ethcfgBlockchainId in Compile).value
+    // val chainId           = (ethcfgChainId in Compile).value
     // val mbCurrentSender   = (xethFindCurrentSender in Compile).value
     
     log.info( s"sbt-ethereum-${generated.SbtEthereum.Version} successfully initialized (built ${SbtEthereum.BuildTimestamp})" )
@@ -3416,7 +3416,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     // log.info( s"sbt-ethereum main json-rpc endpoint configured to '${mainEthJsonRpcUrl}'" )
     // log.info( s"sbt-ethereum test json-rpc endpoint configured to '${testEthJsonRpcUrl}'" )
     // mbCurrentSender foreach { currentSender => 
-    //   val aliasesPart = commaSepAliasesForAddress( blockchainId, currentSender ).fold( _ => "" )( _.fold("")( commasep => s", with aliases $commasep" ) )
+    //   val aliasesPart = commaSepAliasesForAddress( chainId, currentSender ).fold( _ => "" )( _.fold("")( commasep => s", with aliases $commasep" ) )
     //   log.info( s"sbt-ethereum main current sender address: ${hexString(currentSender)}${aliasesPart}" )
     // }
   }
@@ -3579,7 +3579,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val keystoresV3  = OnlyRepositoryKeystoreV3
     val nontestConfig = Compile                                      // XXX: if you change this, change the hardcoded Compile value in the line below!
-    val nontestBlockchainId = ( Compile / ethcfgBlockchainId ).value // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
+    val nontestChainId = ( Compile / ethcfgChainId ).value // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
     val combined = combinedKeystoresMultiMap( keystoresV3 )
     if ( combined.isEmpty ) {
       def prompt : Option[String] = is.readLine( s"There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] ", mask = false )
@@ -3601,9 +3601,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val extract = Project.extract(s)
         val (_, result) = extract.runTask(ethKeystoreWalletV3Create, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
 
-        if ( mbDefaultSender( nontestBlockchainId ).isEmpty ) {
+        if ( mbDefaultSender( nontestChainId ).isEmpty ) {
           val address = result.address
-          def prompt2 : Option[String] = is.readLine( s"Would you like the new address '${hexString(address)}' to be the default sender on blockchain '${nontestBlockchainId}'? [y/n] ", mask = false )
+          def prompt2 : Option[String] = is.readLine( s"Would you like the new address '${hexString(address)}' to be the default sender on chain with ID ${nontestChainId}? [y/n] ", mask = false )
 
           @tailrec
           def checkSetDefault : Boolean = {
@@ -3808,7 +3808,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       .foldLeft( immutable.Map.empty[EthAddress,immutable.Set[wallet.V3]] )( combineMultiMaps )
   }
 
-  private def mbDefaultSender( blockchainId : String ) = repository.Database.findAddressByAlias( blockchainId, DefaultSenderAlias ).get
+  private def mbDefaultSender( chainId : Int ) = repository.Database.findAddressByAlias( chainId, DefaultSenderAlias ).get
 
   private def installLocalSolcJ( log : sbt.Logger, rootSolcJDir : File, versionToInstall : String, testTimeout : Duration ) : Unit = {
     val versionDir = new File( rootSolcJDir, versionToInstall )
@@ -3832,16 +3832,16 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def senderOverride( config : Configuration ) = if ( config == Test ) Mutables.TestSenderOverride else Mutables.SenderOverride
 
-  private def getSenderOverride( config : Configuration )( log : sbt.Logger, blockchainId : String ) : Option[EthAddress] = {
+  private def getSenderOverride( config : Configuration )( log : sbt.Logger, chainId : Int ) : Option[EthAddress] = {
     val configSenderOverride = senderOverride( config )
 
     configSenderOverride.synchronized {
-      val BlockchainId = blockchainId
+      val ChainId = chainId
 
       configSenderOverride.get match {
-        case Some( ( BlockchainId, address ) ) => Some( address )
-        case Some( (badBlockchainId, _) ) => {
-          log.info( s"A sender override was set for the blockchain '$badBlockchainId', but that is no longer the current 'ethcfgBlockchainId'. The sender override is stale and will be dropped." )
+        case Some( ( ChainId, address ) ) => Some( address )
+        case Some( (badChainId, _) ) => {
+          log.info( s"A sender override was set for the chain with ID ${badChainId}, but that is no longer the current 'ethcfgChainId'. The sender override is stale and will be dropped." )
           configSenderOverride.set( None )
           None
         }
@@ -3907,7 +3907,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     state                : sbt.State,
     log                  : sbt.Logger,
     is                   : sbt.InteractionService,
-    blockchainId         : String,
+    chainId              : Int,
     address              : EthAddress,
     autoRelockSeconds    : Int,
     userValidateIfCached : Boolean
@@ -3918,9 +3918,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       // it also slows down automated attempts to guess passwords, i guess...
       Thread.sleep(1000)
 
-      val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "" )( _.fold("")( commasep => s", aliases $commasep" ) )
+      val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( commasep => s", aliases $commasep" ) )
 
-      log.info( s"Unlocking address '0x${address.hex}' (on blockchain '$blockchainId'$aliasesPart)" )
+      log.info( s"Unlocking address '0x${address.hex}' (on chain with ID ${chainId}$aliasesPart)" )
 
       val credential = readCredential( is, address )
 
@@ -3928,20 +3928,20 @@ object SbtEthereumPlugin extends AutoPlugin {
       val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in Compile, address.hex, state) // the config scope of xethLoadWalletV3For doesn't matter here, since we provide hex, not an alias
 
       val privateKey = findPrivateKey( log, wallets, credential )
-      Mutables.CurrentAddress.set( UnlockedAddress( blockchainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
+      Mutables.CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
       privateKey
     }
     def goodCached : Option[EthPrivateKey] = {
       // caps for value matches rather than variable names
-      val BlockchainId = blockchainId
+      val ChainId = chainId
       val Address = address
       val now = System.currentTimeMillis
       Mutables.CurrentAddress.get match {
-        case UnlockedAddress( BlockchainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if blockchainId and/or ethcfgSender has changed, this will no longer match
-          val aliasesPart = commaSepAliasesForAddress( BlockchainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
+        case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if chainId and/or ethcfgSender has changed, this will no longer match
+          val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
           val ok = {
             if ( userValidateIfCached ) {
-              is.readLine( s"Using sender address '0x${address.hex}' (on blockchain '${blockchainId}'${aliasesPart}). OK? [y/n] ", false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
+              is.readLine( s"Using sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}). OK? [y/n] ", false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
             } else {
               true
             }
@@ -3950,7 +3950,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             Some( privateKey )
           } else {
             Mutables.CurrentAddress.set( NoAddress )
-            throw new SenderNotAvailableException( s"Use of sender address '0x${address.hex}' (on blockchain '${blockchainId}'${aliasesPart}) vetoed by user." )
+            throw new SenderNotAvailableException( s"Use of sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}) vetoed by user." )
           }
         }
         case _ => { // if we don't match, we reset / forget the cached private key
@@ -4063,7 +4063,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
 
-  private def interactiveSetAliasForAddress( blockchainId : String )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
+  private def interactiveSetAliasForAddress( chainId : Int )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
     def rawFetch : String = is.readLine( s"Enter an optional alias for ${describedAddress} (or [return] for none): ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
     def validate( alias : String ) : Boolean = parsesAsAlias( alias )
 
@@ -4081,9 +4081,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     query match {
       case Some( alias ) => {
-        val check = repository.Database.createUpdateAlias( blockchainId, alias, address )
+        val check = repository.Database.createUpdateAlias( chainId, alias, address )
         check.fold( _.vomit ){ _ => 
-          log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${blockchainId}')." )
+          log.info( s"Alias '${alias}' now points to address '${address.hex}' (for chain with ID ${chainId})." )
         }
       }
       case None => log.info( s"No alias set for ${describedAddress}." )
@@ -4126,16 +4126,16 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def blankNull( str : String ) = if (str == null) "" else str
   private def span( len : Int ) = (0 until len).map(_ => "-").mkString
 
-  private def commaSepAliasesForAddress( blockchainId : String, address : EthAddress ) : Failable[Option[String]] = {
-    repository.Database.findAliasesByAddress( blockchainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
+  private def commaSepAliasesForAddress( chainId : Int, address : EthAddress ) : Failable[Option[String]] = {
+    repository.Database.findAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
   }
-  private def leftwardAliasesArrowOrEmpty( blockchainId : String, address : EthAddress ) : Failable[String] = {
-    commaSepAliasesForAddress( blockchainId, address ).map( _.fold("")( aliasesStr => s" <-- ${aliasesStr}" ) )
+  private def leftwardAliasesArrowOrEmpty( chainId : Int, address : EthAddress ) : Failable[String] = {
+    commaSepAliasesForAddress( chainId, address ).map( _.fold("")( aliasesStr => s" <-- ${aliasesStr}" ) )
   }
 
-  private def verboseAddress( blockchainId : String, address : EthAddress ) : String = {
-    val aliasesPart = commaSepAliasesForAddress( blockchainId, address ).fold( _ => "" )( _.fold("")( str => s"with aliases $str " ) )
-    s"'0x${address.hex}' (${aliasesPart}on blockchain '$blockchainId')"
+  private def verboseAddress( chainId : Int, address : EthAddress ) : String = {
+    val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s"with aliases $str " ) )
+    s"'0x${address.hex}' (${aliasesPart}on chain with ID $chainId)"
   }
 
   private def attemptAdvanceStateWithTask[T]( taskKey : Def.ScopedKey[Task[T]], startState : State ) : State = {
