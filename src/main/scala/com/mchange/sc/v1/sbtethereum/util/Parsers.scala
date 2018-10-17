@@ -40,7 +40,7 @@ object Parsers {
     private val TTL     = 300000 // 300 secs, 5 mins, maybe someday make this sensitive to ENS TTLs
     private val MaxSize = 100
 
-    private final case class Key( blockchainId : String, jsonRpcUrl : String, nameServiceAddress : EthAddress, nameServiceTld : String, nameServiceReverseTld : String, name : String )
+    private final case class Key( chainId : Int, jsonRpcUrl : String, nameServiceAddress : EthAddress, nameServiceTld : String, nameServiceReverseTld : String, name : String )
 
     // MT: synchronized on EnsAddressCache's lock
     private val cache = mutable.HashMap.empty[Key,Tuple2[Failable[EthAddress],Long]]
@@ -66,7 +66,7 @@ object Parsers {
     }
 
     def lookup( api : AddressParserInfo, name : String ) : Failable[EthAddress] = this.synchronized {
-      val key = Key( api.blockchainId, api.jsonRpcUrl, api.nameServiceAddress, api.nameServiceTld, api.nameServiceReverseTld, name )
+      val key = Key( api.chainId, api.jsonRpcUrl, api.nameServiceAddress, api.nameServiceTld, api.nameServiceReverseTld, name )
       val ( result, timestamp ) = {
         cache.get( key ) match {
           case Some( tup ) => if ( System.currentTimeMillis() > tup._2 + TTL ) update( key ) else tup
@@ -363,7 +363,7 @@ object Parsers {
   ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi)] = {
     mbApi match {
       case Some( api ) =>
-        genGenericAddressParser( state, mbApi ).map( a => ( a, abiForAddressOrEmpty(api.blockchainId,a) ) ).flatMap { case ( address, abi ) =>
+        genGenericAddressParser( state, mbApi ).map( a => ( a, abiForAddressOrEmpty(api.chainId,a) ) ).flatMap { case ( address, abi ) =>
           ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbApi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
         }
       case None => {

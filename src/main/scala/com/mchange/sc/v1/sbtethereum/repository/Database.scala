@@ -339,7 +339,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def chainIdContractAddressesForCodeHash( codeHash : EthHash ) : Failable[immutable.Set[(String,EthAddress)]] = {
+  def chainIdContractAddressesForCodeHash( codeHash : EthHash ) : Failable[immutable.Set[(Int,EthAddress)]] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ) { conn =>
@@ -350,7 +350,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  case class ContractsSummaryRow( chain_id : Int, contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
+  case class ContractsSummaryRow( mb_chain_id : Option[Int], contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
 
   private [sbtethereum]
   def contractsSummary : Failable[immutable.Seq[ContractsSummaryRow]] = {
@@ -366,7 +366,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
               def mbformat( ts : Timestamp ) : String = if ( ts == null ) null else df.format( ts )
               while( rs.next() ) {
                 buffer += ContractsSummaryRow(
-                  rs.getString(Column.chain_id),
+                  Option( rs.getString(Column.chain_id) ).map( _.toInt ),
                   rs.getString(Column.contract_address),
                   rs.getString(Column.name),
                   rs.getString(Column.deployer_address),

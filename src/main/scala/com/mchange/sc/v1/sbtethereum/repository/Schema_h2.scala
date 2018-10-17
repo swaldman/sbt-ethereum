@@ -19,6 +19,8 @@ import play.api.libs.json._
 object Schema_h2 {
   private implicit lazy val logger = mlogger( this )
 
+  private val OldMainnetIdentifier = "mainnet"
+
   def setClob( ps : PreparedStatement, i : Int, str : String ): Unit = {
     ps.setClob( i, new StringReader( str ) )
   }
@@ -83,7 +85,7 @@ object Schema_h2 {
           stmt.executeUpdate( Table.DeployedCompilations.V1.CreateSql )
           stmt.executeUpdate(
             s"""|INSERT INTO deployed_compilations ( blockchain_id, contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when )
-                |SELECT '$MainnetIdentifier', contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
+                |SELECT '$OldMainnetIdentifier', contract_address, base_code_hash, full_code_hash, deployer_address, txn_hash, deployed_when
                 |FROM deployed_compilations_v0""".stripMargin
           )
           stmt.executeUpdate("DROP TABLE deployed_compilations_v0")
@@ -104,7 +106,7 @@ object Schema_h2 {
           stmt.executeUpdate( Table.AddressAliases.V3.CreateSql )
           stmt.executeUpdate(
             s"""|INSERT INTO address_aliases ( blockchain_id, alias, address )
-                |SELECT '$MainnetIdentifier', alias, address
+                |SELECT '$OldMainnetIdentifier', alias, address
                 |FROM address_aliases_v2""".stripMargin
           )
           stmt.executeUpdate("DROP TABLE address_aliases_v2")
@@ -127,33 +129,35 @@ object Schema_h2 {
         }
       }
       case 4 => {
-        val KnownChains = Map( "mainnet" -> 1, "ropsten" -> 3, "rinkeby" -> 4, "kovan" -> 42, "eth-classic-mainnet" -> 61, "eth-classic-testnet" -> 62 )
+        val KnownChains = Map( "mainnet" -> 1, "ropsten" -> 3, "rinkeby" -> 4, "kovan" -> 42, "eth-classic-mainnet" -> 61, "ethc-mainnet" -> 61, "eth-classic-testnet" -> 62 )
         val TableNamesToNewPrimaryKeyCols = {
           Map (
-            "deployed_compilations" -> "chain_id" :: "contract_address" :: Nil,
-            "memorized_abis" -> "chain_id" :: "contract_address" :: Nil,
-            "address_aliases" -> "chain_id" :: "alias" :: Nil,
-            "ens_bid_store" -> "chain_id" :: "bid_hash" :: Nil
+            "deployed_compilations" -> ("chain_id" :: "contract_address" :: Nil),
+            "memorized_abis" -> ("chain_id" :: "contract_address" :: Nil),
+            "address_aliases" -> ("chain_id" :: "alias" :: Nil),
+            "ens_bid_store" -> ("chain_id" :: "bid_hash" :: Nil)
           )
         }
         def updateChainIds( table : String, primaryKeyCols : List[String] ) = {
           val pkColExpression = primaryKeyCols.mkString("( ",", "," )")
 
-          borrow( con.createStatement() ) { stmt =>
-            stmt.executeUpdate( s"ALTER TABLE ${table} DROP CONSTRAINT PRIMARY KEY" )
+          borrow( conn.createStatement() ) { stmt =>
+            stmt.executeUpdate( s"DELETE FROM ${table} WHERE blockchain_id = 'testrpc'" )
+            stmt.executeUpdate( s"ALTER TABLE ${table} DROP PRIMARY KEY" )
             stmt.executeUpdate( s"ALTER TABLE ${table} ADD COLUMN chain_id INTEGER AFTER blockchain_id" )
           }
           val updateQuery = s"UPDATE ${table} SET chain_id = ? WHERE blockchain_id = ?"
           borrow( conn.prepareStatement( updateQuery ) ) { ps =>
-            KnowChains.foreach { case ( oldBlockchainId, chainId ) =>
+            KnownChains.foreach { case ( oldBlockchainId, chainId ) =>
               ps.setInt( 1, chainId )
               ps.setString( 2, oldBlockchainId )
               ps.executeUpdate()
             }
           }
-          borrow( con.createStatement() ) { stmt =>
+          borrow( conn.createStatement() ) { stmt =>
             stmt.executeUpdate( s"ALTER TABLE ${table} DROP COLUMN blockchain_id" )
-            stmt.executeUpdate( s"ALTER TABLE ${table} ADD CONSTRAINT PRIMARY KEY ${pkColExpression}" )
+            stmt.executeUpdate( s"ALTER TABLE ${table} ALTER COLUMN chain_id SET NOT NULL" )
+            stmt.executeUpdate( s"ALTER TABLE ${table} ADD PRIMARY KEY ${pkColExpression}" )
           }
         }
         TableNamesToNewPrimaryKeyCols.foreach { case ( table, primaryKeyCols ) =>
@@ -970,7 +974,7 @@ object Schema_h2 {
         }
       }
 
-      private def markTrue( field : String )( conn : Connection, chainId : String, bidHash : EthHash ) : Unit = {
+      private def markTrue( field : String )( conn : Connection, chainId : Int, bidHash : EthHash ) : Unit = {
         borrow( conn.prepareStatement( s"UPDATE ens_bid_store SET ${field} = TRUE WHERE chain_id = ? AND bid_hash = ?" ) ) { ps =>
           ps.setInt( 1, chainId )
           ps.setString( 2, bidHash.hex )

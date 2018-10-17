@@ -48,7 +48,7 @@ object SJsonNewFormats {
   implicit object AddressParserInfoFormat extends JsonFormat[AddressParserInfo] {
     def write[J](api : AddressParserInfo, builder: Builder[J]) : Unit = {
       builder.beginObject()
-      builder.addField("blockchainId", api.blockchainId)
+      builder.addField("chainId", api.chainId)
       builder.addField("jsonRpcUrl", api.jsonRpcUrl)
       builder.addField("mbAliases", api.mbAliases)
       builder.addField("nameServiceAddressHex", api.nameServiceAddress.hex)
@@ -60,14 +60,14 @@ object SJsonNewFormats {
       jsOpt match {
         case Some(js) =>
           unbuilder.beginObject(js)
-          val blockchainId = unbuilder.readField[String]("blockchainId")
+          val chainId = unbuilder.readField[Int]("chainId")
           val jsonRpcUrl = unbuilder.readField[String]("jsonRpcUrl")
           val mbAliases = unbuilder.readField[Option[immutable.SortedMap[String,EthAddress]]]("mbAliases")
           val nameServiceAddressHex = unbuilder.readField[String]("nameServiceAddressHex")
           val nameServiceTld = unbuilder.readField[String]("nameServiceTld")
           val nameServiceReverseTld = unbuilder.readField[String]("nameServiceReverseTld")
           unbuilder.endObject()
-          AddressParserInfo(blockchainId, jsonRpcUrl, mbAliases, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
+          AddressParserInfo(chainId, jsonRpcUrl, mbAliases, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
         case None =>
           deserializationError("Expected JsObject but found None")
       }

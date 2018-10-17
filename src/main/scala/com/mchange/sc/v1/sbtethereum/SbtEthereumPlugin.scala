@@ -89,10 +89,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val GasPriceOverride = new AtomicReference[Option[BigInt]]( None )
 
     // MT: protected by SenderOverride's lock
-    val SenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
+    val SenderOverride = new AtomicReference[Option[ ( Int, EthAddress ) ]]( None )
 
     // MT: protected by TestSenderOverride's lock
-    val TestSenderOverride = new AtomicReference[Option[ ( String, EthAddress ) ]]( None )
+    val TestSenderOverride = new AtomicReference[Option[ ( Int, EthAddress ) ]]( None )
 
     // MT: protected by LocalGanache's lock
     val LocalGanache = new AtomicReference[Option[Process]]( None )
@@ -211,7 +211,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgTransactionReceiptTimeout     = settingKey[Duration]     ("Length of period after which sbt-ethereum will give up on polling for a Client.TransactionReceipt after a transaction")
 
     val xethcfgAsyncOperationTimeout      = settingKey[Duration]    ("Length of time to wait for asynchronous operations, like HTTP calls and external processes.")
-    val xethcfgEphemeralBlockchains       = settingKey[Seq[String]] ("IDs of blockchains that should be considered ephemeral (so their deployments should not be retained).")
     val xethcfgNamedAbiSource             = settingKey[File]        ("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
     val xethcfgTestingResourcesObjectName = settingKey[String]      ("The name of the Scala object that will be automatically generated with resources for tests.")
     val xethcfgWalletV3ScryptDkLen        = settingKey[Int]         ("The derived key length parameter used when generating Scrypt V3 wallets")
@@ -439,8 +438,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     // xeth settings
 
     xethcfgAsyncOperationTimeout := 30.seconds,
-
-    xethcfgEphemeralBlockchains := immutable.Seq( GanacheIdentifier ),
 
     xethcfgNamedAbiSource in Compile := (sourceDirectory in Compile).value / "ethabi",
 
@@ -1711,7 +1708,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         println();
         println( (if ( hex ) "0x" else "") + b )
       }
-      def addressSection( title : String, body : Set[ (String,EthAddress) ] ) : Unit = {
+      def addressSection( title : String, body : Set[ (Int,EthAddress) ] ) : Unit = {
         val ordered = immutable.SortedSet.empty[String] ++ body.map { tup =>
           val ( chainId, address ) = tup
           s"0x${address.hex} (on chain with ID ${chainId})"
@@ -1796,19 +1793,19 @@ object SbtEthereumPlugin extends AutoPlugin {
     val CodeHash   = "Code Hash"
     val Timestamp  = "Deployment Timestamp"
 
-    val cap = "+" + span(12) + "+" + span(44) + "+" + span(22) + "+" + span(68) + "+" + span(30) + "+"
+    val cap = "+" + span(10) + "+" + span(44) + "+" + span(22) + "+" + span(68) + "+" + span(30) + "+"
     println( cap )
-    println( f"| $ChainId%-10s | $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
+    println( f"| $ChainId%-8s | $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
     println( cap )
 
     contractsSummary.foreach { row =>
       import row._
-      val id = blankNull( chain_id )
+      val id = mb_chain_id.fold("")( _.toString )
       val ca = emptyOrHex( contract_address )
       val nm = blankNull( name )
       val ch = emptyOrHex( code_hash )
       val ts = blankNull( timestamp )
-      println( f"| $id%-10s | $ca%-42s | $nm%-20s | $ch%-66s | $ts%-28s |" )
+      println( f"| $id%-8s | $ca%-42s | $nm%-20s | $ch%-66s | $ts%-28s |" )
     }
     println( cap )
   }
@@ -2443,8 +2440,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val log = streams.value.log
       val chainId = (ethcfgChainId in config).value
-      val ephemeralBlockchains = xethcfgEphemeralBlockchains.value
-      val ephemeralDeployment = ephemeralBlockchains.contains( chainId )
+      val ephemeralDeployment = chainId <= 0
 
       val sender = (xethFindCurrentSender in config).value.get
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
@@ -3495,9 +3491,9 @@ object SbtEthereumPlugin extends AutoPlugin {
                     val versionSuggestion = {
                       mbLastSuccessful match {
                         case Some( lastSuccessful ) =>{
-                          """|
-                             |The last version of sbt-ethereum to successfully use the recovered database was ${lastSuccessful}.
-                             |Perhaps try restoring from that version.""".stripMargin
+                          s"""|
+                              |The last version of sbt-ethereum to successfully use the recovered database was ${lastSuccessful}.
+                              |Perhaps try restoring from that version.""".stripMargin
                         }
                         case None => ""
                       }
