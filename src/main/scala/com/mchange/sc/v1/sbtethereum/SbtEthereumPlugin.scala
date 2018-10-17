@@ -1785,29 +1785,20 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractCompilationListTask : Initialize[Task[Unit]] = Def.task {
-    val contractsSummary = repository.Database.contractsSummary.get // throw for any db problem
+    val contractsSummary = repository.Database.contractsSummary.assert // throw for any db problem
+    val columns = immutable.Vector( "Chain ID", "Contract Address", "Name", "Code Hash", "Deployment Timestamp" ).map( texttable.Column.apply( _ ) )
 
-    val ChainId    = "Chain ID"
-    val Address    = "Contract Address"
-    val Name       = "Name"
-    val CodeHash   = "Code Hash"
-    val Timestamp  = "Deployment Timestamp"
-
-    val cap = "+" + span(10) + "+" + span(44) + "+" + span(22) + "+" + span(68) + "+" + span(30) + "+"
-    println( cap )
-    println( f"| $ChainId%-8s | $Address%-42s | $Name%-20s | $CodeHash%-66s | $Timestamp%-28s |" )
-    println( cap )
-
-    contractsSummary.foreach { row =>
-      import row._
+    def extract( csr : repository.Database.ContractsSummaryRow ) : Seq[String] = {
+      import csr._
       val id = mb_chain_id.fold("")( _.toString )
       val ca = emptyOrHex( contract_address )
       val nm = blankNull( name )
       val ch = emptyOrHex( code_hash )
       val ts = blankNull( timestamp )
-      println( f"| $id%-8s | $ca%-42s | $nm%-20s | $ch%-66s | $ts%-28s |" )
+      immutable.Vector( id, ca, nm, ch, ts )
     }
-    println( cap )
+
+    texttable.printTable( columns, extract )( contractsSummary.map( csr => texttable.Row(csr) ) )
   }
 
   private def ethDebugGanacheStartTask : Initialize[Task[Unit]] = Def.task {
