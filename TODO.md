@@ -1,14 +1,15 @@
 # TODO
 
-DB schema upates
+DB schema updates
+
+* Implement a tags table
 
 * Capture AST in database, offer useful analyses (e.g. linearization) a la Surya
   ( see https://ethereum.stackexchange.com/questions/56802/a-solidity-linearization-puzzle/56803?noredirect=1#comment67743_56803 )
 
 * segregate ABIs into a separate table, make them aliasable, overridable for an address
 
-* change ethcfgBlockchainId to ethcfgChainId, let it accept EIP-155-based EthChainId rather than String.
-  - update string blockchain_id to int identifiers, in API and in database. grrr.
+* Let compilations store the name of the project from which they were compiled
 
 Other
 
@@ -45,8 +46,6 @@ Other
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
 
 * Some form of logging of overwriting of aliases
-
-* Let compilations store the name of the project from which they were compiled
 
 * Generalize reasoning surrounding when interactive transaction approver should be used
 
