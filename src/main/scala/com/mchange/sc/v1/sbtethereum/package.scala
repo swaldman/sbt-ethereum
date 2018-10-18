@@ -126,6 +126,7 @@ package object sbtethereum {
   }
 
   // TODO: pretty up logs output
+  // XXX: "Events" will show "None" when the ABI is missing, even if there were events. Fix this!
   def prettyClientTransactionReceipt( mbabi : Option[Abi], ctr : Client.TransactionReceipt ) : String = {
     val events = {
       val seq_f_events = {
@@ -149,7 +150,10 @@ package object sbtethereum {
         |       Transaction Status:  ${ decodeStatus( ctr.status ) }
         |       Block Hash:          0x${ctr.blockHash.hex}
         |       Block Number:        ${ctr.blockNumber.widen}
+        |       From:                0x${ctr.from.hex}
+        |       To:                  0x${ctr.to.hex}
         |       Cumulative Gas Used: ${ctr.cumulativeGasUsed.widen}
+        |       Gas Used:            ${ctr.gasUsed.widen}
         |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
         |       Logs:                ${if (ctr.logs.isEmpty) "None" else ctr.logs.mkString("\n                            ")}
         |       Events:              ${if (events.isEmpty) "None" else events.mkString("\n                            ")}""".stripMargin     

@@ -291,6 +291,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethTransactionDeploy = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]("""Deploys the named contract, if specified, or else all contracts in 'ethcfgAutoDeployContracts'""")
     val ethTransactionInvoke = inputKey[Client.TransactionReceipt]                   ("Calls a function on a deployed smart contract")
+    val ethTransactionLookup = inputKey[Client.TransactionReceipt]                   ("Looks up (and potentially waits for) the transaction associated with a given transaction hash.")
     val ethTransactionRaw    = inputKey[Client.TransactionReceipt]                   ("Sends a transaction with user-specified bytes, amount, and optional nonce")
     val ethTransactionSend   = inputKey[Client.TransactionReceipt]                   ("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
     val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
@@ -654,6 +655,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionInvoke in Compile := { ethTransactionInvokeTask( Compile ).evaluated },
 
     ethTransactionInvoke in Test := { ethTransactionInvokeTask( Test ).evaluated },
+
+    ethTransactionLookup in Compile := { ethTransactionLookupTask( Compile ).evaluated },
+
+    ethTransactionLookup in Test := { ethTransactionLookupTask( Test ).evaluated },
 
     ethTransactionRaw in Compile := { ethTransactionRawTask( Compile ).evaluated },
 
@@ -2635,6 +2640,27 @@ object SbtEthereumPlugin extends AutoPlugin {
         Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will throw a TimeoutException internally on time out
+    }
+  }
+
+  private def ethTransactionLookupTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
+    val parser = ethHashParser( "<transaction-hash>" )
+
+    Def.inputTask {
+      val s = state.value
+      val log = streams.value.log
+      val chainId = (ethcfgChainId in config).value
+      val txnHash = parser.parsed
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      log.info( s"Looking up transaction '0x${txnHash.hex}' (will wait up to ${invokerContext.pollTimeout})." )
+      val f_out = Invoker.futureTransactionReceipt( txnHash ).map { ctr =>
+        val mbAbi = mbAbiForAddress( chainId, ctr.to )
+        prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, ctr )
+      }
+      val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
+      out
     }
   }
 

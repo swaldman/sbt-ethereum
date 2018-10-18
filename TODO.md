@@ -13,6 +13,8 @@ DB schema updates
 
 Other
 
+* ethContractAbiEncode <abi-identifier> args => data (task name? unfortunately we can't do decode, would conflict with drop)
+
 * Prompt for alias after ethKeystoreWalletV3Create?
 
 * ethTransactionAsync*
@@ -22,8 +24,6 @@ Other
   - or maybe we should just alias Poller.TimeoutException everywher that seems convenient?
 
 * change (or alias) `contractAddress` field in stubs to simple address
-
-* Factory methods for sol.Bytes and sol.String?
 
 * stub.Sender -- synchronous versions of convenience methods?
 
@@ -37,7 +37,7 @@ Other
 
 * The parser for ethTransactionDeploy should handle aliases / ens-names etc when ctor args are addresses
 
-* make price feeds sensitive to blockchainId
+* make price feeds sensitive to chainId
 
 * better formatting of currency amounts (fewer decimals)
 
