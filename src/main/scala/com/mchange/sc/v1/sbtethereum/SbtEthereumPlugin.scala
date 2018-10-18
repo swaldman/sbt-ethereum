@@ -2540,6 +2540,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val f_txnHash = Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq )
 
+        log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
         val f_out = {
           for {
             txnHash <- f_txnHash
@@ -2562,7 +2563,6 @@ object SbtEthereumPlugin extends AutoPlugin {
             receipt
           }
         }
-
         Await.ready( f_out, Duration.Inf ) // we use Duration.Inf because the Future will throw an Exception internally on a timeout
 
         val out = {
@@ -2637,6 +2637,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val f_out = Invoker.transaction.sendMessage( privateKey, contractAddress, Unsigned256( amount ), callData ) flatMap { txnHash =>
         log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei to address '0x${contractAddress.hex}' in transaction '0x${txnHash.hex}'.""" )
+        log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
         Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will throw a TimeoutException internally on time out
@@ -2659,8 +2660,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val mbAbi = mbAbiForAddress( chainId, ctr.to )
         prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, ctr )
       }
-      val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
-      out
+      Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
     }
   }
 
@@ -2706,6 +2706,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val f_out = Invoker.transaction.sendWei( privateKey, to, Unsigned256( amount ) ) flatMap { txnHash =>
         log.info( s"Sending ${amount} wei to address '0x${to.hex}' in transaction '0x${txnHash.hex}'." )
+        log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
         Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None, txnHash, invokerContext.pollTimeout, _ ) )
       }
       val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
