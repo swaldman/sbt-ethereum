@@ -362,10 +362,12 @@ object Parsers {
     mbApi : Option[AddressParserInfo]
   ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi)] = {
     mbApi match {
-      case Some( api ) =>
-        genGenericAddressParser( state, mbApi ).map( a => ( a, abiForAddressOrEmpty(api.chainId,a) ) ).flatMap { case ( address, abi ) =>
-          ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbApi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) }
-        }
+      case Some( api ) => {
+        genGenericAddressParser( state, mbApi ).map { a =>
+          val abiLookup = abiLookupForAddressDefaultEmpty( api.chainId, a, api.abiOverrides )
+          Tuple2( a, abiLookup.resolvedAbi.get )
+        }.flatMap { case ( address, abi ) => ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbApi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) } }
+      }
       case None => {
         WARNING.log("Failed to load blockchain ID for address, function, inputs, abi parser")
         failure( "Blockchain ID is unavailable, can't parse ABI" )

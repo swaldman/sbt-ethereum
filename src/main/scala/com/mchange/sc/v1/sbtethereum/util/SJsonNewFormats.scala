@@ -35,6 +35,8 @@ object SJsonNewFormats {
 
   implicit val SeedIso = playJsonSerializingIso[MaybeSpawnable.Seed]
 
+  implicit val AbiFormat = playJsonSerializingIso[jsonrpc.Abi]
+
   implicit val StringEthAddressSortedMapFormat = new JsonFormat[immutable.SortedMap[String,EthAddress]]{
     val inner = mapFormat[String,EthAddress]
 
@@ -51,6 +53,7 @@ object SJsonNewFormats {
       builder.addField("chainId", api.chainId)
       builder.addField("jsonRpcUrl", api.jsonRpcUrl)
       builder.addField("mbAliases", api.mbAliases)
+      builder.addField("abiOverrides", api.abiOverrides)
       builder.addField("nameServiceAddressHex", api.nameServiceAddress.hex)
       builder.addField("nameServiceTld", api.nameServiceTld)
       builder.addField("nameServiceReverseTld", api.nameServiceReverseTld)
@@ -63,11 +66,12 @@ object SJsonNewFormats {
           val chainId = unbuilder.readField[Int]("chainId")
           val jsonRpcUrl = unbuilder.readField[String]("jsonRpcUrl")
           val mbAliases = unbuilder.readField[Option[immutable.SortedMap[String,EthAddress]]]("mbAliases")
+          val abiOverrides = unbuilder.readField[immutable.Map[EthAddress,jsonrpc.Abi]]("abiOverrides")
           val nameServiceAddressHex = unbuilder.readField[String]("nameServiceAddressHex")
           val nameServiceTld = unbuilder.readField[String]("nameServiceTld")
           val nameServiceReverseTld = unbuilder.readField[String]("nameServiceReverseTld")
           unbuilder.endObject()
-          AddressParserInfo(chainId, jsonRpcUrl, mbAliases, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
+          AddressParserInfo(chainId, jsonRpcUrl, mbAliases, abiOverrides, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
         case None =>
           deserializationError("Expected JsObject but found None")
       }

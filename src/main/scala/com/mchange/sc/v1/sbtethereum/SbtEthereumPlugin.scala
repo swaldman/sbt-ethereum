@@ -88,6 +88,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val GasPriceOverride = new AtomicReference[Option[BigInt]]( None )
 
+    // MT: protected by AbiOverride's lock
+    val AbiOverrides = new AtomicReference[immutable.Map[Int,immutable.Map[EthAddress,Abi]]]( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
+
     // MT: protected by SenderOverride's lock
     val SenderOverride = new AtomicReference[Option[ ( Int, EthAddress ) ]]( None )
 
@@ -105,6 +108,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       CurrentSolidityCompiler.set( None )
       GasLimitOverride.set( None )
       GasPriceOverride.set( None )
+      AbiOverrides synchronized {
+        AbiOverrides.set( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
+      }
       SenderOverride synchronized {
         SenderOverride.set( None )
       }
@@ -121,6 +127,33 @@ object SbtEthereumPlugin extends AutoPlugin {
     Mutables.reset()
     repository.reset()
     util.Parsers.reset()
+  }
+
+  private def senderOverride( config : Configuration ) = if ( config == Test ) Mutables.TestSenderOverride else Mutables.SenderOverride
+
+  private def getSenderOverride( config : Configuration )( log : sbt.Logger, chainId : Int ) : Option[EthAddress] = {
+    val configSenderOverride = senderOverride( config )
+
+    configSenderOverride.synchronized {
+      val ChainId = chainId
+
+      configSenderOverride.get match {
+        case Some( ( ChainId, address ) ) => Some( address )
+        case Some( (badChainId, _) ) => {
+          log.info( s"A sender override was set for the chain with ID ${badChainId}, but that is no longer the current 'ethcfgChainId'. The sender override is stale and will be dropped." )
+          configSenderOverride.set( None )
+          None
+        }
+        case None => None
+      }
+    }
+  }
+
+  private def abiOverridesForChain( chainId : Int ) : immutable.Map[EthAddress,Abi] = {
+    Mutables.AbiOverrides.synchronized {
+      val outerMap = Mutables.AbiOverrides.get
+      outerMap.getOrElse( chainId, immutable.Map.empty[EthAddress,Abi] )
+    }
   }
 
   private val BufferSize = 4096
@@ -1412,38 +1445,46 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
+      val abiOverrides = abiOverridesForChain( chainId )
       val ( toLinkAddress, abiSource ) = parser.parsed
+
+      val ( abi, sourceDesc ) = {
+        abiSource match {
+          case Left( address ) => {
+            val abiLookup = ensureAbiLookupForAddress( chainId, address, abiOverrides, suppressStackTrace = true ) // asserts success
+            val resolved = abiLookup.resolvedAbi.get // should succeed if the prior call did
+            ( resolved, s"address ${hexString(address)}" )
+          }
+          case Right( hash ) => {
+            val mbinfo = repository.Database.compilationInfoForCodeHash( hash ).assert // throw any db problem
+            ( mbinfo.get.mbAbi.get /* asserts success */, s"compilation with code hash ${hexString(hash)}" )
+          }
+        }
+      }
       
       val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( chainId, toLinkAddress ).assert
       mbKnownCompilation match {
         case Some( knownCompilation ) => {
-          val msg = s"The contract at address '${hexString(toLinkAddress)}' was already associated with a deployed compilation, cannot associate with a new ABI."
-          log.warn( msg )
-          // TODO, maybe, check if the deployed compilation includes a non-null ABI
-          throw nst( new SbtEthereumException( msg ) )
-        }
-        case None => {
-          val abi = {
-            abiSource match {
-              case Left( address ) => {
-                abiForAddress( chainId, address, suppressStackTrace = true ) // asserts success
-              }
-              case Right( hash ) => {
-                val mbinfo = repository.Database.compilationInfoForCodeHash( hash ).assert // throw any db problem
-                mbinfo.get.mbAbi.get // asserts success
-              }
+          knownCompilation.mbAbiHash match {
+            case Some( abiHash ) => {
+              log.warn( s"The contract at address '${hexString(toLinkAddress)}' was already associated with a deployed compilation, which has an ABI. A memorized ABI would shadow that." )
+              val doIt = queryYN( is, s"Do you still wish to memorize a new ABI for ${sourceDesc}?" )
+              if (! doIt ) throw new OperationAbortedByUserException( "User chose not shadow ABI of already defined compilation." )
+            }
+            case None => {
+              // ignore, we won't be overriding anything
             }
           }
-          repository.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi  ).assert // throw an Exception if there's a database issue
-          log.info( s"ABI is now known for the contract at address ${hexString(toLinkAddress)}." )
-          abiSource match {
-            case Left( address ) => log.warn( s"(It has been copied from the ABI previously associated with address '${hexString(address)}'.)" )
-            case Right( hash )   => log.warn( s"(It has been copied from the ABI previously associated with the compilation with code hash '${hexString(hash)}'.)" )
-          }
-          if (! repository.Database.hasAliases( chainId, toLinkAddress ).assert ) {
-            interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
-          }
         }
+        case None => {
+          // ignore, we won't be overriding anything
+        }
+      }
+      repository.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi  ).assert // throw an Exception if there's a database issue
+      log.info( s"ABI has been memorized for the contract at address ${hexString(toLinkAddress)}." )
+      log.info( s"(It has been copied from the ABI previously associated with ${sourceDesc}.)" )
+      if (! repository.Database.hasAliases( chainId, toLinkAddress ).assert ) {
+        interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
       }
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -1457,9 +1498,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val chainId = (ethcfgChainId in config).value
+      val abiOverrides = abiOverridesForChain( chainId )
       val log = streams.value.log
       val address = parser.parsed
-      val mbAbi = mbAbiForAddress( chainId, address )
+      val lookup = abiLookupForAddress( chainId, address, abiOverrides )
+      val mbAbi = lookup.resolvedAbi
       mbAbi match {
         case None        => println( s"No contract ABI known for address '0x${address.hex}'." )
         case Some( abi ) => {
@@ -1610,6 +1653,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTaskDyn {
       val chainId = (ethcfgChainId in config).value
+      val abiOverrides = abiOverridesForChain( chainId )
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
@@ -1618,69 +1662,78 @@ object SbtEthereumPlugin extends AutoPlugin {
       val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( chainId, address ).get
       mbKnownCompilation match {
         case Some( knownCompilation ) => {
-          log.info( s"The contract at address '$address' was already associated with a deployed compilation, cannot import a new ABI." )
-          // TODO, maybe, check if the deployed compilation includes a non-null ABI
+          knownCompilation.mbAbiHash match {
+            case Some( abiHash ) => {
+              log.warn( s"The contract at address '$address' was already associated with a deployed compilation and ABI with hash '${hexString(abiHash)}', which a new ABI would shadow!" )
+              val shadow = queryYN( is, s"Are you sure you want to shadow the compilation ABI? [y/n] " )
+              if (! shadow) throw new OperationAbortedByUserException( "User chose not to shadow ABI defined in compilation." )
+            }
+            case None => {
+              // ignore, there's nothing we would shadow
+            }
+          }
         }
         case None => {
-          val abi = {
-            mbAbiForAddress( chainId, address ).foreach { _ =>
-              val overwrite = queryYN( is, s"An ABI for '${hexString(address)}' on chain with ID ${chainId} is already known. Overwrite? [y/n] " )
-              if (! overwrite) throw new OperationAbortedByUserException( "Will not overwrite already defined contact ABI." )
-            }
-            val mbEtherscanAbi : Option[Abi] = {
-              val fmbApiKey = repository.Database.getEtherscanApiKey()
-              fmbApiKey match {
-                case Succeeded( mbApiKey ) => {
-                  mbApiKey match {
-                    case Some( apiKey ) => {
-                      val tryIt = queryYN( is, "An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] " )
-                      if ( tryIt ) {
-                        println( "Attempting to fetch ABI for address '${hexString(address)}' from Etherscan." )
-                        val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( address )
-                        Await.ready( fAbi, timeout )
-                        fAbi.value.get match {
-                          case Success( abi ) => {
-                            println( "ABI found:" )
-                            println( Json.stringify( Json.toJson( abi ) ) )
-                            val useIt = queryYN( is, "Use this ABI? [y/n] ")
-                            if (useIt) Some( abi ) else None
-                          }
-                          case Failure( e ) => {
-                            println( s"Failed to import ABI from Etherscan: ${e}" )
-                            DEBUG.log( "Etherscan verified ABI import failure.", e )
-                            None
-                          }
-                        }
+          val abiLookup = abiLookupForAddress( chainId, address, abiOverrides )
+          abiLookup.memorizedAbi.foreach { _ =>
+            val overwrite = queryYN( is, s"An ABI for '${hexString(address)}' on chain with ID ${chainId} has already been memorized. Overwrite? [y/n] " )
+            if (! overwrite) throw new OperationAbortedByUserException( "User chose not to overwrite already memorized contract ABI." )
+          }
+        }
+      }
+      val abi = {
+        val mbEtherscanAbi : Option[Abi] = {
+          val fmbApiKey = repository.Database.getEtherscanApiKey()
+          fmbApiKey match {
+            case Succeeded( mbApiKey ) => {
+              mbApiKey match {
+                case Some( apiKey ) => {
+                  val tryIt = queryYN( is, "An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] " )
+                  if ( tryIt ) {
+                    println( "Attempting to fetch ABI for address '${hexString(address)}' from Etherscan." )
+                    val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( address )
+                    Await.ready( fAbi, timeout )
+                    fAbi.value.get match {
+                      case Success( abi ) => {
+                        println( "ABI found:" )
+                        println( Json.stringify( Json.toJson( abi ) ) )
+                        val useIt = queryYN( is, "Use this ABI? [y/n] ")
+                        if (useIt) Some( abi ) else None
                       }
-                      else {
+                      case Failure( e ) => {
+                        println( s"Failed to import ABI from Etherscan: ${e}" )
+                        DEBUG.log( "Etherscan verified ABI import failure.", e )
                         None
                       }
                     }
-                    case None => {
-                      log.warn("No Etherscan API key has been set, so you will have to directly paste the ABI.")
-                      log.warn("Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeyImport'.")
-                      None
-                    }
+                  }
+                  else {
+                    None
                   }
                 }
-                case failed : Failed[_] => {
-                  log.warn( s"An error occurred while trying to check if the database contains an Etherscan API key: '${failed.message}'" )
-                  failed.xdebug("An error occurred while trying to check if the database contains an Etherscan API key")
+                case None => {
+                  log.warn("No Etherscan API key has been set, so you will have to directly paste the ABI.")
+                  log.warn("Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeyImport'.")
                   None
                 }
               }
             }
-            mbEtherscanAbi match {
-              case Some( abi ) => abi
-              case None        => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+            case failed : Failed[_] => {
+              log.warn( s"An error occurred while trying to check if the database contains an Etherscan API key: '${failed.message}'" )
+              failed.xdebug("An error occurred while trying to check if the database contains an Etherscan API key")
+              None
             }
           }
-          repository.Database.setMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
-          log.info( s"ABI is now known for the contract at address ${address.hex}" )
-          if (! repository.Database.hasAliases( chainId, address ).assert ) {
-            interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
-          }
         }
+        mbEtherscanAbi match {
+          case Some( etherscanAbi ) => etherscanAbi
+          case None                 => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+        }
+      }
+      repository.Database.setMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
+      log.info( s"ABI is now known for the contract at address ${address.hex}" )
+      if (! repository.Database.hasAliases( chainId, address ).assert ) {
+        interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
       }
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -1762,6 +1815,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             section( "Language Version", info.mbLanguageVersion )
             section( "Compiler Version", info.mbCompilerVersion )
             section( "Compiler Options", info.mbCompilerOptions )
+            section( "ABI Hash", info.mbAbiHash.map( hexString ) )
             jsonSection( "ABI Definition", info.mbAbi )
             jsonSection( "User Documentation", info.mbUserDoc )
             jsonSection( "Developer Documentation", info.mbDeveloperDoc )
@@ -1779,6 +1833,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             section( "Language Version", info.mbLanguageVersion )
             section( "Compiler Version", info.mbCompilerVersion )
             section( "Compiler Options", info.mbCompilerOptions )
+            section( "ABI Hash", info.mbAbiHash.map( hexString ) )
             jsonSection( "ABI Definition", info.mbAbi )
             jsonSection( "User Documentation", info.mbUserDoc )
             jsonSection( "Developer Documentation", info.mbDeveloperDoc )
@@ -2651,13 +2706,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val chainId = (ethcfgChainId in config).value
+      val abiOverrides = abiOverridesForChain( chainId )
       val txnHash = parser.parsed
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
       log.info( s"Looking up transaction '0x${txnHash.hex}' (will wait up to ${invokerContext.pollTimeout})." )
       val f_out = Invoker.futureTransactionReceipt( txnHash ).map { ctr =>
-        val mbAbi = mbAbiForAddress( chainId, ctr.to )
+        val abiLookup = abiLookupForAddress( chainId, ctr.to, abiOverrides )
+        val mbAbi = abiLookup.resolvedAbi
         prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, ctr )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
@@ -2807,10 +2864,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId            = (config / ethcfgChainId).value
     val jsonRpcUrl         = (config / ethcfgJsonRpcUrl).value
     val mbAliases          = repository.Database.findAllAliases( chainId ).toOption
+    val abiOverrides       = abiOverridesForChain( chainId )
     val nameServiceAddress = (config / enscfgNameServiceAddress).value
     val tld                = (config / enscfgNameServiceTld).value
     val reverseTld         = (config / enscfgNameServiceReverseTld).value
-    AddressParserInfo( chainId, jsonRpcUrl, mbAliases, nameServiceAddress, tld, reverseTld )
+    AddressParserInfo( chainId, jsonRpcUrl, mbAliases, abiOverrides, nameServiceAddress, tld, reverseTld )
   }
 
   private def xethFindCacheSeedsTask( config : Configuration ) : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
@@ -3216,7 +3274,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val chainId = (ethcfgChainId in config).value
-      abiForAddress( chainId, parser.parsed )
+      val abiOverrides = abiOverridesForChain( chainId )
+      ensureAbiLookupForAddress( chainId, parser.parsed, abiOverrides ).resolvedAbi.get
     }
   }
 
@@ -3855,26 +3914,6 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def allUnitsValue( valueInWei : BigInt ) = s"${valueInWei} wei (${Denominations.Ether.fromWei(valueInWei)} ether, ${Denominations.Finney.fromWei(valueInWei)} finney, ${Denominations.Szabo.fromWei(valueInWei)} szabo)"
-
-  private def senderOverride( config : Configuration ) = if ( config == Test ) Mutables.TestSenderOverride else Mutables.SenderOverride
-
-  private def getSenderOverride( config : Configuration )( log : sbt.Logger, chainId : Int ) : Option[EthAddress] = {
-    val configSenderOverride = senderOverride( config )
-
-    configSenderOverride.synchronized {
-      val ChainId = chainId
-
-      configSenderOverride.get match {
-        case Some( ( ChainId, address ) ) => Some( address )
-        case Some( (badChainId, _) ) => {
-          log.info( s"A sender override was set for the chain with ID ${badChainId}, but that is no longer the current 'ethcfgChainId'. The sender override is stale and will be dropped." )
-          configSenderOverride.set( None )
-          None
-        }
-        case None => None
-      }
-    }
-  }
 
   private def findPrivateKey( log : sbt.Logger, gethWallets : immutable.Set[wallet.V3], credential : String ) : EthPrivateKey = {
     def forceKey = {
