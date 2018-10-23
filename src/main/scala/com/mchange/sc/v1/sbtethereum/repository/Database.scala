@@ -72,6 +72,11 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
         val bcas = BaseCodeAndSuffix( code )
         borrowTransact( ds.getConnection() ) { conn =>
           Table.KnownCode.upsert( conn, bcas.baseCodeHex )
+          val mbAbiHash = mbAbi.map { abiText =>
+            val abi = Json.parse( abiText ).as[Abi]
+            val (abiHash, _ ) = Table.NormalizedAbis.upsert( conn, abi )
+            abiHash
+          }
           Table.KnownCompilations.upsert(
             conn,
             bcas.baseCodeHash,
@@ -83,7 +88,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
             mbLanguageVersion,
             mbCompilerVersion,
             mbCompilerOptions,
-            mbAbi.map( abiStr => Json.parse( abiStr ).as[Abi] ),
+            mbAbiHash,
             mbUserDoc.map( userDoc => Json.parse( userDoc ).as[Compilation.Doc.User] ),
             mbDeveloperDoc.map( developerDoc => Json.parse( developerDoc ).as[Compilation.Doc.Developer] ),
             mbMetadata
@@ -109,7 +114,8 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
-          Table.MemorizedAbis.insert( conn, chainId, contractAddress, abi )
+          val ( abiHash, _ ) = Table.NormalizedAbis.upsert( conn, abi )
+          Table.MemorizedAbis.insert( conn, chainId, contractAddress, abiHash )
         }
       }
     }
@@ -142,7 +148,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
-          Table.MemorizedAbis.select( conn, chainId, contractAddress )
+          Table.MemorizedAbis.select( conn, chainId, contractAddress ).flatMap( hash => Table.NormalizedAbis.select( conn, hash ) )
         }
       }
     }
@@ -166,6 +172,11 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
         import compilation.info._
 
+        val mbAbiHash = mbAbi.map { abi =>
+          val (abiHash, _ ) = Table.NormalizedAbis.upsert( conn, abi )
+          abiHash
+        }
+
         Table.KnownCode.upsert( conn, bcas.baseCodeHex )
 
         val newCompilation = Table.KnownCompilations.KnownCompilation(
@@ -178,7 +189,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
           mbLanguageVersion = mbLanguageVersion,
           mbCompilerVersion = mbCompilerVersion,
           mbCompilerOptions = mbCompilerOptions,
-          mbAbi             = mbAbi,
+          mbAbiHash         = mbAbiHash,
           mbUserDoc         = mbUserDoc,
           mbDeveloperDoc    = mbDeveloperDoc,
           mbMetadata        = mbMetadata
@@ -224,6 +235,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     mbLanguageVersion   : Option[String],
     mbCompilerVersion   : Option[String],
     mbCompilerOptions   : Option[String],
+    mbAbiHash           : Option[EthHash],
     mbAbi               : Option[Abi],
     mbUserDoc           : Option[Compilation.Doc.User],
     mbDeveloperDoc      : Option[Compilation.Doc.Developer],
@@ -255,7 +267,8 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
               mbLanguageVersion    = knownCompilation.mbLanguageVersion,
               mbCompilerVersion    = knownCompilation.mbCompilerVersion,
               mbCompilerOptions    = knownCompilation.mbCompilerOptions,
-              mbAbi                = knownCompilation.mbAbi,
+              mbAbiHash            = knownCompilation.mbAbiHash,
+              mbAbi                = knownCompilation.mbAbiHash.flatMap( Table.NormalizedAbis.select( conn, _ ) ),
               mbUserDoc            = knownCompilation.mbUserDoc,
               mbDeveloperDoc       = knownCompilation.mbDeveloperDoc,
               mbMetadata           = knownCompilation.mbMetadata
@@ -292,6 +305,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     mbLanguageVersion : Option[String],
     mbCompilerVersion : Option[String],
     mbCompilerOptions : Option[String],
+    mbAbiHash         : Option[EthHash],
     mbAbi             : Option[Abi],
     mbUserDoc         : Option[Compilation.Doc.User],
     mbDeveloperDoc    : Option[Compilation.Doc.Developer],
@@ -316,7 +330,8 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
               mbLanguageVersion = knownCompilation.mbLanguageVersion,
               mbCompilerVersion = knownCompilation.mbCompilerVersion,
               mbCompilerOptions = knownCompilation.mbCompilerOptions,
-              mbAbi             = knownCompilation.mbAbi,
+              mbAbiHash         = knownCompilation.mbAbiHash,
+              mbAbi             = knownCompilation.mbAbiHash.flatMap( Table.NormalizedAbis.select( conn, _ ) ),
               mbUserDoc         = knownCompilation.mbUserDoc,
               mbDeveloperDoc    = knownCompilation.mbDeveloperDoc,
               mbMetadata        = knownCompilation.mbMetadata

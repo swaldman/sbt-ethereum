@@ -38,7 +38,7 @@ object Schema_h2 {
 
   // Increment this value and add a migration to migrateUpOne(...)
   // to modify the schema
-  val SchemaVersion = 5
+  val SchemaVersion = 6
 
   // should be executed in a transaction, although it looks like in h2 DDL commands autocommit anyway :(
   def ensureSchema( dataSource : DataSource ): Boolean = {
@@ -53,6 +53,7 @@ object Schema_h2 {
         stmt.executeUpdate( Table.AddressAliases.CreateIndex )
         stmt.executeUpdate( Table.EnsBidStore.CreateSql )
         stmt.executeUpdate( Table.EnsBidStore.CreateIndex )
+        stmt.executeUpdate( Table.NormalizedAbis.CreateSql )
       }
       Table.Metadata.ensureSchemaVersion( conn )
       Table.Metadata.updateLastSuccessfulSbtEthereumVersion( conn )
@@ -163,6 +164,59 @@ object Schema_h2 {
         TableNamesToNewPrimaryKeyCols.foreach { case ( table, primaryKeyCols ) =>
           updateChainIds( table, primaryKeyCols )
         }
+      }
+      case 5 => {
+        def doAbiOutsourceKnownCompilations : Unit = {
+          borrow( conn.createStatement() ) { stmt =>
+            stmt.executeUpdate( "ALTER TABLE known_compilations ADD COLUMN abi_hash CHAR(128) AFTER abi_definition" )
+            val pkToAbiHash = mutable.Map.empty[String,EthHash]
+            borrow( stmt.executeQuery( "SELECT full_code_hash, abi_definition FROM known_compilations WHERE abi_definition IS NOT NULL" ) ) { rs =>
+              while( rs.next() ) {
+                val pk         = rs.getString(1)
+                val rawAbiText = rs.getString(2)
+                try {
+                  val ( normalizedAbiHash, _ ) = Table.NormalizedAbis.upsert( conn, Json.parse(rawAbiText).as[Abi] )
+                  pkToAbiHash += Tuple2( pk, normalizedAbiHash )
+                }
+                catch {
+                  case e : Exception => WARNING.log( s"An Exception occurred while trying to migrate the ABI for code hash 0x${pk} from table 'known_compilations'. ABI: ${rawAbiText}", e )
+                }
+              }
+            }
+            pkToAbiHash.foreach { case ( pk, abiHash ) =>
+              stmt.executeUpdate( s"UPDATE known_compilations SET abi_hash = '${abiHash.hex}' WHERE full_code_hash = '${pk}'" )
+            }
+            stmt.executeUpdate( "ALTER TABLE known_compilations DROP COLUMN abi_definition" )
+            stmt.executeUpdate( "ALTER TABLE known_compilations ADD FOREIGN KEY (abi_hash) REFERENCES normalized_abis ( abi_hash )" )
+          }
+        }
+        def doAbiOutsourceMemorizedAbis : Unit = {
+          borrow( conn.createStatement() ) { stmt =>
+            stmt.executeUpdate( "ALTER TABLE memorized_abis ADD COLUMN abi_hash CHAR(128) AFTER abi_definition" )
+            val pkToAbiHash = mutable.Map.empty[(Int,String),EthHash]
+            borrow( stmt.executeQuery( "SELECT chain_id, contract_address, abi_definition FROM memorized_abis" ) ) { rs =>
+              while( rs.next() ) {
+                val pk         = ( rs.getInt(1), rs.getString(2) )
+                val rawAbiText = rs.getString(3)
+                try {
+                  val ( normalizedAbiHash, _ ) = Table.NormalizedAbis.upsert( conn, Json.parse(rawAbiText).as[Abi] )
+                  pkToAbiHash += Tuple2( pk, normalizedAbiHash )
+                }
+                catch {
+                  case e : Exception => WARNING.log( s"An Exception occurred while trying to migrate the ABI for chain_id '${pk._1}', contract address '0x${pk._2}' from table 'memorized_abis'. ABI: ${rawAbiText}", e )
+                }
+              }
+            }
+            pkToAbiHash.foreach { case ( pk, abiHash ) =>
+              stmt.executeUpdate( s"UPDATE memorized_abis SET abi_hash = '${abiHash.hex}' WHERE chain_id = ${pk._1} AND contract_address = '${pk._2}'" )
+            }
+            stmt.executeUpdate( "ALTER TABLE memorized_abis DROP COLUMN abi_definition" )
+            stmt.executeUpdate( "ALTER TABLE memorized_abis ADD FOREIGN KEY (abi_hash) REFERENCES normalized_abis ( abi_hash )" )
+          }
+        }
+
+        doAbiOutsourceKnownCompilations
+        doAbiOutsourceMemorizedAbis
       }
       case unknown => throw new SchemaVersionException( s"Cannot migrate from unknown schema version $unknown." )
     }
@@ -301,25 +355,51 @@ object Schema_h2 {
     }
 
     final object KnownCompilations {
-      val CreateSql: String = {
-        """|CREATE TABLE IF NOT EXISTS known_compilations (
-           |   full_code_hash    CHAR(128),
-           |   base_code_hash    CHAR(128),
-           |   code_suffix       CLOB NOT NULL,
-           |   name              VARCHAR(128),
-           |   source            CLOB,
-           |   language          VARCHAR(64),
-           |   language_version  VARCHAR(64),
-           |   compiler_version  VARCHAR(64),
-           |   compiler_options  VARCHAR(256),
-           |   abi_definition    CLOB,
-           |   user_doc          CLOB,
-           |   developer_doc     CLOB,
-           |   metadata          CLOB,
-           |   PRIMARY KEY ( full_code_hash ),
-           |   FOREIGN KEY ( base_code_hash ) REFERENCES known_code ( base_code_hash ) ON DELETE CASCADE
-           |)""".stripMargin // we delete known_compilations when culling undeployed compilations
+      final object V5 {
+        val CreateSql: String = {
+          """|CREATE TABLE IF NOT EXISTS known_compilations (
+             |   full_code_hash    CHAR(128),
+             |   base_code_hash    CHAR(128),
+             |   code_suffix       CLOB NOT NULL,
+             |   name              VARCHAR(128),
+             |   source            CLOB,
+             |   language          VARCHAR(64),
+             |   language_version  VARCHAR(64),
+             |   compiler_version  VARCHAR(64),
+             |   compiler_options  VARCHAR(256),
+             |   abi_definition    CLOB,
+             |   user_doc          CLOB,
+             |   developer_doc     CLOB,
+             |   metadata          CLOB,
+             |   PRIMARY KEY ( full_code_hash ),
+             |   FOREIGN KEY ( base_code_hash ) REFERENCES known_code ( base_code_hash ) ON DELETE CASCADE
+             |)""".stripMargin // we delete known_compilations when culling undeployed compilations
+        }
       }
+      final object V6 {
+        val CreateSql: String = {
+          """|CREATE TABLE IF NOT EXISTS known_compilations (
+             |   full_code_hash    CHAR(128),
+             |   base_code_hash    CHAR(128),
+             |   code_suffix       CLOB NOT NULL,
+             |   name              VARCHAR(128),
+             |   source            CLOB,
+             |   language          VARCHAR(64),
+             |   language_version  VARCHAR(64),
+             |   compiler_version  VARCHAR(64),
+             |   compiler_options  VARCHAR(256),
+             |   abi_hash          CHAR(128),
+             |   user_doc          CLOB,
+             |   developer_doc     CLOB,
+             |   metadata          CLOB,
+             |   PRIMARY KEY ( full_code_hash ),
+             |   FOREIGN KEY ( base_code_hash ) REFERENCES known_code ( base_code_hash ) ON DELETE CASCADE,
+             |   FOREIGN KEY ( abi_hash )       REFERENCES normalized_abis ( abi_hash )
+             |)""".stripMargin // we delete known_compilations when culling undeployed compilations
+        }
+      }
+      val CreateSql = V6.CreateSql
+
       val SelectSql: String = {
         """|SELECT
            |   base_code_hash,
@@ -330,7 +410,7 @@ object Schema_h2 {
            |   language_version,
            |   compiler_version,
            |   compiler_options,
-           |   abi_definition,
+           |   abi_hash,
            |   user_doc,
            |   developer_doc,
            |   metadata
@@ -348,7 +428,7 @@ object Schema_h2 {
            |   language_version,
            |   compiler_version,
            |   compiler_options,
-           |   abi_definition,
+           |   abi_hash,
            |   user_doc,
            |   developer_doc,
            |   metadata
@@ -356,7 +436,7 @@ object Schema_h2 {
       }
       val UpdateAbiSql: String = {
         """|UPDATE known_compilations
-           |SET abi_definition = ?
+           |SET abi_hash = ?
            |WHERE full_code_hash = ?""".stripMargin
       }
       case class KnownCompilation (
@@ -369,7 +449,7 @@ object Schema_h2 {
         mbLanguageVersion : Option[String],
         mbCompilerVersion : Option[String],
         mbCompilerOptions : Option[String],
-        mbAbi             : Option[Abi],
+        mbAbiHash         : Option[EthHash],
         mbUserDoc         : Option[Compilation.Doc.User],
         mbDeveloperDoc    : Option[Compilation.Doc.Developer],
         mbMetadata        : Option[String]
@@ -387,7 +467,7 @@ object Schema_h2 {
             mbLanguageVersion = reconcileLeaf( this.mbLanguageVersion, other.mbLanguageVersion ),
             mbCompilerVersion = reconcileLeaf( this.mbCompilerVersion, other.mbCompilerVersion ),
             mbCompilerOptions = reconcileLeaf( this.mbCompilerOptions, other.mbCompilerOptions ),
-            mbAbi   = reconcileLeaf( this.mbAbi, other.mbAbi ),
+            mbAbiHash         = reconcileLeaf( this.mbAbiHash, other.mbAbiHash ),
             mbUserDoc         = reconcileLeaf( this.mbUserDoc, other.mbUserDoc ),
             mbDeveloperDoc    = reconcileLeaf( this.mbDeveloperDoc, other.mbDeveloperDoc ),
             mbMetadata        = reconcileLeaf( this.mbMetadata, other.mbMetadata )
@@ -405,7 +485,7 @@ object Schema_h2 {
             mbLanguageVersion = reconcileOverLeaf( this.mbLanguageVersion, other.mbLanguageVersion ),
             mbCompilerVersion = reconcileOverLeaf( this.mbCompilerVersion, other.mbCompilerVersion ),
             mbCompilerOptions = reconcileOverLeaf( this.mbCompilerOptions, other.mbCompilerOptions ),
-            mbAbi   = reconcileOverLeaf( this.mbAbi, other.mbAbi ),
+            mbAbiHash         = reconcileOverLeaf( this.mbAbiHash, other.mbAbiHash ),
             mbUserDoc         = reconcileOverLeaf( this.mbUserDoc, other.mbUserDoc ),
             mbDeveloperDoc    = reconcileOverLeaf( this.mbDeveloperDoc, other.mbDeveloperDoc ),
             mbMetadata        = reconcileOverLeaf( this.mbMetadata, other.mbMetadata )
@@ -427,7 +507,7 @@ object Schema_h2 {
             mbLanguageVersion = Option( rs.getString("language_version") ),
             mbCompilerVersion = Option( rs.getString("compiler_version") ),
             mbCompilerOptions = Option( rs.getString("compiler_options") ),
-            mbAbi   = Option( rs.getString("abi_definition") ).map( parse ).map( _.as[Abi] ),
+            mbAbiHash         = Option( rs.getString("abi_hash") ).map( hex => EthHash.withBytes( hex.decodeHexAsSeq ) ),
             mbUserDoc         = Option( rs.getString("user_doc") ).map( parse ).map( _.as[Compilation.Doc.User] ),
             mbDeveloperDoc    = Option( rs.getString("developer_doc") ).map( parse ).map( _.as[Compilation.Doc.Developer] ),
             mbMetadata        = Option( rs.getString("metadata") )
@@ -451,7 +531,7 @@ object Schema_h2 {
         mbLanguageVersion : Option[String],
         mbCompilerVersion : Option[String],
         mbCompilerOptions : Option[String],
-        mbAbi   : Option[Abi],
+        mbAbiHash         : Option[EthHash],
         mbUserDoc         : Option[Compilation.Doc.User],
         mbDeveloperDoc    : Option[Compilation.Doc.Developer],
         mbMetadata        : Option[String]
@@ -467,7 +547,7 @@ object Schema_h2 {
           setMaybeString( Types.VARCHAR )( ps,  7, mbLanguageVersion )
           setMaybeString( Types.VARCHAR )( ps,  8, mbCompilerVersion )
           setMaybeString( Types.VARCHAR )( ps,  9, mbCompilerOptions )
-          setMaybeString( Types.CLOB )   ( ps, 10, mbAbi.map( ad => stringify( toJson( ad ) ) ) )
+          setMaybeString( Types.CHAR )   ( ps, 10, mbAbiHash.map( _.hex ) )
           setMaybeString( Types.CLOB )   ( ps, 11, mbUserDoc.map( ud => stringify( toJson( ud ) ) ) )
           setMaybeString( Types.CLOB )   ( ps, 12, mbDeveloperDoc.map( dd => stringify( toJson( dd ) ) ) )
           setMaybeString( Types.CLOB )   ( ps, 13, mbMetadata )
@@ -490,26 +570,11 @@ object Schema_h2 {
           kc.mbLanguageVersion,
           kc.mbCompilerVersion,
           kc.mbCompilerOptions,
-          kc.mbAbi,
+          kc.mbAbiHash,
           kc.mbUserDoc,
           kc.mbDeveloperDoc,
           kc.mbMetadata
         )
-      }
-
-      def updateAbiDefinition( conn : Connection, baseCodeHash : EthHash, fullCodeHash : EthHash, mbAbiDefinition : Option[String] ) : Boolean = {
-        borrow( conn.prepareStatement( UpdateAbiSql ) ){ ps =>
-          mbAbiDefinition match {
-            case Some( abi ) => ps.setString( 1, abi )
-            case None        => ps.setNull( 1, Types.CLOB )
-          }
-          ps.setString( 2, fullCodeHash.hex )
-          ps.executeUpdate() match {
-            case 0 => false
-            case 1 => true
-            case n => throw new RepositoryException( s"ABI update should affect no more than one row, affected ${n} rows." )
-          }
-        }
       }
     }
 
@@ -726,11 +791,22 @@ object Schema_h2 {
              |)""".stripMargin
         }
       }
+      final object V6 {
+        final val CreateSql = {
+          """|CREATE TABLE IF NOT EXISTS memorized_abis (
+             |   chain_id         INTEGER,
+             |   contract_address CHAR(40),
+             |   abi_hash         CHAR(128),
+             |   PRIMARY KEY ( chain_id, contract_address ),
+             |   FOREIGN KEY ( abi_hash ) REFERENCES normalized_abis ( abi_hash )
+             |)""".stripMargin
+        }
+      }
 
-      final val CreateSql = V5.CreateSql
+      final val CreateSql = V6.CreateSql
 
       private val InsertSql = {
-        """|INSERT INTO memorized_abis ( chain_id, contract_address, abi_definition )
+        """|INSERT INTO memorized_abis ( chain_id, contract_address, abi_hash )
            |VALUES( ?, ?, ? )""".stripMargin
       }
       private val DeleteSql = {
@@ -738,7 +814,7 @@ object Schema_h2 {
            |WHERE chain_id = ? AND contract_address = ?""".stripMargin
       }
       private val SelectSql = {
-        """|SELECT abi_definition
+        """|SELECT abi_hash
            |FROM memorized_abis
            |WHERE chain_id = ? AND contract_address = ?""".stripMargin
       }
@@ -758,21 +834,21 @@ object Schema_h2 {
           }
         }
       }
-      def select( conn : Connection, chainId : Int, contractAddress : EthAddress ) : Option[Abi] = {
+      def select( conn : Connection, chainId : Int, contractAddress : EthAddress ) : Option[EthHash] = {
         borrow( conn.prepareStatement( SelectSql ) ){ ps =>
           ps.setInt(1, chainId )
           ps.setString(2, contractAddress.hex )
           borrow( ps.executeQuery() ){ rs =>
-            val mbJson = getMaybeSingleString( rs )
-            mbJson.map( Json.parse ).map( _.as[Abi] )
+            val mbAbiHashHex = getMaybeSingleString( rs )
+            mbAbiHashHex.map( hex => EthHash.withBytes( hex.decodeHexAsSeq ) )
           }
         }
       }
-      def insert( conn : Connection, chainId : Int, contractAddress : EthAddress, abi : Abi ) : Unit = {
+      def insert( conn : Connection, chainId : Int, contractAddress : EthAddress, abiHash : EthHash ) : Unit = {
         borrow( conn.prepareStatement( InsertSql ) ) { ps =>
           ps.setInt( 1, chainId )
           ps.setString( 2, contractAddress.hex )
-          ps.setString( 3, Json.stringify( Json.toJson( abi ) ) )
+          ps.setString( 3, abiHash.hex )
           ps.executeUpdate()
         }
       }
@@ -873,6 +949,42 @@ object Schema_h2 {
           ps.setString( 2, alias )
           ps.executeUpdate() == 1
         }
+      }
+    }
+    final object NormalizedAbis {
+      val CreateSql: String = {
+        """|CREATE TABLE IF NOT EXISTS normalized_abis (
+           |   abi_hash  CHAR(128) PRIMARY KEY,
+           |   abi_text  CLOB NOT NULL
+           |)""".stripMargin
+      }
+      val SelectSql = "SELECT abi_text FROM normalized_abis WHERE abi_hash = ?"
+
+      val UpsertSql = "MERGE INTO normalized_abis ( abi_hash, abi_text ) VALUES ( ?, ? )"
+
+      val ContainsSql = "SELECT 1 from normalized_abis where abi_hash = ?"
+
+      def select( conn : Connection, abiHash : EthHash ) : Option[Abi] = {
+        borrow( conn.prepareStatement( SelectSql ) ) { ps =>
+          ps.setString(1, abiHash.hex)
+          borrow( ps.executeQuery() )( getMaybeSingleString ).map( abiText => Json.parse( abiText ).as[Abi] )
+        }
+      }
+      def upsert( conn : Connection, abi : Abi ) : ( EthHash, String ) = {
+        val abiText = Json.stringify( Json.toJson( abi.withStandardSort ) )
+        val abiHash = EthHash.hash( abiText.getBytes( scala.io.Codec.UTF8.charSet ) )
+
+        borrow( conn.prepareStatement( UpsertSql ) ) { ps =>
+          ps.setString( 1, abiHash.hex )
+          ps.setString( 2, abiText )
+          ps.executeUpdate()
+        }
+
+        ( abiHash, abiText )
+      }
+      def contains( conn : Connection, abiHash : EthHash ) : Boolean = borrow( conn.prepareStatement( ContainsSql ) ){ ps =>
+        ps.setString( 1, abiHash.hex )
+        borrow( ps.executeQuery() )( _.next() )
       }
     }
     final object EnsBidStore {
