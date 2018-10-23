@@ -58,8 +58,11 @@ package object sbtethereum {
 
   def rounded( bd : BigDecimal ) : BigInt = bd.setScale( 0, BigDecimal.RoundingMode.HALF_UP ).toBigInt
 
-  final case class AbiLookup( abiOverride : Option[Abi], memorizedAbi : Option[Abi], compilationAbi : Option[Abi], defaultBuilder : () => Option[Abi] ) {
-    def resolvedAbi : Option[Abi] = abiOverride orElse memorizedAbi orElse compilationAbi orElse defaultBuilder()
+  final case class AbiLookup( lookupAddress : EthAddress, abiOverride : Option[Abi], memorizedAbi : Option[Abi], compilationAbi : Option[Abi], defaultBuilder : () => Option[Abi] ) {
+    def resolveAbi( mbLogger : Option[sbt.Logger] = None ) : Option[Abi] = {
+      mbLogger.foreach( logGenericShadowWarning )
+      abiOverride orElse memorizedAbi orElse compilationAbi orElse defaultBuilder()
+    }
 
     def shadowMessage : Option[String] = {
       ( abiOverride, memorizedAbi, compilationAbi ) match {
@@ -69,10 +72,13 @@ package object sbtethereum {
         case _                                      => None
       }
     }
+
+    def logGenericShadowWarning( log : sbt.Logger ) : Unit  = this.shadowMessage.foreach( usingStr => log.warn( s"Found multiple candidates when looking up the ABI for 0x${lookupAddress.hex}. ${usingStr}" ) )
   }
 
   def abiLookupForAddress( chainId : Int, address : EthAddress, abiOverrides : Map[EthAddress,Abi], defaultBuilder : () => Option[Abi] = () => None ) : AbiLookup = {
     AbiLookup(
+      address,
       abiOverrides.get(address),
       repository.Database.getMemorizedContractAbi( chainId, address ).assert,        // throw an Exception if there's a database problem
       repository.Database.deployedContractInfoForAddress( chainId, address ).assert.flatMap( _.mbAbi ), // again, throw if database problem

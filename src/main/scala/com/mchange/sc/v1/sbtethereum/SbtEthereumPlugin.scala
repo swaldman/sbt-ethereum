@@ -1452,7 +1452,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         abiSource match {
           case Left( address ) => {
             val abiLookup = ensureAbiLookupForAddress( chainId, address, abiOverrides, suppressStackTrace = true ) // asserts success
-            val resolved = abiLookup.resolvedAbi.get // should succeed if the prior call did
+            val resolved = abiLookup.resolveAbi( Some( log ) ).get // should succeed if the prior call did
             ( resolved, s"address ${hexString(address)}" )
           }
           case Right( hash ) => {
@@ -1502,7 +1502,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val address = parser.parsed
       val lookup = abiLookupForAddress( chainId, address, abiOverrides )
-      val mbAbi = lookup.resolvedAbi
+      val mbAbi = lookup.resolveAbi( Some( log ) )
       mbAbi match {
         case None        => println( s"No contract ABI known for address '0x${address.hex}'." )
         case Some( abi ) => {
@@ -1675,9 +1675,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         case None => {
           val abiLookup = abiLookupForAddress( chainId, address, abiOverrides )
-          abiLookup.memorizedAbi.foreach { _ =>
+          if ( abiLookup.memorizedAbi.nonEmpty ) { 
             val overwrite = queryYN( is, s"An ABI for '${hexString(address)}' on chain with ID ${chainId} has already been memorized. Overwrite? [y/n] " )
             if (! overwrite) throw new OperationAbortedByUserException( "User chose not to overwrite already memorized contract ABI." )
+          }
+          else if ( abiLookup.compilationAbi.nonEmpty ) {
+            val shadow = queryYN( is, s"A compilation deployed at '${hexString(address)}' on chain with ID ${chainId} has a built-in ABI. Do you wish to shadow it? [y/n] " )
+            if (! shadow) throw new OperationAbortedByUserException( "User chose not to shadow built-in compilation ABI." )
           }
         }
       }
@@ -2681,7 +2685,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       val caller = (xethFindCurrentSender in config).value.get
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
-      val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
+
+      val ( ( contractAddress, function, args, abi, abiLookup ), mbWei ) = parser.parsed
+      abiLookup.logGenericShadowWarning( log )
+
       val amount = mbWei.getOrElse( Zero )
       val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
       val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
@@ -2714,7 +2721,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info( s"Looking up transaction '0x${txnHash.hex}' (will wait up to ${invokerContext.pollTimeout})." )
       val f_out = Invoker.futureTransactionReceipt( txnHash ).map { ctr =>
         val abiLookup = abiLookupForAddress( chainId, ctr.to, abiOverrides )
-        val mbAbi = abiLookup.resolvedAbi
+        val mbAbi = abiLookup.resolveAbi( None ) // no need to warn, the ABI we choose only affects pretty-printing
         prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, ctr )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
@@ -2784,7 +2791,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         EthAddress.Zero
       }.get
 
-      val ( ( contractAddress, function, args, abi ), mbWei ) = parser.parsed
+      val ( ( contractAddress, function, args, abi, abiLookup), mbWei ) = parser.parsed
+      abiLookup.logGenericShadowWarning( log )
       if (! function.constant ) {
         log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
       }
@@ -3151,10 +3159,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
 
     Def.inputTask {
-      val ( contractAddress, function, args, abi ) = parser.parsed
+      val log = streams.value.log
+      val ( contractAddress, function, args, abi, abiLookup ) = parser.parsed
+      abiLookup.logGenericShadowWarning( log )
       val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
       val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
-      val log = streams.value.log
       log.info( s"Call data: ${callData.hex}" )
       callData
     }
@@ -3273,9 +3282,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
+      val log = streams.value.log
       val chainId = (ethcfgChainId in config).value
       val abiOverrides = abiOverridesForChain( chainId )
-      ensureAbiLookupForAddress( chainId, parser.parsed, abiOverrides ).resolvedAbi.get
+      ensureAbiLookupForAddress( chainId, parser.parsed, abiOverrides ).resolveAbi( Some( log ) ).get
     }
   }
 

@@ -360,13 +360,13 @@ object Parsers {
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
     state : State,
     mbApi : Option[AddressParserInfo]
-  ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi)] = {
+  ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi, AbiLookup)] = {
     mbApi match {
       case Some( api ) => {
         genGenericAddressParser( state, mbApi ).map { a =>
           val abiLookup = abiLookupForAddressDefaultEmpty( api.chainId, a, api.abiOverrides )
-          Tuple2( a, abiLookup.resolvedAbi.get )
-        }.flatMap { case ( address, abi ) => ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbApi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi ) } }
+          Tuple3( a, abiLookup, abiLookup.resolveAbi( None ).get )
+        }.flatMap { case ( address, abiLookup, abi ) => ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbApi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi, abiLookup ) } }
       }
       case None => {
         WARNING.log("Failed to load blockchain ID for address, function, inputs, abi parser")
@@ -377,7 +377,7 @@ object Parsers {
   private [sbtethereum] def genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants : Boolean  )(
     state : State,
     mbApi : Option[AddressParserInfo]
-  ) : Parser[((EthAddress, Abi.Function, immutable.Seq[String], Abi), Option[BigInt])] = {
+  ) : Parser[((EthAddress, Abi.Function, immutable.Seq[String], Abi, AbiLookup), Option[BigInt])] = {
     genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbApi ).flatMap { afia =>
       if ( afia._2.payable ) {
         valueInWeiParser("[ETH to pay, optional]").?.flatMap( mbv => success(  ( afia, mbv ) ) ) // useless flatmap rather than map
