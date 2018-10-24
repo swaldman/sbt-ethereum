@@ -1261,7 +1261,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   // eth tasks
 
   private def ethAddressAliasDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genAliasParser )
+    val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genAddressAliasParser )
 
     Def.inputTaskDyn {
       val log = streams.value.log
@@ -1272,7 +1272,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ensureAliases = (xethFindCacheAddressParserInfo in config)
 
       val alias = parser.parsed
-      val check = repository.Database.dropAlias( chainId, alias ).get // assert no database problem
+      val check = repository.Database.dropAddressAlias( chainId, alias ).get // assert no database problem
       if (check) log.info( s"Alias '${alias}' successfully dropped (for blockchain '${chainId}').")
       else log.warn( s"Alias '${alias}' is not defined (on blockchain '${chainId}'), and so could not be dropped." )
 
@@ -1285,20 +1285,20 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log      = streams.value.log
     val chainId  = (ethcfgChainId in config).value
-    val faliases = repository.Database.findAllAliases( chainId )
+    val faliases = repository.Database.findAllAddressAliases( chainId )
     faliases.fold( _ => log.warn("Could not read aliases from repository database.") ) { aliases =>
       aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
     }
   }
 
   private def ethAddressAliasSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genNewAliasParser )
+    val parser = Defaults.loadForParser(xethFindCacheAddressParserInfo in config)( genNewAddressAliasParser )
 
     Def.inputTaskDyn {
       val log = streams.value.log
       val chainId = (ethcfgChainId in config).value
       val ( alias, address ) = parser.parsed
-      val check = repository.Database.createUpdateAlias( chainId, alias, address )
+      val check = repository.Database.createUpdateAddressAlias( chainId, alias, address )
       check.fold( _.vomit ){ _ => 
         log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${chainId}')." )
       }
@@ -1483,7 +1483,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       repository.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi  ).assert // throw an Exception if there's a database issue
       log.info( s"ABI has been memorized for the contract at address ${hexString(toLinkAddress)}." )
       log.info( s"(It has been copied from the ABI previously associated with ${sourceDesc}.)" )
-      if (! repository.Database.hasAliases( chainId, toLinkAddress ).assert ) {
+      if (! repository.Database.hasAddressAliases( chainId, toLinkAddress ).assert ) {
         interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
       }
       Def.taskDyn {
@@ -1541,11 +1541,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     val deployedContracts = repository.Database.allDeployedContractInfosForChainId( chainId ).get
 
     val allRecords = {
-      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Memorized, repository.Database.findAliasesByAddress( chainId, address ).get ) )
+      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Memorized, repository.Database.findAddressAliasesByAddress( chainId, address ).get ) )
       val deployedRecords  = {
         deployedContracts
           .filter( _.mbAbi.nonEmpty )
-          .map( dci => AbiListRecord( dci.contractAddress, AbiListRecord.Deployed( dci.mbName ), repository.Database.findAliasesByAddress( chainId, dci.contractAddress ).get ) )
+          .map( dci => AbiListRecord( dci.contractAddress, AbiListRecord.Deployed( dci.mbName ), repository.Database.findAddressAliasesByAddress( chainId, dci.contractAddress ).get ) )
       }
       memorizedRecords ++ deployedRecords
     }
@@ -1736,7 +1736,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       repository.Database.setMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
       log.info( s"ABI is now known for the contract at address ${address.hex}" )
-      if (! repository.Database.hasAliases( chainId, address ).assert ) {
+      if (! repository.Database.hasAddressAliases( chainId, address ).assert ) {
         interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
       }
       Def.taskDyn {
@@ -1974,7 +1974,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val combined = combinedKeystoresMultiMap( keystoresV3 )
 
     val out = {
-      def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( repository.Database.findAliasesByAddress( chainId, address ).get : _* )
+      def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( repository.Database.findAddressAliasesByAddress( chainId, address ).get : _* )
       immutable.TreeMap( combined.map { case ( address : EthAddress, _ ) => ( address, aliasesSet( address ) ) }.toSeq : _* )( Ordering.by( _.hex ) )
     }
     val cap = "+" + span(44) + "+"
@@ -2871,7 +2871,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethFindCacheAddressParserInfoTask( config : Configuration ) : Initialize[Task[AddressParserInfo]] = Def.task {
     val chainId            = (config / ethcfgChainId).value
     val jsonRpcUrl         = (config / ethcfgJsonRpcUrl).value
-    val mbAliases          = repository.Database.findAllAliases( chainId ).toOption
+    val mbAliases          = repository.Database.findAllAddressAliases( chainId ).toOption
     val abiOverrides       = abiOverridesForChain( chainId )
     val nameServiceAddress = (config / enscfgNameServiceAddress).value
     val tld                = (config / enscfgNameServiceTld).value
@@ -2931,7 +2931,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                   address
                 }
                 case None => {
-                  val mbDefaultSenderAddress = repository.Database.findAddressByAlias( chainId, DefaultSenderAlias ).get
+                  val mbDefaultSenderAddress = repository.Database.findAddressByAddressAlias( chainId, DefaultSenderAlias ).get
 
                   mbDefaultSenderAddress match {
                     case Some( address ) => {
@@ -3903,7 +3903,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       .foldLeft( immutable.Map.empty[EthAddress,immutable.Set[wallet.V3]] )( combineMultiMaps )
   }
 
-  private def mbDefaultSender( chainId : Int ) = repository.Database.findAddressByAlias( chainId, DefaultSenderAlias ).get
+  private def mbDefaultSender( chainId : Int ) = repository.Database.findAddressByAddressAlias( chainId, DefaultSenderAlias ).get
 
   private def installLocalSolcJ( log : sbt.Logger, rootSolcJDir : File, versionToInstall : String, testTimeout : Duration ) : Unit = {
     val versionDir = new File( rootSolcJDir, versionToInstall )
@@ -4140,7 +4140,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def interactiveSetAliasForAddress( chainId : Int )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
     def rawFetch : String = is.readLine( s"Enter an optional alias for ${describedAddress} (or [return] for none): ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
-    def validate( alias : String ) : Boolean = parsesAsAlias( alias )
+    def validate( alias : String ) : Boolean = parsesAsAddressAlias( alias )
 
     @tailrec
     def query : Option[String] = {
@@ -4156,9 +4156,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     query match {
       case Some( alias ) => {
-        val check = repository.Database.createUpdateAlias( chainId, alias, address )
+        val check = repository.Database.createUpdateAddressAlias( chainId, alias, address )
         check.fold( _.vomit ){ _ => 
-          log.info( s"Alias '${alias}' now points to address '${address.hex}' (for chain with ID ${chainId})." )
+          log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
         }
       }
       case None => log.info( s"No alias set for ${describedAddress}." )
@@ -4202,7 +4202,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def span( len : Int ) = (0 until len).map(_ => "-").mkString
 
   private def commaSepAliasesForAddress( chainId : Int, address : EthAddress ) : Failable[Option[String]] = {
-    repository.Database.findAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
+    repository.Database.findAddressAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
   }
   private def leftwardAliasesArrowOrEmpty( chainId : Int, address : EthAddress ) : Failable[String] = {
     commaSepAliasesForAddress( chainId, address ).map( _.fold("")( aliasesStr => s" <-- ${aliasesStr}" ) )

@@ -54,6 +54,8 @@ object Schema_h2 {
         stmt.executeUpdate( Table.EnsBidStore.CreateSql )
         stmt.executeUpdate( Table.EnsBidStore.CreateIndex )
         stmt.executeUpdate( Table.NormalizedAbis.CreateSql )
+        stmt.executeUpdate( Table.AbiAliases.CreateSql )
+        stmt.executeUpdate( Table.AbiAliases.CreateIndex )
       }
       Table.Metadata.ensureSchemaVersion( conn )
       Table.Metadata.updateLastSuccessfulSbtEthereumVersion( conn )
@@ -130,6 +132,8 @@ object Schema_h2 {
         }
       }
       case 4 => {
+        /* Schema version 5 converted string-based "blockchain_id" fields to EIP-155 integral "chain_id"
+         */
         val KnownChains = Map( "mainnet" -> 1, "ropsten" -> 3, "rinkeby" -> 4, "kovan" -> 42, "eth-classic-mainnet" -> 61, "ethc-mainnet" -> 61, "eth-classic-testnet" -> 62 )
         val TableNamesToNewPrimaryKeyCols = {
           Map (
@@ -166,6 +170,9 @@ object Schema_h2 {
         }
       }
       case 5 => {
+        /* Schema version 6 put ABIs into their own "normalized_abis" table rather than embedding them in "known_compilations" and "memorized_abis"
+         * Also added "abi_aliases" table.
+         */
         def doAbiOutsourceKnownCompilations : Unit = {
           borrow( conn.createStatement() ) { stmt =>
             stmt.executeUpdate( "ALTER TABLE known_compilations ADD COLUMN abi_hash CHAR(128) AFTER abi_definition" )
@@ -951,6 +958,80 @@ object Schema_h2 {
         }
       }
     }
+
+
+    final object AbiAliases {
+      final object V6 {
+        val CreateSql: String = {
+          """|CREATE TABLE IF NOT EXISTS abi_aliases (
+             |   chain_id      INTEGER,
+             |   alias         VARCHAR(128),
+             |   abi_hash      CHAR(64) NOT NULL,
+             |   PRIMARY KEY ( chain_id, alias ),
+             |   FOREIGN KEY ( abi_hash ) REFERENCES normalized_abis ( abi_hash ) 
+             |)""".stripMargin
+        }
+      }
+
+      val CreateSql: String = V6.CreateSql
+
+      val CreateIndex: String = "CREATE INDEX IF NOT EXISTS abi_aliases_abi_hash_idx ON abi_aliases( abi_hash )"
+
+      def selectByAlias( conn : Connection, chainId : Int, alias : String ) : Option[EthHash] = {
+        borrow( conn.prepareStatement( "SELECT abi_hash FROM abi_aliases WHERE chain_id = ? AND alias = ?" ) ) { ps =>
+          ps.setInt(1, chainId)
+          ps.setString(2, alias)
+          val mbAddressStr = borrow( ps.executeQuery() )( getMaybeSingleString )
+          mbAddressStr.map( hex => EthHash.withBytes( hex.decodeHexAsSeq ) )
+        }
+      }
+      def selectByAbiHash( conn : Connection, chainId : Int, abiHash : EthHash ) : immutable.Seq[String] = {
+        borrow( conn.prepareStatement( "SELECT alias FROM abi_aliases WHERE chain_id = ? AND abiHash = ? ORDER BY alias DESC" ) ) { ps =>
+          ps.setInt(1, chainId)
+          ps.setString(2, abiHash.hex)
+          borrow( ps.executeQuery() ){ rs =>
+            @tailrec
+            def prepend( accum : List[String] ) : List[String] = if ( rs.next() ) prepend( rs.getString(1) :: accum ) else accum
+            prepend( Nil )
+          }
+        }
+      }
+      def selectAllForChainId( conn : Connection, chainId : Int ) : immutable.SortedMap[String,EthHash] = {
+        val buffer = mutable.ArrayBuffer.empty[Tuple2[String, EthHash]]
+        borrow( conn.prepareStatement( "SELECT alias, abi_hash FROM abi_aliases WHERE chain_id = ? ORDER BY alias ASC" ) ) { ps =>
+          ps.setInt( 1, chainId )
+          borrow( ps.executeQuery() ) { rs =>
+            while ( rs.next() ) {
+              buffer += Tuple2( rs.getString(1), EthHash.withBytes( rs.getString(2).decodeHexAsSeq ) )
+            }
+          }
+        }
+        immutable.SortedMap( buffer : _* )
+      }
+
+      private def sert( verb : String )( conn : Connection, chainId : Int, alias : String, abiHash : EthHash ) : Unit = {
+        borrow( conn.prepareStatement( s"$verb INTO abi_aliases ( chain_id, alias, abi_hash ) VALUES ( ?, ?, ? )" ) ) { ps =>
+          ps.setInt( 1, chainId )
+          ps.setString( 2, alias )
+          ps.setString( 3, abiHash.hex )
+          ps.executeUpdate()
+        }
+      }
+      def upsert( conn : Connection, chainId : Int, alias : String, abiHash : EthHash ) : Unit = {
+        sert( "MERGE" )( conn, chainId, alias, abiHash )
+      }
+      def insert( conn : Connection, chainId : Int, alias : String, abiHash : EthHash ) : Unit = {
+        sert( "INSERT" )( conn, chainId, alias, abiHash )
+      }
+      def delete( conn : Connection, chainId : Int, alias : String ) : Boolean = {
+        borrow( conn.prepareStatement( "DELETE FROM abi_aliases WHERE chain_id = ? AND alias = ?" ) ) { ps =>
+          ps.setInt( 1, chainId )
+          ps.setString( 2, alias )
+          ps.executeUpdate() == 1
+        }
+      }
+    }
+
     final object NormalizedAbis {
       val CreateSql: String = {
         """|CREATE TABLE IF NOT EXISTS normalized_abis (
@@ -971,8 +1052,7 @@ object Schema_h2 {
         }
       }
       def upsert( conn : Connection, abi : Abi ) : ( EthHash, String ) = {
-        val abiText = Json.stringify( Json.toJson( abi.withStandardSort ) )
-        val abiHash = EthHash.hash( abiText.getBytes( scala.io.Codec.UTF8.charSet ) )
+        val ( abiText, abiHash ) = abiTextHash( abi )
 
         borrow( conn.prepareStatement( UpsertSql ) ) { ps =>
           ps.setString( 1, abiHash.hex )

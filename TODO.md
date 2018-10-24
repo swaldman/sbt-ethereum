@@ -11,9 +11,13 @@ DB schema updates
 
 * Let compilations store the name of the project from which they were compiled
 
+* Implement logic that checks prior existence of tables ("fresh" vs "preexisting") to inform schema upgrades
+
 Other
 
 * ethContractAbiEncode <abi-identifier> args => data (task name? unfortunately we can't do decode, would conflict with drop)
+
+* ethTransactionProxyDeploy
 
 * Prompt for alias after ethKeystoreWalletV3Create?
 

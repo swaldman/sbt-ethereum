@@ -22,6 +22,7 @@ import jsonrpc.{Abi, Compilation}
 import com.mchange.sc.v2.ens.{Bid,BidStore}
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
+import com.mchange.sc.v1.sbtethereum.abiHash
 import play.api.libs.json.Json
 
 object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
@@ -410,31 +411,78 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def createUpdateAlias( chainId : Int, alias : String, address : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
+  def createUpdateAddressAlias( chainId : Int, alias : String, address : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, chainId, alias, address ) ) )
   }
 
   private [sbtethereum]
-  def findAllAliases( chainId : Int ) : Failable[immutable.SortedMap[String,EthAddress]] = DataSource.flatMap { ds =>
+  def findAllAddressAliases( chainId : Int ) : Failable[immutable.SortedMap[String,EthAddress]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectAllForChainId( _, chainId ) ) )
   }
 
   private [sbtethereum]
-  def findAddressByAlias( chainId : Int, alias : String ) : Failable[Option[EthAddress]] = DataSource.flatMap { ds =>
+  def findAddressByAddressAlias( chainId : Int, alias : String ) : Failable[Option[EthAddress]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, chainId, alias ) ) )
   }
 
   private [sbtethereum]
-  def findAliasesByAddress( chainId : Int, address : EthAddress ) : Failable[immutable.Seq[String]] = DataSource.flatMap { ds =>
+  def findAddressAliasesByAddress( chainId : Int, address : EthAddress ) : Failable[immutable.Seq[String]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAddress( _, chainId, address ) ) )
   }
 
   private [sbtethereum]
-  def hasAliases( chainId : Int, address : EthAddress ) : Failable[Boolean] = findAliasesByAddress( chainId, address ).map( _.nonEmpty )
+  def hasAddressAliases( chainId : Int, address : EthAddress ) : Failable[Boolean] = findAddressAliasesByAddress( chainId, address ).map( _.nonEmpty )
 
   private [sbtethereum]
-  def dropAlias( chainId : Int, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
+  def dropAddressAlias( chainId : Int, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, chainId, alias ) ) )
+  }
+
+  private [sbtethereum]
+  def createUpdateAbiAlias( chainId : Int, alias : String, abiHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AbiAliases.upsert( _, chainId, alias, abiHash ) ) )
+  }
+
+  private [sbtethereum]
+  def createUpdateAbiAlias( chainId : Int, alias : String, abi : Abi ) : Failable[Unit] = createUpdateAbiAlias( chainId, alias, abiHash( abi ) )
+
+  private [sbtethereum]
+  def findAllAbiAliases( chainId : Int ) : Failable[immutable.SortedMap[String,EthHash]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AbiAliases.selectAllForChainId( _, chainId ) ) )
+  }
+
+  private [sbtethereum]
+  def findAbiHashByAbiAlias( chainId : Int, alias : String ) : Failable[Option[EthHash]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AbiAliases.selectByAlias( _, chainId, alias ) ) )
+  }
+
+  private [sbtethereum]
+  def findAbiByAbiAlias( chainId : Int, alias : String ) : Failable[Option[Abi]] = DataSource.flatMap { ds =>
+    Failable {
+      borrow( ds.getConnection() ) { conn =>
+        val mbHash = Table.AbiAliases.selectByAlias( conn, chainId, alias )
+        mbHash.flatMap( hash => Table.NormalizedAbis.select( conn, hash ) )
+      }
+    }
+  }
+
+  private [sbtethereum]
+  def findAbiAliasesByAbiHash( chainId : Int, abiHash : EthHash ) : Failable[immutable.Seq[String]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AbiAliases.selectByAbiHash( _, chainId, abiHash ) ) )
+  }
+
+  private [sbtethereum]
+  def findAbiAliasesByAbi( chainId : Int, abi : Abi ) : Failable[immutable.Seq[String]] = findAbiAliasesByAbiHash( chainId, abiHash( abi ) )
+
+  private [sbtethereum]
+  def hasAbiAliases( chainId : Int, abiHash : EthHash ) : Failable[Boolean] = findAbiAliasesByAbiHash( chainId, abiHash ).map( _.nonEmpty )
+
+  private [sbtethereum]
+  def hasAbiAliases( chainId : Int, abi : Abi ) : Failable[Boolean] = hasAbiAliases( chainId, abiHash( abi ) )
+
+  private [sbtethereum]
+  def dropAbiAlias( chainId : Int, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AbiAliases.delete( _, chainId, alias ) ) )
   }
 
   private [sbtethereum]

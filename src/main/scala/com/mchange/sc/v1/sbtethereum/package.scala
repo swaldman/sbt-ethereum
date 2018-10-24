@@ -16,6 +16,7 @@ import scala.util.control.NonFatal
 import java.io.File
 import java.time.{Instant, ZoneId}
 import java.time.format.{FormatStyle, DateTimeFormatter}
+import play.api.libs.json._
 
 package object sbtethereum {
 
@@ -57,6 +58,14 @@ package object sbtethereum {
   val HomeDir = new java.io.File( sys.props( "user.home" ) ).getAbsoluteFile
 
   def rounded( bd : BigDecimal ) : BigInt = bd.setScale( 0, BigDecimal.RoundingMode.HALF_UP ).toBigInt
+
+  def abiTextHash( abi : Abi ) : ( String, EthHash ) = {
+    val abiText = Json.stringify( Json.toJson( abi.withStandardSort ) ) // Note the use of withStandardSort!!!
+    val abiHash = EthHash.hash( abiText.getBytes( scala.io.Codec.UTF8.charSet ) )
+    ( abiText, abiHash )
+  }
+
+  def abiHash( abi : Abi ) : EthHash = abiTextHash( abi )._2
 
   final case class AbiLookup( lookupAddress : EthAddress, abiOverride : Option[Abi], memorizedAbi : Option[Abi], compilationAbi : Option[Abi], defaultBuilder : () => Option[Abi] ) {
     def resolveAbi( mbLogger : Option[sbt.Logger] = None ) : Option[Abi] = {
