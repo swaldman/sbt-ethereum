@@ -1273,7 +1273,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val alias = parser.parsed
       val check = repository.Database.dropAddressAlias( chainId, alias ).get // assert no database problem
-      if (check) log.info( s"Alias '${alias}' successfully dropped (for blockchain '${chainId}').")
+      if (check) log.info( s"Alias '${alias}' successfully dropped (for chain with ID ${chainId}).")
       else log.warn( s"Alias '${alias}' is not defined (on blockchain '${chainId}'), and so could not be dropped." )
 
       Def.taskDyn {
@@ -1300,7 +1300,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ( alias, address ) = parser.parsed
       val check = repository.Database.createUpdateAddressAlias( chainId, alias, address )
       check.fold( _.vomit ){ _ => 
-        log.info( s"Alias '${alias}' now points to address '${address.hex}' (for blockchain '${chainId}')." )
+        log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
       }
 
       Def.taskDyn {
