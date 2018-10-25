@@ -4,8 +4,34 @@ import com.mchange.sc.v1.sbtethereum.{hexString, nst, repository, AbiUnknownExce
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
 import play.api.libs.json.Json
 
-object Abi {
+private [sbtethereum] object Abi {
   val EmptyAbi: jsonrpc.Abi = jsonrpc.Abi.empty
+
+  val Erc20Abi = jsonrpc.Abi( """[{"name":"approve","inputs":[{"name":"spender","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"totalSupply","inputs":[],"outputs":[{"name":"","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"transferFrom","inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"balanceOf","inputs":[{"name":"tokenOwner","type":"address"}],"outputs":[{"name":"balance","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"transfer","inputs":[{"name":"to","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"allowance","inputs":[{"name":"tokenOwner","type":"address"},{"name":"spender","type":"address"}],"outputs":[{"name":"remaining","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"Transfer","inputs":[{"name":"from","type":"address","indexed":true},{"name":"to","type":"address","indexed":true},{"name":"tokens","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"Approval","inputs":[{"name":"tokenOwner","type":"address","indexed":true},{"name":"spender","type":"address","indexed":true},{"name":"tokens","type":"uint256","indexed":false}],"anonymous":false,"type":"event"}]""")
+
+  val StandardAbis = Map (
+    "erc20" -> Erc20Abi
+  )
+
+  case class StandardSource( name : String ) extends AbiSource
+  case class AliasSource( chainId : Int, alias : String ) extends AbiSource
+  case class AddressSource( chainId : Int, address : EthAddress, abiOverrides : Map[EthAddress,jsonrpc.Abi] ) extends AbiSource
+  case class HashSource( hash : EthHash ) extends AbiSource
+  trait AbiSource;
+
+  def abiFromAbiSource( source : AbiSource ) : Option[ ( jsonrpc.Abi, Option[AbiLookup] ) ] = {
+    source match {
+      case StandardSource( name ) => StandardAbis.get( name.toLowerCase ).map( abi => ( abi, None ) )
+      case AliasSource( chainId, alias ) => repository.Database.findAbiByAbiAlias( chainId, alias ).assert.map( abi => ( abi, None ) )
+      case AddressSource( chainId, address, abiOverrides ) => {
+        val lookup = abiLookupForAddress( chainId, address, abiOverrides )
+        lookup.resolveAbi( None ).map( abi => ( abi, Some( lookup ) ) )
+      }
+      case HashSource( hash ) => {
+        (repository.Database.findAbiByAbiHash( hash ).assert orElse repository.Database.compilationInfoForCodeHash( hash ).assert.flatMap( _.mbAbi )).map( abi => ( abi, None ) )
+      }
+    }
+  }
 
   def abiTextHash( abi : jsonrpc.Abi ) : ( String, EthHash ) = {
     val abiText = Json.stringify( Json.toJson( abi.withStandardSort ) ) // Note the use of withStandardSort!!!

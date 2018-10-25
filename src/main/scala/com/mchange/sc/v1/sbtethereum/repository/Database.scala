@@ -486,6 +486,11 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
+  def findAbiByAbiHash( abiHash : EthHash ) : Failable[Option[jsonrpc.Abi]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.NormalizedAbis.select( _, abiHash ) ) )
+  }
+
+  private [sbtethereum]
   def deleteEtherscanApiKey() : Failable[Boolean] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.Metadata.delete( _, Table.Metadata.Key.EtherscanApiKey ) ) )
   }

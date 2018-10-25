@@ -17,7 +17,7 @@ import scala.annotation.tailrec
 import scala.collection._
 import play.api.libs.json._
 
-object Schema_h2 {
+private [sbtethereum] object Schema_h2 {
   private implicit lazy val logger = mlogger( this )
 
   private val OldMainnetIdentifier = "mainnet"
