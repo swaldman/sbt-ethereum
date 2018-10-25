@@ -2,7 +2,7 @@ package com.mchange.sc.v1.sbtethereum.util
 
 import com.mchange.sc._
 import v1.consuela._
-import v1.consuela.ethereum.EthAddress
+import v1.consuela.ethereum.{EthAddress,EthHash}
 import v1.consuela.ethereum.encoding.{RLP,RLPSerializing}
 import v1.consuela.ethereum.jsonrpc
 import v1.sbtethereum.{AddressParserInfo,MaybeSpawnable}
@@ -27,7 +27,20 @@ object SJsonNewFormats {
     { ( json : String ) => Json.parse( json ).as[T] }
   )
 
+  private def stringKeyedSortedMapFormat[T : JsonFormat]= new JsonFormat[immutable.SortedMap[String,T]]{
+    val inner = mapFormat[String,T]
+
+    def write[J](m : immutable.SortedMap[String, T], builder : Builder[J]): Unit = {
+      inner.write(m, builder)
+    }
+    def read[J](jsOpt : Option[J], unbuilder : Unbuilder[J]) : immutable.SortedMap[String, T] = {
+      immutable.TreeMap.empty[String, T] ++ inner.read( jsOpt, unbuilder )
+    }
+  }
+
   implicit val EthAddressIso = rlpSerializingIso[EthAddress]
+
+  implicit val EthHashIso = rlpSerializingIso[EthHash]
 
   implicit val CompilationIso = playJsonSerializingIso[jsonrpc.Compilation.Contract]
 
@@ -37,22 +50,17 @@ object SJsonNewFormats {
 
   implicit val AbiFormat = playJsonSerializingIso[jsonrpc.Abi]
 
-  implicit val StringEthAddressSortedMapFormat = new JsonFormat[immutable.SortedMap[String,EthAddress]]{
-    val inner = mapFormat[String,EthAddress]
+  implicit val StringEthAddressSortedMapFormat = stringKeyedSortedMapFormat[EthAddress]
 
-    def write[J](m : immutable.SortedMap[String, EthAddress], builder : Builder[J]): Unit = {
-      inner.write(m, builder)
-    }
-    def read[J](jsOpt : Option[J], unbuilder : Unbuilder[J]) : immutable.SortedMap[String, EthAddress] = {
-      immutable.TreeMap.empty[String, EthAddress] ++ inner.read( jsOpt, unbuilder )
-    }
-  }
+  implicit val StringEthHashSortedMapFormat = stringKeyedSortedMapFormat[EthHash]
+
   implicit object AddressParserInfoFormat extends JsonFormat[AddressParserInfo] {
     def write[J](api : AddressParserInfo, builder: Builder[J]) : Unit = {
       builder.beginObject()
       builder.addField("chainId", api.chainId)
       builder.addField("jsonRpcUrl", api.jsonRpcUrl)
       builder.addField("addressAliases", api.addressAliases)
+      builder.addField("abiAliases", api.abiAliases)
       builder.addField("abiOverrides", api.abiOverrides)
       builder.addField("nameServiceAddressHex", api.nameServiceAddress.hex)
       builder.addField("nameServiceTld", api.nameServiceTld)
@@ -66,12 +74,13 @@ object SJsonNewFormats {
           val chainId = unbuilder.readField[Int]("chainId")
           val jsonRpcUrl = unbuilder.readField[String]("jsonRpcUrl")
           val addressAliases = unbuilder.readField[immutable.SortedMap[String,EthAddress]]("addressAliases")
+          val abiAliases = unbuilder.readField[immutable.SortedMap[String,EthHash]]("abiAliases")
           val abiOverrides = unbuilder.readField[immutable.Map[EthAddress,jsonrpc.Abi]]("abiOverrides")
           val nameServiceAddressHex = unbuilder.readField[String]("nameServiceAddressHex")
           val nameServiceTld = unbuilder.readField[String]("nameServiceTld")
           val nameServiceReverseTld = unbuilder.readField[String]("nameServiceReverseTld")
           unbuilder.endObject()
-          AddressParserInfo(chainId, jsonRpcUrl, addressAliases, abiOverrides, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
+          AddressParserInfo(chainId, jsonRpcUrl, addressAliases, abiAliases, abiOverrides, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
         case None =>
           deserializationError("Expected JsObject but found None")
       }

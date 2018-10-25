@@ -174,6 +174,7 @@ package object sbtethereum {
     chainId               : Int,
     jsonRpcUrl            : String,
     addressAliases        : immutable.SortedMap[String,EthAddress],
+    abiAliases            : immutable.SortedMap[String,EthHash],
     abiOverrides          : immutable.Map[EthAddress,Abi],
     nameServiceAddress    : EthAddress,
     nameServiceTld        : String,
