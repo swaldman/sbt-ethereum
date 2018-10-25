@@ -13,6 +13,7 @@ import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstalle
 import util.EthJsonRpc._
 import util.Parsers._
 import util.SJsonNewFormats._
+import util.Abi._
 import generated._
 
 import java.io.{BufferedInputStream, File, FileInputStream, FilenameFilter}

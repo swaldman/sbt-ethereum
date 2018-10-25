@@ -1,6 +1,7 @@
 package com.mchange.sc.v1.sbtethereum.util
 
 import com.mchange.sc.v1.sbtethereum._
+import util.Abi._
 
 import sbt.State
 
@@ -10,7 +11,6 @@ import sbt.complete.DefaultParsers._
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc,specification,EthAddress,EthHash}
 import specification.Denominations
-import jsonrpc.Abi
 
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v2.ens.NoResolverSetException
@@ -171,17 +171,17 @@ object Parsers {
     ethHashParser("<bid-hash>").map( hash => (Left(hash) : Either[EthHash,String]) ) | ensNameParser( tld ).map( name => (Right(name) : Either[EthHash,String]) )
   }
 
-  private [sbtethereum] def functionParser( abi : Abi, restrictToConstants : Boolean ) : Parser[Abi.Function] = {
+  private [sbtethereum] def functionParser( abi : jsonrpc.Abi, restrictToConstants : Boolean ) : Parser[jsonrpc.Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
 
     val overloadedNamesToFunctions = namesToFunctions.filter( _._2.length > 1 )
-    val nonoverloadedNamesToFunctions : Map[String,Abi.Function] = (namesToFunctions -- overloadedNamesToFunctions.keySet).map( tup => ( tup._1, tup._2.head ) )
+    val nonoverloadedNamesToFunctions : Map[String,jsonrpc.Abi.Function] = (namesToFunctions -- overloadedNamesToFunctions.keySet).map( tup => ( tup._1, tup._2.head ) )
 
-    def createQualifiedNameForOverload( function : Abi.Function ) : String = function.name + "(" + function.inputs.map( _.`type` ).mkString(",") + ")"
+    def createQualifiedNameForOverload( function : jsonrpc.Abi.Function ) : String = function.name + "(" + function.inputs.map( _.`type` ).mkString(",") + ")"
 
-    def createOverloadBinding( function : Abi.Function ) : ( String, Abi.Function ) = ( createQualifiedNameForOverload( function ), function )
+    def createOverloadBinding( function : jsonrpc.Abi.Function ) : ( String, jsonrpc.Abi.Function ) = ( createQualifiedNameForOverload( function ), function )
 
-    val qualifiedOverloadedNamesToFunctions : Map[String, Abi.Function] = overloadedNamesToFunctions.values.flatMap( _.map( createOverloadBinding ) ).toMap
+    val qualifiedOverloadedNamesToFunctions : Map[String, jsonrpc.Abi.Function] = overloadedNamesToFunctions.values.flatMap( _.map( createOverloadBinding ) ).toMap
 
     val processedNamesToFunctions = {
       val raw = (qualifiedOverloadedNamesToFunctions ++ nonoverloadedNamesToFunctions).toMap
@@ -197,7 +197,7 @@ object Parsers {
     baseParser.map( processedNamesToFunctions )
   }
 
-  private def inputParser( input : Abi.Parameter, mbApi : Option[AddressParserInfo] ) : Parser[String] = {
+  private def inputParser( input : jsonrpc.Abi.Parameter, mbApi : Option[AddressParserInfo] ) : Parser[String] = {
     val displayName = if ( input.name.length == 0 ) "mapping key" else input.name
     val sample = s"<${displayName}, of type ${input.`type`}>"
     if ( input.`type` == "address" && mbApi.nonEmpty ) { // special case
@@ -207,12 +207,12 @@ object Parsers {
     }
   }
 
-  private def inputsParser( inputs : immutable.Seq[Abi.Parameter], mbApi : Option[AddressParserInfo] ) : Parser[immutable.Seq[String]] = {
-    val parserMaker : Abi.Parameter => Parser[String] = param => inputParser( param, mbApi )
+  private def inputsParser( inputs : immutable.Seq[jsonrpc.Abi.Parameter], mbApi : Option[AddressParserInfo] ) : Parser[immutable.Seq[String]] = {
+    val parserMaker : jsonrpc.Abi.Parameter => Parser[String] = param => inputParser( param, mbApi )
     inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space.* ~> next.map( str => partial :+ str ) ) )
   }
 
-  private def functionAndInputsParser( abi : Abi, restrictToConstants : Boolean, mbApi : Option[AddressParserInfo] ) : Parser[(Abi.Function, immutable.Seq[String])] = {
+  private def functionAndInputsParser( abi : jsonrpc.Abi, restrictToConstants : Boolean, mbApi : Option[AddressParserInfo] ) : Parser[(jsonrpc.Abi.Function, immutable.Seq[String])] = {
     token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs, mbApi ).map( seq => ( function, seq ) ) )
   }
 
@@ -240,9 +240,9 @@ object Parsers {
   }
 
   // delayed parsers
-  private def constructorFromAbi( abi : Abi ) : Abi.Constructor = {
+  private def constructorFromAbi( abi : jsonrpc.Abi ) : jsonrpc.Abi.Constructor = {
     abi.constructors.length match {
-      case 0 => Abi.Constructor.noArgNoEffect
+      case 0 => jsonrpc.Abi.Constructor.noArgNoEffect
       case 1 => abi.constructors.head
       case _ => throw new Exception( s"""Constructor overloading not supprted (or legal in solidity). Found multiple constructors: ${abi.constructors.mkString(", ")}""" )
     }
@@ -360,7 +360,7 @@ object Parsers {
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
     state : State,
     mbApi : Option[AddressParserInfo]
-  ) : Parser[(EthAddress, Abi.Function, immutable.Seq[String], Abi, AbiLookup)] = {
+  ) : Parser[(EthAddress, jsonrpc.Abi.Function, immutable.Seq[String], jsonrpc.Abi, AbiLookup)] = {
     mbApi match {
       case Some( api ) => {
         genGenericAddressParser( state, mbApi ).map { a =>
@@ -377,7 +377,7 @@ object Parsers {
   private [sbtethereum] def genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants : Boolean  )(
     state : State,
     mbApi : Option[AddressParserInfo]
-  ) : Parser[((EthAddress, Abi.Function, immutable.Seq[String], Abi, AbiLookup), Option[BigInt])] = {
+  ) : Parser[((EthAddress, jsonrpc.Abi.Function, immutable.Seq[String], jsonrpc.Abi, AbiLookup), Option[BigInt])] = {
     genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbApi ).flatMap { afia =>
       if ( afia._2.payable ) {
         valueInWeiParser("[ETH to pay, optional]").?.flatMap( mbv => success(  ( afia, mbv ) ) ) // useless flatmap rather than map

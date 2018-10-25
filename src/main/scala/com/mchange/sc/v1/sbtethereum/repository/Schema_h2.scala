@@ -2,6 +2,7 @@ package com.mchange.sc.v1.sbtethereum.repository
 
 import com.mchange.sc.v1.sbtethereum._
 import com.mchange.sc.v1.sbtethereum.util.BaseCodeAndSuffix
+import com.mchange.sc.v1.sbtethereum.util.Abi.abiTextHash
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash}

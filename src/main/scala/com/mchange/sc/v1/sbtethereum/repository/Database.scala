@@ -22,7 +22,7 @@ import jsonrpc.{Abi, Compilation}
 import com.mchange.sc.v2.ens.{Bid,BidStore}
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
-import com.mchange.sc.v1.sbtethereum.abiHash
+import com.mchange.sc.v1.sbtethereum.util.Abi.{abiHash, abiTextHash}
 import play.api.libs.json.Json
 
 object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
