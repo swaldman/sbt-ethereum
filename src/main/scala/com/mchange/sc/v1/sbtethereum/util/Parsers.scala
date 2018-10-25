@@ -63,8 +63,8 @@ object Parsers {
       updated
     }
 
-    def lookup( api : AddressParserInfo, name : String ) : Failable[EthAddress] = this.synchronized {
-      val key = Key( api.chainId, api.jsonRpcUrl, api.nameServiceAddress, api.nameServiceTld, api.nameServiceReverseTld, name )
+    def lookup( rpi : RichParserInfo, name : String ) : Failable[EthAddress] = this.synchronized {
+      val key = Key( rpi.chainId, rpi.jsonRpcUrl, rpi.nameServiceAddress, rpi.nameServiceTld, rpi.nameServiceReverseTld, name )
       val ( result, timestamp ) = {
         cache.get( key ) match {
           case Some( tup ) => if ( System.currentTimeMillis() > tup._2 + TTL ) update( key ) else tup
@@ -92,14 +92,14 @@ object Parsers {
 
   private def rawAliasedAddressParser( aliases : SortedMap[String,EthAddress] ) : Parser[EthAddress] = rawAddressAliasParser( aliases ).map( aliases )
 
-  private def createAddressParser( tabHelp : String, mbApi : Option[AddressParserInfo] ) : Parser[EthAddress] = {
-    mbApi match {
-      case Some( api ) => {
-        val aliases = api.addressAliases
-        val tld = api.nameServiceTld
+  private def createAddressParser( tabHelp : String, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
+    mbRpi match {
+      case Some( rpi ) => {
+        val aliases = rpi.addressAliases
+        val tld = rpi.nameServiceTld
         val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
-        token(Space.*) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensNameToAddressParser( api ) ).examples( allExamples : _* )
-        //Space.* ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensNameToAddressParser( api ).examples( s"<ens-name>.${tld}" ) )
+        token(Space.*) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensNameToAddressParser( rpi ) ).examples( allExamples : _* )
+        //Space.* ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensNameToAddressParser( rpi ).examples( s"<ens-name>.${tld}" ) )
       }
       case None => {
         createSimpleAddressParser( tabHelp )
@@ -147,9 +147,9 @@ object Parsers {
 
   private [sbtethereum] def ensNameParser( tld : String ) : Parser[String] = token( Space.* ) ~> token( rawEnsNameParser( tld ) ).examples( s"<ens-name>.${tld}" )
 
-  private [sbtethereum] def ensNameToAddressParser( api : AddressParserInfo ) : Parser[EthAddress] = {
-    ensNameParser( api.nameServiceTld ).flatMap { name =>
-      val faddress = EnsAddressCache.lookup( api, name )
+  private [sbtethereum] def ensNameToAddressParser( rpi : RichParserInfo ) : Parser[EthAddress] = {
+    ensNameParser( rpi.nameServiceTld ).flatMap { name =>
+      val faddress = EnsAddressCache.lookup( rpi, name )
       if ( faddress.isSucceeded ) success( faddress.get ) else failure( faddress.assertFailed.toString )
     }
   }
@@ -195,23 +195,23 @@ object Parsers {
     baseParser.map( processedNamesToFunctions )
   }
 
-  private def inputParser( input : jsonrpc.Abi.Parameter, mbApi : Option[AddressParserInfo] ) : Parser[String] = {
+  private def inputParser( input : jsonrpc.Abi.Parameter, mbRpi : Option[RichParserInfo] ) : Parser[String] = {
     val displayName = if ( input.name.length == 0 ) "mapping key" else input.name
     val sample = s"<${displayName}, of type ${input.`type`}>"
-    if ( input.`type` == "address" && mbApi.nonEmpty ) { // special case
-      createAddressParser( sample, mbApi ).map( _.hex )
+    if ( input.`type` == "address" && mbRpi.nonEmpty ) { // special case
+      createAddressParser( sample, mbRpi ).map( _.hex )
     } else {
       token( (StringEscapable.map( str => s""""${str}"""") | NotQuoted).examples( FixedSetExamples( immutable.Set( sample, ZWSP ) ) ) )
     }
   }
 
-  private def inputsParser( inputs : immutable.Seq[jsonrpc.Abi.Parameter], mbApi : Option[AddressParserInfo] ) : Parser[immutable.Seq[String]] = {
-    val parserMaker : jsonrpc.Abi.Parameter => Parser[String] = param => inputParser( param, mbApi )
+  private def inputsParser( inputs : immutable.Seq[jsonrpc.Abi.Parameter], mbRpi : Option[RichParserInfo] ) : Parser[immutable.Seq[String]] = {
+    val parserMaker : jsonrpc.Abi.Parameter => Parser[String] = param => inputParser( param, mbRpi )
     inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space.* ~> next.map( str => partial :+ str ) ) )
   }
 
-  private def functionAndInputsParser( abi : jsonrpc.Abi, restrictToConstants : Boolean, mbApi : Option[AddressParserInfo] ) : Parser[(jsonrpc.Abi.Function, immutable.Seq[String])] = {
-    token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs, mbApi ).map( seq => ( function, seq ) ) )
+  private def functionAndInputsParser( abi : jsonrpc.Abi, restrictToConstants : Boolean, mbRpi : Option[RichParserInfo] ) : Parser[(jsonrpc.Abi.Function, immutable.Seq[String])] = {
+    token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs, mbRpi ).map( seq => ( function, seq ) ) )
   }
 
   private [sbtethereum] val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
@@ -270,99 +270,99 @@ object Parsers {
 
   private [sbtethereum] def genAddressAliasParser(
     state : State,
-    mbApi : Option[AddressParserInfo]
+    mbRpi : Option[RichParserInfo]
   ) = {
-    Space.* ~> mbApi.map( api => token( rawAddressAliasParser( api.addressAliases ).examples( api.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve AddressParserInfo." ) )
+    Space.* ~> mbRpi.map( rpi => token( rawAddressAliasParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
-  private [sbtethereum] def genEnsNameOwnerAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[(String,EthAddress)] = {
-    _genEnsNameXxxAddressParser("<owner-address-hex>")( state, mbApi )
+  private [sbtethereum] def genEnsNameOwnerAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
+    _genEnsNameXxxAddressParser("<owner-address-hex>")( state, mbRpi )
   }
 
-  private [sbtethereum] def genEnsNameAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[(String,EthAddress)] = {
-    _genEnsNameXxxAddressParser("<address-hex>")( state, mbApi )
+  private [sbtethereum] def genEnsNameAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
+    _genEnsNameXxxAddressParser("<address-hex>")( state, mbRpi )
   }
 
-  private [sbtethereum] def genEnsNameResolverAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[(String,EthAddress)] = {
-    _genEnsNameXxxAddressParser("<resolver-address-hex>")( state, mbApi )
+  private [sbtethereum] def genEnsNameResolverAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
+    _genEnsNameXxxAddressParser("<resolver-address-hex>")( state, mbRpi )
   }
 
-  private def _genEnsNameXxxAddressParser( example : String )( state : State, mbApi : Option[AddressParserInfo] ) : Parser[(String,EthAddress)] = {
-    mbApi.map { api =>
-      (ensNameParser( api.nameServiceTld ) ~ (token(Space.+) ~> createAddressParser( example, mbApi )))
+  private def _genEnsNameXxxAddressParser( example : String )( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
+    mbRpi.map { rpi =>
+      (ensNameParser( rpi.nameServiceTld ) ~ (token(Space.+) ~> createAddressParser( example, mbRpi )))
     } getOrElse {
-      failure( "Failed to retrieve AddressParserInfo." )
+      failure( "Failed to retrieve RichParserInfo." )
     }
   }
 
-  private [sbtethereum] def genGenericAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[EthAddress] = {
-    createAddressParser( "<address-hex>", mbApi )
+  private [sbtethereum] def genGenericAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
+    createAddressParser( "<address-hex>", mbRpi )
   }
 
   private [sbtethereum] def genOptionalGenericAddressParser(
     state : State,
-    mbApi : Option[AddressParserInfo]
+    mbRpi : Option[RichParserInfo]
   ) : Parser[Option[EthAddress]] = {
-    genGenericAddressParser( state, mbApi ).?
+    genGenericAddressParser( state, mbRpi ).?
   }
 
   private [sbtethereum] def parsesAsAddressAlias( putativeAlias : String ) : Boolean = Parser.parse( putativeAlias, ID ).isRight
 
   private [sbtethereum] def genNewAddressAliasParser(
     state : State,
-    mbApi : Option[AddressParserInfo]
+    mbRpi : Option[RichParserInfo]
   ) = {
-    token(Space.*) ~> token(ID, "<alias>") ~ genGenericAddressParser( state, mbApi )
+    token(Space.*) ~> token(ID, "<alias>") ~ genGenericAddressParser( state, mbRpi )
   }
 
   private [sbtethereum] def genRecipientAddressParser(
     state : State,
-    mbApi : Option[AddressParserInfo]
+    mbRpi : Option[RichParserInfo]
   ) = {
-    createAddressParser( "<recipient-address>", mbApi )
+    createAddressParser( "<recipient-address>", mbRpi )
   }
 
   // for some reason, using a flatMap(...) dependent parser explcitly seems to yield more relable tab completion
   // otherwise we'd just use
-  //     genRecipientAddressParser( state, mbApi ) ~ valueInWeiParser("<amount>")
+  //     genRecipientAddressParser( state, mbRpi ) ~ valueInWeiParser("<amount>")
   private [sbtethereum] def genEthSendEtherParser(
     state : State,
-    mbApi : Option[AddressParserInfo]
+    mbRpi : Option[RichParserInfo]
   ) : Parser[( EthAddress, BigInt )] = {
-    genRecipientAddressParser( state, mbApi ).flatMap( addr => valueInWeiParser("<amount>").map( valueInWei => Tuple2( addr, valueInWei ) ) )
+    genRecipientAddressParser( state, mbRpi ).flatMap( addr => valueInWeiParser("<amount>").map( valueInWei => Tuple2( addr, valueInWei ) ) )
   }
 
   private [sbtethereum] def _genContractAddressOrCodeHashParser( prefix : String )(
     state : State,
-    mbApi : Option[AddressParserInfo]
+    mbRpi : Option[RichParserInfo]
   ) : Parser[Either[EthAddress,EthHash]] = {
     val chp = ethHashParser( s"<${prefix}contract-code-hash>" )
-    createAddressParser( s"<${prefix}address-hex>", mbApi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+    createAddressParser( s"<${prefix}address-hex>", mbRpi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
   }
 
   private [sbtethereum] def genContractAddressOrCodeHashParser(
     state : State,
-    mbApi : Option[AddressParserInfo]
-  ) : Parser[Either[EthAddress,EthHash]] = _genContractAddressOrCodeHashParser( "" )( state, mbApi )
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[Either[EthAddress,EthHash]] = _genContractAddressOrCodeHashParser( "" )( state, mbRpi )
 
 
   private [sbtethereum] def genContractAbiMatchParser(
     state : State,
-    mbApi : Option[AddressParserInfo]
+    mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[EthAddress,Either[EthAddress,EthHash]]] = {
-    createAddressParser( "<address-to-associate-with-abi>", mbApi ).flatMap( addr => (token(Space.+) ~> _genContractAddressOrCodeHashParser("abi-source-")(state, mbApi)).map( either => Tuple2( addr, either ) ) )
+    createAddressParser( "<address-to-associate-with-abi>", mbRpi ).flatMap( addr => (token(Space.+) ~> _genContractAddressOrCodeHashParser("abi-source-")(state, mbRpi)).map( either => Tuple2( addr, either ) ) )
   }
 
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
     state : State,
-    mbApi : Option[AddressParserInfo]
+    mbRpi : Option[RichParserInfo]
   ) : Parser[(EthAddress, jsonrpc.Abi.Function, immutable.Seq[String], jsonrpc.Abi, AbiLookup)] = {
-    mbApi match {
-      case Some( api ) => {
-        genGenericAddressParser( state, mbApi ).map { a =>
-          val abiLookup = abiLookupForAddressDefaultEmpty( api.chainId, a, api.abiOverrides )
+    mbRpi match {
+      case Some( rpi ) => {
+        genGenericAddressParser( state, mbRpi ).map { a =>
+          val abiLookup = abiLookupForAddressDefaultEmpty( rpi.chainId, a, rpi.abiOverrides )
           Tuple3( a, abiLookup, abiLookup.resolveAbi( None ).get )
-        }.flatMap { case ( address, abiLookup, abi ) => ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbApi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi, abiLookup ) } }
+        }.flatMap { case ( address, abiLookup, abi ) => ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbRpi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi, abiLookup ) } }
       }
       case None => {
         WARNING.log("Failed to load blockchain ID for address, function, inputs, abi parser")
@@ -372,9 +372,9 @@ object Parsers {
   }
   private [sbtethereum] def genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants : Boolean  )(
     state : State,
-    mbApi : Option[AddressParserInfo]
+    mbRpi : Option[RichParserInfo]
   ) : Parser[((EthAddress, jsonrpc.Abi.Function, immutable.Seq[String], jsonrpc.Abi, AbiLookup), Option[BigInt])] = {
-    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbApi ).flatMap { afia =>
+    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbRpi ).flatMap { afia =>
       if ( afia._2.payable ) {
         valueInWeiParser("[ETH to pay, optional]").?.flatMap( mbv => success(  ( afia, mbv ) ) ) // useless flatmap rather than map
       } else {
@@ -384,9 +384,9 @@ object Parsers {
   }
   private [sbtethereum] def genToAddressBytesAmountOptionalNonceParser(
     state : State,
-    mbApi : Option[AddressParserInfo]
+    mbRpi : Option[RichParserInfo]
   ) = {
-    val raw = createAddressParser( "<to-address>", mbApi ).flatMap( addr => success(addr) ~ bytesParser("<txn-data-hex>") ~ valueInWeiParser("<amount-to-pay>") ~ bigIntParser("[optional nonce]").? )
+    val raw = createAddressParser( "<to-address>", mbRpi ).flatMap( addr => success(addr) ~ bytesParser("<txn-data-hex>") ~ valueInWeiParser("<amount-to-pay>") ~ bigIntParser("[optional nonce]").? )
     raw.map { case ((( to, bytes ), amount), mbNonce ) => (to, bytes.toVector, amount, mbNonce ) }
   }
   private [sbtethereum] def genLiteralSetParser(

@@ -170,7 +170,7 @@ package object sbtethereum {
     t
   }
 
-  case class AddressParserInfo(
+  case class RichParserInfo(
     chainId               : Int,
     jsonRpcUrl            : String,
     addressAliases        : immutable.SortedMap[String,EthAddress],

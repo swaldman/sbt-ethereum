@@ -5,7 +5,7 @@ import v1.consuela._
 import v1.consuela.ethereum.{EthAddress,EthHash}
 import v1.consuela.ethereum.encoding.{RLP,RLPSerializing}
 import v1.consuela.ethereum.jsonrpc
-import v1.sbtethereum.{AddressParserInfo,MaybeSpawnable}
+import v1.sbtethereum.{MaybeSpawnable,RichParserInfo}
 
 import sjsonnew._
 import BasicJsonProtocol._
@@ -54,8 +54,8 @@ object SJsonNewFormats {
 
   implicit val StringEthHashSortedMapFormat = stringKeyedSortedMapFormat[EthHash]
 
-  implicit object AddressParserInfoFormat extends JsonFormat[AddressParserInfo] {
-    def write[J](api : AddressParserInfo, builder: Builder[J]) : Unit = {
+  implicit object RichParserInfoFormat extends JsonFormat[RichParserInfo] {
+    def write[J](api : RichParserInfo, builder: Builder[J]) : Unit = {
       builder.beginObject()
       builder.addField("chainId", api.chainId)
       builder.addField("jsonRpcUrl", api.jsonRpcUrl)
@@ -67,7 +67,7 @@ object SJsonNewFormats {
       builder.addField("nameServiceReverseTld", api.nameServiceReverseTld)
       builder.endObject()
     }
-    def read[J](jsOpt: Option[J], unbuilder: Unbuilder[J]) : AddressParserInfo = {
+    def read[J](jsOpt: Option[J], unbuilder: Unbuilder[J]) : RichParserInfo = {
       jsOpt match {
         case Some(js) =>
           unbuilder.beginObject(js)
@@ -80,7 +80,7 @@ object SJsonNewFormats {
           val nameServiceTld = unbuilder.readField[String]("nameServiceTld")
           val nameServiceReverseTld = unbuilder.readField[String]("nameServiceReverseTld")
           unbuilder.endObject()
-          AddressParserInfo(chainId, jsonRpcUrl, addressAliases, abiAliases, abiOverrides, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
+          RichParserInfo(chainId, jsonRpcUrl, addressAliases, abiAliases, abiOverrides, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
         case None =>
           deserializationError("Expected JsObject but found None")
       }
