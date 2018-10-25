@@ -34,8 +34,6 @@ object Parsers {
 
   private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
 
-  private val EmptyAddressAliasMap = immutable.SortedMap.empty[String,EthAddress]
-
   private final object EnsAddressCache {
     private val TTL     = 300000 // 300 secs, 5 mins, maybe someday make this sensitive to ENS TTLs
     private val MaxSize = 100
@@ -97,7 +95,7 @@ object Parsers {
   private def createAddressParser( tabHelp : String, mbApi : Option[AddressParserInfo] ) : Parser[EthAddress] = {
     mbApi match {
       case Some( api ) => {
-        val aliases = api.mbAliases.getOrElse( EmptyAddressAliasMap )
+        val aliases = api.addressAliases
         val tld = api.nameServiceTld
         val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
         token(Space.*) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensNameToAddressParser( api ) ).examples( allExamples : _* )
@@ -274,9 +272,7 @@ object Parsers {
     state : State,
     mbApi : Option[AddressParserInfo]
   ) = {
-    // XXX: we accept ID (sbt's built-in identifier parser) when we don't have aliases,
-    //      bc maybe there was just a problem getting the aliases but they exist. (kind of weak?)
-    Space.* ~> mbApi.flatMap( _.mbAliases ).fold( ID )( aliases => token( rawAddressAliasParser( aliases ).examples( aliases.keySet, false ) ) )
+    Space.* ~> mbApi.map( api => token( rawAddressAliasParser( api.addressAliases ).examples( api.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve AddressParserInfo." ) )
   }
 
   private [sbtethereum] def genEnsNameOwnerAddressParser( state : State, mbApi : Option[AddressParserInfo] ) : Parser[(String,EthAddress)] = {

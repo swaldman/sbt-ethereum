@@ -2872,12 +2872,12 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethFindCacheAddressParserInfoTask( config : Configuration ) : Initialize[Task[AddressParserInfo]] = Def.task {
     val chainId            = (config / ethcfgChainId).value
     val jsonRpcUrl         = (config / ethcfgJsonRpcUrl).value
-    val mbAliases          = repository.Database.findAllAddressAliases( chainId ).toOption
+    val addressAliases     = repository.Database.findAllAddressAliases( chainId ).assert
     val abiOverrides       = abiOverridesForChain( chainId )
     val nameServiceAddress = (config / enscfgNameServiceAddress).value
     val tld                = (config / enscfgNameServiceTld).value
     val reverseTld         = (config / enscfgNameServiceReverseTld).value
-    AddressParserInfo( chainId, jsonRpcUrl, mbAliases, abiOverrides, nameServiceAddress, tld, reverseTld )
+    AddressParserInfo( chainId, jsonRpcUrl, addressAliases, abiOverrides, nameServiceAddress, tld, reverseTld )
   }
 
   private def xethFindCacheSeedsTask( config : Configuration ) : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
