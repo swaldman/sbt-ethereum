@@ -395,4 +395,30 @@ object Parsers {
   ) : Parser[String] = {
     Space.* ~> token( mbLiterals.fold( failure("Failed to load acceptable values") : Parser[String] )( _.foldLeft( failure("No acceptable values") : Parser[String] )( ( nascent, next ) => nascent | literal(next) ) ) )
   }
+
+  private def _genStandardOrAliasAbiSourceParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[AbiSource] = {
+    mbRpi.fold( failure("ABI aliases not available!" ) : Parser[AbiSource] ) { rpi =>
+      literal("abi:") ~>
+      ( ( literal("standard:") ~> token( ID.+ ).examples( StandardAbis.keySet ) ).map( chars => StandardSource( chars.mkString ) ) |
+        ( token( ID.+ ).examples( rpi.abiAliases.keySet ).map( chars => AliasSource( rpi.chainId, chars.mkString ) ) ) )
+    }
+  }
+
+  private [sbtethereum] def genAnyAbiSourceParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[AbiSource] = {
+    mbRpi.fold( failure("ABI aliases not available!" ) : Parser[AbiSource] ) { rpi =>
+      Space.* ~>
+      ( ethHashParser( s"<contract-code-or-abi-hash>" ).map( HashSource.apply ) |
+        createAddressParser( s"<contract-address-hex-or-alias>", mbRpi ).map( addr => AddressSource( rpi.chainId, addr, rpi.abiOverrides ) ) |
+        _genStandardOrAliasAbiSourceParser(state, mbRpi) )
+    }
+  }
 }
+
+
+
