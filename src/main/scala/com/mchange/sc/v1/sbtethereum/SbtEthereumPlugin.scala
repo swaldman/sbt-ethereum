@@ -157,6 +157,40 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def addAbiOverrideForChain( chainId : Int, address : EthAddress, abi : Abi ) : Unit = {
+    Mutables.AbiOverrides.synchronized {
+      val oldOuterMap = Mutables.AbiOverrides.get
+      val priorForChain = oldOuterMap.getOrElse( chainId, immutable.Map.empty[EthAddress,Abi] )
+      val nextForChain = priorForChain + Tuple2( address, abi )
+      val newOuterMap = oldOuterMap + Tuple2( chainId, nextForChain )
+      Mutables.AbiOverrides.set( newOuterMap )
+    }
+  }
+
+  private def removeAbiOverrideForChain( chainId : Int, address : EthAddress ) : Boolean = {
+    Mutables.AbiOverrides.synchronized {
+      val oldOuterMap = Mutables.AbiOverrides.get
+      val priorForChain = oldOuterMap.getOrElse( chainId, immutable.Map.empty[EthAddress,Abi] )
+      val out = priorForChain.keySet( address )
+      val nextForChain = priorForChain - address
+      val newOuterMap = oldOuterMap + Tuple2( chainId, nextForChain )
+      Mutables.AbiOverrides.set( newOuterMap )
+      out
+    }
+  }
+
+  private def clearAbiOverrideForChain( chainId : Int ) : Boolean = {
+    Mutables.AbiOverrides.synchronized {
+      val oldOuterMap = Mutables.AbiOverrides.get
+      val out = oldOuterMap.get( chainId ).nonEmpty
+      if ( out ) {
+        val newOuterMap = oldOuterMap - chainId
+        Mutables.AbiOverrides.set( newOuterMap )
+      }
+      out
+    }
+  }
+
   private val BufferSize = 4096
 
   private val PollSeconds = 15
@@ -288,10 +322,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiDrop            = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
     val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
-    val ethContractAbiMatch           = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address.")
+    val ethContractAbiMatch           = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address")
+    val ethContractAbiOverrideAdd     = inputKey[Unit] ("Sets a temporary (just this session) association between an ABI an address, that overrides any persistent association")
+    val ethContractAbiOverrideClear   = taskKey[Unit]  ("Clears all temporary associations (on the current chain) between an ABI an address")
+    val ethContractAbiOverrideList    = taskKey[Unit]  ("Show all addresses (on the current chain) for which a temporary association between an ABI an address has been set")
+    val ethContractAbiOverridePrint   = inputKey[Unit] ("Pretty prints any ABI a temporarily associated with an address as an ABI override")
+    val ethContractAbiOverrideRemove  = inputKey[Unit] ("Removes a temporary (just this session) association between an ABI an address that may have ben set with 'ethContractAbiOverrideAdd'")
     val ethContractAbiPrint           = inputKey[Unit] ("Prints the contract ABI associated with a provided address, if known.")
     val ethContractAbiPrintPretty     = inputKey[Unit] ("Pretty prints the contract ABI associated with a provided address, if known.")
     val ethContractAbiPrintCompact    = inputKey[Unit] ("Compactly prints the contract ABI associated with a provided address, if known.")
+
     val ethContractCompilationCull    = taskKey [Unit] ("Removes never-deployed compilations from the repository database.")
     val ethContractCompilationInspect = inputKey[Unit] ("Dumps to the console full information about a compilation, based on either a code hash or contract address")
     val ethContractCompilationList    = taskKey [Unit] ("Lists summary information about compilations known in the repository")
@@ -606,6 +646,26 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethContractAbiImport in Compile := { ethContractAbiImportTask( Compile ).evaluated },
 
     ethContractAbiImport in Test := { ethContractAbiImportTask( Test ).evaluated },
+
+    ethContractAbiOverrideAdd in Compile := { ethContractAbiOverrideAddTask( Compile ).evaluated },
+
+    ethContractAbiOverrideAdd in Test := { ethContractAbiOverrideAddTask( Test ).evaluated },
+
+    ethContractAbiOverrideClear in Compile := { ethContractAbiOverrideClearTask( Compile ).value },
+
+    ethContractAbiOverrideClear in Test := { ethContractAbiOverrideClearTask( Test ).value },
+
+    ethContractAbiOverrideList in Compile := { ethContractAbiOverrideListTask( Compile ).value },
+
+    ethContractAbiOverrideList in Test := { ethContractAbiOverrideListTask( Test ).value },
+
+    ethContractAbiOverridePrint in Compile := { ethContractAbiOverridePrintTask( Compile ).evaluated },
+
+    ethContractAbiOverridePrint in Test := { ethContractAbiOverridePrintTask( Test ).evaluated },
+
+    ethContractAbiOverrideRemove in Compile := { ethContractAbiOverrideRemoveTask( Compile ).evaluated },
+
+    ethContractAbiOverrideRemove in Test := { ethContractAbiOverrideRemoveTask( Test ).evaluated },
 
     ethContractAbiPrint in Compile := { ethContractAbiPrintTask( Compile ).evaluated },
 
@@ -1439,7 +1499,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractAbiMatchTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genContractAbiMatchParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAbiSourceParser )
 
     Def.inputTaskDyn {
       val chainId = (ethcfgChainId in config).value
@@ -1551,6 +1611,96 @@ object SbtEthereumPlugin extends AutoPlugin {
           finishUpdate
         }
         case unexpected => throw new SbtEthereumException( s"Unexpected AbiLookup: ${unexpected}" )
+      }
+    }
+  }
+
+  private def ethContractAbiOverrideAddTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAbiSourceParser )
+
+    Def.inputTaskDyn {
+      val chainId = (ethcfgChainId in config).value
+      val s = state.value
+      val log = streams.value.log
+      val ( toLinkAddress, abiSource ) = parser.parsed
+      val ( abi, mbLookup ) = abiFromAbiSource( abiSource ).getOrElse( throw nst( new AbiUnknownException( s"Can't find ABI for ${abiSource.sourceDesc}" ) ) )
+      mbLookup.foreach( _.logGenericShadowWarning( log ) )
+      addAbiOverrideForChain( chainId, toLinkAddress, abi )
+      log.info( s"ABI override successfully added." )
+      Def.taskDyn {
+        xethTriggerDirtyAliasCache
+      }
+    }
+  }
+
+  private def ethContractAbiOverrideListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val chainId = (ethcfgChainId in config).value
+    val s = state.value
+    val log = streams.value.log
+    val currentAbiOverrides = abiOverridesForChain( chainId )
+
+    val columns = immutable.Vector( "ABI Override Addresses" ).map( texttable.Column.apply( _ ) )
+    def extract( address : EthAddress ) : Seq[String] = hexString(address) :: Nil
+    texttable.printTable( columns, extract )( currentAbiOverrides.keySet.toSeq.map( addr => texttable.Row(addr, leftwardAliasesArrowOrEmpty(chainId, addr).assert) ) )
+  }
+
+  private def ethContractAbiOverrideClearTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
+    val chainId = (ethcfgChainId in config).value
+    val s = state.value
+    val log = streams.value.log
+    val out = clearAbiOverrideForChain( chainId )
+    if ( out ) {
+      log.info( s"ABI overrides on chain with ID ${chainId} successfully cleared." )
+      Def.taskDyn {
+        xethTriggerDirtyAliasCache
+      }
+    }
+    else {
+      log.info( s"No ABI override found on chain with ID ${chainId}." )
+      Def.task {}
+    }
+  }
+
+  private def ethContractAbiOverridePrintTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
+
+    Def.inputTask {
+      val chainId = (ethcfgChainId in config).value
+      val s = state.value
+      val log = streams.value.log
+      val address = parser.parsed
+      val currentAbiOverrides = abiOverridesForChain( chainId )
+      currentAbiOverrides.get( address ) match {
+        case Some( abi ) => {
+          println( s"Contract ABI for address '0x${address.hex}':" )
+          val json = Json.toJson( abi )
+          println( Json.prettyPrint( json ) )
+        }
+        case None => {
+          log.warn( s"No ABI override set for address '${hexString(address)}' (for chain with ID ${chainId})." )
+        }
+      }
+    }
+  }
+
+  private def ethContractAbiOverrideRemoveTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
+
+    Def.inputTaskDyn {
+      val chainId = (ethcfgChainId in config).value
+      val s = state.value
+      val log = streams.value.log
+      val address = parser.parsed
+      val out = removeAbiOverrideForChain( chainId, address )
+      if ( out ) {
+        log.info( s"ABI override successfully removed." )
+        Def.taskDyn {
+          xethTriggerDirtyAliasCache
+        }
+      }
+      else {
+        log.info( s"No ABI override found for address '${hexString(address)}'." )
+        Def.task {}
       }
     }
   }
@@ -3866,10 +4016,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   // this is a no-op, its execution just triggers a re-caching of aliases
   private def xethTriggerDirtyAliasCacheTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    log.info( "Refreshing alias cache." )
+    log.info( "Refreshing caches." )
   }
 
-  // this is a no-op, its execution just triggers a re-caching of aliases
+  // this is a no-op, its execution just triggers a re-caching of available compilers
   private def xethTriggerDirtySolidityCompilerListTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     log.info( "Refreshing compiler list." )

@@ -417,7 +417,7 @@ object Parsers {
   ) : Parser[AbiSource] = Space.* ~> _genAnyAbiSourceParser( state, mbRpi )
 
 
-  private [sbtethereum] def genContractAbiMatchParser(
+  private [sbtethereum] def genAddressAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[EthAddress, AbiSource]] = {
