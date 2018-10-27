@@ -1446,20 +1446,16 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
-      val abiOverrides = abiOverridesForChain( chainId )
       val ( toLinkAddress, abiSource ) = parser.parsed
 
-      val ( abi, sourceDesc ) = {
-        abiSource match {
-          case Left( address ) => {
-            val abiLookup = ensureAbiLookupForAddress( chainId, address, abiOverrides, suppressStackTrace = true ) // asserts success
-            val resolved = abiLookup.resolveAbi( Some( log ) ).get // should succeed if the prior call did
-            ( resolved, s"address ${hexString(address)}" )
-          }
-          case Right( hash ) => {
-            val mbinfo = repository.Database.compilationInfoForCodeHash( hash ).assert // throw any db problem
-            ( mbinfo.get.mbAbi.get /* asserts success */, s"compilation with code hash ${hexString(hash)}" )
-          }
+      // Note the we sort `abi` before binding to the val
+      val ( abi : Abi, sourceDesc : String) = {
+        val ( a : Abi, mbLookup : Option[AbiLookup] ) = abiFromAbiSource( abiSource ).getOrElse( throw nst( new AbiUnknownException( s"Can't find ABI for ${abiSource.sourceDesc}" ) ) )
+
+        // be careful to warn about potential shadowing if we got an AbiLookup object. resolveAbi( Some( log ) ) logs.
+        mbLookup match {
+          case Some( abiLookup ) => ( abiLookup.resolveAbi( Some( log ) ).get.withStandardSort, abiSource.sourceDesc )
+          case None              => ( a.withStandardSort, abiSource.sourceDesc )
         }
       }
       
@@ -1481,18 +1477,83 @@ object SbtEthereumPlugin extends AutoPlugin {
           // ignore, we won't be overriding anything
         }
       }
-      repository.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi  ).assert // throw an Exception if there's a database issue
-      log.info( s"ABI has been memorized for the contract at address ${hexString(toLinkAddress)}." )
-      log.info( s"(It has been copied from the ABI previously associated with ${sourceDesc}.)" )
-      if (! repository.Database.hasAddressAliases( chainId, toLinkAddress ).assert ) {
-        interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
+      val currentAbiOverrides = abiOverridesForChain( chainId )
+      currentAbiOverrides.get( toLinkAddress ).foreach { currentOverride =>
+        if ( currentOverride.withStandardSort != abi /* already sorted */ ) {
+          val ignoreOverride = queryYN( is, s"An ABI override is set in the present session that differs from the ABI you wish to associate with '${hexString(toLinkAddress)}'. Continue? [y/n] " )
+          if (! ignoreOverride ) throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch due to discrepancy between linked ABI and current override." )
+        }
       }
-      Def.taskDyn {
-        xethTriggerDirtyAliasCache
+
+      def finishUpdate = {
+        log.info( s"The ABI previously associated with ${sourceDesc} ABI has been associated with address ${hexString(toLinkAddress)}." )
+        if (! repository.Database.hasAddressAliases( chainId, toLinkAddress ).assert ) {
+          interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
+        }
+        Def.taskDyn {
+          xethTriggerDirtyAliasCache
+        }
+      }
+      def noop = Def.task{}
+
+      val lookupExisting = abiLookupForAddress( chainId, toLinkAddress, currentAbiOverrides )
+      lookupExisting match {
+        case AbiLookup( toLinkAddress, _, Some( `abi` ), _, _ ) => {
+          log.info( s"The ABI you have tried to link is already associated with '${hexString(toLinkAddress)}'. No changes were made." )
+          noop
+        }
+        case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), Some( `abi` ), _ ) => {
+          val deleteMemorized = queryYN( is, s"The ABI you have tried to link is the origial compilation ABI associated with ${hexString(toLinkAddress)}. Remove shadowing ABI to restore? [y/n] " )
+          if (! deleteMemorized ) {
+            throw new OperationAbortedByUserException( "User chose not to delete a currently associated ABI which shadows an original compilation-derived ABI)." )
+          }
+          else {
+            repository.Database.deleteMemorizedContractAbi( chainId, toLinkAddress ).assert // throw an Exception if there's a database issue
+            finishUpdate
+          }
+        }
+        case AbiLookup( toLinkAddress, _, None, Some( `abi` ), _ ) => {
+          log.info( s"The ABI you have tried to link is already associated with '${toLinkAddress}'. It is the unshadowed, original compilation ABI. No changes were made." )
+          noop
+        }
+        case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), Some( compilationAbi ), _ ) => {
+          val overwriteShadow = queryYN( is, s"This operation would overwrite an existing ABI associated with '${hexString(toLinkAddress)}' (which itself shadowed an original compilation-derived ABI). Continue? [y/n] " )
+          if (! overwriteShadow ) {
+            throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch in order not to replace an existing association (which itself shadowed an original compilation-derived ABI)." )
+          }
+          else {
+            repository.Database.resetMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            finishUpdate
+          }
+        }
+        case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), None, _ ) => {
+          val overwrite = queryYN( is, s"This operation would overwrite an existing ABI associated with '${hexString(toLinkAddress)}'. Continue? [y/n] " )
+          if (! overwrite ) {
+            throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch in order not to replace an existing association." )
+          }
+          else {
+            repository.Database.resetMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            finishUpdate
+          }
+        }
+        case AbiLookup( toLinkAddress, _, None, Some( compilationAbi_ ), _ ) => {
+          val shadow = queryYN( is, "This operation would shadow an original compilation-derived ABI. Continue? [y/n] " )
+          if (! shadow ) {
+            throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch in order not to replace an existing association (which itself overrode an original compilation-derived ABI)." )
+          }
+          else {
+            repository.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            finishUpdate
+          }
+        }
+        case AbiLookup( toLinkAddress, _, None, None, _ ) => {
+          repository.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+          finishUpdate
+        }
+        case unexpected => throw new SbtEthereumException( s"Unexpected AbiLookup: ${unexpected}" )
       }
     }
   }
-
 
   private def ethContractAbiAnyPrintTask( pretty : Boolean )( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo)( genGenericAddressParser )

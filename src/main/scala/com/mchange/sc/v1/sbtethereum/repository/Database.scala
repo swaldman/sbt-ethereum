@@ -123,6 +123,20 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
+  def resetMemorizedContractAbi( chainId : Int, contractAddress : EthAddress, abi : Abi ) : Failable[Unit] = {
+    DataSource.flatMap { ds =>
+      Failable {
+        borrowTransact( ds.getConnection() ){ conn =>
+          val ( abiHash, _ ) = Table.NormalizedAbis.upsert( conn, abi )
+          Table.MemorizedAbis.delete( conn, chainId, contractAddress )
+          Table.MemorizedAbis.insert( conn, chainId, contractAddress, abiHash )
+        }
+      }
+    }
+  }
+
+
+  private [sbtethereum]
   def deleteMemorizedContractAbi( chainId : Int, contractAddress : EthAddress ) : Failable[Boolean] = {
     DataSource.flatMap { ds =>
       Failable {

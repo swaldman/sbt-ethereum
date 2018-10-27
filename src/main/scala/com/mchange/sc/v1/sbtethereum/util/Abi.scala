@@ -14,11 +14,21 @@ private [sbtethereum] object Abi {
     "erc20" -> Erc20Abi
   )
 
-  case class StandardSource( name : String ) extends AbiSource
-  case class AliasSource( chainId : Int, alias : String ) extends AbiSource
-  case class AddressSource( chainId : Int, address : EthAddress, abiOverrides : Map[EthAddress,jsonrpc.Abi] ) extends AbiSource
-  case class HashSource( hash : EthHash ) extends AbiSource
-  trait AbiSource;
+  case class StandardSource( name : String ) extends AbiSource {
+    def sourceDesc = s"standard ABI definition '${name}'"
+  }
+  case class AliasSource( chainId : Int, alias : String ) extends AbiSource {
+    def sourceDesc = s"ABI alias 'abi:${alias}' (on chain with ID ${chainId})"
+  }
+  case class AddressSource( chainId : Int, address : EthAddress, abiOverrides : Map[EthAddress,jsonrpc.Abi] ) extends AbiSource {
+    def sourceDesc = s"ABI associated with contract address '${hexString(address)}' on chain with ID ${chainId}"
+  }
+  case class HashSource( hash : EthHash ) extends AbiSource {
+    def sourceDesc = s"hash of compilation or ABI '${hexString(hash)}'"
+  }
+  trait AbiSource {
+    def sourceDesc : String
+  }
 
   def abiFromAbiSource( source : AbiSource ) : Option[ ( jsonrpc.Abi, Option[AbiLookup] ) ] = {
     source match {

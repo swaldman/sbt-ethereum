@@ -346,13 +346,6 @@ object Parsers {
   ) : Parser[Either[EthAddress,EthHash]] = _genContractAddressOrCodeHashParser( "" )( state, mbRpi )
 
 
-  private [sbtethereum] def genContractAbiMatchParser(
-    state : State,
-    mbRpi : Option[RichParserInfo]
-  ) : Parser[Tuple2[EthAddress,Either[EthAddress,EthHash]]] = {
-    createAddressParser( "<address-to-associate-with-abi>", mbRpi ).flatMap( addr => (token(Space.+) ~> _genContractAddressOrCodeHashParser("abi-source-")(state, mbRpi)).map( either => Tuple2( addr, either ) ) )
-  }
-
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
     state : State,
     mbRpi : Option[RichParserInfo]
@@ -407,17 +400,30 @@ object Parsers {
     }
   }
 
-  private [sbtethereum] def genAnyAbiSourceParser(
+  private [sbtethereum] def _genAnyAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[AbiSource] = {
     mbRpi.fold( failure("ABI aliases not available!" ) : Parser[AbiSource] ) { rpi =>
-      Space.* ~>
       ( ethHashParser( s"<contract-code-or-abi-hash>" ).map( HashSource.apply ) |
         createAddressParser( s"<contract-address-hex-or-alias>", mbRpi ).map( addr => AddressSource( rpi.chainId, addr, rpi.abiOverrides ) ) |
         _genStandardOrAliasAbiSourceParser(state, mbRpi) )
     }
   }
+
+  private [sbtethereum] def genAnyAbiSourceParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[AbiSource] = Space.* ~> _genAnyAbiSourceParser( state, mbRpi )
+
+
+  private [sbtethereum] def genContractAbiMatchParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[Tuple2[EthAddress, AbiSource]] = {
+    createAddressParser( "<address-to-associate-with-abi>", mbRpi ).flatMap( addr => (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi ) ).map( abiSource => (addr, abiSource) ) )
+  }
+  
 }
 
 
