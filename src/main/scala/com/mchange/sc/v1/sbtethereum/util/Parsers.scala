@@ -84,7 +84,7 @@ object Parsers {
   private [sbtethereum]
   def reset() : Unit = EnsAddressCache.reset()
 
-  private def createSimpleAddressParser( tabHelp : String ) = Space.* ~> token( RawAddressParser, tabHelp )
+  private def createSimpleAddressParser( tabHelp : String ) = token(Space.*) ~> token( RawAddressParser, tabHelp )
 
   private def rawAddressAliasParser( aliases : SortedMap[String,EthAddress] ) : Parser[String] = {
     aliases.keys.foldLeft( failure("not a known alias") : Parser[String] )( ( nascent, next ) => nascent | literal( next ) )
@@ -97,9 +97,9 @@ object Parsers {
       case Some( rpi ) => {
         val aliases = rpi.addressAliases
         val tld = rpi.nameServiceTld
-        val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
-        token(Space.*) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensNameToAddressParser( rpi ) ).examples( allExamples : _* )
-        //Space.* ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensNameToAddressParser( rpi ).examples( s"<ens-name>.${tld}" ) )
+        //val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
+        //token(Space.*) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensNameToAddressParser( rpi ) ).examples( allExamples : _* )
+        token(Space.*) ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensNameToAddressParser( rpi ).examples( s"<ens-name>.${tld}" ) )
       }
       case None => {
         createSimpleAddressParser( tabHelp )
@@ -137,7 +137,7 @@ object Parsers {
 
   private [sbtethereum] val SolcJVersionParser : Parser[Option[String]] = {
     val mandatory = compile.SolcJInstaller.SupportedVersions.foldLeft( failure("No supported versions") : Parser[String] )( ( nascent, next ) => nascent | literal(next) )
-    Space.* ~> token(mandatory.?)
+    token(Space.*) ~> token(mandatory.?)
   }
 
   private [sbtethereum] def rawEnsNameParser( tld : String ) : Parser[String] = {
@@ -265,14 +265,14 @@ object Parsers {
       }
     }
     val autoParser = Space.* map { _ => SpawnInstruction.Auto }
-    Space.* ~> ( argsParser | autoParser )
+    token(Space.*) ~> ( argsParser | autoParser )
   }
 
   private [sbtethereum] def genAddressAliasParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) = {
-    Space.* ~> mbRpi.map( rpi => token( rawAddressAliasParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
+    token(Space.*) ~> mbRpi.map( rpi => token( rawAddressAliasParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
   private [sbtethereum] def genEnsNameOwnerAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
@@ -425,14 +425,14 @@ object Parsers {
   }
 
   private [sbtethereum] val newAbiAliasParser : Parser[String] = {
-    Space.* ~> literal("abi:").? ~> token(ID.+, "<new-abi-alias>").map( _.mkString )
+    token(Space.*) ~> literal("abi:").? ~> token(ID.+, "<new-abi-alias>").map( _.mkString )
   }
 
   private [sbtethereum] def genNewAbiAliasAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[String, AbiSource]] = {
-    Space.* ~> (newAbiAliasParser ~ (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi )))
+    token(Space.*) ~> (newAbiAliasParser ~ (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi )))
   }
 
   private [sbtethereum] def genExistingAbiAliasParser(
