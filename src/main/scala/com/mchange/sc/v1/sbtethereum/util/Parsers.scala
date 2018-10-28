@@ -423,6 +423,28 @@ object Parsers {
   ) : Parser[Tuple2[EthAddress, AbiSource]] = {
     createAddressParser( "<address-to-associate-with-abi>", mbRpi ).flatMap( addr => (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi ) ).map( abiSource => (addr, abiSource) ) )
   }
+
+  private [sbtethereum] val newAbiAliasParser : Parser[String] = {
+    Space.* ~> literal("abi:").? ~> token(ID.+, "<new-abi-alias>").map( _.mkString )
+  }
+
+  private [sbtethereum] def genNewAbiAliasAbiSourceParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[Tuple2[String, AbiSource]] = {
+    Space.* ~> (newAbiAliasParser ~ (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi )))
+  }
+
+  private [sbtethereum] def genExistingAbiAliasParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[String] = {
+    mbRpi.fold( failure( "Could not find RichParserInfo for abiAliases." ) : Parser[String] ) { rpi =>
+      token(Space.*) ~> (literal("abi:") ~> token( ID.+)).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) ).map( _.mkString )
+    }
+  }
+  
+
   
 }
 

@@ -319,6 +319,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgSender' or defaultSender that may be set.")
     val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
 
+    val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops for an ABI.")
+    val ethContractAbiAliasSet        = inputKey[Unit] ("Defines a new alias for an ABI, taken from any ABI source.")
     val ethContractAbiDrop            = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
     val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
@@ -630,6 +632,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethAddressSenderOverrideSet in Compile := { ethAddressSenderOverrideSetTask( Compile ).evaluated },
 
     ethAddressSenderOverrideSet in Test := { ethAddressSenderOverrideSetTask( Test ).evaluated },
+
+    ethContractAbiAliasDrop in Compile := { ethContractAbiAliasDropTask( Compile ).evaluated },
+
+    ethContractAbiAliasDrop in Test := { ethContractAbiAliasDropTask( Test ).evaluated },
+
+    ethContractAbiAliasSet in Compile := { ethContractAbiAliasSetTask( Compile ).evaluated },
+
+    ethContractAbiAliasSet in Test := { ethContractAbiAliasSetTask( Test ).evaluated },
 
     ethContractAbiDrop in Compile := { ethContractAbiDropTask( Compile ).evaluated },
 
@@ -1478,6 +1488,37 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ethContractAbiAliasDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genExistingAbiAliasParser )
+
+    Def.inputTaskDyn {
+      val chainId = (ethcfgChainId in config).value
+      val log = streams.value.log
+      val dropMeAbiAlias = parser.parsed
+      repository.Database.dropAbiAlias( chainId, dropMeAbiAlias )
+      log.info( s"Abi alias 'abi:${dropMeAbiAlias}' successfully dropped." )
+      Def.taskDyn {
+        xethTriggerDirtyAliasCache
+      }
+    }
+  }
+
+  private def ethContractAbiAliasSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genNewAbiAliasAbiSourceParser )
+
+    Def.inputTaskDyn {
+      val chainId = (ethcfgChainId in config).value
+      val log = streams.value.log
+      val ( newAbiAlias, abiSource ) = parser.parsed
+      val ( abi : Abi, sourceDesc : String) = standardSortAbiAndSourceDesc( log, abiSource )
+      repository.Database.createUpdateAbiAlias( chainId, newAbiAlias, abi )
+      log.info( s"Abi alias 'abi:${newAbiAlias}' successfully bound to ABI found via ${sourceDesc}." )
+      Def.taskDyn {
+        xethTriggerDirtyAliasCache
+      }
+    }
+  }
+
   private def ethContractAbiDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
@@ -1498,6 +1539,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def standardSortAbiAndSourceDesc( log : sbt.Logger, abiSource : AbiSource ) : Tuple2[Abi,String] = {
+    val ( a : Abi, mbLookup : Option[AbiLookup] ) = abiFromAbiSource( abiSource ).getOrElse( throw nst( new AbiUnknownException( s"Can't find ABI for ${abiSource.sourceDesc}" ) ) )
+
+    // be careful to warn about potential shadowing if we got an AbiLookup object. resolveAbi( Some( log ) ) logs.
+    mbLookup match {
+      case Some( abiLookup ) => ( abiLookup.resolveAbi( Some( log ) ).get.withStandardSort, abiSource.sourceDesc )
+      case None              => ( a.withStandardSort, abiSource.sourceDesc )
+    }
+  }
+
   private def ethContractAbiMatchTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAbiSourceParser )
 
@@ -1509,15 +1560,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ( toLinkAddress, abiSource ) = parser.parsed
 
       // Note the we sort `abi` before binding to the val
-      val ( abi : Abi, sourceDesc : String) = {
-        val ( a : Abi, mbLookup : Option[AbiLookup] ) = abiFromAbiSource( abiSource ).getOrElse( throw nst( new AbiUnknownException( s"Can't find ABI for ${abiSource.sourceDesc}" ) ) )
-
-        // be careful to warn about potential shadowing if we got an AbiLookup object. resolveAbi( Some( log ) ) logs.
-        mbLookup match {
-          case Some( abiLookup ) => ( abiLookup.resolveAbi( Some( log ) ).get.withStandardSort, abiSource.sourceDesc )
-          case None              => ( a.withStandardSort, abiSource.sourceDesc )
-        }
-      }
+      val ( abi : Abi, sourceDesc : String) = standardSortAbiAndSourceDesc( log, abiSource )
       
       val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( chainId, toLinkAddress ).assert
       mbKnownCompilation match {

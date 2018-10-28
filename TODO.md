@@ -7,8 +7,6 @@ DB schema updates
 * Capture AST in database, offer useful analyses (e.g. linearization) a la Surya
   ( see https://ethereum.stackexchange.com/questions/56802/a-solidity-linearization-puzzle/56803?noredirect=1#comment67743_56803 )
 
-* segregate ABIs into a separate table, make them aliasable, overridable for an address
-
 * Let compilations store the name of the project from which they were compiled
 
 * Implement logic that checks prior existence of tables ("fresh" vs "preexisting") to inform schema upgrades
