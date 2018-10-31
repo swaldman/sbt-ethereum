@@ -320,6 +320,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
 
     val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops for an ABI.")
+    val ethContractAbiAliasList       = taskKey [Unit] ("Lists aliased ABIs and their hashes.")
     val ethContractAbiAliasSet        = inputKey[Unit] ("Defines a new alias for an ABI, taken from any ABI source.")
     val ethContractAbiDrop            = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
@@ -636,6 +637,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethContractAbiAliasDrop in Compile := { ethContractAbiAliasDropTask( Compile ).evaluated },
 
     ethContractAbiAliasDrop in Test := { ethContractAbiAliasDropTask( Test ).evaluated },
+
+    ethContractAbiAliasList in Compile := { ethContractAbiAliasListTask( Compile ).value },
+
+    ethContractAbiAliasList in Test := { ethContractAbiAliasListTask( Test ).value },
 
     ethContractAbiAliasSet in Compile := { ethContractAbiAliasSetTask( Compile ).evaluated },
 
@@ -1503,6 +1508,19 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ethContractAbiAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val chainId = (ethcfgChainId in config).value
+    val abiAliases = repository.Database.findAllAbiAliases( chainId ).assert
+    val columns = immutable.Vector( "ABI Alias", "ABI Hash" ).map( texttable.Column.apply( _ ) )
+
+    def extract( tup : Tuple2[String,EthHash] ) : Seq[String] = {
+      val ( alias, hash ) = tup
+      "abi:" + alias :: hexString(hash) :: Nil
+    }
+
+    texttable.printTable( columns, extract )( abiAliases.map( aa => texttable.Row(aa) ) )
+  }
+
   private def ethContractAbiAliasSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genNewAbiAliasAbiSourceParser )
 
@@ -1550,7 +1568,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractAbiMatchTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAbiSourceParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAnyAbiSourceParser )
 
     Def.inputTaskDyn {
       val chainId = (ethcfgChainId in config).value
@@ -1659,7 +1677,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractAbiOverrideAddTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAbiSourceParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAnyAbiSourceParser )
 
     Def.inputTaskDyn {
       val chainId = (ethcfgChainId in config).value
@@ -1749,19 +1767,19 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractAbiAnyPrintTask( pretty : Boolean )( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo)( genGenericAddressParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo)( genAnyAbiSourceParser )
 
     Def.inputTask {
       val chainId = (ethcfgChainId in config).value
-      val abiOverrides = abiOverridesForChain( chainId )
       val log = streams.value.log
-      val address = parser.parsed
-      val lookup = abiLookupForAddress( chainId, address, abiOverrides )
-      val mbAbi = lookup.resolveAbi( Some( log ) )
+      val abiSource = parser.parsed
+      val mbTup = abiFromAbiSource( abiSource )
+      val mbAbi = mbTup.map( _._1 )
+      mbTup.foreach( _._2.foreach( _.logGenericShadowWarning( log ) ) )
       mbAbi match {
-        case None        => println( s"No contract ABI known for address '0x${address.hex}'." )
+        case None        => println( s"No contract ABI known for ${abiSource.sourceDesc}." )
         case Some( abi ) => {
-          println( s"Contract ABI for address '0x${address.hex}':" )
+          println( s"Contract ABI for ${abiSource.sourceDesc}:" )
           val json = Json.toJson( abi )
           println( if ( pretty ) Json.prettyPrint( json ) else  Json.stringify( json ) )
         }
