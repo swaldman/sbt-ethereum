@@ -196,7 +196,7 @@ object Compiler {
             val stdout = InputStreamUtils.getContentsAsString( is, "UTF8" )
             if ( stdout.nonEmpty ) {
               val top = Json.parse( stdout ).as[JsObject].value
-              val mbAst = top.get("<stdin>").flatMap( jsv => jsv.as[JsObject].value.get("AST").map( Json.stringify ) )
+              val mbAst = top.get("sources").flatMap( _.as[JsObject].value.get("<stdin>").flatMap( jsv => jsv.as[JsObject].value.get("AST").map( Json.stringify ) ) )
               val tuples = {
                 top( "contracts" ).as[JsObject].fields.foldLeft( immutable.Seq.empty[(String, Compilation.Contract)] ) {
                   case ( last, ( SimpleContractNameRegex( contractName ), jsv : JsValue ) ) => {
