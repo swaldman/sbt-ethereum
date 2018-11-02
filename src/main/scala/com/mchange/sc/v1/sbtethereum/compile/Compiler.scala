@@ -93,6 +93,7 @@ object Compiler {
         }
       }
 
+      //XXX: No eth-compile AST, fix this if we resupport eth-netcompile someday
       private def compilationFromEthNetcompileResult( log : sbt.Logger, source : String, ethNetcompileResult : JsObject ) : Compilation = {
         val top = ethNetcompileResult.value
         top("warnings").as[JsArray].value.foreach( jsv => log.warn( jsv.as[String] ) )
@@ -102,7 +103,7 @@ object Compiler {
               val jsoMap = jsv.as[JsObject].value
               val metadata = jsoMap( "metadata" ).as[String]
               if ( metadata != null && metadata.length > 0 ) {
-                val contract = contractFromMetadata( log, source, contractName, jsoMap( "code" ).as[String], metadata )
+                val contract = contractFromMetadata( log, source, contractName, jsoMap( "code" ).as[String], metadata, None ) //XXX: No eth-compile AST, fix this if we resupport eth-netcompile someday
                 last :+ ( contractName -> contract )
               } else {
                 last
@@ -149,8 +150,8 @@ object Compiler {
         import com.mchange.v1.io.{InputStreamUtils,OutputStreamUtils}
 
         val solcCommand = optimizerRuns match {
-          case Some( runs ) => immutable.Seq(solcExecutable, "--optimize", "--optimize-runs", runs.toString, "--combined-json", "bin,metadata", "-")
-          case None         => immutable.Seq(solcExecutable, "--combined-json", "bin,metadata", "-")
+          case Some( runs ) => immutable.Seq(solcExecutable, "--optimize", "--optimize-runs", runs.toString, "--combined-json", "ast,bin,metadata", "-")
+          case None         => immutable.Seq(solcExecutable, "--combined-json", "ast,bin,metadata", "-")
         }
 
         // potential Exceptions from async process management methods,
@@ -195,13 +196,14 @@ object Compiler {
             val stdout = InputStreamUtils.getContentsAsString( is, "UTF8" )
             if ( stdout.nonEmpty ) {
               val top = Json.parse( stdout ).as[JsObject].value
+              val mbAst = top.get("<stdin>").flatMap( jsv => jsv.as[JsObject].value.get("AST").map( Json.stringify ) )
               val tuples = {
                 top( "contracts" ).as[JsObject].fields.foldLeft( immutable.Seq.empty[(String, Compilation.Contract)] ) {
                   case ( last, ( SimpleContractNameRegex( contractName ), jsv : JsValue ) ) => {
                     val jsoMap = jsv.as[JsObject].value
                     val metadata = jsoMap( "metadata" ).as[String]
                     if ( metadata != null && metadata.nonEmpty ) {
-                      val contract = contractFromMetadata( log, source, contractName, jsoMap( "bin" ).as[String], metadata )
+                      val contract = contractFromMetadata( log, source, contractName, jsoMap( "bin" ).as[String], metadata, mbAst )
                       last :+ ( contractName -> contract )
                     } else {
                       last
@@ -236,7 +238,7 @@ object Compiler {
 
     private val LanguageVersionRegex: Regex = """^(\d+\.\d+\.\d+)\D?.*""".r
 
-    private def contractFromMetadata( log : sbt.Logger, source : String, contractName : String,  code : String, metadata : String ) : Compilation.Contract = {
+    private def contractFromMetadata( log : sbt.Logger, source : String, contractName : String,  code : String, metadata : String, mbAst : Option[String] ) : Compilation.Contract = {
       try {
         val map: Map[String, JsValue] = Json.parse( metadata ).as[JsObject].value
         val language: Option[String] = map.get("language").map( _.as[String] )
@@ -260,7 +262,7 @@ object Compiler {
         val developerDoc: Option[Compilation.Doc.Developer] = omap.flatMap( _.get("devdoc").map( _.as[Compilation.Doc.Developer] ) )
 
         val info: Compilation.Contract.Info = {
-          Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abi, userDoc, developerDoc, Some( metadata ), None ) // overwrite sourceTimestamp later
+          Compilation.Contract.Info( Some( source ), language, languageVersion, compilerVersion, compilerOptions, abi, userDoc, developerDoc, Some( metadata ), mbAst, None ) // overwrite sourceTimestamp later
         }
         Compilation.Contract( code, info )
       }
