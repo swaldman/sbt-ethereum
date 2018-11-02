@@ -4,14 +4,15 @@ DB schema updates
 
 * Implement a tags table
 
-* Capture AST in database, offer useful analyses (e.g. linearization) a la Surya
-  ( see https://ethereum.stackexchange.com/questions/56802/a-solidity-linearization-puzzle/56803?noredirect=1#comment67743_56803 )
-
-* Let compilations store the name of the project from which they were compiled
-
 * Implement logic that checks prior existence of tables ("fresh" vs "preexisting") to inform schema upgrades
 
+* Even with freshness restriction (only upgading "fresh" tables), upgrades from very old schemas might fail if old upgrades try to
+  impose foreign key constraints on old versions of "fresh" tables. Think about fixing this.
+
 Other
+
+* Tool to derive linearization from AST
+  ( see https://ethereum.stackexchange.com/questions/56802/a-solidity-linearization-puzzle/56803?noredirect=1#comment67743_56803 )
 
 * Make all *List tasks regex sensitive using new filters in texttable lib
 

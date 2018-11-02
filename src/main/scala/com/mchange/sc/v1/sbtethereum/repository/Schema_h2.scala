@@ -39,7 +39,7 @@ private [sbtethereum] object Schema_h2 {
 
   // Increment this value and add a migration to migrateUpOne(...)
   // to modify the schema
-  val SchemaVersion = 6
+  val SchemaVersion = 7
 
   // should be executed in a transaction, although it looks like in h2 DDL commands autocommit anyway :(
   def ensureSchema( dataSource : DataSource ): Boolean = {
@@ -226,6 +226,14 @@ private [sbtethereum] object Schema_h2 {
         doAbiOutsourceKnownCompilations
         doAbiOutsourceMemorizedAbis
       }
+      case 6 => {
+        /* Schema version 7 adds an "ast" and project_name columns to "known_compilations". That's it!
+         */
+        borrow( conn.createStatement() ) { stmt =>
+          stmt.executeUpdate( "ALTER TABLE known_compilations ADD COLUMN ast CLOB AFTER metadata" )
+          stmt.executeUpdate( "ALTER TABLE known_compilations ADD COLUMN project_name VARCHAR(256) AFTER ast" )
+        }
+      }
       case unknown => throw new SchemaVersionException( s"Cannot migrate from unknown schema version $unknown." )
     }
     versionFrom + 1
@@ -406,7 +414,31 @@ private [sbtethereum] object Schema_h2 {
              |)""".stripMargin // we delete known_compilations when culling undeployed compilations
         }
       }
-      val CreateSql = V6.CreateSql
+      final object V7 {
+        val CreateSql: String = {
+          """|CREATE TABLE IF NOT EXISTS known_compilations (
+             |   full_code_hash    CHAR(128),
+             |   base_code_hash    CHAR(128),
+             |   code_suffix       CLOB NOT NULL,
+             |   name              VARCHAR(128),
+             |   source            CLOB,
+             |   language          VARCHAR(64),
+             |   language_version  VARCHAR(64),
+             |   compiler_version  VARCHAR(64),
+             |   compiler_options  VARCHAR(256),
+             |   abi_hash          CHAR(128),
+             |   user_doc          CLOB,
+             |   developer_doc     CLOB,
+             |   metadata          CLOB,
+             |   ast               CLOB,
+             |   project_name      VARCHAR(256),
+             |   PRIMARY KEY ( full_code_hash ),
+             |   FOREIGN KEY ( base_code_hash ) REFERENCES known_code ( base_code_hash ) ON DELETE CASCADE,
+             |   FOREIGN KEY ( abi_hash )       REFERENCES normalized_abis ( abi_hash )
+             |)""".stripMargin // we delete known_compilations when culling undeployed compilations
+        }
+      }
+      val CreateSql = V7.CreateSql
 
       val SelectSql: String = {
         """|SELECT
@@ -421,7 +453,9 @@ private [sbtethereum] object Schema_h2 {
            |   abi_hash,
            |   user_doc,
            |   developer_doc,
-           |   metadata
+           |   metadata,
+           |   ast,
+           |   project_name
            |FROM known_compilations
            |WHERE full_code_hash = ?""".stripMargin
       }
@@ -439,8 +473,10 @@ private [sbtethereum] object Schema_h2 {
            |   abi_hash,
            |   user_doc,
            |   developer_doc,
-           |   metadata
-           |) VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
+           |   metadata,
+           |   ast,
+           |   project_name
+           |) VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
       }
       val UpdateAbiSql: String = {
         """|UPDATE known_compilations
@@ -460,7 +496,9 @@ private [sbtethereum] object Schema_h2 {
         mbAbiHash         : Option[EthHash],
         mbUserDoc         : Option[Compilation.Doc.User],
         mbDeveloperDoc    : Option[Compilation.Doc.Developer],
-        mbMetadata        : Option[String]
+        mbMetadata        : Option[String],
+        mbAst             : Option[String],
+        mbProjectName     : Option[String]
       ) extends Reconcilable[KnownCompilation] {
         import Reconcilable._
 
@@ -478,7 +516,9 @@ private [sbtethereum] object Schema_h2 {
             mbAbiHash         = reconcileLeaf( this.mbAbiHash, other.mbAbiHash ),
             mbUserDoc         = reconcileLeaf( this.mbUserDoc, other.mbUserDoc ),
             mbDeveloperDoc    = reconcileLeaf( this.mbDeveloperDoc, other.mbDeveloperDoc ),
-            mbMetadata        = reconcileLeaf( this.mbMetadata, other.mbMetadata )
+            mbMetadata        = reconcileLeaf( this.mbMetadata, other.mbMetadata ),
+            mbAst             = reconcileLeaf( this.mbAst, other.mbAst ),
+            mbProjectName     = reconcileLeaf( this.mbProjectName, other.mbProjectName )
           )
         }
 
@@ -496,7 +536,9 @@ private [sbtethereum] object Schema_h2 {
             mbAbiHash         = reconcileOverLeaf( this.mbAbiHash, other.mbAbiHash ),
             mbUserDoc         = reconcileOverLeaf( this.mbUserDoc, other.mbUserDoc ),
             mbDeveloperDoc    = reconcileOverLeaf( this.mbDeveloperDoc, other.mbDeveloperDoc ),
-            mbMetadata        = reconcileOverLeaf( this.mbMetadata, other.mbMetadata )
+            mbMetadata        = reconcileOverLeaf( this.mbMetadata, other.mbMetadata ),
+            mbAst             = reconcileOverLeaf( this.mbAst, other.mbAst ),
+            mbProjectName     = reconcileOverLeaf( this.mbProjectName, other.mbProjectName )
           )
         }
       }
@@ -518,7 +560,9 @@ private [sbtethereum] object Schema_h2 {
             mbAbiHash         = Option( rs.getString("abi_hash") ).map( hex => EthHash.withBytes( hex.decodeHexAsSeq ) ),
             mbUserDoc         = Option( rs.getString("user_doc") ).map( parse ).map( _.as[Compilation.Doc.User] ),
             mbDeveloperDoc    = Option( rs.getString("developer_doc") ).map( parse ).map( _.as[Compilation.Doc.Developer] ),
-            mbMetadata        = Option( rs.getString("metadata") )
+            mbMetadata        = Option( rs.getString("metadata") ),
+            mbAst             = Option( rs.getString("ast") ),
+            mbProjectName     = Option( rs.getString("project_name") )
           )
         }
 
@@ -542,7 +586,9 @@ private [sbtethereum] object Schema_h2 {
         mbAbiHash         : Option[EthHash],
         mbUserDoc         : Option[Compilation.Doc.User],
         mbDeveloperDoc    : Option[Compilation.Doc.Developer],
-        mbMetadata        : Option[String]
+        mbMetadata        : Option[String],
+        mbAst             : Option[String],
+        mbProjectName     : Option[String],
       ) : Unit = {
         import Json.{toJson,stringify}
         borrow( conn.prepareStatement( UpsertSql ) ) { ps =>
@@ -559,6 +605,8 @@ private [sbtethereum] object Schema_h2 {
           setMaybeString( Types.CLOB )   ( ps, 11, mbUserDoc.map( ud => stringify( toJson( ud ) ) ) )
           setMaybeString( Types.CLOB )   ( ps, 12, mbDeveloperDoc.map( dd => stringify( toJson( dd ) ) ) )
           setMaybeString( Types.CLOB )   ( ps, 13, mbMetadata )
+          setMaybeString( Types.CLOB )   ( ps, 14, mbAst )
+          setMaybeString( Types.VARCHAR )( ps, 15, mbProjectName )
           ps.executeUpdate()
         }
       }
@@ -581,7 +629,9 @@ private [sbtethereum] object Schema_h2 {
           kc.mbAbiHash,
           kc.mbUserDoc,
           kc.mbDeveloperDoc,
-          kc.mbMetadata
+          kc.mbMetadata,
+          kc.mbAst,
+          kc.mbProjectName
         )
       }
     }

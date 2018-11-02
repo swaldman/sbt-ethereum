@@ -2097,6 +2097,8 @@ object SbtEthereumPlugin extends AutoPlugin {
             jsonSection( "User Documentation", info.mbUserDoc )
             jsonSection( "Developer Documentation", info.mbDeveloperDoc )
             section( "Metadata", info.mbMetadata )
+            section( "AST", info.mbAst )
+            section( "Project Name", info.mbProjectName )
           }
         }
         case Right( hash ) => {
@@ -2115,6 +2117,8 @@ object SbtEthereumPlugin extends AutoPlugin {
             jsonSection( "User Documentation", info.mbUserDoc )
             jsonSection( "Developer Documentation", info.mbDeveloperDoc )
             section( "Metadata", info.mbMetadata )
+            section( "AST", info.mbAst )
+            section( "Project Name", info.mbProjectName )
             addressSection( "Deployments", repository.Database.chainIdContractAddressesForCodeHash( hash ).get )
           }
         }
@@ -4088,9 +4092,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethUpdateContractDatabaseTask( config : Configuration ) : Initialize[Task[Boolean]] = Def.task {
     val log          = streams.value.log
+    val projectName  = name.value
     val compilations = (xethLoadCurrentCompilationsKeepDups in Compile).value // we want to "know" every contract we've seen, which might include contracts with multiple names
 
-    repository.Database.updateContractDatabase( compilations ).get
+    repository.Database.updateContractDatabase( compilations, Some( projectName ) ).get
   }
 
   private def xethUpdateSessionSolidityCompilersTask : Initialize[Task[immutable.SortedMap[String,Compiler.Solidity]]] = Def.task {

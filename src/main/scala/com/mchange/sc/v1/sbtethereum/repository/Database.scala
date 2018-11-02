@@ -66,7 +66,9 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     mbAbi             : Option[String] = None,
     mbUserDoc         : Option[String] = None,
     mbDeveloperDoc    : Option[String] = None,
-    mbMetadata        : Option[String] = None
+    mbMetadata        : Option[String] = None,
+    mbAst             : Option[String] = None,
+    mbProjectName     : Option[String] = None
   ) : Failable[Unit] = {
     DataSource.flatMap { ds =>
       Failable {
@@ -92,7 +94,9 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
             mbAbiHash,
             mbUserDoc.map( userDoc => Json.parse( userDoc ).as[Compilation.Doc.User] ),
             mbDeveloperDoc.map( developerDoc => Json.parse( developerDoc ).as[Compilation.Doc.Developer] ),
-            mbMetadata
+            mbMetadata,
+            mbAst,
+            mbProjectName
           )
         }
       }
@@ -170,7 +174,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def updateContractDatabase( compilations : Iterable[(String,jsonrpc.Compilation.Contract)] ) : Failable[Boolean] = {
+  def updateContractDatabase( compilations : Iterable[(String,jsonrpc.Compilation.Contract)], mbProjectName : Option[String] ) : Failable[Boolean] = {
     val ( compiledContracts, stubsWithDups ) = compilations.partition { case ( name, compilation ) => compilation.code.decodeHex.length > 0 }
 
     stubsWithDups.foreach { case ( name, compilation ) =>
@@ -207,7 +211,9 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
           mbAbiHash         = mbAbiHash,
           mbUserDoc         = mbUserDoc,
           mbDeveloperDoc    = mbDeveloperDoc,
-          mbMetadata        = mbMetadata
+          mbMetadata        = mbMetadata,
+          mbAst             = mbAst,
+          mbProjectName     = mbProjectName
         )
 
         val mbKnownCompilation = Table.KnownCompilations.select( conn, bcas.fullCodeHash )
@@ -254,7 +260,9 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     mbAbi               : Option[Abi],
     mbUserDoc           : Option[Compilation.Doc.User],
     mbDeveloperDoc      : Option[Compilation.Doc.Developer],
-    mbMetadata          : Option[String]
+    mbMetadata          : Option[String],
+    mbAst               : Option[String],
+    mbProjectName       : Option[String]
   )
 
   private [sbtethereum]
@@ -286,7 +294,9 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
               mbAbi                = knownCompilation.mbAbiHash.flatMap( Table.NormalizedAbis.select( conn, _ ) ),
               mbUserDoc            = knownCompilation.mbUserDoc,
               mbDeveloperDoc       = knownCompilation.mbDeveloperDoc,
-              mbMetadata           = knownCompilation.mbMetadata
+              mbMetadata           = knownCompilation.mbMetadata,
+              mbAst                = knownCompilation.mbAst,
+              mbProjectName        = knownCompilation.mbProjectName
             )
           }
         }
@@ -324,7 +334,9 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     mbAbi             : Option[Abi],
     mbUserDoc         : Option[Compilation.Doc.User],
     mbDeveloperDoc    : Option[Compilation.Doc.Developer],
-    mbMetadata        : Option[String]
+    mbMetadata        : Option[String],
+    mbAst             : Option[String],
+    mbProjectName     : Option[String]
   )
 
   private [sbtethereum]
@@ -349,7 +361,9 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
               mbAbi             = knownCompilation.mbAbiHash.flatMap( Table.NormalizedAbis.select( conn, _ ) ),
               mbUserDoc         = knownCompilation.mbUserDoc,
               mbDeveloperDoc    = knownCompilation.mbDeveloperDoc,
-              mbMetadata        = knownCompilation.mbMetadata
+              mbMetadata        = knownCompilation.mbMetadata,
+              mbAst             = knownCompilation.mbAst,
+              mbProjectName     = knownCompilation.mbProjectName
             )
           }
         }
