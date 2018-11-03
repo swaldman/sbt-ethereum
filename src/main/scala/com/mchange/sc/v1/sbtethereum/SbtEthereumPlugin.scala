@@ -322,7 +322,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops for an ABI.")
     val ethContractAbiAliasList       = taskKey [Unit] ("Lists aliased ABIs and their hashes.")
     val ethContractAbiAliasSet        = inputKey[Unit] ("Defines a new alias for an ABI, taken from any ABI source.")
-    val ethContractAbiDrop            = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
+    val ethContractAbiForget          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
     val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
     val ethContractAbiMatch           = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address")
@@ -646,9 +646,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractAbiAliasSet in Test := { ethContractAbiAliasSetTask( Test ).evaluated },
 
-    ethContractAbiDrop in Compile := { ethContractAbiDropTask( Compile ).evaluated },
+    ethContractAbiForget in Compile := { ethContractAbiForgetTask( Compile ).evaluated },
 
-    ethContractAbiDrop in Test := { ethContractAbiDropTask( Test ).evaluated },
+    ethContractAbiForget in Test := { ethContractAbiForgetTask( Test ).evaluated },
 
     ethContractAbiList in Compile := { ethContractAbiListTask( Compile ).evaluated },
 
@@ -1537,7 +1537,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethContractAbiDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethContractAbiForgetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
