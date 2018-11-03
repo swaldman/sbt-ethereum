@@ -311,6 +311,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
     val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
+    val ethAddressAliasPrint          = inputKey[Unit]                             ("Prints the address associated with a given alias.")
     val ethAddressAliasSet            = inputKey[Unit]                             ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
     val ethAddressBalance             = inputKey[BigDecimal]                       ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
     val ethAddressPing                = inputKey[Option[Client.TransactionReceipt]]("Sends 0 ether from current sender to an address, by default the senser address itself")
@@ -607,6 +608,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethAddressAliasList in Compile := { ethAddressAliasListTask( Compile ).value },
 
     ethAddressAliasList in Test := { ethAddressAliasListTask( Test ).value },
+
+    ethAddressAliasPrint in Compile := { ethAddressAliasPrintTask( Compile ).evaluated },
+
+    ethAddressAliasPrint in Test := { ethAddressAliasPrintTask( Test ).evaluated },
 
     ethAddressAliasSet in Compile := { ethAddressAliasSetTask( Compile ).evaluated },
 
@@ -1374,6 +1379,21 @@ object SbtEthereumPlugin extends AutoPlugin {
     val faliases = repository.Database.findAllAddressAliases( chainId )
     faliases.fold( _ => log.warn("Could not read aliases from repository database.") ) { aliases =>
       aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
+    }
+  }
+
+  private def ethAddressAliasPrintTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAliasParser )
+
+    Def.inputTask {
+      val log = streams.value.log
+      val chainId = (ethcfgChainId in config).value
+      val alias = parser.parsed
+      val mbAddress = repository.Database.findAddressByAddressAlias( chainId, alias ).assert
+      mbAddress match {
+        case Some( address ) => println( s"The alias '${alias}' points to address '${hexString(address)}'." )
+        case None            => println( s"The alias '${alias}' is not associated with any address." )
+      }
     }
   }
 
