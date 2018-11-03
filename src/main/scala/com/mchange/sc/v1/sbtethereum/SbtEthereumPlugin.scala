@@ -323,6 +323,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiAliasList       = taskKey [Unit] ("Lists aliased ABIs and their hashes.")
     val ethContractAbiAliasSet        = inputKey[Unit] ("Defines a new alias for an ABI, taken from any ABI source.")
     val ethContractAbiDecode          = inputKey[Unit] ("Takes an ABI and arguments hex-encoded with that ABI, and decodes them.")
+    val ethContractAbiEncode          = inputKey[Unit] ("Takes an ABI, a function name, and arguments and geneated the hex-encoded data that would invoke the function.")
     val ethContractAbiForget          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
     val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
@@ -650,6 +651,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethContractAbiDecode in Compile := { ethContractAbiDecodeTask( Compile ).evaluated },
 
     ethContractAbiDecode in Test := { ethContractAbiDecodeTask( Test ).evaluated },
+
+    ethContractAbiEncode in Compile := { ethContractAbiEncodeTask( Compile ).evaluated },
+
+    ethContractAbiEncode in Test := { ethContractAbiEncodeTask( Test ).evaluated },
 
     ethContractAbiForget in Compile := { ethContractAbiForgetTask( Compile ).evaluated },
 
@@ -1556,6 +1561,20 @@ object SbtEthereumPlugin extends AutoPlugin {
             println( s"   Arg 1 [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
           }
       }
+    }
+  }
+
+  private def ethContractAbiEncodeTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAbiMaybeWarningFunctionInputsParser( restrictedToConstants = false ) )
+
+    Def.inputTask {
+      val chainId = (ethcfgChainId in config).value
+      val log = streams.value.log
+      val ( abi, mbWarning, function, inputs ) = parser.parsed
+      mbWarning.foreach( warning => log.warn( warning ) )
+      val bytes = ethabi.callDataForAbiFunctionFromStringArgs( inputs, function ).assert
+      println( "Encoded data:" )
+      println( hexString(bytes) )
     }
   }
 

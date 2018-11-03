@@ -346,6 +346,27 @@ object Parsers {
   ) : Parser[Either[EthAddress,EthHash]] = _genContractAddressOrCodeHashParser( "" )( state, mbRpi )
 
 
+  private [sbtethereum] def genAbiMaybeWarningFunctionInputsParser( restrictedToConstants : Boolean )(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[(jsonrpc.Abi, Option[String], jsonrpc.Abi.Function, immutable.Seq[String])] = {
+    val abiMaybeWarningParser = {
+      val maybeAbiTupleParser = _genAnyAbiSourceParser( state, mbRpi ).map( abiFromAbiSource )
+      maybeAbiTupleParser.flatMap { maybeAbiTuple =>
+        maybeAbiTuple match {
+          case Some( Tuple2(abi, mbLookup) ) => success( Tuple2( abi, mbLookup.flatMap( _.genericShadowWarningMessage ) ) )
+          case None                          => failure( "Could not resolve an ABI." )
+        }
+      }
+    }
+    val rawParser = {
+      abiMaybeWarningParser.flatMap {
+        case ( abi, mbWarning ) => token(Space.+) ~> functionAndInputsParser(abi, restrictedToConstants, mbRpi ).map { case ( function, inputs ) => ( abi, mbWarning, function, inputs ) }
+      }
+    }
+    token(Space.*) ~> rawParser
+  }
+
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
     state : State,
     mbRpi : Option[RichParserInfo]

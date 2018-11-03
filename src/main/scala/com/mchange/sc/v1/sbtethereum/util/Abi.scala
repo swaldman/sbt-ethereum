@@ -74,7 +74,9 @@ private [sbtethereum] object Abi {
       }
     }
 
-    def logGenericShadowWarning( log : sbt.Logger ) : Unit  = this.shadowMessage.foreach( usingStr => log.warn( s"Found multiple candidates when looking up the ABI for 0x${lookupAddress.hex}. ${usingStr}" ) )
+    def genericShadowWarningMessage : Option[String] = this.shadowMessage.map( usingStr => s"Found multiple candidates when looking up the ABI for 0x${lookupAddress.hex}. ${usingStr}" )
+
+    def logGenericShadowWarning( log : sbt.Logger ) : Unit  = this.genericShadowWarningMessage.foreach( msg => log.warn( msg ) )
   }
 
   def abiLookupForAddress( chainId : Int, address : EthAddress, abiOverrides : Map[EthAddress,jsonrpc.Abi], defaultBuilder : () => Option[jsonrpc.Abi] = () => None ) : AbiLookup = {
