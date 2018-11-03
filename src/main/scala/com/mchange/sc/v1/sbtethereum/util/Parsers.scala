@@ -414,7 +414,7 @@ object Parsers {
   private [sbtethereum] def genAnyAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
-  ) : Parser[AbiSource] = Space.* ~> _genAnyAbiSourceParser( state, mbRpi )
+  ) : Parser[AbiSource] = token(Space.*) ~> _genAnyAbiSourceParser( state, mbRpi )
 
 
   private [sbtethereum] def genAddressAnyAbiSourceParser(
@@ -422,6 +422,13 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[EthAddress, AbiSource]] = {
     createAddressParser( "<address-to-associate-with-abi>", mbRpi ).flatMap( addr => (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi ) ).map( abiSource => (addr, abiSource) ) )
+  }
+
+  private [sbtethereum] def genAnyAbiSourceHexBytesParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[Tuple2[AbiSource, immutable.Seq[Byte]]] = {
+    token(Space.*) ~> _genAnyAbiSourceParser( state, mbRpi ) ~ ( (token(Space.+) ~> token( (literal("0x").?) ~> HexDigit.* ) ).map( chars => chars.mkString.decodeHexAsSeq ) )
   }
 
   private [sbtethereum] val newAbiAliasParser : Parser[String] = {

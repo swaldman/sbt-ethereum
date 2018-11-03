@@ -44,6 +44,13 @@ private [sbtethereum] object Abi {
     }
   }
 
+  def loggedAbiFromAbiSource( log : sbt.Logger, source : AbiSource ) : Option[jsonrpc.Abi] = {
+    abiFromAbiSource( source ) map { case ( abi, mbAbiLookup ) =>
+      mbAbiLookup.foreach( _.logGenericShadowWarning( log ) )
+      abi
+    }
+  }
+
   def abiTextHash( abi : jsonrpc.Abi ) : ( String, EthHash ) = {
     val abiText = Json.stringify( Json.toJson( abi.withStandardSort ) ) // Note the use of withStandardSort!!!
     val abiHash = EthHash.hash( abiText.getBytes( scala.io.Codec.UTF8.charSet ) )

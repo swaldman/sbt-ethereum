@@ -322,6 +322,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops for an ABI.")
     val ethContractAbiAliasList       = taskKey [Unit] ("Lists aliased ABIs and their hashes.")
     val ethContractAbiAliasSet        = inputKey[Unit] ("Defines a new alias for an ABI, taken from any ABI source.")
+    val ethContractAbiDecode          = inputKey[Unit] ("Takes an ABI and arguments hex-encoded with that ABI, and decodes them.")
     val ethContractAbiForget          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
     val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
@@ -645,6 +646,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethContractAbiAliasSet in Compile := { ethContractAbiAliasSetTask( Compile ).evaluated },
 
     ethContractAbiAliasSet in Test := { ethContractAbiAliasSetTask( Test ).evaluated },
+
+    ethContractAbiDecode in Compile := { ethContractAbiDecodeTask( Compile ).evaluated },
+
+    ethContractAbiDecode in Test := { ethContractAbiDecodeTask( Test ).evaluated },
 
     ethContractAbiForget in Compile := { ethContractAbiForgetTask( Compile ).evaluated },
 
@@ -1533,6 +1538,23 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.info( s"Abi alias 'abi:${newAbiAlias}' successfully bound to ABI found via ${sourceDesc}." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
+      }
+    }
+  }
+
+  private def ethContractAbiDecodeTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAnyAbiSourceHexBytesParser )
+
+    Def.inputTask {
+      val chainId = (ethcfgChainId in config).value
+      val log = streams.value.log
+      val ( abiSource, bytes ) = parser.parsed
+      loggedAbiFromAbiSource( log, abiSource ).fold( throw nst( new AbiUnknownException( s"Can't find ABI for ${abiSource.sourceDesc}" ) ) ) { abi =>
+        val ( fcn, values ) = ethabi.decodeFunctionCall( abi, bytes ).assert
+        println( s"Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
+          (values.zip( Stream.from(1) )).foreach { case (value, index) =>
+            println( s"   Arg 1 [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
+          }
       }
     }
   }
