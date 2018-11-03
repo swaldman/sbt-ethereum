@@ -16,8 +16,6 @@ Other
 
 * Make all *List tasks regex sensitive using new filters in texttable lib
 
-* ethContractAbiEncode <abi-identifier> args => data (task name? unfortunately we can't do decode, would conflict with drop)
-
 * ethTransactionProxyDeploy
 
 * Prompt for alias after ethKeystoreWalletV3Create?
