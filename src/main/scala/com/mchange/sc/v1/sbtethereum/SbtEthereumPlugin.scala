@@ -3058,8 +3058,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       log.info( s"Looking up transaction '0x${txnHash.hex}' (will wait up to ${invokerContext.pollTimeout})." )
       val f_out = Invoker.futureTransactionReceipt( txnHash ).map { ctr =>
-        val abiLookup = abiLookupForAddress( chainId, ctr.to, abiOverrides )
-        val mbAbi = abiLookup.resolveAbi( None ) // no need to warn, the ABI we choose only affects pretty-printing
+        val mbAbi = {
+          ctr.to flatMap { to =>
+            val abiLookup = abiLookupForAddress( chainId, to, abiOverrides )
+            abiLookup.resolveAbi( None ) // no need to warn, the ABI we choose only affects pretty-printing
+          }
+        }
         prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, ctr )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout

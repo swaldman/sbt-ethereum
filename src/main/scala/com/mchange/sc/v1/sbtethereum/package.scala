@@ -122,8 +122,8 @@ package object sbtethereum {
         |       Transaction Status:  ${ decodeStatus( ctr.status ) }
         |       Block Hash:          0x${ctr.blockHash.hex}
         |       Block Number:        ${ctr.blockNumber.widen}
-        |       From:                0x${ctr.from.hex}
-        |       To:                  0x${ctr.to.hex}
+        |       From:                ${if (ctr.from.isEmpty) "Unknown" else hexString(ctr.from.get)}
+        |       To:                  ${if (ctr.to.isEmpty) "Unknown" else hexString(ctr.to.get)}
         |       Cumulative Gas Used: ${ctr.cumulativeGasUsed.widen}
         |       Gas Used:            ${ctr.gasUsed.widen}
         |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
