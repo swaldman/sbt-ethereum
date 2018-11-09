@@ -4,13 +4,15 @@ import continuum._
 
 object TextCommentQuote {
   sealed trait State
-  case object InText               extends State
-  case object InQuote              extends State
-  case object InQuoteBackslash     extends State
-  case object AfterSlash           extends State
-  case object InCStyleComment      extends State
-  case object InCStyleCommentSplat extends State
-  case object InDoubleSlashComment extends State
+  case object InText                 extends State
+  case object InQuote                extends State
+  case object InQuoteBackslash       extends State
+  case object InSingleQuote          extends State
+  case object InSingleQuoteBackslash extends State
+  case object AfterSlash             extends State
+  case object InCStyleComment        extends State
+  case object InCStyleCommentSplat   extends State
+  case object InDoubleSlashComment   extends State
 
   private val AnyNewLine = """(?:\r(?:\n)?)|\n""".r
 
@@ -39,20 +41,27 @@ object TextCommentQuote {
         case _ => {
           val next = input( index )
           ( state, next ) match {
-            case ( InText,                  '"' ) => _parse( index + 1,              InQuote, line    , col + 1,        index, addText(accum, sectionBegin, index) )
-            case ( InText,                  '/' ) => _parse( index + 1,           AfterSlash, line    , col + 1, sectionBegin, accum )
-            case ( InText,                 '\n' ) => _parse( index + 1,               InText, line + 1,       1, sectionBegin, accum )
-            case ( InText,                    _ ) => _parse( index + 1,               InText, line    , col + 1, sectionBegin, accum )
-            case ( AfterSlash,              '/' ) => _parse( index + 1, InDoubleSlashComment, line    , col + 1,    index - 1, addText( accum, sectionBegin, index - 1) )
-            case ( AfterSlash,              '*' ) => _parse( index + 1,      InCStyleComment, line    , col + 1,    index - 1, addText( accum, sectionBegin, index - 1) )
-            case ( AfterSlash,             '\n' ) => _parse( index + 1,               InText, line + 1,       1, sectionBegin, accum )
-            case ( AfterSlash,                _ ) => _parse( index + 1,               InText, line    , col + 1, sectionBegin, accum )
-            case ( InQuote,                 '"' ) => _parse( index + 1,               InText, line    , col + 1,    index + 1, addQuote( accum, sectionBegin, index + 1) )
+            case ( InText,                  '"' ) => _parse( index + 1,                InQuote, line    , col + 1,        index, addText(accum, sectionBegin, index) )
+            case ( InText,                 '\'' ) => _parse( index + 1,          InSingleQuote, line    , col + 1,        index, addText(accum, sectionBegin, index) )
+            case ( InText,                  '/' ) => _parse( index + 1,             AfterSlash, line    , col + 1, sectionBegin, accum )
+            case ( InText,                 '\n' ) => _parse( index + 1,                 InText, line + 1,       1, sectionBegin, accum )
+            case ( InText,                    _ ) => _parse( index + 1,                 InText, line    , col + 1, sectionBegin, accum )
+            case ( AfterSlash,              '/' ) => _parse( index + 1,   InDoubleSlashComment, line    , col + 1,    index - 1, addText( accum, sectionBegin, index - 1) )
+            case ( AfterSlash,              '*' ) => _parse( index + 1,        InCStyleComment, line    , col + 1,    index - 1, addText( accum, sectionBegin, index - 1) )
+            case ( AfterSlash,             '\n' ) => _parse( index + 1,                 InText, line + 1,       1, sectionBegin, accum )
+            case ( AfterSlash,                _ ) => _parse( index + 1,                 InText, line    , col + 1, sectionBegin, accum )
+            case ( InQuote,                 '"' ) => _parse( index + 1,                 InText, line    , col + 1,    index + 1, addQuote( accum, sectionBegin, index + 1) )
             case ( InQuote,                '\n' ) => throw new UnparsableFileException("Unterminated quote", line, col)
-            case ( InQuote,                '\\' ) => _parse( index + 1,     InQuoteBackslash, line    , col + 1, sectionBegin, accum )
-            case ( InQuote,                   _ ) => _parse( index + 1,              InQuote, line    , col + 1, sectionBegin, accum )
+            case ( InQuote,                '\\' ) => _parse( index + 1,       InQuoteBackslash, line    , col + 1, sectionBegin, accum )
+            case ( InQuote,                   _ ) => _parse( index + 1,                InQuote, line    , col + 1, sectionBegin, accum )
             case ( InQuoteBackslash,       '\n' ) => throw new UnparsableFileException("Unterminated quote (after backslash)", line, col)
-            case ( InQuoteBackslash,          _ ) => _parse( index + 1,              InQuote, line    , col + 1, sectionBegin, accum )
+            case ( InQuoteBackslash,          _ ) => _parse( index + 1,                InQuote, line    , col + 1, sectionBegin, accum )
+            case ( InSingleQuote,          '\'' ) => _parse( index + 1,                 InText, line    , col + 1,    index + 1, addQuote( accum, sectionBegin, index + 1) )
+            case ( InSingleQuote,          '\n' ) => throw new UnparsableFileException("Unterminated single quote", line, col)
+            case ( InSingleQuote,          '\\' ) => _parse( index + 1, InSingleQuoteBackslash, line    , col + 1, sectionBegin, accum )
+            case ( InSingleQuote,             _ ) => _parse( index + 1,          InSingleQuote, line    , col + 1, sectionBegin, accum )
+            case ( InSingleQuoteBackslash, '\n' ) => throw new UnparsableFileException("Unterminated single quote (after backslash)", line, col)
+            case ( InSingleQuoteBackslash,    _ ) => _parse( index + 1,          InSingleQuote, line    , col + 1, sectionBegin, accum )
             case ( InCStyleComment,         '*' ) => _parse( index + 1, InCStyleCommentSplat, line    , col + 1, sectionBegin, accum )
             case ( InCStyleComment,        '\n' ) => _parse( index + 1,      InCStyleComment, line + 1,       1, sectionBegin, accum )
             case ( InCStyleComment,           _ ) => _parse( index + 1,      InCStyleComment, line    , col + 1, sectionBegin, accum )
@@ -71,4 +80,7 @@ object TextCommentQuote {
   }
 }
 
+/*
+ * quote for now includes both double and single quoted sections!
+ */ 
 case class TextCommentQuote( text : IntervalSet[Int], comment : IntervalSet[Int], quote : IntervalSet[Int] )

@@ -29,7 +29,7 @@ object ResolveCompileSolidity {
   private val SolidityFileBadFirstChars = ".#~"
 
   private val ImportRegex = """import\s+(.*)\;""".r
-  private val GoodImportBodyRegex = """\s*(\042.*?\042)\s*""".r
+  private val GoodImportBodyRegex = """\s*(?:\042(.*?)\042|\047(.*?)\047)\s*""".r
 
   // XXX: hardcoded
   private val SolidityWriteBufferSize = 1024 * 1024; // 1 MiB
@@ -74,6 +74,8 @@ object ResolveCompileSolidity {
 
     def substituteImports( input : SourceFile ) : Failable[SourceFile] = {
 
+      def doubleQuote( contents : String ) = "\"" + contents + "\""
+
       // local reference to immutable object, naturally single-threaded
       var lastModified : Long = input.lastModified
 
@@ -87,7 +89,8 @@ object ResolveCompileSolidity {
           m.group(0)                                         //   replace the match with itself
         } else {                                             // otherwise, do the replacement
           m.group(1) match {
-            case GoodImportBodyRegex( imported ) => {
+            case GoodImportBodyRegex( ifDoubleQuoted, ifSingleQuoted ) => {
+              val imported = if ( ifDoubleQuoted != null ) doubleQuote( ifDoubleQuoted ) else doubleQuote( ifSingleQuoted ) // normalize to double-quoted string
               val key = StringLiteral.parsePermissiveStringLiteral( imported ).parsed
               val newAllSourceLocations = input.immediateParent +: allSourceLocations // look first local to this file to resolve recursive imports
               val fimport = loadResolve( key, newAllSourceLocations )
