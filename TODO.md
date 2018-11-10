@@ -11,6 +11,8 @@ DB schema updates
 
 Other
 
+* let repositories suggest ABIs <--> addresses <--> aliases ???
+
 * Tool to derive linearization from AST
   ( see https://ethereum.stackexchange.com/questions/56802/a-solidity-linearization-puzzle/56803?noredirect=1#comment67743_56803 )
 
