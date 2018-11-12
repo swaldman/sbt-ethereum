@@ -2068,8 +2068,8 @@ object SbtEthereumPlugin extends AutoPlugin {
           case None                 => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
         }
       }
-      repository.Database.setMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
-      log.info( s"ABI is now known for the contract at address ${address.hex}" )
+      repository.Database.resetMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
+      log.info( s"ABI is now known for the contract at address ${hexString(address)}" )
       if (! repository.Database.hasAddressAliases( chainId, address ).assert ) {
         interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
       }
