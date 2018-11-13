@@ -2,28 +2,14 @@ val nexus = "https://oss.sonatype.org/"
 val nexusSnapshots = nexus + "content/repositories/snapshots"
 val nexusReleases = nexus + "service/local/staging/deploy/maven2"
 
-organization := "com.mchange"
+ThisBuild / organization := "com.mchange"
+ThisBuild / version := "0.1.6-SNAPSHOT"
 
-name := "sbt-ethereum"
+ThisBuild / resolvers += ("releases" at nexusReleases)
+ThisBuild / resolvers += ("snapshots" at nexusSnapshots)
+ThisBuild / resolvers += ("Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/")
 
-version := "0.1.6-SNAPSHOT"
-
-sbtPlugin := true
-
-scalacOptions ++= Seq(
-  "-deprecation",
-  "-feature",
-  "-unchecked" /*,
-  "-Xlog-implicits" */
-)
-
-resolvers += ("releases" at nexusReleases)
-
-resolvers += ("snapshots" at nexusSnapshots)
-
-resolvers += ("Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/")
-
-publishTo := version {
+ThisBuild / publishTo := version {
   (v: String) => {
     if (v.trim.endsWith("SNAPSHOT"))
       Some("snapshots" at nexusSnapshots )
@@ -32,26 +18,49 @@ publishTo := version {
   }
 }.value
 
-val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.9"
-
-libraryDependencies ++= Seq(
-  consuelaArtifact,
-  "com.mchange"    %% "etherscan-utils"       % "0.0.1",
-  "com.mchange"    %% "mlog-scala"            % "0.3.10",
-  "com.mchange"    %% "literal"               % "0.0.2",
-  "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
-  "com.mchange"    %% "ens-scala"             % "0.0.6",
-  "com.mchange"    %% "texttable"             % "0.0.2",
-  "com.mchange"    %  "c3p0"                  % "0.9.5.2",
-  "com.h2database" %  "h2"                    % "1.4.192",
-  "ch.qos.logback" %  "logback-classic"       % "1.1.7"
+ThisBuild / scalacOptions ++= Seq(
+  "-deprecation",
+  "-feature",
+  "-unchecked" /*,
+  "-Xlog-implicits" */
 )
 
-val generatedCodePackageDir = Vector( "com", "mchange", "sc", "v1", "sbtethereum", "generated" )
+
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.9"
+
+lazy val root = (project in file(".")).settings (
+  name := "sbt-ethereum-umbrella"
+)
+
+lazy val core = (project in file("core")).settings (
+  name := "sbt-ethereum",
+  sbtPlugin := true,
+  libraryDependencies ++= Seq(
+    consuelaArtifact,
+    "com.mchange"    %% "etherscan-utils"       % "0.0.1",
+    "com.mchange"    %% "mlog-scala"            % "0.3.10",
+    "com.mchange"    %% "literal"               % "0.0.2",
+    "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
+    "com.mchange"    %% "ens-scala"             % "0.0.6",
+    "com.mchange"    %% "texttable"             % "0.0.2",
+    "com.mchange"    %  "c3p0"                  % "0.9.5.2",
+    "com.h2database" %  "h2"                    % "1.4.192",
+    "ch.qos.logback" %  "logback-classic"       % "1.1.7"
+  ),
+  sourceGenerators in Compile += generateBuildInfoSourceGeneratorTask,
+  pomExtra := pomExtraForProjectName( name.value )
+)
+
+lazy val docs = (project in file("docs")).enablePlugins(ParadoxPlugin).settings (
+  name := "sbt-ethereum-docs",
+  paradoxTheme := Some(builtinParadoxTheme("generic"))
+)
 
 // embed build-time information into a package object for com.mchange.sc.v1.sbtethereum.generated
 
-sourceGenerators in Compile += Def.task{
+val generatedCodePackageDir = Vector( "com", "mchange", "sc", "v1", "sbtethereum", "generated" )
+
+val generateBuildInfoSourceGeneratorTask = Def.task{
   import java.io._
   import java.nio.file.Files
 
@@ -92,8 +101,10 @@ sourceGenerators in Compile += Def.task{
   outFile :: Nil
 }
 
-pomExtra := {
-    <url>https://github.com/swaldman/{name.value}</url>
+// publication, pom extra stuff
+
+def pomExtraForProjectName( projectName : String ) = {
+    <url>https://github.com/swaldman/{projectName}</url>
     <licenses>
       <license>
         <name>GNU Lesser General Public License, Version 2.1</name>
@@ -107,8 +118,8 @@ pomExtra := {
       </license>
     </licenses>
     <scm>
-      <url>git@github.com:swaldman/{name.value}.git</url>
-      <connection>scm:git:git@github.com:swaldman/{name.value}</connection>
+      <url>git@github.com:swaldman/{projectName}.git</url>
+      <connection>scm:git:git@github.com:swaldman/{projectName}</connection>
     </scm>
     <developers>
       <developer>
@@ -118,4 +129,6 @@ pomExtra := {
       </developer>
     </developers>
 }
+
+
 

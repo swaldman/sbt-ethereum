@@ -3,9 +3,7 @@
 *.class
 \#*\#
 \.\#*
-target/*
-project/target/*
-project/project/target/*
+**/target/**
 .DS_Store
 tmp/*
 sbt-ethereum.log
