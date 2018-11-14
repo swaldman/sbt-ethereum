@@ -25,11 +25,19 @@ ThisBuild / scalacOptions ++= Seq(
   "-Xlog-implicits" */
 )
 
+import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 
 val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.9"
 
 lazy val root = (project in file(".")).settings (
-  name := "sbt-ethereum-umbrella"
+  name          := "sbt-ethereum-umbrella",
+  publish       := { (core / publish).value },
+  publishSigned := { (core / publishSigned).value },
+  paradox       := { (docs / Compile / paradox).value },
+  clean         := {
+    val dummy1 = (core / clean).value
+    val dummy2 = (docs / clean).value
+  }
 )
 
 lazy val core = (project in file("core")).settings (
