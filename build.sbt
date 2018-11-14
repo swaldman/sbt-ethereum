@@ -9,14 +9,9 @@ ThisBuild / resolvers += ("releases" at nexusReleases)
 ThisBuild / resolvers += ("snapshots" at nexusSnapshots)
 ThisBuild / resolvers += ("Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/")
 
-ThisBuild / publishTo := version {
-  (v: String) => {
-    if (v.trim.endsWith("SNAPSHOT"))
-      Some("snapshots" at nexusSnapshots )
-    else
-      Some("releases"  at nexusReleases )
-  }
-}.value
+ThisBuild / publishTo := {
+  if (isSnapshot.value) Some("snapshots" at nexusSnapshots ) else Some("releases"  at nexusReleases )
+}
 
 ThisBuild / scalacOptions ++= Seq(
   "-deprecation",
@@ -25,22 +20,9 @@ ThisBuild / scalacOptions ++= Seq(
   "-Xlog-implicits" */
 )
 
-import com.typesafe.sbt.pgp.PgpKeys.publishSigned
-
 val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.9"
 
-lazy val root = (project in file(".")).settings (
-  name          := "sbt-ethereum-umbrella",
-  publish       := { (core / publish).value },
-  publishSigned := { (core / publishSigned).value },
-  paradox       := { (docs / Compile / paradox).value },
-  clean         := {
-    val dummy1 = (core / clean).value
-    val dummy2 = (docs / clean).value
-  }
-)
-
-lazy val core = (project in file("core")).settings (
+lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   name := "sbt-ethereum",
   sbtPlugin := true,
   libraryDependencies ++= Seq(
@@ -56,12 +38,8 @@ lazy val core = (project in file("core")).settings (
     "ch.qos.logback" %  "logback-classic"       % "1.1.7"
   ),
   sourceGenerators in Compile += generateBuildInfoSourceGeneratorTask,
+  paradoxTheme := Some(builtinParadoxTheme("generic")),
   pomExtra := pomExtraForProjectName( name.value )
-)
-
-lazy val docs = (project in file("docs")).enablePlugins(ParadoxPlugin).settings (
-  name := "sbt-ethereum-docs",
-  paradoxTheme := Some(builtinParadoxTheme("generic"))
 )
 
 // embed build-time information into a package object for com.mchange.sc.v1.sbtethereum.generated
