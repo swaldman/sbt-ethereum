@@ -1,13 +1,13 @@
 # sbt-ethereum
 
-.........**_ethereum_ for humans.**
-
-@@toc { depth=1 }
+@@toc { depth=4 }
 
 @@@ index
 
 * [Overview](overview.md)
+* [Warning](warning.md)
 * [Prerequisites](prerequisites.md)
 
 @@@
+
 

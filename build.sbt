@@ -38,7 +38,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
     "ch.qos.logback" %  "logback-classic"       % "1.1.7"
   ),
   sourceGenerators in Compile += generateBuildInfoSourceGeneratorTask,
-  paradoxTheme := Some(builtinParadoxTheme("generic")),
+  paradoxTheme := None,
   pomExtra := pomExtraForProjectName( name.value )
 )
 

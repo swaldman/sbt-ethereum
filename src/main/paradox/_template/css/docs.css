@@ -1,0 +1,217 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Source Sans Pro', sans-serif;
+}
+
+h1 {
+    border-style: none none solid none;
+    border-width: 10px;
+    border-color: rgb(150,150,150);
+    padding-bottom: 0.125em;
+}
+
+h3 {
+    border-style: none none solid none;
+    border-width: 2px;
+    border-color: rgb(250, 190, 0);
+    padding-bottom: 0.125em;
+}
+
+#navigationColumn {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 18vw;
+  height: 100%;
+  padding-top: 1em;
+  padding-left: 1em;
+  margin-right: 1em;
+  font-family: 'Share Tech Mono', monospace;
+  background-color: black;
+  color: rgb(0, 255, 0);
+}
+
+#navigationColumn a {
+    text-decoration: none;
+    text-transform: lowercase;
+}
+
+#navigationColumn a:hover {
+    text-decoration: underline;
+}
+
+#navigationColumn a.active:hover {
+    text-decoration: none;
+}
+
+#navigationColumn a:visited {
+  color: rgb(0, 255, 0);
+}
+
+div#navigationColumn a.active {
+    color: rgb(250, 190, 0);
+    font-weight: normal;
+}
+
+div#navigation a.active:after {
+    content: " >>>";
+}
+
+#navTitle {
+    text-align: center;
+    font-weight: normal;
+    padding-bottom: 1em;
+}
+
+#navHomeLink a {
+    font-size: 150%;
+    color: white;
+}
+
+#navHomeLink a:visited {
+    color: white;
+}
+
+#rightColumn {
+    position: absolute;
+    left: calc( 100% - 5vw );
+    width: 5vw;
+    height: 100%;
+    background-color: black;
+}
+
+#page {
+  position: absolute;
+  top: 0;
+  left: 20vw;
+  width: calc(100% - 20vw - 5vw);
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+#pageContent {
+    position: absolute;
+    top: 0;
+    height: calc(100% - 100px); /* this should be (100% - 650 px), but that seems not to work, i don't understand why. so i give it more space */
+    padding: 1em;
+    margin: 0;
+    overflow: scroll;
+}
+
+div#pageContent > p, div#pageContent > pre {
+    margin-left: 0.5em;
+}
+
+#pageFooter {
+    position: absolute;
+    top: calc(100% - 40px); /* not 60px, bleed through the bottom */
+    height: 60px;
+    width: 100%;
+    font-size: 10pt;
+    border-top: 2px solid black;
+    border-left: 1px solid black;
+    padding-left: 0.5em;
+    background: #b5bdc8; /* Old browsers */
+}
+
+#pageFooter a {
+    color: black;
+    font-weight: bold;
+}
+
+#pageFooter a:visited {
+    color: black;
+}
+
+pre {
+  background-color: #DDDDFF;
+  padding: 0.5em;  
+}
+
+code {
+  background-color: rgba(250, 190, 0, 0.3);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: smaller;
+  padding-left: 3px;
+  padding-right: 3px;
+}
+
+pre code {
+  background-color: #DDDDFF;    
+}
+
+h1 {
+  margin: 0;
+  padding: 0;
+}
+
+div {
+  margin: 0;
+  padding: 0;
+}
+
+p {
+  margin-top: 0.75em;
+  margin-bottom: 0;
+  padding: 0;
+}
+
+ul li {
+  margin-top: 0.75em;  
+  margin-bottom: 0;
+}
+
+.toc ul li, #navigation ul li {
+  margin-top: 0;  
+  margin-bottom: 0;
+}
+
+#projectVersion {
+}
+
+#navigation ul {
+    margin-top: 0;
+    padding-left: 10%;
+}
+
+#navigation ul li {
+    list-style-type: none;
+    font-size: smaller;
+}
+
+.active {
+  font-weight: bold;
+}
+
+div.callout-title {
+    display: none;
+}
+
+div.callout.warning {
+    margin-top: 1em;
+    margin-left: 1em;
+    border-left: 10px solid rgba(255, 0, 0, 0.4);
+    border-right: 2px solid rgba(255, 0, 0, 0.4);
+    background-color: rgba(255, 0, 0, 0.1);
+    padding-left: 0.5em;
+    padding-right: 0.5em;
+    padding-bottom: 0.5em;
+    padding-top: 0.125em;
+}
+
+div.callout.warning p {
+    padding-left: 50pt;
+    padding-right: 50pt;
+    text-align: justify;
+}
+
+div.callout.warning:before {
+    content: "\26A0\FE0F";
+    font-size: 40pt;
+    float: left;
+    position: relative;
+    top: 20pt;
+}
+
