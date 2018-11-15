@@ -7,7 +7,7 @@ body {
 h1 {
     border-style: none none solid none;
     border-width: 10px;
-    border-color: rgb(150,150,150);
+    border-color: #b5bdc8;
     padding-bottom: 0.125em;
 }
 
@@ -113,7 +113,7 @@ div#pageContent > p, div#pageContent > pre {
     border-top: 2px solid black;
     border-left: 1px solid black;
     padding-left: 0.5em;
-    background: #b5bdc8; /* Old browsers */
+    background: #b5bdc8;
 }
 
 #pageFooter a {
@@ -131,7 +131,8 @@ pre {
 }
 
 code {
-  background-color: rgba(250, 190, 0, 0.3);
+  /* background-color: rgba(250, 190, 0, 0.3); */
+  background-color: #DDDDFF;    
   font-family: 'Share Tech Mono', monospace;
   font-size: smaller;
   padding-left: 3px;
