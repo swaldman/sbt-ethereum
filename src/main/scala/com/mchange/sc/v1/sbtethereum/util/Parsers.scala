@@ -275,6 +275,17 @@ object Parsers {
     token(Space.*) ~> mbRpi.map( rpi => token( rawAddressAliasParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
+  private [sbtethereum] def genPermissiveAddressAliasOrAddressAsStringParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[String] = {
+    token(Space.*) ~> (
+      mbRpi.map { rpi =>
+        token( ( RawAddressParser.map( _.hex ) | rawAddressAliasParser( rpi.addressAliases ) ) | ID ).examples( rpi.addressAliases.keySet + "<eth-address-hex>", false )
+      }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
+    )
+  }
+
   private [sbtethereum] def genEnsNameOwnerAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
     _genEnsNameXxxAddressParser("<owner-address-hex>")( state, mbRpi )
   }

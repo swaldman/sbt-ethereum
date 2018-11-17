@@ -1383,16 +1383,27 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethAddressAliasPrintTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAliasParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genPermissiveAddressAliasOrAddressAsStringParser )
 
     Def.inputTask {
       val log = streams.value.log
       val chainId = (ethcfgChainId in config).value
-      val alias = parser.parsed
-      val mbAddress = repository.Database.findAddressByAddressAlias( chainId, alias ).assert
-      mbAddress match {
-        case Some( address ) => println( s"The alias '${alias}' points to address '${hexString(address)}'." )
-        case None            => println( s"The alias '${alias}' is not associated with any address." )
+      val aliasOrAddress = parser.parsed
+      val mbAddressForAlias = repository.Database.findAddressByAddressAlias( chainId, aliasOrAddress ).assert
+      val mbEntryAsAddress = Failable( EthAddress( aliasOrAddress ) ).toOption
+      val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => repository.Database.findAddressAliasesByAddress( chainId, addr ).get )
+
+      mbAddressForAlias.foreach( addressForAlias => println( s"The alias '${aliasOrAddress}' points to address '${hexString(addressForAlias)}'." ) )
+
+      ( mbEntryAsAddress, aliasesForAddress ) match {
+        case ( Some( entryAsAddress ),        Seq() ) => println( s"The address '${hexString(entryAsAddress)}' is not associated with any aliases." )
+        case ( Some( entryAsAddress ), Seq( alias ) ) => println( s"The address '${hexString(entryAsAddress)}' is associated with alias '${alias}'." )
+        case ( Some( entryAsAddress ),      aliases ) => println( s"""The address '${hexString(entryAsAddress)}' is associated with aliases ${aliases.mkString( "['","', '", "']" )}.""" )
+        case (                   None,            _ ) => {
+          if (mbAddressForAlias.isEmpty) { // so we'd not have printed any message yet
+            println( s"The alias '${aliasOrAddress}' is not associated with any address." )
+          }
+        }
       }
     }
   }
@@ -1404,6 +1415,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val chainId = (ethcfgChainId in config).value
       val ( alias, address ) = parser.parsed
+      if (! Failable( EthAddress( alias ) ).isFailed ) {
+        throw new SbtEthereumException( s"You cannot use what would be a legitimate Ethereum address as an alias. Bad attempted alias: '${alias}'" )
+      }
       val check = repository.Database.createUpdateAddressAlias( chainId, alias, address )
       check.fold( _.vomit ){ _ => 
         log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
