@@ -1,8 +1,8 @@
 # Warnings
 
-### Be careful
-
 It's all good fun until someone puts out an eye. Or loses all their money.
+
+### Be careful
 
 @@@ warning
 
