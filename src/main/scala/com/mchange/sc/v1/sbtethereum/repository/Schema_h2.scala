@@ -47,6 +47,7 @@ private [sbtethereum] object Schema_h2 {
       borrow( conn.createStatement() ){ stmt =>
         stmt.executeUpdate( Table.Metadata.CreateSql )
         stmt.executeUpdate( Table.KnownCode.CreateSql )
+        stmt.executeUpdate( Table.NormalizedAbis.CreateSql )
         stmt.executeUpdate( Table.KnownCompilations.CreateSql )
         stmt.executeUpdate( Table.DeployedCompilations.CreateSql )
         stmt.executeUpdate( Table.MemorizedAbis.CreateSql )
@@ -54,7 +55,6 @@ private [sbtethereum] object Schema_h2 {
         stmt.executeUpdate( Table.AddressAliases.CreateIndex )
         stmt.executeUpdate( Table.EnsBidStore.CreateSql )
         stmt.executeUpdate( Table.EnsBidStore.CreateIndex )
-        stmt.executeUpdate( Table.NormalizedAbis.CreateSql )
         stmt.executeUpdate( Table.AbiAliases.CreateSql )
         stmt.executeUpdate( Table.AbiAliases.CreateIndex )
       }
