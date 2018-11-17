@@ -4565,8 +4565,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         startState
       }
       case Some((newState, Inc(inc))) => {
-        WARNING.log(s"Failed to run '${taskKey}' on initialization: " + Incomplete.show(inc.tpe))
-        startState
+        SEVERE.log(s"Failed to run '${taskKey}' on initialization: " + Incomplete.show(inc.tpe))
+        //startState
+        throw new FailureOnInitializationException( "A failure occurred while trying to initialize the sbt-ethereum plugin. Please see prior errors." )
       }
       case Some((newState, Value(_))) => {
         newState
