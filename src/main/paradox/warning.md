@@ -1,4 +1,6 @@
-# Warning
+# Warnings
+
+### Be careful
 
 It's all good fun until someone puts out an eye. Or loses all their money.
 
@@ -7,9 +9,19 @@ It's all good fun until someone puts out an eye. Or loses all their money.
 **Be careful out there!**
 
 Interacting with blockchains, you may find yourself putting serious economic value on the line.
-This is young, new, very lightly tested open source software. It is provided with __NO WARRANTIES__.
+This is young, new, very lightly tested free software. It is provided with __NO WARRANTIES__.
 It has not thus far been subject to security audits or any kind of formal verification.
 
 Please be careful, and try out whatever it is you mean to do with small stakes before working with serious money.
+
+@@@
+
+### Backup your repository and passcodes
+
+@@@ warning
+
+**If you lose the wallets in your repository, or the passcodes that unlock them, you will lose any money or value in them, irrecoverably and forever!**
+
+_sbt-ethereum_ stores wallet files in its internal repository directory. You can back up that directory by hand, or use the command `ethRepositoryBackup`.
 
 @@@

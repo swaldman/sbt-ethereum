@@ -22,7 +22,6 @@
       </div>
     </div>
     <div id="rightColumn">
-      Hi!
     </div>
   </body>
 </html>

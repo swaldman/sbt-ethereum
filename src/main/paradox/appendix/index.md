@@ -1,14 +1,12 @@
-# sbt-ethereum
+# Appendix
 
-### Table of Contents
+### Overview
 
 @@toc { depth=4 }
 
 @@@ index
 
-* [Overview](overview.md)
-* [Warning](warning.md)
-* [Appendix](appendix/index.md)
+* [A. Prerequisites](a_prerequisites.md)
 
 @@@
 
@@ -16,4 +14,3 @@
   This is an absurd hack to stretch the parent div out without messing with our fragile CSS too much.
   Things look okay kind of as long as there is enough text to force a wrap.
 </div>
-

@@ -45,16 +45,20 @@ h3 {
     text-decoration: none;
 }
 
+#navigationColumn a {
+  color: rgb(0, 255, 0);
+}
+
 #navigationColumn a:visited {
   color: rgb(0, 255, 0);
 }
 
-div#navigationColumn a.active {
+#navigationColumn a.active {
     color: rgb(250, 190, 0);
     font-weight: normal;
 }
 
-div#navigation a.active:after {
+#navigation a.active:after {
     content: " >>>";
 }
 
@@ -177,9 +181,25 @@ ul li {
     padding-left: 10%;
 }
 
-#navigation ul li {
+#navigation > ul > li {
     list-style-type: none;
+}
+
+#navigation > ul > li {
     font-size: smaller;
+}
+
+#navigation > ul > li > ul {
+    padding-left: 0.75em;
+}
+
+#navigation ul > li > ul > li {
+    list-style-type: none;
+}
+
+#navigation ul > li > ul > li:before {
+    font-family: 'Source Sans Pro', sans-serif;
+    content: "\21B3\2009"
 }
 
 .active {
@@ -210,7 +230,7 @@ div.callout.warning p {
 
 div.callout.warning:before {
     content: "\26A0\FE0F";
-    font-size: 40pt;
+    font-size: 36pt;
     float: left;
     position: relative;
     top: 20pt;
