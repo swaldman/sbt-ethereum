@@ -2573,14 +2573,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
     def promptForNewBackupDir( promptToSave : Boolean = true ) : File = {
-      val rawPath = is.readLine( "Enter the path of the directory into which you wish to create a backup? ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
+      val rawPath = is.readLine( "Enter the path of the directory into which you wish to create a backup: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
+      if ( rawPath.isEmpty ) throw new OperationAbortedByUserException( s"No directory provided. Backup aborted." )
       val checkAbsolute = new File( rawPath )
       val putativeDir = {
         if ( checkAbsolute.isAbsolute) {
           checkAbsolute
         }
         else {
-          log.warn("A relative directory path was provided, interpreting relative to user home directory '${HomeDir.getAbsolutePath}'.")
+          log.warn( s"A relative directory path was provided, interpreting relative to user home directory '${HomeDir.getAbsolutePath}'." )
           new File( HomeDir, rawPath )
         }
       }
@@ -2588,7 +2589,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         if ( !putativeDir.exists() ) {
           queryCreateBackupDir( putativeDir, alreadyDefault = false ) match {
             case Some( f ) => f
-            case None => throw nst( new SbtEthereumException( s"User aborted creation of selected directory for backups '${putativeDir.getAbsolutePath}'." ) )
+            case None => throw new OperationAbortedByUserException( s"User aborted creation of selected directory for backups '${putativeDir.getAbsolutePath}'." )
           }
         }
         else {
