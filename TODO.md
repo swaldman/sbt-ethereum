@@ -9,6 +9,9 @@ DB schema updates
 * Even with freshness restriction (only upgading "fresh" tables), upgrades from very old schemas might fail if old upgrades try to
   impose foreign key constraints on old versions of "fresh" tables. Think about fixing this.
 
+* Maybe define in-database constraints to prevent aliases that might mimic addresses or ENS names from ever being provided.
+  (Currently there is just a require statement in `Table.AddressAliases.sert(...)`)
+
 Other
 
 * let repositories suggest ABIs <--> addresses <--> aliases ???

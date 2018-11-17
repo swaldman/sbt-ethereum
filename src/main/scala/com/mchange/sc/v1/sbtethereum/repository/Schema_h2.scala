@@ -988,6 +988,12 @@ private [sbtethereum] object Schema_h2 {
       }
 
       private def sert( verb : String )( conn : Connection, chainId : Int, alias : String, address : EthAddress ) : Unit = {
+
+        // TODO: maybe replace these with proper constraints in the database
+        import com.mchange.sc.v3.failable._
+        require( Failable( EthAddress( alias ) ).isFailed, s"Aliases that parse as addresses are not permitted. Tried to set alias '${alias}'." )
+        require( alias.indexOf('.') < 0, s"Aliases containing dots are not permitted (might mimic ENS names.Tried to set alias '${alias}'." )
+
         borrow( conn.prepareStatement( s"$verb INTO address_aliases ( chain_id, alias, address ) VALUES ( ?, ?, ? )" ) ) { ps =>
           ps.setInt( 1, chainId )
           ps.setString( 2, alias )
