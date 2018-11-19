@@ -8,7 +8,7 @@
     <div id="navigationColumn">
       <div id="navTitle">
       	 <div id="navHomeLink" $if(page.home.active)$class="active"$endif$>$page.home.html$</div>
-      	 <div id="navProjectVersion">v.$page.properties.("project.version.short")$</div>
+      	 <div id="navProjectVersion">v.$page.properties.("project.version")$</div>
 	 <div class="retroRule">-=-=-=-=-=-</div>
       </div>	
       <div id="navigation">$page.navigation$</div>

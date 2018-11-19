@@ -7,7 +7,8 @@
 @@@ index
 
 * [Overview](overview.md)
-* [Warning](warning.md)
+* [Warnings](warnings.md)
+* [Getting Started](getting_started.md)
 * [Appendix](appendix/index.md)
 
 @@@

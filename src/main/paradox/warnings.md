@@ -20,8 +20,10 @@ Please be careful, and try out whatever it is you mean to do with small stakes b
 
 @@@ warning
 
-**If you lose the wallets in your repository, or the passcodes that unlock them, you will lose any money or value in them, irrecoverably and forever!**
+**If you lose the wallet files in your repository, or the passcodes that unlock them, you will lose any money or value in them, irrecoverably and forever!**
 
 _sbt-ethereum_ stores wallet files in its internal repository directory. You can back up that directory by hand, or use the command `ethRepositoryBackup`.
 
 @@@
+
+

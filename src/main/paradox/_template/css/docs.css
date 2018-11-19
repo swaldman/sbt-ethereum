@@ -68,6 +68,10 @@ h3 {
     padding-bottom: 1em;
 }
 
+#navProjectVersion {
+    font-size: smaller;
+}
+
 #navHomeLink a {
     font-size: 150%;
     color: white;
@@ -106,6 +110,8 @@ h3 {
 
 div#pageContent > p, div#pageContent > pre {
     margin-left: 0.5em;
+    overflow: scroll;
+    width: calc(100% - 20vw - 5vw);
 }
 
 #pageFooter {
@@ -220,6 +226,7 @@ div.callout.warning {
     padding-right: 0.5em;
     padding-bottom: 0.5em;
     padding-top: 0.125em;
+    width: calc(100% - 20vw - 5vw - 5vw);
 }
 
 div.callout.warning p {
