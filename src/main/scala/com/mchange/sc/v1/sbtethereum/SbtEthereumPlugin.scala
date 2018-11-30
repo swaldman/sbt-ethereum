@@ -303,7 +303,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensOwnerSet         = inputKey[Unit]              ("Sets the owner of a given name to an address.")
     val ensResolverLookup   = inputKey[Option[EthAddress]]("Prints the address of the resolver associated with a given name.")
     val ensResolverSet      = inputKey[Unit]              ("Sets the resolver for a given name to an address.")
-    val ensSubnodeOwnerSet  = inputKey[Unit]              ("Sets the owner of a name beneath an ENS name (creating the 'subnode' if it does not already exist)")
+    val ensSubnodeCreate    = inputKey[Unit]              ("Creates a subnode (if it does not already exist) beneath an existing ENS name with the current sender as its owner.")
+    val ensSubnodeOwnerSet  = inputKey[Unit]              ("Sets the owner of a name beneath an ENS name (creating the 'subnode' if it does not already exist).")
 
     val etherscanApiKeyDrop       = taskKey[Unit]  ("Removes the API key for etherscan services from the sbt-ethereum database.")
     val etherscanApiKeyImport     = taskKey[Unit]  ("Imports an API key for etherscan services.")
@@ -591,6 +592,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensResolverSet in Compile := { ensResolverSetTask( Compile ).evaluated },
 
     ensResolverSet in Test := { ensResolverSetTask( Test ).evaluated },
+
+    ensSubnodeCreate in Compile := { ensSubnodeCreateTask( Compile ).evaluated },
+
+    ensSubnodeCreate in Test := { ensSubnodeCreateTask( Test ).evaluated },
 
     ensSubnodeOwnerSet in Compile := { ensSubnodeOwnerSetTask( Compile ).evaluated },
 
@@ -1314,6 +1319,16 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ( ensName, resolverAddress ) = parser.parsed
       ensClient.setResolver( privateKey, ensName, resolverAddress )
       log.info( s"The name '${ensName}' is now set to be resolved by a contract at ${verboseAddress(chainId, resolverAddress)}." )
+    }
+  }
+
+  private def ensSubnodeCreateTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsSubnodeParser )
+
+    Def.inputTaskDyn {
+      val sender = (xethFindCurrentSender in config).value.get
+      val ( subname, parentName ) = parser.parsed
+      ( config / ensSubnodeOwnerSet ).toTask( s" ${subname}.${parentName} 0x${sender.hex}" )
     }
   }
 

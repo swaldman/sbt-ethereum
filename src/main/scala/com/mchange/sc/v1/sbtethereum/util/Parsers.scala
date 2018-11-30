@@ -154,13 +154,26 @@ object Parsers {
     }
   }
 
+  private [sbtethereum] def ensSubnodeParser( tld : String ) : Parser[Tuple2[String,String]] = {
+    token( ID ~ (literal(".") ~> rawEnsNameParser( tld ) ) ).examples( s"<full-subnode-ens-name>.${tld}" )
+  }
+
+  private [sbtethereum] def genEnsSubnodeParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[Tuple2[String,String]] = {
+    mbRpi.map { rpi =>
+      token( Space.* ) ~> ensSubnodeParser( rpi.nameServiceTld )
+    }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
+  }
+
   private [sbtethereum] def genEnsSubnodeOwnerSetParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple3[String,String,EthAddress]] = {
     mbRpi.map { rpi =>
       val basic = {
-        val nameParser : Parser[Tuple2[String, String]] = token( ID ~ (literal(".") ~> rawEnsNameParser( rpi.nameServiceTld ) ) ).examples( s"<full-subnode-ens-name>.${rpi.nameServiceTld}" )
+        val nameParser : Parser[Tuple2[String, String]] = ensSubnodeParser( rpi.nameServiceTld )
         val ownerAddressParser : Parser[EthAddress] = (token(Space.+) ~> createAddressParser( "<subnode-owner-hex>", mbRpi ) )
         token( Space.* ) ~> nameParser ~ ownerAddressParser 
       }
