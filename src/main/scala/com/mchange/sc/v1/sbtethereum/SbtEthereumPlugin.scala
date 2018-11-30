@@ -303,6 +303,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensOwnerSet         = inputKey[Unit]              ("Sets the owner of a given name to an address.")
     val ensResolverLookup   = inputKey[Option[EthAddress]]("Prints the address of the resolver associated with a given name.")
     val ensResolverSet      = inputKey[Unit]              ("Sets the resolver for a given name to an address.")
+    val ensSubnodeOwnerSet  = inputKey[Unit]              ("Sets the owner of a name beneath an ENS name (creating the 'subnode' if it does not already exist)")
 
     val etherscanApiKeyDrop       = taskKey[Unit]  ("Removes the API key for etherscan services from the sbt-ethereum database.")
     val etherscanApiKeyImport     = taskKey[Unit]  ("Imports an API key for etherscan services.")
@@ -590,6 +591,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensResolverSet in Compile := { ensResolverSetTask( Compile ).evaluated },
 
     ensResolverSet in Test := { ensResolverSetTask( Test ).evaluated },
+
+    ensSubnodeOwnerSet in Compile := { ensSubnodeOwnerSetTask( Compile ).evaluated },
+
+    ensSubnodeOwnerSet in Test := { ensSubnodeOwnerSetTask( Test ).evaluated },
 
     etherscanApiKeyDrop := { etherscanApiKeyDropTask.value },
 
@@ -1263,7 +1268,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbOwner   = ensClient.owner( name )
 
     mbOwner match {
-      case Some( address ) => println( s"The name '${name}' is owned by address ${verboseAddress(chainId, address)}'." )
+      case Some( address ) => println( s"The name '${name}' is owned by address ${verboseAddress(chainId, address)}." )
       case None            => println( s"No owner has been assigned to the name '${name}'." )
     }
 
@@ -1309,6 +1314,20 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ( ensName, resolverAddress ) = parser.parsed
       ensClient.setResolver( privateKey, ensName, resolverAddress )
       log.info( s"The name '${ensName}' is now set to be resolved by a contract at ${verboseAddress(chainId, resolverAddress)}." )
+    }
+  }
+
+  private def ensSubnodeOwnerSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsSubnodeOwnerSetParser )
+
+    Def.inputTask {
+      val log        = streams.value.log
+      val privateKey = findPrivateKeyTask( config ).value
+      val chainId    = (config / ethcfgChainId).value
+      val ensClient  = ( config / xensClient).value
+      val ( subname, parentName, newOwnerAddress) = parser.parsed
+      ensClient.setSubnodeOwner( privateKey, parentName, subname, newOwnerAddress )
+      log.info( s"The name '${subname}.${parentName}' now exists, with owner ${verboseAddress(chainId, newOwnerAddress)}." )
     }
   }
 

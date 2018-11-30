@@ -145,13 +145,27 @@ object Parsers {
     (NotSpace <~ literal( suffix )).map( _ + suffix )
   }
 
-  private [sbtethereum] def ensNameParser( tld : String ) : Parser[String] = token( Space.* ) ~> token( rawEnsNameParser( tld ) ).examples( s"<ens-name>.${tld}" )
+  private [sbtethereum] def ensNameParser( tld : String, desc : String = "ens-name" ) : Parser[String] = token( Space.* ) ~> token( rawEnsNameParser( tld ) ).examples( s"<${desc}>.${tld}" )
 
   private [sbtethereum] def ensNameToAddressParser( rpi : RichParserInfo ) : Parser[EthAddress] = {
     ensNameParser( rpi.nameServiceTld ).flatMap { name =>
       val faddress = EnsAddressCache.lookup( rpi, name )
       if ( faddress.isSucceeded ) success( faddress.get ) else failure( faddress.assertFailed.toString )
     }
+  }
+
+  private [sbtethereum] def genEnsSubnodeOwnerSetParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[Tuple3[String,String,EthAddress]] = {
+    mbRpi.map { rpi =>
+      val basic = {
+        val nameParser : Parser[Tuple2[String, String]] = token( ID ~ (literal(".") ~> rawEnsNameParser( rpi.nameServiceTld ) ) ).examples( s"<full-subnode-ens-name>.${rpi.nameServiceTld}" )
+        val ownerAddressParser : Parser[EthAddress] = (token(Space.+) ~> createAddressParser( "<subnode-owner-hex>", mbRpi ) )
+        token( Space.* ) ~> nameParser ~ ownerAddressParser 
+      }
+      basic.map { case ( ( sub : String, parent : String ), ownerAddr : EthAddress ) => ( sub, parent, ownerAddr ) }
+    }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
   private [sbtethereum] def ensNameNumDiversionParser( tld : String ) : Parser[(String, Option[Int])] = {
