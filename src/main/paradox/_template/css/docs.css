@@ -24,6 +24,14 @@ h3 {
     padding-bottom: 0.125em;
 }
 
+a {
+    color: black;
+}
+
+a:visited {
+    color: gray;
+}
+
 #navigationColumn {
     grid-column-start: 1;
     grid-column-end:   2;
@@ -126,6 +134,7 @@ div#pageContent > p, div#pageContent > pre {
     margin-top: 0.5em;
     margin-right: 0.25em;
     background: #b5bdc8;
+    font-size: smaller;
 }
 
 #pageFooter a {
@@ -214,13 +223,17 @@ ul li {
   font-weight: bold;
 }
 
+div.callout {
+    font-size: smaller;
+    margin-left: 4em;
+}
+
 div.callout-title {
     display: none;
 }
 
 div.callout.warning {
     margin-top: 1em;
-    margin-left: 1em;
     border-left: 10px solid rgba(255, 0, 0, 0.4);
     border-right: 2px solid rgba(255, 0, 0, 0.4);
     background-color: rgba(255, 0, 0, 0.1);
