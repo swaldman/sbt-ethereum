@@ -826,7 +826,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethFindCacheSeeds in Test := { (xethFindCacheSeedsTask( Test ).storeAs( xethFindCacheSeeds in Test ).triggeredBy( compileSolidity in Test )).value },
 
-    xethFindCacheSessionSolidityCompilerKeys in Compile := { (xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList )).value },
+    xethFindCacheSessionSolidityCompilerKeys in Compile := {
+      (xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList ).triggeredBy(ethShoeboxRestore)).value
+    },
 
     xethFindCurrentSender in Compile := { xethFindCurrentSenderTask( Compile ).value },
 
