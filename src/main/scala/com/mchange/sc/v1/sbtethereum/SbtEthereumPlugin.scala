@@ -2591,7 +2591,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       mbDump match {
         case Some( dump ) => {
           repository.Database.restoreFromDump( dump ).assert
-          log.info( s"Restore from dump successful. (Prior, replaced database should have backed up into '${repository.Database.supercededByDumpDirectory.assert}'." )
+          log.info( s"Restore from dump successful. (Prior, replaced database should have backed up into '${repository.Database.supersededByDumpDirectory.assert}'." )
         }
         case None => throw new OperationAbortedByUserException( "User aborted replacement of the sbt-ethereum repository database from a previously generated dump file." )
       }

@@ -669,32 +669,32 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
   def dumpsOrderedByMostRecent : Failable[immutable.SortedSet[Dump]] = h2.dumpsOrderedByMostRecent
 
-  def supercededByDumpDirectory : Failable[File] = h2.SupercededDir
+  def supersededByDumpDirectory : Failable[File] = h2.SupersededDir
 
   private final object h2 extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
     val DirName           = "h2"
     val DbName            = "sbt-ethereum"
     val DumpsDirName      = "h2-dumps"
-    val SupercededDirName = "h2-superceded"
+    val SupersededDirName = "h2-superseded"
 
     val SchemaVersion = Schema_h2.SchemaVersion
 
     private [repository] lazy val DirectoryManager           = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DirName )
     private [repository] lazy val DumpsDirectoryManager      = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DumpsDirName )
-    private [repository] lazy val SupercededDirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=SupercededDirName )
+    private [repository] lazy val SupersededDirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=SupersededDirName )
 
     private [repository]
     lazy val DumpsDir_ExistenceAndPermissionsUnenforced : Failable[File] = DumpsDirectoryManager.existenceAndPermissionsUnenforced
     lazy val DumpsDir                                   : Failable[File] = DumpsDirectoryManager.existenceAndPermissionsEnforced
 
     private [repository]
-    lazy val SupercededDir_ExistenceAndPermissionsUnenforced : Failable[File] = SupercededDirectoryManager.existenceAndPermissionsUnenforced
-    lazy val SupercededDir                                   : Failable[File] = SupercededDirectoryManager.existenceAndPermissionsEnforced
+    lazy val SupersededDir_ExistenceAndPermissionsUnenforced : Failable[File] = SupersededDirectoryManager.existenceAndPermissionsUnenforced
+    lazy val SupersededDir                                   : Failable[File] = SupersededDirectoryManager.existenceAndPermissionsEnforced
 
     def reset() : Unit = {
       DirectoryManager.reset()
       DumpsDirectoryManager.reset()
-      SupercededDirectoryManager.reset()
+      SupersededDirectoryManager.reset()
     }
 
     lazy val DbAsFile : Failable[File] = Directory.map( dir => new File( dir, DbName ) ) // the db will make files of this name, with various suffixes appended
@@ -764,9 +764,9 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
       assert( !conn.getAutoCommit(), "Please execute restore from dump within a transactional context, and commit on success." )
       require ( cf.exists() && cf.canRead() && cf.length > 0, "A dump file should exist, be readable, and contain data." )
 
-      // create a zip file of the superceded database before overwriting
-      val superceded = new File( SupercededDir.assert, s"h2-superceded-${InFilenameTimestamp.generate()}.zip" )
-      Backup.zip( superceded, h2.Directory.assert, _ => true )
+      // create a zip file of the superseded database before overwriting
+      val superseded = new File( SupersededDir.assert, s"h2-superseded-${InFilenameTimestamp.generate()}.zip" )
+      Backup.zip( superseded, h2.Directory.assert, _ => true )
 
       borrow( conn.createStatement() ) { stmt =>
         stmt.executeUpdate("DROP ALL OBJECTS")
