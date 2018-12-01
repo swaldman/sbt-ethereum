@@ -16,13 +16,13 @@ Please be careful, and try out whatever it is you mean to do with small stakes b
 
 @@@
 
-### Backup your repository and passcodes
+### Backup your shoebox and passcodes
 
 @@@ warning
 
-**If you lose the wallet files in your repository, or the passcodes that unlock them, you will lose any money or value in them, irrecoverably and forever!**
+**If you lose the wallet files in your shoebox, or the passcodes that unlock them, you will lose any money or value in them, irrecoverably and forever!**
 
-_sbt-ethereum_ stores wallet files in its internal repository directory. You can back up that directory by hand, or use the command `ethRepositoryBackup`.
+_sbt-ethereum_ stores wallet files in its internal shoebox directory. You can back up that directory by hand, or use the command `ethShoeboxBackup`.
 
 @@@
 

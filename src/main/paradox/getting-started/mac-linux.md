@@ -51,11 +51,6 @@ If this is the first time you are running the script, expect it to take a few mi
 [info] Loading settings for project eth-command-line-build from plugins.sbt ...
 [info] Loading project definition from /Users/testuser/eth-command-line/project
 [info] Updating ProjectRef(uri("file:/Users/testuser/eth-command-line/project/"), "eth-command-line-build")...
-[warn] Resolving a snapshot version. It's going to be slow unless you use `updateOptions := updateOptions.value.withLatestSnapshots(false)` options.
-[info] Out of 1 candidates we found for com.mchange#sbt-ethereum;0.1.6-SNAPSHOT in snapshots, we are choosing snapshots.
-[info] downloading https://oss.sonatype.org/content/repositories/snapshots/com/mchange/sbt-ethereum_2.12_1.0/0.1.6-SNAPSHOT/sbt-ethereum-0.1.6-SNAPSHOT.jar ...
-[info] downloading https://repo1.maven.org/maven2/com/h2database/h2/1.4.192/h2-1.4.192.jar ...
-[info] downloading https://repo1.maven.org/maven2/com/mchange/consuela_2.12/0.0.9/consuela_2.12-0.0.9.jar ...
 ...
 [info] 	[SUCCESSFUL ] org.scala-lang.modules#scala-java8-compat_2.12;0.8.0!scala-java8-compat_2.12.jar(bundle) (3192ms)
 [info] 	[SUCCESSFUL ] org.apache.logging.log4j#log4j-core;2.8.1!log4j-core.jar (3173ms)
@@ -81,26 +76,26 @@ There are no wallets in the sbt-ethereum keystore. Would you like to generate on
 [info] Generating V3 wallet, alogorithm=scrypt, n=262144, r=8, p=1, dklen=32
 Enter passphrase for new wallet: ***************
 Please retype to confirm: ***************
-[info] Wallet generated into sbt-ethereum repository: '/Users/testuser/Library/Application Support/sbt-ethereum'. Please backup, via 'ethRepositoryBackup' or manually.
+[info] Wallet generated into sbt-ethereum shoebox: '/Users/testuser/Library/Application Support/sbt-ethereum'. Please backup, via 'ethShoeboxBackup' or manually.
 [info] Consider validating the wallet using 'ethKeystoreWalletV3Validate 0xf2f2f96b6b303ecf1090efd622b915d9083d8df2'.
 ```
 @@@ warning
 
-Your "wallet" is protected both by the passphrase that you choose, and by files that _sbt-ethereum_ stores in its repository directory. **You need both of these pieces
-to access your new _ethereum_ account, so if you lose the wallet files o forget your passphrase, you will lose all value and privileges associated with the wallet's
+Your "wallet" is protected both by the passphrase that you choose, and by files that _sbt-ethereum_ stores in its shoebox directory. **You need both of these pieces
+to access your new _ethereum_ account, so if you lose the wallet files or forget your passphrase, you will lose all value and privileges associated with the wallet's
 address.** So back them up!
 
-You can back the repository directory shown above manually, or use the command `ethRepositoryBackup`, which will save important repository data in a zip file
+You can back the shoebox directory shown above manually, or use the command `ethShoeboxBackup`, which will save important shoebox data in a zip file
 from which _sbt-ethereum_ can automatically restore.
 
 @@@
 
 @@@ warning
 
-_Anyone_ who discovers the passphrase you have chosen _and_ who has access to the wallet file in your repository can take control of your wallt's address and all
+_Anyone_ who discovers the passphrase you have chosen _and_ who has access to the wallet file in your shoebox can take control of your wallet's address and all
 value and privileges associated with it.
 
-**Keep the wallet files in your repository database (including any backups!) _and_ the passphrase you have chosen to unlock those files secret and secure!**
+**Keep the wallet files in your shoebox database (including any backups!) _and_ the passphrase you have chosen to unlock those files secret and secure!**
 
 @@@
 
