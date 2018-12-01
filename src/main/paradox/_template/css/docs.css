@@ -117,7 +117,7 @@ a:visited {
 }
 
 
-div#pageContent > p {
+div#pageContent > p, div#pageContent > ul {
     margin-left: 0.5em;
     margin-right: 2em;
 }
@@ -133,9 +133,17 @@ div#pageContent pre {
     overflow: scroll;
 }
 
-div#pageContent pre > code {
+div#pageContent code {
     font-family: 'Share Tech Mono', monospace;
     font-size: smaller;
+    background-color: #DDDDFF;
+}
+
+div#pageContent :not(pre) > code {
+    padding-left: 3px;
+    padding-right: 3px;
+    padding-top: 1px;
+    padding-bottom: 1px;
 }
 
 #pageFooter {
@@ -144,11 +152,9 @@ div#pageContent pre > code {
     grid-row-start:    2;
     grid-row-end:      3;
     border-top: 2px solid black;
-    border-left: 1px solid rgb(250, 190, 0);
-    border-right: 1px solid rgb(250, 190, 0);
+    border-left: 1px solid #DDDDFF;
     padding-left: 0.25em;
     margin-top: 0.5em;
-    margin-right: 0.25em;
     background: #b5bdc8;
     font-size: smaller;
 }

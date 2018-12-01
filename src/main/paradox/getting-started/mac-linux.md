@@ -42,7 +42,7 @@ LICENSE		README.md	build.sbt	project		sbtw
 ```
 The file `sbtw` is an _sbt wrapper script_. You can run it, and it will download and install @ref:[sbt](../appendix/a_prerequisites.md#sbt) as needed.
 
-Alternatively, if you already have `sbt` installed on your machine, you can just run that. We'll try the warpper script:
+Alternatively, if you already have `sbt` installed on your machine, you can just run that. We'll try the wrapper script:
 ```
 $ ./sbtw
 ```
@@ -99,7 +99,7 @@ value and privileges associated with it.
 
 @@@
 
-After generating your wallet for address `0xf2f2f96b6b303ecf1090efd622b915d9083d8df2`, _sbt-etherum_ asks
+After generating a wallet for address `0xf2f2f96b6b303ecf1090efd622b915d9083d8df2` &mdash; *your address will be different!* &mdash; _sbt-etherum_ asks
 
 ```
 Would you like the new address '0xf2f2f96b6b303ecf1090efd622b915d9083d8df2' to be the default sender on chain with ID 1? [y/n] 
