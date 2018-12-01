@@ -116,10 +116,26 @@ a:visited {
 #pageContent {
 }
 
-div#pageContent > p, div#pageContent > pre {
+
+div#pageContent > p {
     margin-left: 0.5em;
     margin-right: 2em;
+}
+
+div#pageContent pre {
+    margin-left: 1em;
+    margin-right: 1em;
+    padding-top: 0.5em;
+    padding-bottom: 0.5em;
+    padding-left: 1em;
+    padding-right: 1em;
+    background-color: #DDDDFF;
     overflow: scroll;
+}
+
+div#pageContent pre > code {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: smaller;
 }
 
 #pageFooter {
@@ -144,24 +160,6 @@ div#pageContent > p, div#pageContent > pre {
 
 #pageFooter a:visited {
     color: black;
-}
-
-pre {
-  background-color: #DDDDFF;
-  padding: 0.5em;  
-}
-
-code {
-  /* background-color: rgba(250, 190, 0, 0.3); */
-  background-color: #DDDDFF;    
-  font-family: 'Share Tech Mono', monospace;
-  font-size: smaller;
-  padding-left: 3px;
-  padding-right: 3px;
-}
-
-pre code {
-  background-color: #DDDDFF;    
 }
 
 h1 {
