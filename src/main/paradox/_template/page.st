@@ -15,13 +15,13 @@
     </div>
     <div id="page">
       <div id="pageContent">$page.content$</div>
-      <div id="pageFooter">
-       <b>&copy; 2018 Machinery For Change, Inc</b><br/>
-       <i>This software provided <b>without warranty</b> under your choice of the <a href="http://www.gnu.org/licenses/lgpl-2.1.html">Lesser GNU Public License, v.2.1 (LGPL)</a> or
-       the <a href="http://www.eclipse.org/legal/epl-v10.html">Eclipse Public License, v.1.0 (EPL)]</a>
-      </div>
     </div>
     <div id="rightColumn">
+    </div>
+    <div id="pageFooter">
+      <b>&copy; 2018 Machinery For Change, Inc</b> &mdash;
+      <i>This software provided <b>without warranty to the extent permitted by applicable law</b> under your choice of the <a href="http://www.gnu.org/licenses/lgpl-2.1.html">Lesser GNU Public License, v.2.1 (LGPL)</a> or
+	the <a href="http://www.eclipse.org/legal/epl-v10.html">Eclipse Public License, v.1.0 (EPL)]</a></i>
     </div>
   </body>
 </html>
