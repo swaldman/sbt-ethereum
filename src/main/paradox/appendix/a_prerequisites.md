@@ -40,7 +40,7 @@ Don't worry too much about what version you have. It'll probably be fine.
 If it is not installed, you can download it from [here](https://git-scm.com/downloads). Alternatively, on a Mac it comes with [X Code Command Line Tools](https://developer.apple.com/download/more/) (you'll
 have to sign up for a free developer account), and on Linux, it will be available through your distribution's package manager (dnf, yum, apt, etc.).
 
-### sbt (optional)
+### sbt
 
 _sbt-ethereum_ is based on a command-line development tool called _sbt_. Many _sbt-ethereum_ distributions include _sbt_ launch scripts for Mac or Linux, so it is not strictly necessary to download
 _sbt_ seprately. But it doesn't hurt. And on Windows it _is_ necessary.

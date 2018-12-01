@@ -1,4 +1,6 @@
-# Getting Started
+# Mac/Linux
+
+#### Download a repository
 
 _sbt-ethereum_ runs in the context of a _repository_, a folder which potentially represents source code for a particular project or application.
 But in order to just interact with the _ethereum_ blockchain, or to manage or create wallets and addresses, no partcular project or
@@ -7,7 +9,7 @@ application is required.
 For this purpose, a simple _sbt-ethereum_ repository called [eth-command-line](https://github.com/swaldman/eth-command-line) is available.
 Let's start with that.
 
-Make sure that you have @ref:[git](appendix/a_prerequisites.md#git) installed and available on your @ref:[command line](appendix/a_prerequisites.md#command-line).
+Make sure that you have @ref:[git](../appendix/a_prerequisites.md#git) installed and available on your @ref:[command line](../appendix/a_prerequisites.md#command-line).
 Then try the following command:
 
 @@@vars
@@ -28,19 +30,19 @@ remote: Total 108 (delta 1), reused 6 (delta 1), pack-reused 101
 Receiving objects: 100% (108/108), 22.62 KiB | 609.00 KiB/s, done.
 Resolving deltas: 100% (50/50), done.
 ```
-When it is done, you should have a directory called `eth-command-line`. Go into that directory.
+When it is done, you should have a directory called `eth-command-line`.
 
-##### Mac / Linux
+#### Initialize and set-up _sbt-ethereum_
 
-List the directory's contents.
+Go into that directory and list the directory's contents.
 ```
 $ cd eth-command-line
 $ ls
 LICENSE		README.md	build.sbt	project		sbtw
 ```
-The file `sbtw` is an _sbt wrapper script_. You can run it, and it will download and install @ref:[sbt](appendix/a_prerequisites.md#sbt-optional-) as needed.
+The file `sbtw` is an _sbt wrapper script_. You can run it, and it will download and install @ref:[sbt](../appendix/a_prerequisites.md#sbt) as needed.
 
-Alternatively, if you already have `sbt` installed on your machine, you can just run that. We'll try th warpper script:
+Alternatively, if you already have `sbt` installed on your machine, you can just run that. We'll try the warpper script:
 ```
 $ ./sbtw
 ```
@@ -68,7 +70,6 @@ If this is the first time you are running the script, expect it to take a few mi
 [info] Loading settings for project eth-command-line from build.sbt ...
 [info] Set current project to eth-command-line (in build file:/Users/testuser/eth-command-line/)
 There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] 
-
 ```
 
 _sbt-ethereum_ presents an interactive, text-based user interface. When it's done bootstrapping itself, it notices that it knows of no "wallets",
@@ -107,7 +108,6 @@ After generating your wallet for address `0xf2f2f96b6b303ecf1090efd622b915d9083d
 
 ```
 Would you like the new address '0xf2f2f96b6b303ecf1090efd622b915d9083d8df2' to be the default sender on chain with ID 1? [y/n] 
-
 ```
 
 When you wish to interact wih the Ethereum blockchain, _sbt-ethereum_ needs to know an address representing on whose behalf it is interacting.
@@ -133,8 +133,8 @@ The current default solidity compiler ['0.4.24'] is not installed. Install? [y/n
 sbt:eth-command-line>
 ```
 
-
 sbt-ethereum installs the compiler, tests it, and brings us to a command prompt. Finally we are ready to go!
 
-The set-up steps we've completed were a one-time thing. Next time we enter an
-_sbt-ethereum_ repository, we won't have to go through all this set up. We will arrive directly at the command prompt.
+__*The set-up steps we've completed were a one-time thing.*__ Next time we enter an
+_sbt-ethereum_ repository, we won't have to go through all this set up, and we won't download so much stuff on startup.
+We will arrive directly at the command prompt.
