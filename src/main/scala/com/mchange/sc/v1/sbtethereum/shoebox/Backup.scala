@@ -1,6 +1,6 @@
-package com.mchange.sc.v1.sbtethereum.repository
+package com.mchange.sc.v1.sbtethereum.shoebox
 
-import com.mchange.sc.v1.sbtethereum.{nst, recursiveListBeneath, repository, SbtEthereumException}
+import com.mchange.sc.v1.sbtethereum.{nst, recursiveListBeneath, shoebox, SbtEthereumException}
 
 import java.io.{ BufferedInputStream, BufferedOutputStream, File, FileInputStream, FileOutputStream }
 import java.text.SimpleDateFormat
@@ -24,7 +24,7 @@ object Backup {
 
   private def parseTimestamp( ts : String ) : Long = InFilenameTimestamp.parse( ts ).toEpochMilli
 
-  val BackupFileRegex = """sbt\-ethereum\-repository\-backup\-(\p{Alnum}+)(-DB-DUMP-FAILED)?\.zip$""".r
+  val BackupFileRegex = """sbt\-ethereum\-shoebox\-backup\-(\p{Alnum}+)(-DB-DUMP-FAILED)?\.zip$""".r
 
   final case class BackupFile( file : File, timestamp : Long, dbDumpSucceeded : Boolean )
 
@@ -44,7 +44,7 @@ object Backup {
 
   def backupFileName( dbDumpSucceeded : Boolean ) = {
     val dbDumpExtra = if (dbDumpSucceeded) "" else "-DB-DUMP-FAILED"
-    s"sbt-ethereum-repository-backup-${timestamp}${dbDumpExtra}.zip"
+    s"sbt-ethereum-shoebox-backup-${timestamp}${dbDumpExtra}.zip"
   }
 
   def perform( mbLog : Option[sbt.Logger], priorDatabaseFailureDetected : Boolean, backupsDir : File ) : Unit = this.synchronized {
@@ -60,12 +60,12 @@ object Backup {
     Thread.sleep( 10 ) // with synchronization, kind of a hacksh way to make sure we don't generate backups with identical names
 
     val dbDumpSucceeded = {
-      info( "Creating SQL dump of sbt-ethereum repository database..." )
+      info( "Creating SQL dump of sbt-ethereum shoebox database..." )
       val fsuccess = Database.dump() map { dbDump =>
-        info( s"Successfully created SQL dump of the sbt-ethereum repository database: '${dbDump.file}'" )
+        info( s"Successfully created SQL dump of the sbt-ethereum shoebox database: '${dbDump.file}'" )
         true
       } recover { failed : Failed[_] =>
-        warn( s"Failed to create SQL dump of the sbt-ethereum repository database. Failure: ${failed}" )
+        warn( s"Failed to create SQL dump of the sbt-ethereum shoebox database. Failure: ${failed}" )
         false
       }
       fsuccess.assert
@@ -79,9 +79,9 @@ object Backup {
       !cf.getPath.startsWith( solcJCanonicalPrefix )
     }
 
-    info( s"Backing up sbt-ethereum repository. Reinstallable compilers will be excluded." )
-    zip( outFile, repository.Directory_ExistenceAndPermissionsUnenforced.assert, canonicalFileFilter _ )
-    info( s"sbt-ethereum repository successfully backed up to '${outFile}'." )
+    info( s"Backing up sbt-ethereum shoebox. Reinstallable compilers will be excluded." )
+    zip( outFile, shoebox.Directory_ExistenceAndPermissionsUnenforced.assert, canonicalFileFilter _ )
+    info( s"sbt-ethereum shoebox successfully backed up to '${outFile}'." )
 
     if ( priorDatabaseFailureDetected || !dbDumpSucceeded ) {
       warn( "Some database errors were noted while performing this backup. (This does not affect the integrity of wallet files.)" )
@@ -97,26 +97,26 @@ object Backup {
       mbLog.foreach( _.warn( msg ) )
       WARNING.log( msg )
     }
-    val repoDir         = repository.Directory_ExistenceAndPermissionsUnenforced.assert
-    val repoName        = repoDir.getName
-    val repoParent      = repoDir.getParentFile
-    val oldRepoRenameTo = repoName + s"-superceded-${timestamp}"
+    val shoeboxDir         = shoebox.Directory_ExistenceAndPermissionsUnenforced.assert
+    val shoeboxName        = shoeboxDir.getName
+    val shoeboxParent      = shoeboxDir.getParentFile
+    val oldShoeboxRenameTo = shoeboxName + s"-superseded-${timestamp}"
 
-    if (! repoDir.exists()) {
-      warn( s"Repository directory '${repoDir}' does not exist. Restoring." )
+    if (! shoeboxDir.exists()) {
+      warn( s"Shoebox directory '${shoeboxDir}' does not exist. Restoring." )
     }
     else {
-      val renameTo = new File( repoParent, oldRepoRenameTo )
-      repoDir.renameTo( renameTo )
-      warn( s"Superceded existing repository directory renamed to '${renameTo}'. Consider deleting, eventually." )
+      val renameTo = new File( shoeboxParent, oldShoeboxRenameTo )
+      shoeboxDir.renameTo( renameTo )
+      warn( s"Superseded existing shoebox directory renamed to '${renameTo}'. Consider deleting, eventually." )
     }
-    unzip( repoParent, backupZipFile )
-    if (! repoDir.exists() ) {
-      val msg = s"Something strange happened. After restoring from a backup, the expected repository directory '${repoDir}' does not exist. Please inspect parent directory '${repoParent}'."
+    unzip( shoeboxParent, backupZipFile )
+    if (! shoeboxDir.exists() ) {
+      val msg = s"Something strange happened. After restoring from a backup, the expected shoebox directory '${shoeboxDir}' does not exist. Please inspect parent directory '${shoeboxParent}'."
       throw nst( new SbtEthereumException( msg ) )
     } else {
-      repository.repairPermissions
-      info( s"sbt-ethereum repository restored from '${backupZipFile}" )
+      shoebox.repairPermissions
+      info( s"sbt-ethereum shoebox restored from '${backupZipFile}" )
     }
   }
 

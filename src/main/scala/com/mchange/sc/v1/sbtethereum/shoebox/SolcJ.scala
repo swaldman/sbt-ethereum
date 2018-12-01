@@ -1,6 +1,6 @@
-package com.mchange.sc.v1.sbtethereum.repository
+package com.mchange.sc.v1.sbtethereum.shoebox
 
-import com.mchange.sc.v1.sbtethereum.repository
+import com.mchange.sc.v1.sbtethereum.shoebox
 import com.mchange.sc.v1.sbtethereum.recursiveListBeneath
 
 import java.io.File
@@ -12,7 +12,7 @@ import com.mchange.sc.v3.failable.logging._
 object SolcJ extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
   val DirName = "solcJ"
 
-  private [repository] lazy val DirectoryManager = AutoResource.UserOnlyDirectory( repository.Directory_ExistenceAndPermissionsUnenforced, () => repository.Directory, DirName )
+  private [shoebox] lazy val DirectoryManager = AutoResource.UserOnlyDirectory( shoebox.Directory_ExistenceAndPermissionsUnenforced, () => shoebox.Directory, DirName )
 
   def userReadOnlyFiles   : immutable.Set[File] = immutable.Set.empty[File]
 

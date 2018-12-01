@@ -1,6 +1,6 @@
 package com.mchange.sc.v1.sbtethereum.util
 
-import com.mchange.sc.v1.sbtethereum.{hexString, nst, repository, AbiUnknownException}
+import com.mchange.sc.v1.sbtethereum.{hexString, nst, shoebox, AbiUnknownException}
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
 import play.api.libs.json.Json
 
@@ -33,13 +33,13 @@ private [sbtethereum] object Abi {
   def abiFromAbiSource( source : AbiSource ) : Option[ ( jsonrpc.Abi, Option[AbiLookup] ) ] = {
     source match {
       case StandardSource( name ) => StandardAbis.get( name.toLowerCase ).map( abi => ( abi, None ) )
-      case AliasSource( chainId, alias ) => repository.Database.findAbiByAbiAlias( chainId, alias ).assert.map( abi => ( abi, None ) )
+      case AliasSource( chainId, alias ) => shoebox.Database.findAbiByAbiAlias( chainId, alias ).assert.map( abi => ( abi, None ) )
       case AddressSource( chainId, address, abiOverrides ) => {
         val lookup = abiLookupForAddress( chainId, address, abiOverrides )
         lookup.resolveAbi( None ).map( abi => ( abi, Some( lookup ) ) )
       }
       case HashSource( hash ) => {
-        (repository.Database.findAbiByAbiHash( hash ).assert orElse repository.Database.compilationInfoForCodeHash( hash ).assert.flatMap( _.mbAbi )).map( abi => ( abi, None ) )
+        (shoebox.Database.findAbiByAbiHash( hash ).assert orElse shoebox.Database.compilationInfoForCodeHash( hash ).assert.flatMap( _.mbAbi )).map( abi => ( abi, None ) )
       }
     }
   }
@@ -83,15 +83,15 @@ private [sbtethereum] object Abi {
     AbiLookup(
       address,
       abiOverrides.get(address),
-      repository.Database.getMemorizedContractAbi( chainId, address ).assert,        // throw an Exception if there's a database problem
-      repository.Database.deployedContractInfoForAddress( chainId, address ).assert.flatMap( _.mbAbi ), // again, throw if database problem
+      shoebox.Database.getMemorizedContractAbi( chainId, address ).assert,        // throw an Exception if there's a database problem
+      shoebox.Database.deployedContractInfoForAddress( chainId, address ).assert.flatMap( _.mbAbi ), // again, throw if database problem
       defaultBuilder
     )
   }
 
   def ensureAbiLookupForAddress( chainId : Int, address : EthAddress, abiOverrides : Map[EthAddress,jsonrpc.Abi], suppressStackTrace : Boolean = false ) : AbiLookup = {
     val defaultNotAvailable : () => Option[jsonrpc.Abi] = () => {
-      val e = new AbiUnknownException( s"An ABI for a contract at address '${ hexString(address) }' is not known in the sbt-ethereum repository or set as an override." )
+      val e = new AbiUnknownException( s"An ABI for a contract at address '${ hexString(address) }' is not known in the sbt-ethereum shoebox or set as an override." )
       throw ( if ( suppressStackTrace ) nst(e) else e )
     }
     abiLookupForAddress( chainId, address, abiOverrides, defaultNotAvailable )

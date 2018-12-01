@@ -1,11 +1,11 @@
-package com.mchange.sc.v1.sbtethereum.repository
+package com.mchange.sc.v1.sbtethereum.shoebox
 
 import com.mchange.sc.v3.failable._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{EthHash, EthTransaction}
 
-object TransactionLog extends RepositoryLog[ ( Int, String, EthTransaction.Signed, EthHash ) ]("transaction-log") {
+object TransactionLog extends ShoeboxLog[ ( Int, String, EthTransaction.Signed, EthHash ) ]("transaction-log") {
   def toLine( timestamp : String, tuple : ( Int, String, EthTransaction.Signed, EthHash ) ) : String = {
     val ( chainId, jsonRpcUrl, txn, transactionHash ) = tuple
     val ( ttype, payloadKey, payload ) = txn match {

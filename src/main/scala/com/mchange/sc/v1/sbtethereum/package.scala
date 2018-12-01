@@ -31,7 +31,7 @@ package object sbtethereum {
   final class AbiUnknownException( msg : String )              extends SbtEthereumException( msg )
   final class ContractUnknownException( msg : String )         extends SbtEthereumException( msg )
   final class BadCodeFormatException( msg : String )           extends SbtEthereumException( msg )
-  final class RepositoryException( msg : String )              extends SbtEthereumException( msg )
+  final class ShoeboxException( msg : String )                 extends SbtEthereumException( msg )
   final class CompilationFailedException( msg : String )       extends SbtEthereumException( msg )
   final class SenderNotAvailableException( msg : String )      extends SbtEthereumException( msg )
   final class NoSuchCompilationException( msg : String )       extends SbtEthereumException( msg )
@@ -74,8 +74,8 @@ package object sbtethereum {
         contract.info.mbAbi.map( abi => Seed( name, contract.code, abi, true ) )
       }
     }
-    implicit final object DatabaseCompilationInfoIsMaybeSpawnable extends MaybeSpawnable[repository.Database.CompilationInfo] {
-      def mbSeed( dci : repository.Database.CompilationInfo ) : Option[Seed] = {
+    implicit final object DatabaseCompilationInfoIsMaybeSpawnable extends MaybeSpawnable[shoebox.Database.CompilationInfo] {
+      def mbSeed( dci : shoebox.Database.CompilationInfo ) : Option[Seed] = {
         for {
           abi <- dci.mbAbi
           name <- dci.mbName

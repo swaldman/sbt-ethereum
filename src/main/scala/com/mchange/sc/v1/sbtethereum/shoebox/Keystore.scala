@@ -1,6 +1,6 @@
-package com.mchange.sc.v1.sbtethereum.repository
+package com.mchange.sc.v1.sbtethereum.shoebox
 
-import com.mchange.sc.v1.sbtethereum.repository
+import com.mchange.sc.v1.sbtethereum.shoebox
 
 import java.io.File
 import scala.collection._
@@ -13,8 +13,8 @@ object Keystore extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
   val DirName = "keystore"
 
-  private [repository]
-  lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=repository.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => repository.Directory), dirName=DirName )
+  private [shoebox]
+  lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=shoebox.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => shoebox.Directory), dirName=DirName )
 
   def reset() : Unit = {
     DirectoryManager.reset()
@@ -27,7 +27,7 @@ object Keystore extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   final object V3 extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
     val DirName = "V3"
 
-    private [repository]
+    private [shoebox]
     lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Keystore.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Keystore.Directory), dirName=DirName )
 
     def reset() : Unit = DirectoryManager.reset()

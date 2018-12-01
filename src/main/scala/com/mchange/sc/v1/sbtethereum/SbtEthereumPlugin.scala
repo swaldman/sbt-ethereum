@@ -126,7 +126,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def resetAllState() : Unit = {
     Mutables.reset()
-    repository.reset()
+    shoebox.reset()
     util.Parsers.reset()
   }
 
@@ -240,10 +240,10 @@ object SbtEthereumPlugin extends AutoPlugin {
    * wallets will automatically be imported.
    * 
    * The goal is to make sure that all wallets SBT ethereum ever uses
-   * are available in the repository (so that backing up the repository is
+   * are available in the shoebox (so that backing up the shoebox is
    * sufficient to back up the wallets.
    */ 
-  lazy val OnlyRepositoryKeystoreV3 = repository.Keystore.V3.Directory.map( dir => immutable.Seq( dir ) ).assert
+  lazy val OnlyShoeboxKeystoreV3 = shoebox.Keystore.V3.Directory.map( dir => immutable.Seq( dir ) ).assert
 
   object autoImport {
 
@@ -265,7 +265,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgGasPriceMarkup                = settingKey[Double]      ("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
     val ethcfgIncludeLocations              = settingKey[Seq[String]] ("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
     val ethcfgJsonRpcUrl                    = settingKey[String]      ("URL of the Ethereum JSON-RPC service build should work with")
-    val ethcfgKeystoreAutoImportLocationsV3 = settingKey[Seq[File]]   ("Directories from which V3 wallets will be automatically imported into the sbt-ethereum repository")
+    val ethcfgKeystoreAutoImportLocationsV3 = settingKey[Seq[File]]   ("Directories from which V3 wallets will be automatically imported into the sbt-ethereum shoebox")
     val ethcfgKeystoreAutoRelockSeconds     = settingKey[Int]         ("Number of seconds after which an unlocked private key should automatically relock")
     val ethcfgNetcompileUrl                 = settingKey[String]      ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
     val ethcfgScalaStubsPackage             = settingKey[String]      ("Package into which Scala stubs of Solidity compilations should be generated")
@@ -311,7 +311,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val etherscanApiKeyReveal     = taskKey[Unit]  ("Reveals the currently set API key for etherscan services, if any.")
     val etherscanContactAbiImport = inputKey[Unit] ("An alias to ethContractAbiImport, which permits etherscan imports if an etherscan API key is set.")
 
-    val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum repository database.")
+    val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum shoebox database.")
     val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
     val ethAddressAliasPrint          = inputKey[Unit]                             ("Prints the address associated with a given alias.")
     val ethAddressAliasSet            = inputKey[Unit]                             ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
@@ -340,9 +340,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiPrintPretty     = inputKey[Unit] ("Pretty prints the contract ABI associated with a provided address, if known.")
     val ethContractAbiPrintCompact    = inputKey[Unit] ("Compactly prints the contract ABI associated with a provided address, if known.")
 
-    val ethContractCompilationCull    = taskKey [Unit] ("Removes never-deployed compilations from the repository database.")
+    val ethContractCompilationCull    = taskKey [Unit] ("Removes never-deployed compilations from the shoebox database.")
     val ethContractCompilationInspect = inputKey[Unit] ("Dumps to the console full information about a compilation, based on either a code hash or contract address")
-    val ethContractCompilationList    = taskKey [Unit] ("Lists summary information about compilations known in the repository")
+    val ethContractCompilationList    = taskKey [Unit] ("Lists summary information about compilations known in the shoebox")
 
     val ethDebugGanacheStart = taskKey[Unit] (s"Starts a local ganache environment (if the command '${testing.Default.Ganache.Executable}' is in your PATH)")
     val ethDebugGanacheStop  = taskKey[Unit] ("Stops any local ganache environment that may have been started previously")
@@ -362,14 +362,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreWalletV3Print                = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
     val ethKeystoreWalletV3Validate             = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
-    val ethLanguageSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum repository (or choose a supported version)")
+    val ethLanguageSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum shoebox (or choose a supported version)")
     val ethLanguageSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
     val ethLanguageSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
 
-    val ethRepositoryBackup              = taskKey[Unit] ("Backs up the sbt-ethereum repository.")
-    val ethRepositoryDatabaseDumpCreate  = taskKey[Unit] ("Dumps the sbt-ethereum repository database as an SQL text file, stored inside the sbt-ethereum repository directory.")
-    val ethRepositoryDatabaseDumpRestore = taskKey[Unit] ("Restores the sbt-ethereum repository database from a previously generated dump.")
-    val ethRepositoryRestore             = taskKey[Unit] ("Restores the sbt-ethereum repository from a backup generated by 'ethRespositoryBackup'.")
+    val ethShoeboxBackup              = taskKey[Unit] ("Backs up the sbt-ethereum shoebox.")
+    val ethShoeboxDatabaseDumpCreate  = taskKey[Unit] ("Dumps the sbt-ethereum shoebox database as an SQL text file, stored inside the sbt-ethereum shoebox directory.")
+    val ethShoeboxDatabaseDumpRestore = taskKey[Unit] ("Restores the sbt-ethereum shoebox database from a previously generated dump.")
+    val ethShoeboxRestore             = taskKey[Unit] ("Restores the sbt-ethereum shoebox from a backup generated by 'ethRespositoryBackup'.")
 
     val ethTransactionDeploy = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]("""Deploys the named contract, if specified, or else all contracts in 'ethcfgAutoDeployContracts'""")
     val ethTransactionInvoke = inputKey[Client.TransactionReceipt]                   ("Calls a function on a deployed smart contract")
@@ -406,13 +406,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethNamedAbis = taskKey[immutable.Map[String,TimestampedAbi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
     val xethOnLoadAutoImportWalletsV3 = taskKey[Unit]("Import any not-yet-imported wallets from directories specified in 'ethcfgKeystoreAutoImportLocationsV3'")
     val xethOnLoadBanner = taskKey[Unit]( "Prints the sbt-ethereum post-initialization banner." )
-    val xethOnLoadRecoverInconsistentSchema = taskKey[Unit]( "Checks to see if the repository database schema is in an inconsistent state, and offers to recover a consistent version from dump." )
+    val xethOnLoadRecoverInconsistentSchema = taskKey[Unit]( "Checks to see if the shoebox database schema is in an inconsistent state, and offers to recover a consistent version from dump." )
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
     val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
-    val xethRepositoryRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's repository to its required user-only values.")
-    val xethSqlQueryRepositoryDatabase = inputKey[Unit]("Primarily for debugging. Query the internal repository database.")
-    val xethSqlUpdateRepositoryDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal repository database with arbitrary SQL.")
+    val xethShoeboxRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's shoebox to its required user-only values.")
+    val xethSqlQueryShoeboxDatabase = inputKey[Unit]("Primarily for debugging. Query the internal shoebox database.")
+    val xethSqlUpdateShoeboxDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal shoebox database with arbitrary SQL.")
     val xethTriggerDirtyAliasCache = taskKey[Unit]("Indirectly provokes an update of the cache of aliases used for tab completions.")
     val xethTriggerDirtySolidityCompilerList = taskKey[Unit]("Indirectly provokes an update of the cache of aavailable solidity compilers used for tab completions.")
     val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts into the contract database. Returns true if changes were made.")
@@ -774,13 +774,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethLanguageSolidityCompilerPrint in Compile := { ethLanguageSolidityCompilerPrintTask.value },
 
-    ethRepositoryBackup := { ethRepositoryBackupTask.value },
+    ethShoeboxBackup := { ethShoeboxBackupTask.value },
 
-    ethRepositoryRestore := { ethRepositoryRestoreTask.value },
+    ethShoeboxRestore := { ethShoeboxRestoreTask.value },
 
-    ethRepositoryDatabaseDumpCreate := { ethRepositoryDatabaseDumpCreateTask.value },
+    ethShoeboxDatabaseDumpCreate := { ethShoeboxDatabaseDumpCreateTask.value },
 
-    ethRepositoryDatabaseDumpRestore := { ethRepositoryDatabaseDumpRestoreTask.value },
+    ethShoeboxDatabaseDumpRestore := { ethShoeboxDatabaseDumpRestoreTask.value },
 
     ethTransactionDeploy in Compile := { ethTransactionDeployTask( Compile ).evaluated },
 
@@ -898,11 +898,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethNextNonce in Test := { xethNextNonceTask( Test ).value },
 
-    xethRepositoryRepairPermissions := { xethRepositoryRepairPermissionsTask.value },
+    xethShoeboxRepairPermissions := { xethShoeboxRepairPermissionsTask.value },
 
-    xethSqlQueryRepositoryDatabase := { xethSqlQueryRepositoryDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
+    xethSqlQueryShoeboxDatabase := { xethSqlQueryShoeboxDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
 
-    xethSqlUpdateRepositoryDatabase := { xethSqlUpdateRepositoryDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
+    xethSqlUpdateShoeboxDatabase := { xethSqlUpdateShoeboxDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
 
     // we leave triggers unscoped, not for any particular reason
     // (we haven't tried scoping them and seen a problem)
@@ -992,7 +992,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = (ethcfgChainId in config).value
 
     ( tle : Invoker.TransactionLogEntry, ec : ExecutionContext ) => Future (
-      repository.TransactionLog.logTransaction( chainId, tle.jsonRpcUrl, tle.transaction, tle.transactionHash ).get
+      shoebox.TransactionLog.logTransaction( chainId, tle.jsonRpcUrl, tle.transaction, tle.transactionHash ).get
     )( ec )
   }
 
@@ -1082,10 +1082,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ensAuctionBidListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
-    import repository.Schema_h2.Table.EnsBidStore.RawBid
+    import shoebox.Schema_h2.Table.EnsBidStore.RawBid
 
     val chainId = (ethcfgChainId in config).value
-    val rawBids = repository.Database.ensAllRawBidsForChainId( chainId ).get
+    val rawBids = shoebox.Database.ensAllRawBidsForChainId( chainId ).get
     val columns = immutable.Vector( "Bid Hash", "Simple Name", "Bidder Address", "ETH", "Salt", "Timestamp", "Accepted", "Revealed", "Removed" ).map( texttable.Column.apply( _ ) )
 
     def extract( rawBid : RawBid ) : Seq[String] = immutable.Vector(
@@ -1109,7 +1109,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensClient = ( config / xensClient ).value
     val privateKey = findPrivateKeyTask( config ).value
 
-    implicit val bidStore = repository.Database.ensBidStore( chainId, ensClient.tld, ensClient.nameServiceAddress )
+    implicit val bidStore = shoebox.Database.ensBidStore( chainId, ensClient.tld, ensClient.nameServiceAddress )
 
     val ( name, valueInWei, mbOverpaymentInWei ) = ensPlaceNewBidParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
 
@@ -1129,12 +1129,12 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
 
-      repository.BidLog.logBid( bid, chainId, ensClient.tld, ensClient.nameServiceAddress )
+      shoebox.BidLog.logBid( bid, chainId, ensClient.tld, ensClient.nameServiceAddress )
 
       log.warn( s"A bid has been placed on name '${name}' for ${valueInWei} wei." )
       mbOverpaymentInWei.foreach( opw => log.warn( s"An additional ${opw} wei was transmitted to obscure the value of your bid." ) )
       log.warn( s"YOU MUST REVEAL THIS BID BETWEEN ${ formatInstant(revealStart) } AND ${ formatInstant(auctionFinalized) }. IF YOU DO NOT, YOUR FUNDS WILL BE LOST!" )
-      log.warn(  "Bid details, which are required to reveal, have been automatically stored in the sbt-ethereum repository," )
+      log.warn(  "Bid details, which are required to reveal, have been automatically stored in the sbt-ethereum shoebox," )
       log.warn( s"and will be provided automatically if revealed by this client, configured with chain ID '${chainId}'." )
       log.warn(  "However, it never hurts to be neurotic. You may wish to note:" )
       log.warn( s"    Simple Name:      ${bid.simpleName}" )
@@ -1155,7 +1155,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensAddress = ensClient.nameServiceAddress
     val is = interactionService.value
 
-    implicit val bidStore = repository.Database.ensBidStore( chainId, tld, ensAddress )
+    implicit val bidStore = shoebox.Database.ensBidStore( chainId, tld, ensAddress )
 
     def revealBidForHash( hash : EthHash ) : Unit = {
       try { ensClient.revealBid( privateKey, hash, force=false ) }
@@ -1349,7 +1349,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   // etherscan tasks
 
   private def etherscanApiKeyDropTask : Initialize[Task[Unit]] = Def.task {
-    val deleted = repository.Database.deleteEtherscanApiKey().assert
+    val deleted = shoebox.Database.deleteEtherscanApiKey().assert
     if ( deleted ) {
       println("Etherscan API key successfully dropped.")
     }
@@ -1362,7 +1362,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val apiKey = is.readLine( "Please enter your Etherscan API key: ", mask = true ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
     if ( apiKey.isEmpty ) throw nst( new SbtEthereumException( "Invalid empty key provided. Etherscan API key import aborted." ) )
-    repository.Database.setEtherscanApiKey( apiKey ).assert
+    shoebox.Database.setEtherscanApiKey( apiKey ).assert
     println("Etherscan API key successfully set.")
   }
 
@@ -1373,7 +1373,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
     }
     if ( confirmation == "YES" ) {
-      val mbApiKey = repository.Database.getEtherscanApiKey().assert
+      val mbApiKey = shoebox.Database.getEtherscanApiKey().assert
       mbApiKey match {
         case Some( apiKey ) => println( s"The currently set Etherscan API key is ${apiKey}" )
         case None           => println(  "No Etherscan API key has been set." )
@@ -1397,7 +1397,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ensureAliases = (xethFindCacheRichParserInfo in config)
 
       val alias = parser.parsed
-      val check = repository.Database.dropAddressAlias( chainId, alias ).get // assert no database problem
+      val check = shoebox.Database.dropAddressAlias( chainId, alias ).get // assert no database problem
       if (check) log.info( s"Alias '${alias}' successfully dropped (for chain with ID ${chainId}).")
       else log.warn( s"Alias '${alias}' is not defined (on blockchain '${chainId}'), and so could not be dropped." )
 
@@ -1410,8 +1410,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log      = streams.value.log
     val chainId  = (ethcfgChainId in config).value
-    val faliases = repository.Database.findAllAddressAliases( chainId )
-    faliases.fold( _ => log.warn("Could not read aliases from repository database.") ) { aliases =>
+    val faliases = shoebox.Database.findAllAddressAliases( chainId )
+    faliases.fold( _ => log.warn("Could not read aliases from shoebox database.") ) { aliases =>
       aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
     }
   }
@@ -1423,9 +1423,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val chainId = (ethcfgChainId in config).value
       val aliasOrAddress = parser.parsed
-      val mbAddressForAlias = repository.Database.findAddressByAddressAlias( chainId, aliasOrAddress ).assert
+      val mbAddressForAlias = shoebox.Database.findAddressByAddressAlias( chainId, aliasOrAddress ).assert
       val mbEntryAsAddress = Failable( EthAddress( aliasOrAddress ) ).toOption
-      val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => repository.Database.findAddressAliasesByAddress( chainId, addr ).get )
+      val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => shoebox.Database.findAddressAliasesByAddress( chainId, addr ).get )
 
       mbAddressForAlias.foreach( addressForAlias => println( s"The alias '${aliasOrAddress}' points to address '${hexString(addressForAlias)}'." ) )
 
@@ -1452,7 +1452,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       if (! Failable( EthAddress( alias ) ).isFailed ) {
         throw new SbtEthereumException( s"You cannot use what would be a legitimate Ethereum address as an alias. Bad attempted alias: '${alias}'" )
       }
-      val check = repository.Database.createUpdateAddressAlias( chainId, alias, address )
+      val check = shoebox.Database.createUpdateAddressAlias( chainId, alias, address )
       check.fold( _.vomit ){ _ => 
         log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
       }
@@ -1578,7 +1578,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = (ethcfgChainId in config).value
       val log = streams.value.log
       val dropMeAbiAlias = parser.parsed
-      repository.Database.dropAbiAlias( chainId, dropMeAbiAlias )
+      shoebox.Database.dropAbiAlias( chainId, dropMeAbiAlias )
       log.info( s"Abi alias 'abi:${dropMeAbiAlias}' successfully dropped." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -1588,7 +1588,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethContractAbiAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val chainId = (ethcfgChainId in config).value
-    val abiAliases = repository.Database.findAllAbiAliases( chainId ).assert
+    val abiAliases = shoebox.Database.findAllAbiAliases( chainId ).assert
     val columns = immutable.Vector( "ABI Alias", "ABI Hash" ).map( texttable.Column.apply( _ ) )
 
     def extract( tup : Tuple2[String,EthHash] ) : Seq[String] = {
@@ -1607,7 +1607,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val ( newAbiAlias, abiSource ) = parser.parsed
       val ( abi : Abi, sourceDesc : String) = standardSortAbiAndSourceDesc( log, abiSource )
-      repository.Database.createUpdateAbiAlias( chainId, newAbiAlias, abi )
+      shoebox.Database.createUpdateAbiAlias( chainId, newAbiAlias, abi )
       log.info( s"Abi alias 'abi:${newAbiAlias}' successfully bound to ABI found via ${sourceDesc}." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -1653,11 +1653,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = (ethcfgChainId in config).value
       val log = streams.value.log
       val address = parser.parsed
-      val found = repository.Database.deleteMemorizedContractAbi( chainId, address ).get // throw an Exception if there's a database issue
+      val found = shoebox.Database.deleteMemorizedContractAbi( chainId, address ).get // throw an Exception if there's a database issue
       if ( found ) {
         log.info( s"Previously imported or matched ABI for contract with address '0x${address.hex}' (on chain with ID ${chainId}) has been forgotten." )
       } else {
-        val mbDeployment = repository.Database.deployedContractInfoForAddress( chainId, address ).get  // throw an Exception if there's a database issue
+        val mbDeployment = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get  // throw an Exception if there's a database issue
         mbDeployment match {
           case Some( _ ) => throw new SbtEthereumException( s"Contract at address '0x${address.hex}' (on chain with ID ${chainId}) is not an imported ABI but our own deployment. Cannot drop." )
           case None      => throw new SbtEthereumException( s"We have not memorized an ABI for the contract at address '0x${address.hex}' (on chain with ID ${chainId})." )
@@ -1689,7 +1689,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       // Note the we sort `abi` before binding to the val
       val ( abi : Abi, sourceDesc : String) = standardSortAbiAndSourceDesc( log, abiSource )
       
-      val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( chainId, toLinkAddress ).assert
+      val mbKnownCompilation = shoebox.Database.deployedContractInfoForAddress( chainId, toLinkAddress ).assert
       mbKnownCompilation match {
         case Some( knownCompilation ) => {
           knownCompilation.mbAbiHash match {
@@ -1717,7 +1717,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       def finishUpdate = {
         log.info( s"The ABI previously associated with ${sourceDesc} ABI has been associated with address ${hexString(toLinkAddress)}." )
-        if (! repository.Database.hasAddressAliases( chainId, toLinkAddress ).assert ) {
+        if (! shoebox.Database.hasAddressAliases( chainId, toLinkAddress ).assert ) {
           interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
         }
         Def.taskDyn {
@@ -1738,7 +1738,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User chose not to delete a currently associated ABI which shadows an original compilation-derived ABI)." )
           }
           else {
-            repository.Database.deleteMemorizedContractAbi( chainId, toLinkAddress ).assert // throw an Exception if there's a database issue
+            shoebox.Database.deleteMemorizedContractAbi( chainId, toLinkAddress ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
@@ -1752,7 +1752,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch in order not to replace an existing association (which itself shadowed an original compilation-derived ABI)." )
           }
           else {
-            repository.Database.resetMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            shoebox.Database.resetMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
@@ -1762,7 +1762,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch in order not to replace an existing association." )
           }
           else {
-            repository.Database.resetMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            shoebox.Database.resetMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
@@ -1772,12 +1772,12 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch in order not to replace an existing association (which itself overrode an original compilation-derived ABI)." )
           }
           else {
-            repository.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            shoebox.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
         case AbiLookup( toLinkAddress, _, None, None, _ ) => {
-          repository.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+          shoebox.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
           finishUpdate
         }
         case unexpected => throw new SbtEthereumException( s"Unexpected AbiLookup: ${unexpected}" )
@@ -1919,15 +1919,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val mbRegex = regexParser( defaultToCaseInsensitive = true ).parsed
 
-    val memorizedAddresses = repository.Database.getMemorizedContractAbiAddresses( chainId ).get
-    val deployedContracts = repository.Database.allDeployedContractInfosForChainId( chainId ).get
+    val memorizedAddresses = shoebox.Database.getMemorizedContractAbiAddresses( chainId ).get
+    val deployedContracts = shoebox.Database.allDeployedContractInfosForChainId( chainId ).get
 
     val allRecords = {
-      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Memorized, repository.Database.findAddressAliasesByAddress( chainId, address ).get ) )
+      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Memorized, shoebox.Database.findAddressAliasesByAddress( chainId, address ).get ) )
       val deployedRecords  = {
         deployedContracts
           .filter( _.mbAbi.nonEmpty )
-          .map( dci => AbiListRecord( dci.contractAddress, AbiListRecord.Deployed( dci.mbName ), repository.Database.findAddressAliasesByAddress( chainId, dci.contractAddress ).get ) )
+          .map( dci => AbiListRecord( dci.contractAddress, AbiListRecord.Deployed( dci.mbName ), shoebox.Database.findAddressAliasesByAddress( chainId, dci.contractAddress ).get ) )
       }
       memorizedRecords ++ deployedRecords
     }
@@ -2041,7 +2041,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val timeout = xethcfgAsyncOperationTimeout.value
       val address = parser.parsed
-      val mbKnownCompilation = repository.Database.deployedContractInfoForAddress( chainId, address ).get
+      val mbKnownCompilation = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get
       mbKnownCompilation match {
         case Some( knownCompilation ) => {
           knownCompilation.mbAbiHash match {
@@ -2069,7 +2069,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       val abi = {
         val mbEtherscanAbi : Option[Abi] = {
-          val fmbApiKey = repository.Database.getEtherscanApiKey()
+          val fmbApiKey = shoebox.Database.getEtherscanApiKey()
           fmbApiKey match {
             case Succeeded( mbApiKey ) => {
               mbApiKey match {
@@ -2116,9 +2116,9 @@ object SbtEthereumPlugin extends AutoPlugin {
           case None                 => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
         }
       }
-      repository.Database.resetMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
+      shoebox.Database.resetMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
       log.info( s"ABI is now known for the contract at address ${hexString(address)}" )
-      if (! repository.Database.hasAddressAliases( chainId, address ).assert ) {
+      if (! shoebox.Database.hasAddressAliases( chainId, address ).assert ) {
         interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
       }
       Def.taskDyn {
@@ -2129,9 +2129,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethContractCompilationCullTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    val fcount = repository.Database.cullUndeployedCompilations()
+    val fcount = shoebox.Database.cullUndeployedCompilations()
     val count = fcount.get
-    log.info( s"Removed $count undeployed compilations from the repository database." )
+    log.info( s"Removed $count undeployed compilations from the shoebox database." )
   }
 
   private def ethContractCompilationInspectTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
@@ -2186,7 +2186,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val source = parser.parsed
       source match {
         case Left( address ) => {
-          val mbinfo = repository.Database.deployedContractInfoForAddress( chainId, address ).get // throw any db problem
+          val mbinfo = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get // throw any db problem
           mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
             section( s"Contract Address (on blockchain '${info.chainId}')", Some( info.contractAddress.hex ), true )
             section( "Deployer Address", info.mbDeployerAddress.map( _.hex ), true )
@@ -2211,7 +2211,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
         case Right( hash ) => {
-          val mbinfo = repository.Database.compilationInfoForCodeHash( hash ).get // throw any db problem
+          val mbinfo = shoebox.Database.compilationInfoForCodeHash( hash ).get // throw any db problem
           mbinfo.fold( println( s"Contract with code hash '$hash' not found." ) ) { info =>
             section( "Code Hash", Some( hash.hex ), true )
             section( "Code", Some( info.code ), true )
@@ -2228,7 +2228,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             section( "Metadata", info.mbMetadata )
             section( "AST", info.mbAst )
             section( "Project Name", info.mbProjectName )
-            addressSection( "Deployments", repository.Database.chainIdContractAddressesForCodeHash( hash ).get )
+            addressSection( "Deployments", shoebox.Database.chainIdContractAddressesForCodeHash( hash ).get )
           }
         }
       }
@@ -2238,10 +2238,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractCompilationListTask : Initialize[Task[Unit]] = Def.task {
-    val contractsSummary = repository.Database.contractsSummary.assert // throw for any db problem
+    val contractsSummary = shoebox.Database.contractsSummary.assert // throw for any db problem
     val columns = immutable.Vector( "Chain ID", "Contract Address", "Name", "Code Hash", "Deployment Timestamp" ).map( texttable.Column.apply( _ ) )
 
-    def extract( csr : repository.Database.ContractsSummaryRow ) : Seq[String] = {
+    def extract( csr : shoebox.Database.ContractsSummaryRow ) : Seq[String] = {
       import csr._
       val id = mb_chain_id.fold("")( _.toString )
       val ca = emptyOrHex( contract_address )
@@ -2353,14 +2353,14 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethKeystoreListTask( config : Configuration ) : Initialize[Task[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]] = Def.task {
-    val keystoresV3 = OnlyRepositoryKeystoreV3
+    val keystoresV3 = OnlyShoeboxKeystoreV3
     val log         = streams.value.log
     val chainId     = (ethcfgChainId in config).value
 
     val combined = combinedKeystoresMultiMap( keystoresV3 )
 
     val out = {
-      def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( repository.Database.findAddressAliasesByAddress( chainId, address ).get : _* )
+      def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( shoebox.Database.findAddressAliasesByAddress( chainId, address ).get : _* )
       immutable.TreeMap( combined.map { case ( address : EthAddress, _ ) => ( address, aliasesSet( address ) ) }.toSeq : _* )( Ordering.by( _.hex ) )
     }
     val cap = "+" + span(44) + "+"
@@ -2413,7 +2413,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val w = readV3Wallet( is )
     val address = w.address // a very cursory check of the wallet, NOT full validation
-    repository.Keystore.V3.storeWallet( w ).get // asserts success
+    shoebox.Keystore.V3.storeWallet( w ).get // asserts success
     log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
     log.info( s"Consider validating the JSON using 'ethKeystoreWalletV3Validate 0x${address.hex}'." )
   }
@@ -2444,8 +2444,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       println( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" ) // use println rather than log info to be sure this prints before the credential query
       val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
       val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( privateKey ), random = entropySource )
-      repository.Keystore.V3.storeWallet( w ).get // asserts success
-      log.info( s"Wallet created and imported into sbt-ethereum repository: '${repository.Directory.assert}'. Please backup, via 'ethRepositoryBackup' or manually." )
+      shoebox.Keystore.V3.storeWallet( w ).get // asserts success
+      log.info( s"Wallet created and imported into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
       log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
       w
     }
@@ -2453,7 +2453,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethKeystoreWalletV3PrintTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
-    val keystoreDirs = OnlyRepositoryKeystoreV3
+    val keystoreDirs = OnlyShoeboxKeystoreV3
     val wallets = (xethLoadWalletsV3For in config).evaluated
     val sz = wallets.size
     if ( sz == 0 ) unknownWallet( keystoreDirs )
@@ -2471,7 +2471,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log = streams.value.log
       val is = interactionService.value
-      val keystoreDirs = OnlyRepositoryKeystoreV3
+      val keystoreDirs = OnlyShoeboxKeystoreV3
       val s = state.value
       val extract = Project.extract(s)
       val inputAddress = parser.parsed
@@ -2524,8 +2524,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val versionToInstall = mbVersion.getOrElse( SolcJInstaller.DefaultSolcJVersion )
 
-    log.info( s"Installing local solidity compiler into the sbt-ethereum repository. This may take a few minutes." )
-    val check = repository.SolcJ.Directory.flatMap { rootSolcJDir =>
+    log.info( s"Installing local solidity compiler into the sbt-ethereum shoebox. This may take a few minutes." )
+    val check = shoebox.SolcJ.Directory.flatMap { rootSolcJDir =>
       Failable {
         val versionDir = new File( rootSolcJDir, versionToInstall )
         if ( versionDir.exists() ) {
@@ -2564,49 +2564,49 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def ethRepositoryDatabaseDumpCreateTask : Initialize[Task[Unit]] = Def.task {
+  def ethShoeboxDatabaseDumpCreateTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    val dump = repository.Database.dump().assert
-    log.info( s"sbt-ethereum repository database dump successfully created at '${dump.file.getCanonicalPath}'." )
+    val dump = shoebox.Database.dump().assert
+    log.info( s"sbt-ethereum shoebox database dump successfully created at '${dump.file.getCanonicalPath}'." )
   }
 
-  def ethRepositoryDatabaseDumpRestoreTask : Initialize[Task[Unit]] = Def.task {
+  def ethShoeboxDatabaseDumpRestoreTask : Initialize[Task[Unit]] = Def.task {
     val is  = interactionService.value
     val log = streams.value.log
 
-    def interactiveListAndSelectDump( dumps : immutable.SortedSet[repository.Database.Dump] ) : Option[repository.Database.Dump] = {
-      val numberedFiles = immutable.TreeMap.empty[Int,repository.Database.Dump] ++ Stream.from(1).zip( dumps )
-      println( "The following sbt-ethereum repository database dump files have been found:" )
+    def interactiveListAndSelectDump( dumps : immutable.SortedSet[shoebox.Database.Dump] ) : Option[shoebox.Database.Dump] = {
+      val numberedFiles = immutable.TreeMap.empty[Int,shoebox.Database.Dump] ++ Stream.from(1).zip( dumps )
+      println( "The following sbt-ethereum shoebox database dump files have been found:" )
       numberedFiles.foreach { case ( n, d ) => println( s"\t${n}. ${d.file.getCanonicalPath}" ) }
       val mbNumber = queryIntOrNone( is, "Which database dump should we restore? (Enter a number, or hit enter to abort) ", 1, dumps.size )
       mbNumber.map( num => numberedFiles(num) )
     }
 
-    val dumpsByMostRecent = repository.Database.dumpsOrderedByMostRecent.assert
+    val dumpsByMostRecent = shoebox.Database.dumpsOrderedByMostRecent.assert
     if ( dumpsByMostRecent.isEmpty ) {
-      log.warn( "No sbt-ethereum repository database dumps are available." )
+      log.warn( "No sbt-ethereum shoebox database dumps are available." )
     }
     else {
       val mbDump = interactiveListAndSelectDump( dumpsByMostRecent )
       mbDump match {
         case Some( dump ) => {
-          repository.Database.restoreFromDump( dump ).assert
-          log.info( s"Restore from dump successful. (Prior, replaced database should have backed up into '${repository.Database.supersededByDumpDirectory.assert}'." )
+          shoebox.Database.restoreFromDump( dump ).assert
+          log.info( s"Restore from dump successful. (Prior, replaced database should have backed up into '${shoebox.Database.supersededByDumpDirectory.assert}'." )
         }
-        case None => throw new OperationAbortedByUserException( "User aborted replacement of the sbt-ethereum repository database from a previously generated dump file." )
+        case None => throw new OperationAbortedByUserException( "User aborted replacement of the sbt-ethereum shoebox database from a previously generated dump file." )
       }
     }
   }
 
-  private def updateBackupDir( f : File ) : Unit = repository.Database.setRepositoryBackupDir( f.getAbsolutePath )
+  private def updateBackupDir( f : File ) : Unit = shoebox.Database.setShoeboxBackupDir( f.getAbsolutePath )
 
   /*
-   * Consider renaming this something like xethRepositoryDoBackup (key and task), then
+   * Consider renaming this something like xethShoeboxDoBackup (key and task), then
    * implementing a command that sequentially executes this then reload...
    * 
    * See https://stackoverflow.com/questions/33252704/is-there-a-way-to-programmatically-call-reload-in-sbt
    */ 
-  private def ethRepositoryBackupTask : Initialize[Task[Unit]] = Def.task {
+  private def ethShoeboxBackupTask : Initialize[Task[Unit]] = Def.task {
     val is = interactionService.value
     val log = streams.value.log
 
@@ -2646,14 +2646,14 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       if ( promptToSave ) {
         val makeDefault = {
-          val currentDefault = repository.Database.getRepositoryBackupDir.assert
+          val currentDefault = shoebox.Database.getShoeboxBackupDir.assert
           val replacingPart = {
             currentDefault match {
               case Some( path ) => s" (replacing current default '${path}')"
               case None         =>  ""
             }
           }
-          queryYN( is, s"Use directory '${existingDir.getAbsolutePath}' as the default sbt-ethereum repository backup directory${replacingPart}? [y/n] ")
+          queryYN( is, s"Use directory '${existingDir.getAbsolutePath}' as the default sbt-ethereum shoebox backup directory${replacingPart}? [y/n] ")
         }
         if ( makeDefault ) updateBackupDir( existingDir )
       }
@@ -2662,7 +2662,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     var databaseFailureDetected = false
     val dir = {
-      val fmbPrior = repository.Database.getRepositoryBackupDir().xwarn("An error occurred while trying to read the default repository backup directory from the database.")
+      val fmbPrior = shoebox.Database.getShoeboxBackupDir().xwarn("An error occurred while trying to read the default shoebox backup directory from the database.")
       fmbPrior match {
         case ok : Succeeded[Option[String]] => {
           ok.result match {
@@ -2670,7 +2670,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               val dd = new File( path ).getAbsoluteFile()
               ( dd.exists, dd.isDirectory, dd.canWrite ) match {
                 case ( true, true, true ) => {
-                  val useDefault = queryYN( is, s"Create backup in default repository backup directory '${dd.getAbsolutePath}'? [y/n] " )
+                  val useDefault = queryYN( is, s"Create backup in default shoebox backup directory '${dd.getAbsolutePath}'? [y/n] " )
                   if ( useDefault ) dd else promptForNewBackupDir()
                 }
                 case ( false, _, _ ) => {
@@ -2680,53 +2680,53 @@ object SbtEthereumPlugin extends AutoPlugin {
                   }
                 }
                 case ( _, false, _ ) => {
-                  log.warn( s"Selected default repository backup directory '${dd.getAbsolutePath}' exists, but is not a directory. Please select a new repository backup directory." )
+                  log.warn( s"Selected default shoebox backup directory '${dd.getAbsolutePath}' exists, but is not a directory. Please select a new shoebox backup directory." )
                   promptForNewBackupDir()
                 }
                 case ( _, _, false ) => {
-                  log.warn( s"Selected default repository backup directory '${dd.getAbsolutePath}' is not writable. Please select a new repository backup directory." )
+                  log.warn( s"Selected default shoebox backup directory '${dd.getAbsolutePath}' is not writable. Please select a new shoebox backup directory." )
                   promptForNewBackupDir()
                 }
               }
             }
             case None => {
-              log.warn( s"No default repository backup directory has been selected. Please select a new repository backup directory." )
+              log.warn( s"No default shoebox backup directory has been selected. Please select a new shoebox backup directory." )
               promptForNewBackupDir()
             }
           }
         }
         case failed : Failed[_] => {
-          val msg = "sbt-ethereum experienced a failure while trying to read the default repository backup directory from the sbt-ethereum database!"
+          val msg = "sbt-ethereum experienced a failure while trying to read the default shoebox backup directory from the sbt-ethereum database!"
           failed.xwarn( msg )
           databaseFailureDetected = true
           promptForNewBackupDir( promptToSave = false )
         }
       }
     }
-    repository.Backup.perform( Some( log ), databaseFailureDetected, dir )
+    shoebox.Backup.perform( Some( log ), databaseFailureDetected, dir )
   }
 
-  private def ethRepositoryRestoreTask : Initialize[Task[Unit]] = Def.task {
+  private def ethShoeboxRestoreTask : Initialize[Task[Unit]] = Def.task {
     val s = state.value
     val is = interactionService.value
     val log = streams.value.log
 
-    def interactiveListAndSelectBackup( backupFiles : immutable.SortedSet[repository.Backup.BackupFile] ) : Option[File] = {
+    def interactiveListAndSelectBackup( backupFiles : immutable.SortedSet[shoebox.Backup.BackupFile] ) : Option[File] = {
       if ( backupFiles.isEmpty ) {
-        log.warn( "No sbt-ethereum repository backup files found." )
+        log.warn( "No sbt-ethereum shoebox backup files found." )
         None
       }
       else {
-        val numberedFiles = immutable.TreeMap.empty[Int,repository.Backup.BackupFile] ++ Stream.from(1).zip( backupFiles )
-        println( "The following sbt-ethereum repository backup files have been found:" )
+        val numberedFiles = immutable.TreeMap.empty[Int,shoebox.Backup.BackupFile] ++ Stream.from(1).zip( backupFiles )
+        println( "The following sbt-ethereum shoebox backup files have been found:" )
         numberedFiles.foreach { case ( n, bf ) => println( s"\t${n}. ${bf.file.getCanonicalPath}" ) }
         val mbNumber = queryIntOrNone( is, "Which backup should we restore? (Enter a number, or hit enter to abort) ", 1, backupFiles.size )
         mbNumber.map( num => numberedFiles(num).file )
       }
     }
 
-    def interactiveMostRecentOrList( mostRecent : repository.Backup.BackupFile, fullList : immutable.SortedSet[repository.Backup.BackupFile] ) : Option[File] = {
-      val use = queryYN( is, s"'${mostRecent.file}' is the most recent sbt-ethereum repository backup file found. Use it? [y/n] " )
+    def interactiveMostRecentOrList( mostRecent : shoebox.Backup.BackupFile, fullList : immutable.SortedSet[shoebox.Backup.BackupFile] ) : Option[File] = {
+      val use = queryYN( is, s"'${mostRecent.file}' is the most recent sbt-ethereum shoebox backup file found. Use it? [y/n] " )
       if ( use ) {
         Some( mostRecent.file )
       }
@@ -2735,9 +2735,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def interactiveSelectFromBackupsOrderedByMostRecent( backupFiles : immutable.SortedSet[repository.Backup.BackupFile] ) : Option[File] = {
+    def interactiveSelectFromBackupsOrderedByMostRecent( backupFiles : immutable.SortedSet[shoebox.Backup.BackupFile] ) : Option[File] = {
       if ( backupFiles.isEmpty ) {
-        log.warn( s"No sbt-ethereum repository backup files found." )
+        log.warn( s"No sbt-ethereum shoebox backup files found." )
         None
       }
       else {
@@ -2775,7 +2775,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         None
       }
       else if ( backupFileOrDirectory.isFile ) {
-        val mbBackupFile = repository.Backup.attemptAsBackupFile( backupFileOrDirectory )
+        val mbBackupFile = shoebox.Backup.attemptAsBackupFile( backupFileOrDirectory )
         mbBackupFile foreach { bf =>
           if (! bf.dbDumpSucceeded ) {
             log.warn( s"Although the database files were backup up as-is, the database from this backup could not be dumped to SQL text, which may indicate corruption." )
@@ -2786,12 +2786,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       else if ( backupFileOrDirectory.isDirectory ) {
         val dir = backupFileOrDirectory
         if ( dir.canRead() ) {
-          val backupFiles = repository.Backup.backupFilesOrderedByMostRecent( dir.listFiles )
+          val backupFiles = shoebox.Backup.backupFilesOrderedByMostRecent( dir.listFiles )
           if ( backupFiles.isEmpty ) {
             println( s"No backup files found in '${backupFileOrDirectory}'." )
             val recurse = queryYN( is, "Do you want to recursively search subdirectories for backups? [y/n] " )
             if ( recurse ) {
-              val recursiveBackupFiles = repository.Backup.backupFilesOrderedByMostRecent( recursiveListBeneath( dir ) )
+              val recursiveBackupFiles = shoebox.Backup.backupFilesOrderedByMostRecent( recursiveListBeneath( dir ) )
               interactiveSelectFromBackupsOrderedByMostRecent( recursiveBackupFiles )
             }
             else {
@@ -2816,7 +2816,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     def promptViaBackupOrDir() : Option[File] = {
       val rawPath = {
-        is.readLine( "Enter the path to a directory containing sbt-ethereum repository backup files or a backup file directly (or return to abort): ", mask = false )
+        is.readLine( "Enter the path to a directory containing sbt-ethereum shoebox backup files or a backup file directly (or return to abort): ", mask = false )
           .getOrElse( throw new Exception( CantReadInteraction ) )
           .trim
       }
@@ -2846,7 +2846,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     val mbBackupFile = {
-      repository.Database.getRepositoryBackupDir().xwarn("An error occurred while trying to read the default repository backup directory from the database.") match {
+      shoebox.Database.getShoeboxBackupDir().xwarn("An error occurred while trying to read the default shoebox backup directory from the database.") match {
         case Succeeded( Some( dirPath ) ) => {
           val dir = new File( dirPath )
           if ( dir.isDirectory() && dir.exists() && dir.canRead() ) {
@@ -2869,11 +2869,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     mbBackupFile match {
       case Some( backupFile ) => {
         resetAllState()
-        repository.Backup.restore( Some( log ), backupFile )
+        shoebox.Backup.restore( Some( log ), backupFile )
         val extract = Project.extract(s)
         val (_, result) = extract.runTask( xethOnLoadSolicitCompilerInstall, s)
       }
-      case None => throw new OperationAbortedByUserException( s"No sbt-ethereum repository backup file selected. Restore aborted." )
+      case None => throw new OperationAbortedByUserException( s"No sbt-ethereum shoebox backup file selected. Restore aborted." )
     }
   }
 
@@ -2998,11 +2998,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
               if (! ephemeralDeployment ) {
                 val dbCheck = {
-                  repository.Database.insertNewDeployment( chainId, ca, codeHex, sender, txnHash, inputsBytes )
+                  shoebox.Database.insertNewDeployment( chainId, ca, codeHex, sender, txnHash, inputsBytes )
                 }
                 if ( dbCheck.isFailed ) {
-                  dbCheck.xwarn("Could not insert information about deployed contract into the repository database.")
-                  log.warn("Could not insert information about deployed contract into the repository database. See 'sbt-ethereum.log' for more information.")
+                  dbCheck.xwarn("Could not insert information about deployed contract into the shoebox database.")
+                  log.warn("Could not insert information about deployed contract into the shoebox database. See 'sbt-ethereum.log' for more information.")
                 }
               }
             }
@@ -3262,8 +3262,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethFindCacheRichParserInfoTask( config : Configuration ) : Initialize[Task[RichParserInfo]] = Def.task {
     val chainId            = (config / ethcfgChainId).value
     val jsonRpcUrl         = (config / ethcfgJsonRpcUrl).value
-    val addressAliases     = repository.Database.findAllAddressAliases( chainId ).assert
-    val abiAliases         = repository.Database.findAllAbiAliases( chainId ).assert
+    val addressAliases     = shoebox.Database.findAllAddressAliases( chainId ).assert
+    val abiAliases         = shoebox.Database.findAllAbiAliases( chainId ).assert
     val abiOverrides       = abiOverridesForChain( chainId )
     val nameServiceAddress = (config / enscfgNameServiceAddress).value
     val tld                = (config / enscfgNameServiceTld).value
@@ -3323,7 +3323,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                   address
                 }
                 case None => {
-                  val mbDefaultSenderAddress = repository.Database.findAddressByAddressAlias( chainId, DefaultSenderAlias ).get
+                  val mbDefaultSenderAddress = shoebox.Database.findAddressByAddressAlias( chainId, DefaultSenderAlias ).get
 
                   mbDefaultSenderAddress match {
                     case Some( address ) => {
@@ -3393,7 +3393,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val key = {
         mbExplicitJsonRpcUrl.flatMap( ejru => compilerKeys.find( key => key.startsWith(EthNetcompile.KeyPrefix) && key.endsWith( ejru ) ) ) orElse // use an explicitly set netcompile
         compilerKeys.find( _ == LocalPathSolcKey ) orElse                                                                                          // use a local compiler on the path
-        latestLocalInstallKey orElse                                                                                                               // use the latest local compiler in the repository
+        latestLocalInstallKey orElse                                                                                                               // use the latest local compiler in the shoebox
         compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse                                                                          // use the default eth-netcompile
         compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) )                                                                                  // use the (deprecated, mostly disappeared) json-rpc eth_CompileSolidity
       }.getOrElse {
@@ -3644,8 +3644,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
     val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
     val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-    val out = repository.Keystore.V3.storeWallet( w ).get // asserts success
-    log.info( s"Wallet generated into sbt-ethereum repository: '${repository.Directory.assert}'. Please backup, via 'ethRepositoryBackup' or manually." )
+    val out = shoebox.Keystore.V3.storeWallet( w ).get // asserts success
+    log.info( s"Wallet generated into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
     log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
     out
   }
@@ -3664,8 +3664,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( s"Generating V3 wallet, alogorithm=scrypt, n=${n}, r=${r}, p=${p}, dklen=${dklen}" )
     val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
     val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-    val out = repository.Keystore.V3.storeWallet( w ).get // asserts success
-    log.info( s"Wallet generated into sbt-ethereum repository: '${repository.Directory.assert}'. Please backup, via 'ethRepositoryBackup' or manually." )
+    val out = shoebox.Keystore.V3.storeWallet( w ).get // asserts success
+    log.info( s"Wallet generated into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
     log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
     out
   }
@@ -3833,7 +3833,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
-      val keystoresV3 = OnlyRepositoryKeystoreV3
+      val keystoresV3 = OnlyShoeboxKeystoreV3
       val log         = streams.value.log
 
       val chainId = (ethcfgChainId in config).value
@@ -3899,7 +3899,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     // val mbCurrentSender   = (xethFindCurrentSender in Compile).value
     
     log.info( s"sbt-ethereum-${generated.SbtEthereum.Version} successfully initialized (built ${SbtEthereum.BuildTimestamp})" )
-    // log.info( s"sbt-ethereum repository: '${repository.Directory.assert}' <-- Please backup, via 'ethRepositoryBackup' or manually" )
+    // log.info( s"sbt-ethereum shoebox: '${shoebox.Directory.assert}' <-- Please backup, via 'ethShoeboxBackup' or manually" )
     // log.info( s"sbt-ethereum main json-rpc endpoint configured to '${mainEthJsonRpcUrl}'" )
     // log.info( s"sbt-ethereum test json-rpc endpoint configured to '${testEthJsonRpcUrl}'" )
     // mbCurrentSender foreach { currentSender => 
@@ -3911,7 +3911,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethOnLoadAutoImportWalletsV3Task : Initialize[Task[Unit]] = Def.task {
     val log         = streams.value.log
     val importFroms = ethcfgKeystoreAutoImportLocationsV3.value
-    repository.Keystore.V3.Directory.foreach { keyStoreDir =>
+    shoebox.Keystore.V3.Directory.foreach { keyStoreDir =>
       importFroms.foreach { importFrom =>
         if ( importFrom.exists() && importFrom.isDirectory() && importFrom.canRead() ) {
           val imported = clients.geth.KeyStore.importAll( keyStoreDir = keyStoreDir, srcDir = importFrom ).assert
@@ -3924,26 +3924,26 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def xethOnLoadRecoverInconsistentSchemaTask : Initialize[Task[Unit]] = Def.task {
-    val schemaOkay = repository.Database.DataSource
+    val schemaOkay = shoebox.Database.DataSource
     val log        = streams.value.log
     val is         = interactionService.value
 
     if ( schemaOkay.isFailed ) {
-      val msg = "Failed to initialize the sbt-ethereum repository database."
+      val msg = "Failed to initialize the sbt-ethereum shoebox database."
       SEVERE.log( msg, schemaOkay.assertThrowable )
       log.error( msg )
 
-      if ( repository.Database.schemaVersionInconsistentUnchecked.assert ) {
-        val mbLastSuccessful = repository.Database.getLastSuccessfulSbtEthereumVersionUnchecked().assert
+      if ( shoebox.Database.schemaVersionInconsistentUnchecked.assert ) {
+        val mbLastSuccessful = shoebox.Database.getLastSuccessfulSbtEthereumVersionUnchecked().assert
 
-        log.error( "The sbt-ethereum repository database schema is in an inconsistent state (probably because an upgrade failed)." )
-        val mbLastDump = repository.Database.latestDumpIfAny.assert
+        log.error( "The sbt-ethereum shoebox database schema is in an inconsistent state (probably because an upgrade failed)." )
+        val mbLastDump = shoebox.Database.latestDumpIfAny.assert
         mbLastDump match {
           case Some( dump ) => {
             val dumpTime = formatInstant( dump.timestamp )
-            val recover = queryYN( is, s"The most recent sbt-ethereum repository database dump available was taken at ${dumpTime}. Attempt recovery? [y/n] " )
+            val recover = queryYN( is, s"The most recent sbt-ethereum shoebox database dump available was taken at ${dumpTime}. Attempt recovery? [y/n] " )
             if ( recover ) {
-              val attemptedRecovery = repository.Database.restoreFromDump( dump )
+              val attemptedRecovery = shoebox.Database.restoreFromDump( dump )
               if ( attemptedRecovery.isFailed ) {
                 val msg = s"Could not restore the database from dump file '${dump.file.getCanonicalPath}'."
                 val t = attemptedRecovery.assertThrowable
@@ -3952,15 +3952,15 @@ object SbtEthereumPlugin extends AutoPlugin {
                 throw t
               }
               else {
-                repository.Database.reset()
-                val fmbPostRecoverySchemaVersionUnchecked = repository.Database.getSchemaVersionUnchecked()
-                val targetSchemaVersion = repository.Database.TargetSchemaVersion
+                shoebox.Database.reset()
+                val fmbPostRecoverySchemaVersionUnchecked = shoebox.Database.getSchemaVersionUnchecked()
+                val targetSchemaVersion = shoebox.Database.TargetSchemaVersion
 
-                val schemaOkayNow = repository.Database.DataSource.isSucceeded
-                val inconsistent   = repository.Database.schemaVersionInconsistentUnchecked.assert
+                val schemaOkayNow = shoebox.Database.DataSource.isSucceeded
+                val inconsistent   = shoebox.Database.schemaVersionInconsistentUnchecked.assert
 
                 ( schemaOkayNow, inconsistent ) match {
-                  case ( true, false ) => log.info( "Recovery of sbt-ethereum repository database succeeded." )
+                  case ( true, false ) => log.info( "Recovery of sbt-ethereum shoebox database succeeded." )
                   case ( true, true )  => {
                     val msg = "Internal inconsistency. The database simultaneously is reporting itself to be okay while the schema version is inconsistent. Probably an sbt-ethereum bug."
                     log.error( msg )
@@ -4008,7 +4008,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               throw new OperationAbortedByUserException( "Offer to attempted recovery refused by user." )
             }
           }
-          case None => throw new SbtEthereumException( "No database dumps are available in the repository from which to attempt a recover." )
+          case None => throw new SbtEthereumException( "No database dumps are available in the shoebox from which to attempt a recover." )
         }
       }
       else {
@@ -4027,10 +4027,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val testTimeout = xethcfgAsyncOperationTimeout.value
 
     val currentDefaultCompilerVersion = SolcJInstaller.DefaultSolcJVersion
-    val currentSolcJDirectory         = repository.SolcJ.Directory
+    val currentSolcJDirectory         = shoebox.SolcJ.Directory
 
     if ( currentSolcJDirectory.isFailed ) {
-      log.warn( s"Cannot find or create '${repository.SolcJ.DirName}' directory in the sbt-ethereum repository directory. This is not a good sign." )
+      log.warn( s"Cannot find or create '${shoebox.SolcJ.DirName}' directory in the sbt-ethereum shoebox directory. This is not a good sign." )
     }
     else {
       val DirSolcJ = currentSolcJDirectory.get
@@ -4064,7 +4064,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethOnLoadSolicitWalletV3GenerationTask : Initialize[Task[Unit]] = Def.task {
     val s = state.value
     val is = interactionService.value
-    val keystoresV3  = OnlyRepositoryKeystoreV3
+    val keystoresV3  = OnlyShoeboxKeystoreV3
     val nontestConfig = Compile                                      // XXX: if you change this, change the hardcoded Compile value in the line below!
     val nontestChainId = ( Compile / ethcfgChainId ).value // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
     val combined = combinedKeystoresMultiMap( keystoresV3 )
@@ -4119,14 +4119,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def xethRepositoryRepairPermissionsTask : Initialize[Task[Unit]] = Def.task {
+  private def xethShoeboxRepairPermissionsTask : Initialize[Task[Unit]] = Def.task {
     val log   = streams.value.log
-    log.info( "Repairing repository permissions..." )
-    repository.repairPermissions().assert
-    log.info( "Repository permissions repaired." )
+    log.info( "Repairing shoebox permissions..." )
+    shoebox.repairPermissions().assert
+    log.info( "Shoebox permissions repaired." )
   }
 
-  private def xethSqlQueryRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
+  private def xethSqlQueryShoeboxDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log   = streams.value.log
     val query = DbQueryParser.parsed
 
@@ -4136,7 +4136,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     try {
       val check = {
-        repository.Database.UncheckedDataSource.map { ds =>
+        shoebox.Database.UncheckedDataSource.map { ds =>
           borrow( ds.getConnection() ) { conn =>
             borrow( conn.createStatement() ) { stmt =>
               borrow( stmt.executeQuery( query ) ) { rs =>
@@ -4166,13 +4166,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def xethSqlUpdateRepositoryDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
+  private def xethSqlUpdateShoeboxDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log   = streams.value.log
     val update = DbQueryParser.parsed
 
     try {
       val check = {
-        repository.Database.UncheckedDataSource.map { ds =>
+        shoebox.Database.UncheckedDataSource.map { ds =>
           borrow( ds.getConnection() ) { conn =>
             borrow( conn.createStatement() ) { stmt =>
               val rows = stmt.executeUpdate( update )
@@ -4209,7 +4209,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val projectName  = name.value
     val compilations = (xethLoadCurrentCompilationsKeepDups in Compile).value // we want to "know" every contract we've seen, which might include contracts with multiple names
 
-    repository.Database.updateContractDatabase( compilations, Some( projectName ) ).get
+    shoebox.Database.updateContractDatabase( compilations, Some( projectName ) ).get
   }
 
   private def xethUpdateSessionSolidityCompilersTask : Initialize[Task[immutable.SortedMap[String,Compiler.Solidity]]] = Def.task {
@@ -4240,16 +4240,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     def localPath = {
       check( Compiler.Solidity.LocalPathSolcKey, Compiler.Solidity.LocalPathSolc )
     }
-    def checkLocalRepositorySolc( version : String ) = {
-      repository.SolcJ.Directory.toOption.flatMap { rootSolcJDir =>
+    def checkLocalShoeboxSolc( version : String ) = {
+      shoebox.SolcJ.Directory.toOption.flatMap { rootSolcJDir =>
         check( s"${LocalSolc.KeyPrefix}${version}", Compiler.Solidity.LocalSolc( Some( new File( rootSolcJDir, version ) ) ) )
       }
     }
-    def checkLocalRepositorySolcs = {
-      SolcJInstaller.SupportedVersions.map( checkLocalRepositorySolc ).toSeq
+    def checkLocalShoeboxSolcs = {
+      SolcJInstaller.SupportedVersions.map( checkLocalShoeboxSolc ).toSeq
     }
 
-    val raw = checkLocalRepositorySolcs :+ localPath :+ ethJsonRpc :+ netcompile :+ defaultNetcompile
+    val raw = checkLocalShoeboxSolcs :+ localPath :+ ethJsonRpc :+ netcompile :+ defaultNetcompile
 
     val out = immutable.SortedMap( raw.filter( _ != None ).map( _.get ) : _* )
     Mutables.SessionSolidityCompilers.set( Some( out ) )
@@ -4296,7 +4296,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       .foldLeft( immutable.Map.empty[EthAddress,immutable.Set[wallet.V3]] )( combineMultiMaps )
   }
 
-  private def mbDefaultSender( chainId : Int ) = repository.Database.findAddressByAddressAlias( chainId, DefaultSenderAlias ).get
+  private def mbDefaultSender( chainId : Int ) = shoebox.Database.findAddressByAddressAlias( chainId, DefaultSenderAlias ).get
 
   private def installLocalSolcJ( log : sbt.Logger, rootSolcJDir : File, versionToInstall : String, testTimeout : Duration ) : Unit = {
     val versionDir = new File( rootSolcJDir, versionToInstall )
@@ -4549,7 +4549,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     query match {
       case Some( alias ) => {
-        val check = repository.Database.createUpdateAddressAlias( chainId, alias, address )
+        val check = shoebox.Database.createUpdateAddressAlias( chainId, alias, address )
         check.fold( _.vomit ){ _ => 
           log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
         }
@@ -4595,7 +4595,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def span( len : Int ) = (0 until len).map(_ => "-").mkString
 
   private def commaSepAliasesForAddress( chainId : Int, address : EthAddress ) : Failable[Option[String]] = {
-    repository.Database.findAddressAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
+    shoebox.Database.findAddressAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
   }
   private def leftwardAliasesArrowOrEmpty( chainId : Int, address : EthAddress ) : Failable[String] = {
     commaSepAliasesForAddress( chainId, address ).map( _.fold("")( aliasesStr => s" <-- ${aliasesStr}" ) )

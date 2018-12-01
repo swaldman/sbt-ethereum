@@ -1,21 +1,21 @@
-package com.mchange.sc.v1.sbtethereum.repository
+package com.mchange.sc.v1.sbtethereum.shoebox
 
 import java.io.File
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 import com.mchange.sc.v3.failable._
 
 
-private [repository]
+private [shoebox]
 object AutoResource {
 
   object UserOnlyDirectory {
 
     trait Owner {
 
-      private [repository]
+      private [shoebox]
       val DirectoryManager : UserOnlyDirectory;
 
-      private [repository]
+      private [shoebox]
       def Directory_ExistenceAndPermissionsUnenforced : Failable[File] = DirectoryManager.existenceAndPermissionsUnenforced
 
       def Directory : Failable[File] = DirectoryManager.existenceAndPermissionsEnforced
@@ -38,7 +38,7 @@ object AutoResource {
 
   def apply[S,T>:Null]( specifier : S, recreate : S => T, close : (T) => Failable[Any] ) : AutoResource[S,T] = new AutoResource( specifier, recreate, close )
 }
-private [repository]
+private [shoebox]
 class AutoResource[S,T>:Null]( val specifier : S, recreate : S => T, close : (T) => Failable[Any] ) {
 
   // MT: protected by this' lock

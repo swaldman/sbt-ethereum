@@ -9,7 +9,7 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v1.sbtethereum._
-import repository.TransactionLog
+import shoebox.TransactionLog
 import compile.Compiler.overwriteSourceTimestamp
 
 import com.mchange.sc.v2.jsonrpc.Exchanger

@@ -118,7 +118,7 @@ object Compiler {
     final object LocalSolc {
       val SimpleContractNameRegex: Regex = """^(?:[^\:]*\:)?(.+)$""".r
 
-      val KeyPrefix = "local-repository-solc-v"
+      val KeyPrefix = "local-shoebox-solc-v"
 
       val VersionFromKeyExtractor: Regex = (KeyPrefix + """([\d\.]+)""").r
 

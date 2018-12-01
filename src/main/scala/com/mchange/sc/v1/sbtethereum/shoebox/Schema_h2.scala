@@ -1,4 +1,4 @@
-package com.mchange.sc.v1.sbtethereum.repository
+package com.mchange.sc.v1.sbtethereum.shoebox
 
 import com.mchange.sc.v1.sbtethereum._
 import com.mchange.sc.v1.sbtethereum.util.BaseCodeAndSuffix
@@ -252,7 +252,7 @@ private [sbtethereum] object Schema_h2 {
     require( versionFrom >= 0, s"Please restore database from dump! Valid schema versions begin are non-negative, version $versionFrom is invalid, may indicate database corruption." )
     require( versionFrom < versionTo, s"We can only upmigrate schemas, can't transition from $versionFrom to $versionTo" )
 
-    repository.Database.dumpDatabaseH2( conn, versionFrom ).get // throw if something goes wrong
+    shoebox.Database.dumpDatabaseH2( conn, versionFrom ).get // throw if something goes wrong
 
     DEBUG.log( s"Migrating sbt-ethereum database schema from version $versionFrom to version $versionTo." )
     Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, InconsistentSchemaVersion.toString )
@@ -339,7 +339,7 @@ private [sbtethereum] object Schema_h2 {
       final object Key {
         val SchemaVersion                    = "SchemaVersion"
         val EtherscanApiKey                  = "EtherscanApiKey"
-        val RepositoryBackupDir              = "RepositoryBackupDir"
+        val ShoeboxBackupDir                 = "ShoeboxBackupDir"
         val LastSuccessfulSbtEthereumVersion = "LastSuccessfulSbtEthereumVersion"
       }
     }

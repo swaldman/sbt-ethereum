@@ -12,17 +12,17 @@ import com.mchange.sc.v2.util.Platform
 
 import com.mchange.sc.v1.log.MLevel._
 
-package object repository extends PermissionsOverrideSource {
+package object shoebox extends PermissionsOverrideSource {
   implicit lazy val logger : com.mchange.sc.v1.log.MLogger = mlogger( this )
 
-  private val SystemProperty      = "sbt.ethereum.repository"
-  private val EnvironmentVariable = "SBT_ETHEREUM_REPOSITORY"
+  private val SystemProperty      = "sbt.ethereum.shoebox"
+  private val EnvironmentVariable = "SBT_ETHEREUM_SHOEBOX"
 
-  private [repository]
+  private [shoebox]
   lazy val Directory_ExistenceAndPermissionsUnenforced : Failable[File] = {
     def defaultLocation = {
       Platform.Current
-        .toFailable( "Could not detect the platform to determine the repository directory" )
+        .toFailable( "Could not detect the platform to determine the shoebox directory" )
         .flatMap( _.appSupportDirectory( "sbt-ethereum" ) )
     }
 
@@ -35,16 +35,16 @@ package object repository extends PermissionsOverrideSource {
   lazy val Directory = Directory_ExistenceAndPermissionsUnenforced.flatMap( ensureUserOnlyDirectory )
 
   def reset() : Unit = {
-    repository.Database.reset()
-    repository.Keystore.reset()
-    repository.SolcJ.reset()
+    shoebox.Database.reset()
+    shoebox.Keystore.reset()
+    shoebox.SolcJ.reset()
   }
 
   def userReadOnlyFiles   : immutable.Set[File] = Database.userReadOnlyFiles ++ Keystore.userReadOnlyFiles ++ SolcJ.userReadOnlyFiles
   def userExecutableFiles : immutable.Set[File] = Database.userExecutableFiles ++ Keystore.userExecutableFiles ++ SolcJ.userExecutableFiles
 
-  def repairPermissions() : Failable[Unit] = Directory_ExistenceAndPermissionsUnenforced flatMap { repositoryDir =>
-    val allFiles = recursiveListIncluding( repositoryDir )
+  def repairPermissions() : Failable[Unit] = Directory_ExistenceAndPermissionsUnenforced flatMap { shoeboxDir =>
+    val allFiles = recursiveListIncluding( shoeboxDir )
 
     val urof = userReadOnlyFiles.map( _.getCanonicalFile )
     val uef  = userExecutableFiles.map( _.getCanonicalFile )
@@ -63,7 +63,7 @@ package object repository extends PermissionsOverrideSource {
         }
       }
       else {
-        WARNING.log( s"Unexpectedly, the sbt-ethereum repository contains a file that is neither a directory or regular file: '${f}'. Ignoring." )
+        WARNING.log( s"Unexpectedly, the sbt-ethereum shoebox contains a file that is neither a directory or regular file: '${f}'. Ignoring." )
         Failable.succeed( f )
       }
     }
