@@ -38,23 +38,13 @@ a:visited {
     grid-row-start:    1;
     grid-row-end:      3;  
     padding-top: 1em;
-    padding-left: 1em;
     margin-right: 1em;
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Ubuntu Mono', monospace;
     background-color: black;
     color: rgb(0, 255, 0);
 }
 
 #navigationColumn a {
-    text-decoration: none;
-    text-transform: lowercase;
-}
-
-#navigationColumn a:hover {
-    text-decoration: underline;
-}
-
-#navigationColumn a.active:hover {
     text-decoration: none;
 }
 
@@ -69,6 +59,18 @@ a:visited {
 #navigationColumn a.active {
     color: rgb(250, 190, 0);
     font-weight: normal;
+}
+
+#navigation {
+    line-height: 100%;
+}
+
+#navigation a:hover {
+    text-decoration: underline;
+}
+
+#navigation a.active:hover {
+    text-decoration: none;
 }
 
 #navigation a.active:after {
@@ -86,7 +88,7 @@ a:visited {
 }
 
 #navHomeLink a {
-    font-size: 150%;
+    font-size: 175%;
     color: white;
 }
 
@@ -114,6 +116,7 @@ a:visited {
 }
 
 #pageContent {
+    margin-top: 1em;
 }
 
 
@@ -134,7 +137,7 @@ div#pageContent pre {
 }
 
 div#pageContent code {
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Ubuntu Mono', monospace;
     font-size: smaller;
     background-color: #DDDDFF;
 }

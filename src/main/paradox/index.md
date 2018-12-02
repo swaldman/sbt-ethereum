@@ -9,6 +9,7 @@
 * [Overview](overview.md)
 * [Warnings](warnings.md)
 * [Getting Started](getting-started.md)
+* [Tasks](tasks/index.md)
 * [Appendix](appendix/index.md)
 
 @@@

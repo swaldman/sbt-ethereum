@@ -2,7 +2,7 @@
   <head>
     <title>$page.title$</title>
     <link rel="stylesheet" type="text/css" href="$page.base$css/docs.css"/>
-    <link href="https://fonts.googleapis.com/css?family=Share+Tech+Mono|Source+Sans+Pro:400,400i,700,700i" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css?family=Ubuntu+Mono|Source+Sans+Pro:400,400i,700,700i" rel="stylesheet"/>
   </head>
   <body>
     <div id="navigationColumn">
