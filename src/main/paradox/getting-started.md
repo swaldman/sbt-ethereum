@@ -1,4 +1,4 @@
-# Mac/Linux
+# Getting Started
 
 #### Download a repository
 
@@ -9,7 +9,7 @@ application is required.
 For this purpose, a simple _sbt-ethereum_ repository called [eth-command-line](https://github.com/swaldman/eth-command-line) is available.
 Let's start with that.
 
-Make sure that you have @ref:[git](../appendix/a_prerequisites.md#git) installed and available on your @ref:[command line](../appendix/a_prerequisites.md#command-line).
+Make sure that you have @ref:[git](appendix/a_prerequisites.md#git) installed and available on your @ref:[command line](appendix/a_prerequisites.md#command-line).
 Then try the following command:
 
 @@@vars
@@ -40,7 +40,7 @@ $ cd eth-command-line
 $ ls
 LICENSE		README.md	build.sbt	project		sbtw
 ```
-The file `sbtw` is an _sbt wrapper script_. You can run it, and it will download and install @ref:[sbt](../appendix/a_prerequisites.md#sbt) as needed.
+The file `sbtw` is an _sbt wrapper script_. You can run it, and it will download and install @ref:[sbt](appendix/a_prerequisites.md#sbt) as needed.
 
 Alternatively, if you already have `sbt` installed on your machine, you can just run that. We'll try the wrapper script:
 ```
