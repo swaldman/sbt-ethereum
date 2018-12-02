@@ -105,7 +105,7 @@ After generating a wallet for address `0xf2f2f96b6b303ecf1090efd622b915d9083d8df
 Would you like the new address '0xf2f2f96b6b303ecf1090efd622b915d9083d8df2' to be the default sender on chain with ID 1? [y/n] 
 ```
 
-When you wish to interact wih the Ethereum blockchain, _sbt-ethereum_ needs to know an address representing on whose behalf it is interacting.
+When you wish to interact with the Ethereum blockchain, _sbt-ethereum_ needs to know an address representing on whose behalf it is interacting.
 At Any time, you can set this to any address you like, but it is convenient to have a default address present. Let's answer yes.
 
 ```
@@ -130,6 +130,12 @@ sbt:eth-command-line>
 
 sbt-ethereum installs the compiler, tests it, and brings us to a command prompt. Finally we are ready to go!
 
-__*The set-up steps we've completed were a one-time thing.*__ Next time we enter an
+@@@ note
+
+__*The set-up steps we've completed were a one-time thing.*__
+
+Next time we enter an
 _sbt-ethereum_ repository, we won't have to go through all this set up, and we won't download so much stuff on startup.
 We will arrive directly at the command prompt.
+
+@@@

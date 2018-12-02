@@ -229,18 +229,8 @@ ul li {
 
 div.callout {
     font-size: smaller;
-    margin-left: 4em;
-}
-
-div.callout-title {
-    display: none;
-}
-
-div.callout.warning {
     margin-top: 1em;
-    border-left: 10px solid rgba(255, 0, 0, 0.4);
-    border-right: 2px solid rgba(255, 0, 0, 0.4);
-    background-color: rgba(255, 0, 0, 0.1);
+    margin-left: 4em;
     padding-left: 0.5em;
     padding-right: 0.5em;
     padding-bottom: 0.5em;
@@ -248,14 +238,37 @@ div.callout.warning {
     width: calc(100% - 20vw - 5vw - 5vw);
 }
 
-div.callout.warning p {
+div.callout p {
     padding-left: 50pt;
     padding-right: 50pt;
     text-align: justify;
 }
 
+div.callout-title {
+    display: none;
+}
+
+div.callout.warning {
+    border-left: 10px solid rgba(255, 0, 0, 0.4);
+    border-right: 2px solid rgba(255, 0, 0, 0.4);
+    background-color: rgba(255, 0, 0, 0.1);
+}
+
 div.callout.warning:before {
     content: "\26A0\FE0F";
+    font-size: 36pt;
+    float: left;
+    position: relative;
+    top: 20pt;
+}
+div.callout.note {
+    border-left: 10px solid rgba(0, 100, 0, 0.4);
+    border-right: 2px solid rgba(0, 100, 0, 0.4);
+    background-color: rgba(0, 100, 0, 0.1);
+}
+
+div.callout.note:before {
+    content: "\1F4A1";
     font-size: 36pt;
     float: left;
     position: relative;
