@@ -42,6 +42,9 @@ a:visited {
     font-family: 'Ubuntu Mono', monospace;
     background-color: black;
     color: rgb(0, 255, 0);
+
+    display: flex;
+    flex-direction: column;
 }
 
 #navigationColumn a {
@@ -62,10 +65,19 @@ a:visited {
 }
 
 #navigation {
+    flex-basis: 0;
+    flex-grow: 1;
+    flex-shrink: 1;
+    overflow-x: hidden;
+    overflow-y: scroll;
+    scrollbar-color: white green;
+}
+
+#navigation, #pageToc {
     line-height: 100%;
 }
 
-#navigation a:hover {
+#navigation a:hover, #pageToc a:hover {
     text-decoration: underline;
 }
 
@@ -81,6 +93,9 @@ a:visited {
     text-align: center;
     font-weight: normal;
     padding-bottom: 1em;
+
+    flex-grow: 0;
+    flex-shrink: 0;
 }
 
 #navProjectVersion {
@@ -94,6 +109,14 @@ a:visited {
 
 #navHomeLink a:visited {
     color: white;
+}
+
+#navFooter {
+    font-family: 'Ubuntu Mono', monospace;
+    font-size: smaller; /* smaller still! */
+    flex-grow: 0;
+    flex-shrink: 0;
+    padding-bottom: 0.5em;
 }
 
 #rightColumn {
@@ -200,32 +223,67 @@ ul li {
 #projectVersion {
 }
 
+#pageToc {
+    margin-top: 0.5em;
+    margin-left: 1em;
+    padding: 0;
+}
+
+#pageToc li {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#pageToc > ul {
+    margin: 0;
+    padding: 0;
+}
+
+#pageToc > ul > li {
+    margin: 0;
+    padding: 0;
+}
+
+#pageToc > ul > li > ul > li {
+    margin: 0;
+    padding: 0;
+}
+
+
 #navigation ul {
     margin-top: 0;
     padding-left: 10%;
 }
 
-#navigation > ul > li {
+#navigation > ul > li, #pageToc > ul > li {
     list-style-type: none;
-}
-
-#navigation > ul > li {
     font-size: smaller;
 }
 
-#navigation > ul > li > ul {
+#navigation > ul > li > ul, #pageToc > ul > li > ul {
     padding-left: 0.75em;
 }
 
-#navigation ul > li > ul > li {
+#navigation ul > li > ul > li, #pageToc ul > li > ul > li {
     list-style-type: none;
 }
 
-#navigation ul > li > ul > li:before {
+#navigation ul > li > ul > li:before, #pageToc ul > li > ul > li:before {
     font-family: 'Source Sans Pro', sans-serif;
-    content: "\21B3\2009"
+    content: "\21B3\2009";
 }
 
+#pageToc > ul > li:before {
+    color: white;
+    content: "This Page: ";
+}
+
+#pageToc > ul > li > a {
+    color: white;
+}
+
+    
 .active {
   font-weight: bold;
 }
@@ -278,3 +336,6 @@ div.callout.note:before {
     top: 20pt;
 }
 
+.retroRule {
+    text-align: center;
+}

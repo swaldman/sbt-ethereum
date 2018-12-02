@@ -12,6 +12,10 @@
 	 <div class="retroRule">-=-=-=-=-=-</div>
       </div>	
       <div id="navigation">$page.navigation$</div>
+      <div id="navFooter">
+	<div class="retroRule">+ + + + +</div>
+	<div id="pageToc">$page.toc$</div>
+      </div>
     </div>
     <div id="page">
       <div id="pageContent">$page.content$</div>
