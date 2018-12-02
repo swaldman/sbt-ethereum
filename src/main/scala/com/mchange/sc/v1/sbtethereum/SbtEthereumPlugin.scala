@@ -309,7 +309,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val etherscanApiKeyDrop       = taskKey[Unit]  ("Removes the API key for etherscan services from the sbt-ethereum database.")
     val etherscanApiKeyImport     = taskKey[Unit]  ("Imports an API key for etherscan services.")
     val etherscanApiKeyReveal     = taskKey[Unit]  ("Reveals the currently set API key for etherscan services, if any.")
-    val etherscanContactAbiImport = inputKey[Unit] ("An alias to ethContractAbiImport, which permits etherscan imports if an etherscan API key is set.")
 
     val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum shoebox database.")
     val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
@@ -606,10 +605,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     etherscanApiKeyImport := { etherscanApiKeyImportTask.value },
 
     etherscanApiKeyReveal := { etherscanApiKeyRevealTask.value },
-
-    etherscanContactAbiImport in Compile := { ethContractAbiImportTask( Compile ).evaluated }, // basically an alias
-
-    etherscanContactAbiImport in Test := { ethContractAbiImportTask( Test ).evaluated }, // basically an alias
 
     ethAddressAliasDrop in Compile := { ethAddressAliasDropTask( Compile ).evaluated },
 
