@@ -9,7 +9,6 @@
 * [ethAddress*](eth/address/index.md)
 * [ethContract*](eth/contract/index.md)
 * [ethDebug*](eth/debug/index.md)
-* [ethGas*](eth/gas/index.md)
 * [ethKeystore*](eth/keystore/index.md)
 * [ethLanguage*](eth/language/index.md)
 * [ethShoebox*](eth/shoebox/index.md)
