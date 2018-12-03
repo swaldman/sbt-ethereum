@@ -409,7 +409,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethOnLoadRecoverInconsistentSchema = taskKey[Unit]( "Checks to see if the shoebox database schema is in an inconsistent state, and offers to recover a consistent version from dump." )
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
-    val xethNextNonce = taskKey[BigInt]("Finds the next nonce for the current sender")
+    val xethTransactionCount = taskKey[BigInt]("Finds the next nonce for the current sender")
     val xethShoeboxRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's shoebox to its required user-only values.")
     val xethSqlQueryShoeboxDatabase = inputKey[Unit]("Primarily for debugging. Query the internal shoebox database.")
     val xethSqlUpdateShoeboxDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal shoebox database with arbitrary SQL.")
@@ -892,9 +892,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethNamedAbis in Test := { xethNamedAbisTask( Test ).value },
 
-    xethNextNonce in Compile := { xethNextNonceTask( Compile ).value },
+    xethTransactionCount in Compile := { xethTransactionCountTask( Compile ).value },
 
-    xethNextNonce in Test := { xethNextNonceTask( Test ).value },
+    xethTransactionCount in Test := { xethTransactionCountTask( Test ).value },
 
     xethShoeboxRepairPermissions := { xethShoeboxRepairPermissionsTask.value },
 
@@ -3878,7 +3878,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def xethNextNonceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
+  private def xethTransactionCountTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
     val log        = streams.value.log
     val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
     val timeout    = xethcfgAsyncOperationTimeout.value
