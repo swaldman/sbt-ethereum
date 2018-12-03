@@ -315,7 +315,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressAliasPrint          = inputKey[Unit]                             ("Prints the address associated with a given alias.")
     val ethAddressAliasSet            = inputKey[Unit]                             ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
     val ethAddressBalance             = inputKey[BigDecimal]                       ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
-    val ethAddressPing                = inputKey[Option[Client.TransactionReceipt]]("Sends 0 ether from current sender to an address, by default the senser address itself")
     val ethAddressSenderEffective     = taskKey[Failable[EthAddress]]              ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
     val ethAddressSenderOverrideDrop  = taskKey [Unit]                             ("Removes any sender override, reverting to any 'ethcfgSender' or defaultSender that may be set.")
     val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgSender' or defaultSender that may be set.")
@@ -373,6 +372,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionDeploy = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]("""Deploys the named contract, if specified, or else all contracts in 'ethcfgAutoDeployContracts'""")
     val ethTransactionInvoke = inputKey[Client.TransactionReceipt]                   ("Calls a function on a deployed smart contract")
     val ethTransactionLookup = inputKey[Client.TransactionReceipt]                   ("Looks up (and potentially waits for) the transaction associated with a given transaction hash.")
+    val ethTransactionPing   = inputKey[Option[Client.TransactionReceipt]]           ("Sends 0 ether from current sender to an address, by default the sender address itself")
     val ethTransactionRaw    = inputKey[Client.TransactionReceipt]                   ("Sends a transaction with user-specified bytes, amount, and optional nonce")
     val ethTransactionSend   = inputKey[Client.TransactionReceipt]                   ("Sends ether from current sender to a specified account, format 'ethTransactionSend <to-address-as-hex> <amount> <wei|szabo|finney|ether>'")
     val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
@@ -626,9 +626,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethAddressBalance in Test := { ethAddressBalanceTask( Test ).evaluated },
 
-    ethAddressPing in Compile := { ethAddressPingTask( Compile ).evaluated },
+    ethTransactionPing in Compile := { ethTransactionPingTask( Compile ).evaluated },
 
-    ethAddressPing in Test := { ethAddressPingTask( Test ).evaluated },
+    ethTransactionPing in Test := { ethTransactionPingTask( Test ).evaluated },
 
     ethAddressSenderEffective in Compile := { ethAddressSenderEffectiveTask( Compile ).value },
 
@@ -1483,44 +1483,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
 
       ethValue
-    }
-  }
-
-  private def ethAddressPingTask( config : Configuration ) : Initialize[InputTask[Option[Client.TransactionReceipt]]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genOptionalGenericAddressParser )
-
-    Def.inputTask {
-      val log = streams.value.log
-      val from = (xethFindCurrentSender in config).value.get
-      val mbTo = parser.parsed
-      val to = mbTo.getOrElse {
-        log.info(s"No recipient address supplied, sender address '0x${ from.hex }' will ping itself.")
-        from
-      }
-      val sendArgs = s" ${to.hex} 0 wei"
-
-      val s = state.value
-      val extract = Project.extract(s)
-
-      val recipientStr =  mbTo.fold( "itself" )( addr => "'0x${addr.hex}'" )
-      try {
-        val (_, result) = extract.runInputTask(ethTransactionSend in config, sendArgs, s)
-
-        log.info( "Ping succeeded!" )
-        log.info( s"Sent 0 ether from '${from.hex}' to ${ recipientStr } in transaction '0x${result.transactionHash.hex}'" )
-        Some( result )
-      }
-      catch {
-        case t : Poller.TimeoutException => {
-          log.warn( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } may or may not eventually succeed, but we've timed out before hearing back.""" )
-          None
-        }
-        case NonFatal(t) => {
-          t.printStackTrace()
-          log.warn( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } yielded an Exception: ${t}""")
-          None
-        }
-      }
     }
   }
 
@@ -3113,6 +3075,44 @@ object SbtEthereumPlugin extends AutoPlugin {
         prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, ctr )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
+    }
+  }
+
+  private def ethTransactionPingTask( config : Configuration ) : Initialize[InputTask[Option[Client.TransactionReceipt]]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genOptionalGenericAddressParser )
+
+    Def.inputTask {
+      val log = streams.value.log
+      val from = (xethFindCurrentSender in config).value.get
+      val mbTo = parser.parsed
+      val to = mbTo.getOrElse {
+        log.info(s"No recipient address supplied, sender address '0x${ from.hex }' will ping itself.")
+        from
+      }
+      val sendArgs = s" ${to.hex} 0 wei"
+
+      val s = state.value
+      val extract = Project.extract(s)
+
+      val recipientStr =  mbTo.fold( "itself" )( addr => "'0x${addr.hex}'" )
+      try {
+        val (_, result) = extract.runInputTask(ethTransactionSend in config, sendArgs, s)
+
+        log.info( "Ping succeeded!" )
+        log.info( s"Sent 0 ether from '${from.hex}' to ${ recipientStr } in transaction '0x${result.transactionHash.hex}'" )
+        Some( result )
+      }
+      catch {
+        case t : Poller.TimeoutException => {
+          log.warn( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } may or may not eventually succeed, but we've timed out before hearing back.""" )
+          None
+        }
+        case NonFatal(t) => {
+          t.printStackTrace()
+          log.warn( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } yielded an Exception: ${t}""")
+          None
+        }
+      }
     }
   }
 
