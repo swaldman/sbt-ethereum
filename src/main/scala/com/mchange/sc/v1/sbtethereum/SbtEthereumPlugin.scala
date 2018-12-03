@@ -133,7 +133,15 @@ object SbtEthereumPlugin extends AutoPlugin {
     util.Parsers.reset()
   }
 
-  private def unwrapNonceOverride = Mutables.NonceOverride.get.map( Unsigned256.apply )
+  private def unwrapNonceOverride( mbLog : Option[sbt.Logger] ) : Option[Unsigned256] = {
+    val out = Mutables.NonceOverride.get.map( Unsigned256.apply )
+    out.foreach { noverride =>
+      mbLog.foreach { log =>
+        log.info( s"Nonce override set: ${noverride.widen}" )
+      }
+    }
+    out
+  }
 
   private def senderOverrideForConfig( config : Configuration ) : AtomicReference[Option[ ( Int, EthAddress ) ]] = if ( config == Test ) Mutables.TestSenderOverride else Mutables.SenderOverride
 
@@ -2907,8 +2915,12 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
 
+      val interactive = instruction != SpawnInstruction.Auto
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
       val nonceOverride = {
-        unwrapNonceOverride match {
+        unwrapNonceOverride( Some( log ) ) match {
           case noverride @ Some( _ ) if (quartets.length <= 1) => {
             noverride
           }
@@ -2920,10 +2932,6 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
       }
-
-      val interactive = instruction != SpawnInstruction.Auto
-
-      implicit val invokerContext = (xethInvokerContext in config).value
 
       def doSpawn( deploymentAlias : String, codeHex : String, inputs : immutable.Seq[String], abi : Abi ) : ( String, Either[EthHash,Client.TransactionReceipt] ) = {
 
@@ -3063,6 +3071,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val chainId = (ethcfgChainId in config).value
       val caller = (xethFindCurrentSender in config).value.get
+      val nonceOverride = unwrapNonceOverride( Some( log ) )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
 
@@ -3076,8 +3085,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.debug( s"Call data for function call: ${callData.hex}" )
 
       implicit val invokerContext = (xethInvokerContext in config).value
-
-      val nonceOverride = unwrapNonceOverride
 
       val f_out = Invoker.transaction.sendMessage( privateKey, contractAddress, Unsigned256( amount ), callData, nonceOverride ) flatMap { txnHash =>
         log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei ${mbWithNonceClause(nonceOverride)}to address '0x${contractAddress.hex}' in transaction '0x${txnHash.hex}'.""" )
@@ -3117,7 +3124,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethTransactionNonceOverrideDropTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     Mutables.NonceOverride.set( None )
-    log.info("Any nonce override has been unset. Nonces for new transactions will be auomatically computed.")
+    log.info("Any nonce override has been unset. The nonces for any new transactions will be automatically computed.")
   }
 
   private def ethTransactionNonceOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
@@ -3131,7 +3138,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     Mutables.NonceOverride.get match {
       case Some( value ) => log.info( s"A nonce override is set, with value ${value}. Future transactions will use this value as a fixed nonce, until this override is explcitly unset with 'ethTransactionNonceOverrideDrop'." )
-      case None          => log.info( "No nonce override is currently set. Nonces for new transactions will be auomatically computed." )
+      case None          => log.info( "No nonce override is currently set. The nonces for any new transactions will be automatically computed." )
     }
   }
 
@@ -3164,6 +3171,12 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.warn( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } may or may not eventually succeed, but we've timed out before hearing back.""" )
           None
         }
+        case inc @ Incomplete( _, _, mbMsg, _, mbCause ) => {
+          mbMsg.foreach( msg => log.warn( s"sbt.Incomplete - Message: ${msg}" ) )
+          mbCause.foreach( _.printStackTrace() )
+          log.warn( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } yielded an sbt.Incomplete: ${inc}""")
+          None
+        }
         case NonFatal(t) => {
           t.printStackTrace()
           log.warn( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } yielded an Exception: ${t}""")
@@ -3183,12 +3196,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = (ethcfgChainId in config).value
       val from = (xethFindCurrentSender in config).value.get
       val (to, data, amount) = parser.parsed
+      val nonceOverride = unwrapNonceOverride( Some( log ) )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
-
-      val nonceOverride = unwrapNonceOverride
 
       val f_out = Invoker.transaction.sendMessage( privateKey, to, Unsigned256( amount ), data, nonceOverride ) flatMap { txnHash =>
         log.info( s"""Sending data '0x${data.hex}' with ${amount} wei to address '0x${to.hex}' ${mbWithNonceClause(nonceOverride)}in transaction '0x${txnHash.hex}'.""" )
@@ -3210,12 +3222,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = (ethcfgChainId in config).value
       val from = (xethFindCurrentSender in config).value.get
       val (to, amount) = parser.parsed
+      val nonceOverride = unwrapNonceOverride( Some( log ) )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
-
-      val nonceOverride = unwrapNonceOverride
 
       val f_out = Invoker.transaction.sendWei( privateKey, to, Unsigned256( amount ), nonceOverride ) flatMap { txnHash =>
         log.info( s"Sending ${amount} wei to address '0x${to.hex}' ${mbWithNonceClause(nonceOverride)}in transaction '0x${txnHash.hex}'." )
@@ -3652,7 +3663,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       Mutables.GasLimitOverride.get match {
         case Some( overrideValue ) => {
           log.info( s"Gas limit override set: ${overrideValue}")
-          log.info( "Using gas limit override.")
           Invoker.Override( overrideValue )
         }
         case None => {
@@ -3664,7 +3674,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       Mutables.GasPriceOverride.get match {
         case Some( overrideValue ) => {
           log.info( s"Gas price override set: ${overrideValue}")
-          log.info( "Using gas price override.")
           Invoker.Override( overrideValue )
         }
         case None => {
@@ -4476,7 +4485,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             Some( privateKey )
           } else {
             Mutables.CurrentAddress.set( NoAddress )
-            throw new SenderNotAvailableException( s"Use of sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}) vetoed by user." )
+            throw nst(new SenderNotAvailableException( s"Use of sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}) vetoed by user." ))
           }
         }
         case _ => { // if we don't match, we reset / forget the cached private key
@@ -4587,7 +4596,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       println( s"A transaction with hash '${hexString(txnHash)}' will be submitted. Please wait." )
     }
     else {
-      Invoker.throwDisapproved( txn )
+      Invoker.throwDisapproved( txn, keepStackTrace = false )
     }
   }( ec )
 
@@ -4656,7 +4665,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def blankNull( str : String ) = if (str == null) "" else str
   private def span( len : Int ) = (0 until len).map(_ => "-").mkString
 
-  private def mbWithNonceClause( nonceOverride : Option[Unsigned256] ) = nonceOverride.fold("")( n => s"with nonce $n " )
+  private def mbWithNonceClause( nonceOverride : Option[Unsigned256] ) = nonceOverride.fold("")( n => s"with nonce ${n.widen} " )
 
   private def commaSepAliasesForAddress( chainId : Int, address : EthAddress ) : Failable[Option[String]] = {
     shoebox.Database.findAddressAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
