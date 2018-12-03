@@ -52,11 +52,6 @@ If this is the first time you are running the script, expect it to take a few mi
 [info] Loading project definition from /Users/testuser/eth-command-line/project
 [info] Updating ProjectRef(uri("file:/Users/testuser/eth-command-line/project/"), "eth-command-line-build")...
 ...
-[info] 	[SUCCESSFUL ] org.scala-lang.modules#scala-java8-compat_2.12;0.8.0!scala-java8-compat_2.12.jar(bundle) (3192ms)
-[info] 	[SUCCESSFUL ] org.apache.logging.log4j#log4j-core;2.8.1!log4j-core.jar (3173ms)
-[info] 	[SUCCESSFUL ] com.mchange#mchange-commons-scala_2.12;0.4.7!mchange-commons-scala_2.12.jar (3299ms)
-[info] 	[SUCCESSFUL ] com.typesafe.akka#akka-actor_2.12;2.4.18!akka-actor_2.12.jar (3832ms)
-[info] 	[SUCCESSFUL ] org.scala-lang#scala-reflect;2.12.7!scala-reflect.jar (3834ms)
 [info] 	[SUCCESSFUL ] org.scala-lang#scala-library;2.12.7!scala-library.jar (3988ms)
 [info] 	[SUCCESSFUL ] org.scala-lang#scala-compiler;2.12.7!scala-compiler.jar (4495ms)
 [info] Done updating.
@@ -136,6 +131,6 @@ __*The set-up steps we've completed were a one-time thing.*__
 
 Next time we enter an
 _sbt-ethereum_ repository, we won't have to go through all this set up, and we won't download so much stuff on startup.
-We will arrive directly at the command prompt.
+We will arrive pretty directly at the command prompt.
 
 @@@
