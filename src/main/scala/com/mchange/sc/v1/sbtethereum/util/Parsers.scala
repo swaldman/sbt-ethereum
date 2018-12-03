@@ -441,6 +441,13 @@ object Parsers {
     val raw = createAddressParser( "<to-address>", mbRpi ).flatMap( addr => success(addr) ~ bytesParser("<txn-data-hex>") ~ valueInWeiParser("<amount-to-pay>") ~ bigIntParser("[optional nonce]").? )
     raw.map { case ((( to, bytes ), amount), mbNonce ) => (to, bytes.toVector, amount, mbNonce ) }
   }
+  private [sbtethereum] def genToAddressBytesAmountParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) = {
+    val raw = createAddressParser( "<to-address>", mbRpi ).flatMap( addr => success(addr) ~ bytesParser("<txn-data-hex>") ~ valueInWeiParser("<amount-to-pay>") )
+    raw.map { case (( to, bytes ), amount) => (to, bytes.toVector, amount ) }
+  }
   private [sbtethereum] def genLiteralSetParser(
     state : State,
     mbLiterals : Option[immutable.Set[String]]

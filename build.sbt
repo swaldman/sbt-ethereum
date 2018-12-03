@@ -20,7 +20,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-Xlog-implicits" */
 )
 
-val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.9"
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.10-SNAPSHOT"
 
 lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   name := "sbt-ethereum",
