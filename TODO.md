@@ -4,6 +4,8 @@ DB schema updates
 
 * Implement a tags table
 
+* Implement node url table / rework node finding logic
+
 * Implement logic that checks prior existence of tables ("fresh" vs "preexisting") to inform schema upgrades
 
 * Even with freshness restriction (only upgading "fresh" tables), upgrades from very old schemas might fail if old upgrades try to
@@ -30,8 +32,6 @@ Other
 * Wrap Poller.TimoutException as Invoker.TimeoutException, or define a cross-cutting Timeout trait (so users of Invoker or stubs don't have to work with an Exception representing an implementation detail)
   - Note that we currently have defined a stub.TransactionInfo.TimeoutException
   - or maybe we should just alias Poller.TimeoutException everywher that seems convenient?
-
-* change (or alias) `contractAddress` field in stubs to simple address
 
 * stub.Sender -- synchronous versions of convenience methods?
 
@@ -86,6 +86,7 @@ Other
 * add type resriction to log / event Topic Seq, to limit length to four elements
 
 * Generate Java stubs
+
 * More consistency about when tasks use println(...) vs log.info(...)
 
 * Maybe someday put logging configuration into sbt-ethereum repository directory (where it can be easily edited). (maybe put log files there too?)
@@ -93,3 +94,4 @@ Other
 * Warn if no 'defaultSender' is set?
 
 
+* documentation: glossary (hex), (ens), (wallet)
