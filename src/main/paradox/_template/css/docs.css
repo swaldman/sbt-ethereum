@@ -143,6 +143,7 @@ a:visited {
     grid-row-start:    1;
     grid-row-end:      2;
     background-color: white;
+    scroll-behavior: smooth;
     overflow-y: scroll;
 }
 
