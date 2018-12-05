@@ -8,7 +8,7 @@
 
 * [Overview](overview.md)
 * [Warnings](warnings.md)
-* [Getting Started](getting-started.md)
+* [Tutorials](tutorials/index.md)
 * [Tasks](tasks/index.md)
 * [Appendix](appendix/index.md)
 

@@ -348,3 +348,20 @@ div.callout.note:before {
 .retroRule {
     text-align: center;
 }
+
+#githubBox {
+    margin-left: 4em;
+    margin-right: 4em;
+    margin-top: 1em;
+    padding-left: 1em;
+    padding-rightt:1em;
+    padding-top: 0.5em;
+    padding-bottom: 0.5em;
+    border: 2px solid black;
+    background-color: #EEEEEE;
+    font-size: smaller;
+}
+
+#githubBox a, #githubBox a:visited {
+		  color: blue;
+}

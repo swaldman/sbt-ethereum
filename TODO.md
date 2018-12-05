@@ -14,6 +14,9 @@ DB schema updates
 * Maybe define in-database constraints to prevent aliases that might mimic addresses or ENS names from ever being provided.
   (Currently there is just a require statement in `Table.AddressAliases.sert(...)`)
 
+* Maybe destaticify "shoebox" so we could interactively open, choose whether to migrate, pay attention to sbt setting etc on startup
+  - maybe provide read-only access to previous db versions when opening old repositories? but might be a bit hard to manage.
+
 Other
 
 * let repositories suggest ABIs <--> addresses <--> aliases ???
@@ -94,4 +97,4 @@ Other
 * Warn if no 'defaultSender' is set?
 
 
-* documentation: glossary (hex), (ens), (wallet)
+* documentation: glossary (hex), (ens), (wallet), (ABI)
