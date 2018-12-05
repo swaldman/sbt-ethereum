@@ -3,7 +3,7 @@ val nexusSnapshots = nexus + "content/repositories/snapshots"
 val nexusReleases = nexus + "service/local/staging/deploy/maven2"
 
 ThisBuild / organization := "com.mchange"
-ThisBuild / version := "0.1.6-SNAPSHOT"
+ThisBuild / version := "0.1.6"
 
 ThisBuild / resolvers += ("releases" at nexusReleases)
 ThisBuild / resolvers += ("snapshots" at nexusSnapshots)
@@ -20,7 +20,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-Xlog-implicits" */
 )
 
-val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.10-SNAPSHOT"
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.10"
 
 lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   name := "sbt-ethereum",
@@ -31,7 +31,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
     "com.mchange"    %% "mlog-scala"            % "0.3.10",
     "com.mchange"    %% "literal"               % "0.0.2",
     "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
-    "com.mchange"    %% "ens-scala"             % "0.0.7-SNAPSHOT" changing(),
+    "com.mchange"    %% "ens-scala"             % "0.0.7",
     "com.mchange"    %% "texttable"             % "0.0.2",
     "com.mchange"    %  "c3p0"                  % "0.9.5.2",
     "com.h2database" %  "h2"                    % "1.4.192",
