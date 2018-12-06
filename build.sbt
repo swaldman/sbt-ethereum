@@ -3,7 +3,7 @@ val nexusSnapshots = nexus + "content/repositories/snapshots"
 val nexusReleases = nexus + "service/local/staging/deploy/maven2"
 
 ThisBuild / organization := "com.mchange"
-ThisBuild / version := "0.1.6"
+ThisBuild / version := "0.1.7-SNAPSHOT"
 
 ThisBuild / resolvers += ("releases" at nexusReleases)
 ThisBuild / resolvers += ("snapshots" at nexusSnapshots)
