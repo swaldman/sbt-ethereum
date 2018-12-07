@@ -119,10 +119,14 @@ object Parsers {
 
   private [sbtethereum] val RawBytesParser = literal("0x") ~> RawByteParser.*
 
+  private [sbtethereum] val RawUrlParser = NotSpace
+
   //private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )
   private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.*) ~> token(RawAmountParser, tabHelp)
 
   private [sbtethereum] def bytesParser( tabHelp : String ) = token(Space.*) ~> token(literal("0x")) ~> token(RawByteParser.*, tabHelp)
+
+  private [sbtethereum] def urlParser( tabHelp : String ) = token(Space.*) ~> token(RawUrlParser, tabHelp)
 
   private [sbtethereum] val UnitParser = {
     val ( w, gw, s, f, e ) = ( "wei", "gwei", "szabo", "finney", "ether" );

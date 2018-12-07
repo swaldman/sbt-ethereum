@@ -519,6 +519,21 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
+  def findJsonRpcUrl( chainId : Int, configuration : sbt.Configuration ) : Failable[Option[String]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.ChainJsonRpcUrls.selectJsonRpcUrl( _, chainId, configuration ) ) )
+  }
+
+  private [sbtethereum]
+  def setJsonRpcUrl( chainId : Int, configuration : sbt.Configuration, jsonRpcUrl : String ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.ChainJsonRpcUrls.insertJsonRpcUrl( _, chainId, configuration, jsonRpcUrl ) ) )
+  }
+
+  private [sbtethereum]
+  def dropJsonRpcUrl( chainId : Int, configuration : sbt.Configuration ) : Failable[Boolean] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.ChainJsonRpcUrls.deleteJsonRpcUrl( _, chainId, configuration ) ) )
+  }
+
+  private [sbtethereum]
   def deleteEtherscanApiKey() : Failable[Boolean] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.Metadata.delete( _, Table.Metadata.Key.EtherscanApiKey ) ) )
   }
