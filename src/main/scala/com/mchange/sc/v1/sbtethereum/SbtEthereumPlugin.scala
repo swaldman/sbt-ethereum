@@ -77,6 +77,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   final case class TimestampedAbi( abi : Abi, timestamp : Option[Long] )
 
+  object OneTimeWarnedKey {
+    final object NodeJsonRpcInBuild extends OneTimeWarnedKey
+  }
+  trait OneTimeWarnedKey
+
   private final object Mutables {
     // MT: protected by CurrentAddress' lock
     val CurrentAddress = new AtomicReference[AddressInfo]( NoAddress )
@@ -90,6 +95,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val GasPriceOverride = new AtomicReference[Option[BigInt]]( None )
 
     val NonceOverride = new AtomicReference[Option[BigInt]]( None )
+
+    // MT: protected by OneTimeWarned's lock
+    val OneTimeWarned = new AtomicReference[Set[Tuple2[OneTimeWarnedKey,Configuration]]]( Set.empty )
 
     // MT: protected by AbiOverride's lock
     val AbiOverrides = new AtomicReference[immutable.Map[Int,immutable.Map[EthAddress,Abi]]]( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
@@ -112,6 +120,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       GasLimitOverride.set( None )
       GasPriceOverride.set( None )
       NonceOverride.set( None )
+      OneTimeWarned.set( Set.empty )
       AbiOverrides synchronized {
         AbiOverrides.set( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
       }
@@ -125,6 +134,21 @@ object SbtEthereumPlugin extends AutoPlugin {
         LocalGanache.set( None )
       }
     }
+  }
+
+  private def oneTimeWarn( key : OneTimeWarnedKey, config : Configuration, log : sbt.Logger, messageBuilder : () => Option[String] ) : Unit = Mutables.OneTimeWarned.synchronized {
+    val current = Mutables.OneTimeWarned.get
+    val check = Tuple2( key, config )
+    if( !current( check ) ) {
+      messageBuilder().foreach { message =>
+        log.warn( message )
+        Mutables.OneTimeWarned.set( current + check )
+      }
+    }
+  }
+
+  private def oneTimeWarnedReset( key : OneTimeWarnedKey, config : Configuration ) : Unit = Mutables.OneTimeWarned.synchronized {
+    Mutables.OneTimeWarned.set( Mutables.OneTimeWarned.get() - Tuple2( key, config ) )
   }
 
   private def resetAllState() : Unit = {
@@ -277,10 +301,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgGasPriceFloor                 = settingKey[BigInt]      ("Minimum gas limit to use in transactions (usually left unset)")
     val ethcfgGasPriceMarkup                = settingKey[Double]      ("Fraction by which automatically estimated gas price will be marked up (if not overridden) in executing transactions")
     val ethcfgIncludeLocations              = settingKey[Seq[String]] ("Directories or URLs that should be searched to resolve import directives, besides the source directory itself")
-    val ethcfgJsonRpcUrl                    = settingKey[String]      ("URL of the Ethereum JSON-RPC service build should work with")
     val ethcfgKeystoreAutoImportLocationsV3 = settingKey[Seq[File]]   ("Directories from which V3 wallets will be automatically imported into the sbt-ethereum shoebox")
     val ethcfgKeystoreAutoRelockSeconds     = settingKey[Int]         ("Number of seconds after which an unlocked private key should automatically relock")
     val ethcfgNetcompileUrl                 = settingKey[String]      ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
+    val ethcfgNodeJsonRpcUrl                = settingKey[String]      ("URL of the Ethereum JSON-RPC service the build should work with")
     val ethcfgScalaStubsPackage             = settingKey[String]      ("Package into which Scala stubs of Solidity compilations should be generated")
     val ethcfgSender                        = settingKey[String]      ("The address from which transactions will be sent")
     val ethcfgSolidityCompilerOptimize      = settingKey[Boolean]     ("Sets whether the Solidity compiler should run its optimizer on generated code, if supported.")
@@ -498,16 +522,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethcfgGasPriceMarkup := 0.0, // by default, use conventional gas price
 
     ethcfgIncludeLocations := Nil,
-
-    // thanks to Mike Slinn for suggesting these external defaults
-    ethcfgJsonRpcUrl := {
-      def mbInfura               = ExternalValue.EthInfuraToken.map(token => s"https://mainnet.infura.io/$token")
-      def mbSpecifiedDefaultNode = ExternalValue.EthDefaultNode
-
-      (mbInfura orElse mbSpecifiedDefaultNode).getOrElse( DefaultEthJsonRpcUrl )
-    },
-
-    ethcfgJsonRpcUrl in Test := DefaultTestEthJsonRpcUrl,
 
     ethcfgKeystoreAutoImportLocationsV3 := {
       def debug( location : String ) : String = s"Failed to find V3 keystore in ${location}"
@@ -1003,6 +1017,47 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // private, internal task definitions
 
+  private def findNodeJsonRpcUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[String]] = Def.task {
+    val log = streams.value.log
+    ethcfgNodeJsonRpcUrl.?.value match {
+      case Some( url ) => {
+        if ( warn ) {
+          val warning = {
+            () => {
+              val pfx = {
+                config match {
+                  case Compile => ""
+                  case Test    => "Test / "
+                  case other   => throw new SbtEthereumException( s"Unexpected task configuration: ${other}" )
+                }
+              }
+              Some (
+                s"'${pfx}ethcfgNodeJsonRpcUrl' has been explicitly set to '${url}' in the build or as a global setting in the .sbt directory. " +
+                s"This value will be used in preference to any value set in the sbt-ethereum shoebox via '${pfx}ethNodeJsonRpcUrlSet'. "        +
+                s"However, you can temporarily override this value for a single session using '${pfx}ethNodeJsonRpcUrlOverrideSet'."
+              )
+            }
+          }
+          oneTimeWarn( OneTimeWarnedKey.NodeJsonRpcInBuild, config, log, warning )
+        }
+        url
+      }
+      case None if config == Compile => {
+        // thanks to Mike Slinn for suggesting these external defaults
+        def mbInfura               = ExternalValue.EthInfuraToken.map(token => s"https://mainnet.infura.io/$token")
+        def mbSpecifiedDefaultNode = ExternalValue.EthDefaultNode
+
+        (mbInfura orElse mbSpecifiedDefaultNode).getOrElse( DefaultEthJsonRpcUrl )
+      }
+      case None if config == Test => {
+        DefaultTestEthJsonRpcUrl
+      }
+      case None => {
+        throw new SbtEthereumException( s"Unexpected config: ${config}" )
+      }
+    }
+  }
+
   private def findPrivateKeyTask( config : Configuration ) : Initialize[Task[EthPrivateKey]] = Def.task {
     val s = state.value
     val log = streams.value.log
@@ -1022,7 +1077,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def findExchangerConfigTask( config : Configuration ) : Initialize[Task[Exchanger.Config]] = Def.task {
-    val httpUrl = ( config / ethcfgJsonRpcUrl ).value
+    val httpUrl = findNodeJsonRpcUrlTask(warn=true)(config).value
     val timeout = xethcfgAsyncOperationTimeout.value
     Exchanger.Config( new URL(httpUrl), timeout ) 
   }
@@ -1493,7 +1548,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
-      val jsonRpcUrl       = (ethcfgJsonRpcUrl in config).value
+      val jsonRpcUrl       = findNodeJsonRpcUrlTask(warn=true)(config).value
       val timeout          = xethcfgAsyncOperationTimeout.value
       val baseCurrencyCode = ethcfgBaseCurrencyCode.value
       val mbAddress        = parser.parsed
@@ -3330,7 +3385,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethFindCacheRichParserInfoTask( config : Configuration ) : Initialize[Task[RichParserInfo]] = Def.task {
     val chainId            = (config / ethcfgChainId).value
-    val jsonRpcUrl         = (config / ethcfgJsonRpcUrl).value
+    val jsonRpcUrl         = findNodeJsonRpcUrlTask(warn=false)(config).value
     val addressAliases     = shoebox.Database.findAllAddressAliases( chainId ).assert
     val abiAliases         = shoebox.Database.findAllAbiAliases( chainId ).assert
     val abiOverrides       = abiOverridesForChain( chainId )
@@ -3450,7 +3505,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val sessionCompilers = Mutables.SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys during onLoad should have forced sessionCompilers to be set, but it's not." ) )
     val compilerKeys = sessionCompilers.keySet
 
-    val mbExplicitJsonRpcUrl = ethcfgJsonRpcUrl.?.value
+    val mbJsonRpcUrl = Some( findNodeJsonRpcUrlTask(warn=false)(Compile).value )
 
     Mutables.CurrentSolidityCompiler.get.map( _._2).getOrElse {
       def latestLocalInstallVersion : Option[SemanticVersion] = {
@@ -3460,11 +3515,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       def latestLocalInstallKey : Option[String] = latestLocalInstallVersion.map( version => s"${LocalSolc.KeyPrefix}${version.versionString}" )
 
       val key = {
-        mbExplicitJsonRpcUrl.flatMap( ejru => compilerKeys.find( key => key.startsWith(EthNetcompile.KeyPrefix) && key.endsWith( ejru ) ) ) orElse // use an explicitly set netcompile
-        compilerKeys.find( _ == LocalPathSolcKey ) orElse                                                                                          // use a local compiler on the path
-        latestLocalInstallKey orElse                                                                                                               // use the latest local compiler in the shoebox
-        compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse                                                                          // use the default eth-netcompile
-        compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) )                                                                                  // use the (deprecated, mostly disappeared) json-rpc eth_CompileSolidity
+        mbJsonRpcUrl.flatMap( jru => compilerKeys.find( key => key.startsWith(EthNetcompile.KeyPrefix) && key.endsWith( jru ) ) ) orElse  // use an explicitly set netcompile
+        compilerKeys.find( _ == LocalPathSolcKey ) orElse                                                                                 // use a local compiler on the path
+        latestLocalInstallKey orElse                                                                                                      // use the latest local compiler in the shoebox
+        compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse                                                                 // use the default eth-netcompile
+        compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) )                                                                         // use the (deprecated, mostly disappeared) json-rpc eth_CompileSolidity
       }.getOrElse {
         throw new Exception( s"Cannot find a usable solidity compiler. compilerKeys: ${compilerKeys}, sessionCompilers: ${sessionCompilers}" )
       }
@@ -3478,7 +3533,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
     val log        = streams.value.log
-    val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
+    val jsonRpcUrl = findNodeJsonRpcUrlTask(warn=true)(config).value
 
     val markup          = ethcfgGasPriceMarkup.value
     val defaultGasPrice = (xethDefaultGasPrice in config).value
@@ -3524,7 +3579,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // Used only for Test
     val testingResourcesObjectName = (xethcfgTestingResourcesObjectName in Test).value
-    val testingEthJsonRpcUrl = (ethcfgJsonRpcUrl in Test).value
+    val testingEthJsonRpcUrl = findNodeJsonRpcUrlTask(warn=true)(Test).value
 
     // Sensitive to config
     val scalaStubsTarget = (sourceManaged in config).value
@@ -3634,7 +3689,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val log = streams.value.log
 
-    val jsonRpcUrl      = (ethcfgJsonRpcUrl in config).value
+    val jsonRpcUrl      = findNodeJsonRpcUrlTask(warn=true)(config).value
 
     val pollPeriod      = ethcfgTransactionReceiptPollPeriod.value
     val timeout         = ethcfgTransactionReceiptTimeout.value
@@ -3949,7 +4004,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethTransactionCountTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
     val log        = streams.value.log
-    val jsonRpcUrl = (ethcfgJsonRpcUrl in config).value
+    val jsonRpcUrl = findNodeJsonRpcUrlTask(warn=true)(config).value
     val timeout    = xethcfgAsyncOperationTimeout.value
     val sender     = (xethFindCurrentSender in config).value.get
 
@@ -3960,8 +4015,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethOnLoadBannerTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    // val mainEthJsonRpcUrl = (ethcfgJsonRpcUrl in Compile).value
-    // val testEthJsonRpcUrl = (ethcfgJsonRpcUrl in Test).value
+    // val mainEthJsonRpcUrl = findNodeJsonRpcUrlTask(warn=false)(Compile).value
+    // val testEthJsonRpcUrl = findNodeJsonRpcUrlTask(warn=false)(Test).value
     // val chainId           = (ethcfgChainId in Compile).value
     // val mbCurrentSender   = (xethFindCurrentSender in Compile).value
     
@@ -4283,7 +4338,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     import Compiler.Solidity._
 
     val netcompileUrl = ethcfgNetcompileUrl.?.value
-    val jsonRpcUrl    = (ethcfgJsonRpcUrl in Compile).value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
+    val jsonRpcUrl    = findNodeJsonRpcUrlTask(warn=false)(Compile).value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
 
     val testTimeout = xethcfgAsyncOperationTimeout.value
 

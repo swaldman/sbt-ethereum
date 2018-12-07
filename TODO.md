@@ -96,5 +96,6 @@ Other
 
 * Warn if no 'defaultSender' is set?
 
+* A flag in Invoker.Context (update stub.Context factories and stub factories in stub.Generator) for broadcasting rather than round-robin-ing Seq URL.Sources
 
 * documentation: glossary (hex), (ens), (wallet), (ABI)
