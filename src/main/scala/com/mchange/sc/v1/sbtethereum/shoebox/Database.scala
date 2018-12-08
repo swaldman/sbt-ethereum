@@ -525,6 +525,8 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
   private [sbtethereum]
   def setDefaultJsonRpcUrl( chainId : Int, jsonRpcUrl : String ) : Failable[Unit] = DataSource.flatMap { ds =>
+    require( jsonRpcUrl == jsonRpcUrl.trim(), s"Bad jsonRpcUrl '${jsonRpcUrl}', should not have whitespace trailing or leading." )
+    require( chainId >= 0, "Negative Chain IDs mean no Chain ID specified. Cannot store default values for unspecified chain. [chainId: ${chainId}]" )
     Failable( borrow( ds.getConnection() )( Table.ChainDefaultJsonRpcUrls.insertJsonRpcUrl( _, chainId, jsonRpcUrl ) ) )
   }
 
