@@ -57,7 +57,7 @@ private [sbtethereum] object Schema_h2 {
         stmt.executeUpdate( Table.EnsBidStore.CreateIndex )
         stmt.executeUpdate( Table.AbiAliases.CreateSql )
         stmt.executeUpdate( Table.AbiAliases.CreateIndex )
-        stmt.executeUpdate( Table.ChainJsonRpcUrls.CreateSql )
+        stmt.executeUpdate( Table.ChainDefaultJsonRpcUrls.CreateSql )
       }
       Table.Metadata.ensureSchemaVersion( conn )
       Table.Metadata.updateLastSuccessfulSbtEthereumVersion( conn )
@@ -1125,34 +1125,29 @@ private [sbtethereum] object Schema_h2 {
         borrow( ps.executeQuery() )( _.next() )
       }
     }
-    final object ChainJsonRpcUrls {
+    final object ChainDefaultJsonRpcUrls {
       val CreateSql: String = {
-        """|CREATE TABLE IF NOT EXISTS chain_json_rpc_urls (
-           |   chain_id      INTEGER,
-           |   configuration VARCHAR(32),
-           |   json_rpc_url  VARCHAR(512),
-           |   PRIMARY KEY ( chain_id, configuration )
+        """|CREATE TABLE IF NOT EXISTS chain_default_json_rpc_urls (
+           |   chain_id      INTEGER PRIMARY KEY,
+           |   json_rpc_url  VARCHAR(512)
            |)""".stripMargin
       }
-      def selectJsonRpcUrl( conn : Connection, chainId : Int, configuration : sbt.Configuration ) : Option[String] = {
-        borrow( conn.prepareStatement( "SELECT json_rpc_url FROM chain_json_rpc_urls WHERE chain_id = ? AND configuration = ?" ) ) { ps =>
+      def selectJsonRpcUrl( conn : Connection, chainId : Int ) : Option[String] = {
+        borrow( conn.prepareStatement( "SELECT json_rpc_url FROM chain_default_json_rpc_urls WHERE chain_id = ?" ) ) { ps =>
           ps.setInt(1, chainId)
-          ps.setString(2, configuration.toString)
           borrow( ps.executeQuery() )( getMaybeSingleString )
         }
       }
-      def insertJsonRpcUrl( conn : Connection, chainId : Int, configuration : sbt.Configuration, jsonRpcUrl : String ) : Unit = {
-        borrow( conn.prepareStatement( "INSERT INTO chain_json_rpc_urls( chain_id, configuration, json_rpc_url ) VALUES( ?, ?, ? )" ) ) { ps =>
+      def insertJsonRpcUrl( conn : Connection, chainId : Int, jsonRpcUrl : String ) : Unit = {
+        borrow( conn.prepareStatement( "INSERT INTO chain_default_json_rpc_urls( chain_id, json_rpc_url ) VALUES( ?, ? )" ) ) { ps =>
           ps.setInt(1, chainId)
-          ps.setString(2, configuration.toString)
-          ps.setString(3, jsonRpcUrl)
+          ps.setString(2, jsonRpcUrl)
           ps.executeUpdate()
         }
       }
-      def deleteJsonRpcUrl( conn : Connection, chainId : Int, configuration : sbt.Configuration ) : Boolean = {
-        borrow( conn.prepareStatement( "DELETE FROM chain_json_rpc_urls WHERE chain_id = ? AND configuration = ?" ) ) { ps =>
+      def deleteJsonRpcUrl( conn : Connection, chainId : Int ) : Boolean = {
+        borrow( conn.prepareStatement( "DELETE FROM chain_default_json_rpc_urls WHERE chain_id = ?" ) ) { ps =>
           ps.setInt(1, chainId)
-          ps.setString(2, configuration.toString)
           ps.executeUpdate() > 0
         }
       }

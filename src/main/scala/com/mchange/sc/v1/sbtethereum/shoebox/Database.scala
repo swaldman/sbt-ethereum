@@ -519,18 +519,18 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def findJsonRpcUrl( chainId : Int, configuration : sbt.Configuration ) : Failable[Option[String]] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.ChainJsonRpcUrls.selectJsonRpcUrl( _, chainId, configuration ) ) )
+  def findDefaultJsonRpcUrl( chainId : Int ) : Failable[Option[String]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.ChainDefaultJsonRpcUrls.selectJsonRpcUrl( _, chainId ) ) )
   }
 
   private [sbtethereum]
-  def setJsonRpcUrl( chainId : Int, configuration : sbt.Configuration, jsonRpcUrl : String ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.ChainJsonRpcUrls.insertJsonRpcUrl( _, chainId, configuration, jsonRpcUrl ) ) )
+  def setDefaultJsonRpcUrl( chainId : Int, jsonRpcUrl : String ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.ChainDefaultJsonRpcUrls.insertJsonRpcUrl( _, chainId, jsonRpcUrl ) ) )
   }
 
   private [sbtethereum]
-  def dropJsonRpcUrl( chainId : Int, configuration : sbt.Configuration ) : Failable[Boolean] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.ChainJsonRpcUrls.deleteJsonRpcUrl( _, chainId, configuration ) ) )
+  def dropDefaultJsonRpcUrl( chainId : Int ) : Failable[Boolean] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.ChainDefaultJsonRpcUrls.deleteJsonRpcUrl( _, chainId ) ) )
   }
 
   private [sbtethereum]
