@@ -103,10 +103,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val AbiOverrides = new AtomicReference[immutable.Map[Int,immutable.Map[EthAddress,Abi]]]( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
 
     // MT: protected by SenderOverride's lock
-    val SenderOverride = new AtomicReference[Option[ ( Int, EthAddress ) ]]( None )
-
-    // MT: protected by TestSenderOverride's lock
-    val TestSenderOverride = new AtomicReference[Option[ ( Int, EthAddress ) ]]( None )
+    val SenderOverride = new AtomicReference[Map[Int,EthAddress]]( Map.empty )
 
     // MT: protected by NodeJsonRpcOverride's lock
     val NodeJsonRpcUrlOverride = new AtomicReference[Map[Int,String]]( Map.empty ) // Int is the chain ID
@@ -128,10 +125,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         AbiOverrides.set( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
       }
       SenderOverride synchronized {
-        SenderOverride.set( None )
+        SenderOverride.set( Map.empty )
       }
-      TestSenderOverride synchronized {
-        TestSenderOverride.set( None )
+      NodeJsonRpcUrlOverride.synchronized {
+        NodeJsonRpcUrlOverride.set( Map.empty )
       }
       LocalGanache synchronized {
         LocalGanache.set( None )
@@ -172,23 +169,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     out
   }
 
-  private def senderOverrideForConfig( config : Configuration ) : AtomicReference[Option[ ( Int, EthAddress ) ]] = if ( config == Test ) Mutables.TestSenderOverride else Mutables.SenderOverride
-
-  private def getSenderOverrideAddress( config : Configuration )( log : sbt.Logger, chainId : Int ) : Option[EthAddress] = {
-    val configSenderOverride = senderOverrideForConfig( config )
-
-    configSenderOverride.synchronized {
-      val ChainId = chainId
-
-      configSenderOverride.get match {
-        case Some( ( ChainId, address ) ) => Some( address )
-        case Some( (badChainId, _) ) => {
-          log.info( s"A sender override was set for the chain with ID ${badChainId}, but that is no longer the current 'ethcfgChainId'. The sender override is stale and will be dropped." )
-          configSenderOverride.set( None )
-          None
-        }
-        case None => None
-      }
+  private def senderOverrideAddress( chainId : Int ) : Option[EthAddress] = {
+    Mutables.SenderOverride.synchronized {
+      val map = Mutables.SenderOverride.get
+      map.get( chainId )
     }
   }
 
@@ -303,7 +287,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethcfgAutoDeployContracts           = settingKey[Seq[String]] ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
     val ethcfgBaseCurrencyCode              = settingKey[String]      ("Currency code for currency in which prices of ETH and other tokens should be displayed.")
-    val ethcfgChainId                       = settingKey[Int]         ("The EIP-155 chain ID for the network with which the application will interact ('mainnet' = 1, 'ropsten' = 3, 'rinkeby' = 4, etc. id<=0 for ephemeral chains)")
+    val ethcfgChainId                       = settingKey[Int]         ("The EIP-155 chain ID for the network with which the application will interact ('mainnet' = 1, 'ropsten' = 3, 'rinkeby' = 4, etc. id<0 for ephemeral chains)")
     val ethcfgEntropySource                 = settingKey[SecureRandom]("The source of randomness that will be used for key generation")
     val ethcfgGasLimitCap                   = settingKey[BigInt]      ("Maximum gas limit to use in transactions")
     val ethcfgGasLimitFloor                 = settingKey[BigInt]      ("Minimum gas limit to use in transactions (usually left unset)")
@@ -317,7 +301,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgNetcompileUrl                 = settingKey[String]      ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
     val ethcfgNodeJsonRpcUrl                = settingKey[String]      ("URL of the Ethereum JSON-RPC service the build should work with")
     val ethcfgScalaStubsPackage             = settingKey[String]      ("Package into which Scala stubs of Solidity compilations should be generated")
-    val ethcfgSender                        = settingKey[String]      ("The address from which transactions will be sent")
+    val ethcfgAddressSender                 = settingKey[String]      ("The address from which transactions will be sent")
     val ethcfgSolidityCompilerOptimize      = settingKey[Boolean]     ("Sets whether the Solidity compiler should run its optimizer on generated code, if supported.")
     val ethcfgSolidityCompilerOptimizerRuns = settingKey[Int]         ("Sets the number of optimization runs the Solidity compiler will execute, if supported and 'ethcfgSolidityCompilerOptimize' is set to 'true'.")
     val ethcfgSoliditySource                = settingKey[File]        ("Solidity source code directory")
@@ -363,9 +347,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressAliasPrint          = inputKey[Unit]                             ("Prints the address associated with a given alias.")
     val ethAddressAliasSet            = inputKey[Unit]                             ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
     val ethAddressBalance             = inputKey[BigDecimal]                       ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
-    val ethAddressSenderEffective     = taskKey[Failable[EthAddress]]              ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
-    val ethAddressSenderOverrideDrop  = taskKey [Unit]                             ("Removes any sender override, reverting to any 'ethcfgSender' or defaultSender that may be set.")
-    val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgSender' or defaultSender that may be set.")
+    val ethAddressSenderPrint         = taskKey[Failable[EthAddress]]              ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
+    val ethAddressSenderOverrideDrop  = taskKey [Unit]                             ("Removes any sender override, reverting to any 'ethcfgAddressSender' or defaultSender that may be set.")
+    val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or defaultSender that may be set.")
     val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
 
     val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops for an ABI.")
@@ -684,9 +668,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethTransactionPing in Test := { ethTransactionPingTask( Test ).evaluated },
 
-    ethAddressSenderEffective in Compile := { ethAddressSenderEffectiveTask( Compile ).value },
+    ethAddressSenderPrint in Compile := { ethAddressSenderPrintTask( Compile ).value },
 
-    ethAddressSenderEffective in Test := { ethAddressSenderEffectiveTask( Test ).value },
+    ethAddressSenderPrint in Test := { ethAddressSenderPrintTask( Test ).value },
 
     ethAddressSenderOverrideDrop in Compile := { ethAddressSenderOverrideDropTask( Compile ).value },
 
@@ -1544,7 +1528,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val alias = parser.parsed
       val check = shoebox.Database.dropAddressAlias( chainId, alias ).get // assert no database problem
       if (check) log.info( s"Alias '${alias}' successfully dropped (for chain with ID ${chainId}).")
-      else log.warn( s"Alias '${alias}' is not defined (on blockchain '${chainId}'), and so could not be dropped." )
+      else log.warn( s"Alias '${alias}' is not defined (on blockchain with ID ${chainId}), and so could not be dropped." )
 
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -1634,14 +1618,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethAddressSenderEffectiveTask( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = _xethFindCurrentSenderTask( printEffectiveSender = true )( config )
+  private def ethAddressSenderPrintTask( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = _xethFindCurrentSenderTask( printEffectiveSender = true )( config )
 
   private def ethAddressSenderOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
-    val configSenderOverride = senderOverrideForConfig( config )
-    configSenderOverride.synchronized {
-      val log = streams.value.log
-      Mutables.SenderOverride.set( None )
-      log.info("No sender override is now set. Effective sender will be determined by 'ethcfgSender' setting, the System property 'eth.sender', the environment variable 'ETH_SENDER', or a 'defaultSender' alias.")
+    val log = streams.value.log
+    Mutables.SenderOverride.synchronized {
+      Mutables.SenderOverride.set( Map.empty )
+      log.info("No sender override is now set. Effective sender will be determined by 'ethcfgAddressSender' setting, the System property 'eth.sender', the environment variable 'ETH_SENDER', or a 'defaultSender' alias.")
     }
   }
 
@@ -1650,11 +1633,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val chainId = (ethcfgChainId in config).value
 
-    val mbSenderOverride = getSenderOverrideAddress( config )( log, chainId )
+    val mbSenderOverride = senderOverrideAddress( chainId )
 
-    val message = mbSenderOverride.fold( s"No sender override is currently set (for configuration '${config}')." ) { address =>
+    val message = mbSenderOverride.fold( s"No sender override is currently set (for chain with ID ${chainId})." ) { address =>
       val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s", aliases $str)" ) )
-      s"A sender override is set, address '${address.hex}' (on chain with ID ${chainId}${aliasesPart}, configuration '${config}')."
+      s"A sender override is set, address '${hexString(address)}' (on chain with ID ${chainId}${aliasesPart})."
     }
 
     log.info( message )
@@ -1662,16 +1645,16 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethAddressSenderOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
-    val configSenderOverride = senderOverrideForConfig( config )
 
     Def.inputTask {
-      configSenderOverride.synchronized {
+      Mutables.SenderOverride.synchronized {
         val log = streams.value.log
         val chainId = (ethcfgChainId in config).value
         val address = parser.parsed
         val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "")( _.fold("")( str => s", aliases $str)" ) )
 
-        configSenderOverride.set( Some( ( chainId, address ) ) )
+        val current = Mutables.SenderOverride.get
+        Mutables.SenderOverride.set( current + Tuple2(chainId, address) )
 
         log.info( s"Sender override set to '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart})." )
       }
@@ -2295,7 +2278,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         case Left( address ) => {
           val mbinfo = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get // throw any db problem
           mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
-            section( s"Contract Address (on blockchain '${info.chainId}')", Some( info.contractAddress.hex ), true )
+            section( s"Contract Address (on blockchain with ID ${info.chainId})", Some( info.contractAddress.hex ), true )
             section( "Deployer Address", info.mbDeployerAddress.map( _.hex ), true )
             section( "Transaction Hash", info.mbTransactionHash.map( _.hex ), true )
             section( "Deployment Timestamp", info.mbDeployedWhen.map( l => (new Date(l)).toString ) )
@@ -3087,7 +3070,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val log = streams.value.log
       val chainId = (ethcfgChainId in config).value
-      val ephemeralDeployment = chainId <= 0
+      val ephemeralDeployment = chainId < 0
 
       val sender = (xethFindCurrentSender in config).value.get
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
@@ -3616,7 +3599,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val chainId = (ethcfgChainId in config).value
 
-      val mbSenderOverride = getSenderOverrideAddress( config )( log, chainId )
+      val mbSenderOverride = senderOverrideAddress( chainId )
       mbSenderOverride match {
         case Some( address ) => {
           ifPrint(
@@ -3626,13 +3609,13 @@ object SbtEthereumPlugin extends AutoPlugin {
           address
         }
         case None => {
-          val mbAddrStr = (ethcfgSender in config).?.value
+          val mbAddrStr = (ethcfgAddressSender in config).?.value
           mbAddrStr match {
             case Some( addrStr ) => {
               val address = EthAddress( addrStr )
               ifPrint (
                 s"""|The current effective sender is ${verboseAddress(chainId, address)}.
-                    |It has been set by build setting 'ethcfgSender'.
+                    |It has been set by build setting 'ethcfgAddressSender'.
                     | + No sender override has been set.""".stripMargin
               )
               address
@@ -3644,7 +3627,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                     s"""|The current effective sender is ${verboseAddress(chainId, address)}.
                         |It has been set by an external value -- either System property 'eth.sender' or environment variable 'ETH_SENDER'.
                         | + No sender override has been set.
-                        | + Build setting 'ethcfgSender has not been defined.""".stripMargin
+                        | + Build setting 'ethcfgAddressSender has not been defined.""".stripMargin
                   )
                   address
                 }
@@ -3657,7 +3640,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                         s"""|The current effective sender is ${verboseAddress(chainId, address)}.
                             |It has been set by the special alias '${DefaultSenderAlias}'.
                             | + No sender override has been set.
-                            | + Build setting 'ethcfgSender has not been defined. 
+                            | + Build setting 'ethcfgAddressSender has not been defined. 
                             | + Neither the System property 'eth.sender' nor the environment variable 'ETH_SENDER' are defined.""".stripMargin
                       )
                       address
@@ -3670,7 +3653,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                               |(with widely known private key '0x${testing.Default.Faucet.PrivateKey.hex}')."
                               |It has been set because you are in the Test configuration, and no address has been defined for this configuration.
                               | + No sender override has been set.
-                              | + Build setting 'ethcfgSender has not been defined. 
+                              | + Build setting 'ethcfgAddressSender has not been defined. 
                               | + Neither the System property 'eth.sender' nor the environment variable 'ETH_SENDER' are defined.
                               | + No '${DefaultSenderAlias}' address alias has been defined for chain with ID ${chainId}.""".stripMargin
                         )
@@ -3681,7 +3664,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                           s"""|No effective sender is defined. (chain with ID ${chainId}, configuration '${config}')
                               |Cannot find any of...
                               | + a sender override
-                              | + a value for build setting 'ethcfgSender' 
+                              | + a value for build setting 'ethcfgAddressSender' 
                               | + an 'eth.sender' System property
                               | + an 'ETH_SENDER' environment variable
                               | + a '${DefaultSenderAlias}' address alias defined for chain with ID ${chainId}""".stripMargin
@@ -4729,7 +4712,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val Address = address
       val now = System.currentTimeMillis
       Mutables.CurrentAddress.get match {
-        case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if chainId and/or ethcfgSender has changed, this will no longer match
+        case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if chainId and/or ethcfgAddressSender has changed, this will no longer match
           val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
           val ok = {
             if ( userValidateIfCached ) {
@@ -4904,7 +4887,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def assertSomeSender( log : Logger, fsender : Failable[EthAddress] ) : Option[EthAddress] = {
     val onFailed : Failed[EthAddress] => Nothing = failed => {
       val errMsg = {
-        val base = "No sender found. Please define a 'defaultSender' alias, or the setting 'ethcfgSender', or use 'ethAddressSenderOverrideSet' for a temporary sender."
+        val base = "No sender found. Please define a 'defaultSender' alias, or the setting 'ethcfgAddressSender', or use 'ethAddressSenderOverrideSet' for a temporary sender."
         val extra = failed.source match {
           case _ : SenderNotAvailableException => ""
           case _                               => s" [Cause: ${failed.message}]"
