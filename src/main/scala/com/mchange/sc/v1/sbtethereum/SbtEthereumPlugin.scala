@@ -1770,10 +1770,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     catch {
       case e : SenderNotAvailableException => {
-        log.info( "No sender is available. Tasks that require a sender would fail." )
-        log.info( " + No session override has been set via 'ethAddressSenderOverrideSet'." )
-        log.info( " + No 'ethcfgSenderAddress has been defined in the project build or the '.sbt' folder." )
-        log.info( " + No default address for chain with ID ${chainId} has been set via 'ethAddressSenderDefaultSet'." )
+        log.info(  "No sender is available. Tasks that require a sender would fail." )
+        log.info(  " + No session override has been set via 'ethAddressSenderOverrideSet'." )
+        log.info(  " + No 'ethcfgSenderAddress has been defined in the project build or the '.sbt' folder." )
+        log.info( s" + No default address for chain with ID ${chainId} has been set via 'ethAddressSenderDefaultSet'." )
         config match {
           case Compile => log.info( " + No 'last-resort' sender address has been defined via environment variable 'ETH_SENDER' or system propety 'eth.sender'.")
           case Test    => log.info( " + No 'last-resort' sender address has been defined (WHICH IS A SURPRISE, BECAUSE IN THE 'test' CONFIGURATION THERE SHOULD BE A HARD-CODED DEFAULT)." )
@@ -4498,6 +4498,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethOnLoadSolicitWalletV3GenerationTask : Initialize[Task[Unit]] = Def.task {
     val s = state.value
     val is = interactionService.value
+    val log = streams.value.log
     val keystoresV3  = OnlyShoeboxKeystoreV3
     val nontestConfig = Compile                             // XXX: if you change this, change the hardcoded Compile value in the line below!
     val nontestChainId = ( Compile / ethcfgChainId ).value  // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
@@ -4515,19 +4516,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
           if ( checkSetDefault ) {
             extract.runInputTask( nontestConfig / ethAddressSenderDefaultSet, address.hex, s )
+            log.info( "Giving the new address initial alias 'default-sender'..." )
+            extract.runInputTask( nontestConfig / ethAddressAliasSet, s" default-sender ${address.hex}", s )
           }
           else {
             println(s"No default sender has been defined. To create one later, use the command 'ethAddressSenderDefaultSet <address>'.")
           }
-        }
-
-        val mbNewAlias = {
-          val raw = is.readLine( s"Enter an alias for new address '${hexString(address)}' (or hit <return> to skip): ", mask=false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
-          if ( raw.nonEmpty ) Some( raw ) else None
-        }
-
-        mbNewAlias.foreach { newAlias =>
-          extract.runInputTask( nontestConfig / ethAddressAliasSet, s" ${newAlias} ${address.hex}", s )
         }
       }
       else {
