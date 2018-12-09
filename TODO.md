@@ -19,6 +19,8 @@ DB schema updates
 
 Other
 
+* ethNodePing
+
 * let repositories suggest ABIs <--> addresses <--> aliases ???
 
 * Tool to derive linearization from AST
@@ -93,8 +95,6 @@ Other
 * More consistency about when tasks use println(...) vs log.info(...)
 
 * Maybe someday put logging configuration into sbt-ethereum repository directory (where it can be easily edited). (maybe put log files there too?)
-
-* Warn if no 'defaultSender' is set?
 
 * A flag in Invoker.Context (update stub.Context factories and stub factories in stub.Generator) for broadcasting rather than round-robin-ing Seq URL.Sources
 
