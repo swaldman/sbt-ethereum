@@ -520,19 +520,35 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
   private [sbtethereum]
   def findDefaultJsonRpcUrl( chainId : Int ) : Failable[Option[String]] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.ChainDefaultJsonRpcUrls.selectJsonRpcUrl( _, chainId ) ) )
+    Failable( borrow( ds.getConnection() )( Table.ChainDefaultJsonRpcUrls.selectDefaultJsonRpcUrl( _, chainId ) ) )
   }
 
   private [sbtethereum]
   def setDefaultJsonRpcUrl( chainId : Int, jsonRpcUrl : String ) : Failable[Unit] = DataSource.flatMap { ds =>
     require( jsonRpcUrl == jsonRpcUrl.trim(), s"Bad jsonRpcUrl '${jsonRpcUrl}', should not have whitespace trailing or leading." )
     require( chainId >= 0, "Negative Chain IDs mean no Chain ID specified. Cannot store default values for unspecified chain. [chainId: ${chainId}]" )
-    Failable( borrow( ds.getConnection() )( Table.ChainDefaultJsonRpcUrls.insertJsonRpcUrl( _, chainId, jsonRpcUrl ) ) )
+    Failable( borrow( ds.getConnection() )( Table.ChainDefaultJsonRpcUrls.insertDefaultJsonRpcUrl( _, chainId, jsonRpcUrl ) ) )
   }
 
   private [sbtethereum]
   def dropDefaultJsonRpcUrl( chainId : Int ) : Failable[Boolean] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.ChainDefaultJsonRpcUrls.deleteJsonRpcUrl( _, chainId ) ) )
+    Failable( borrow( ds.getConnection() )( Table.ChainDefaultJsonRpcUrls.deleteDefaultJsonRpcUrl( _, chainId ) ) )
+  }
+
+  private [sbtethereum]
+  def findDefaultSenderAddress( chainId : Int ) : Failable[Option[EthAddress]] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.ChainDefaultSenderAddresses.selectDefaultSenderAddress( _, chainId ) ) )
+  }
+
+  private [sbtethereum]
+  def setDefaultSenderAddress( chainId : Int, senderAddress : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
+    require( chainId >= 0, "Negative Chain IDs mean no Chain ID specified. Cannot store default values for unspecified chain. [chainId: ${chainId}]" )
+    Failable( borrow( ds.getConnection() )( Table.ChainDefaultSenderAddresses.insertDefaultSenderAddress( _, chainId, senderAddress ) ) )
+  }
+
+  private [sbtethereum]
+  def dropDefaultSenderAddress( chainId : Int ) : Failable[Boolean] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.ChainDefaultSenderAddresses.deleteDefaultSenderAddress( _, chainId ) ) )
   }
 
   private [sbtethereum]

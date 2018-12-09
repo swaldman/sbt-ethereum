@@ -58,6 +58,7 @@ private [sbtethereum] object Schema_h2 {
         stmt.executeUpdate( Table.AbiAliases.CreateSql )
         stmt.executeUpdate( Table.AbiAliases.CreateIndex )
         stmt.executeUpdate( Table.ChainDefaultJsonRpcUrls.CreateSql )
+        stmt.executeUpdate( Table.ChainDefaultSenderAddresses.CreateSql )
       }
       Table.Metadata.ensureSchemaVersion( conn )
       Table.Metadata.updateLastSuccessfulSbtEthereumVersion( conn )
@@ -1132,21 +1133,48 @@ private [sbtethereum] object Schema_h2 {
            |   json_rpc_url  VARCHAR(512)
            |)""".stripMargin
       }
-      def selectJsonRpcUrl( conn : Connection, chainId : Int ) : Option[String] = {
+      def selectDefaultJsonRpcUrl( conn : Connection, chainId : Int ) : Option[String] = {
         borrow( conn.prepareStatement( "SELECT json_rpc_url FROM chain_default_json_rpc_urls WHERE chain_id = ?" ) ) { ps =>
           ps.setInt(1, chainId)
           borrow( ps.executeQuery() )( getMaybeSingleString )
         }
       }
-      def insertJsonRpcUrl( conn : Connection, chainId : Int, jsonRpcUrl : String ) : Unit = {
+      def insertDefaultJsonRpcUrl( conn : Connection, chainId : Int, jsonRpcUrl : String ) : Unit = {
         borrow( conn.prepareStatement( "INSERT INTO chain_default_json_rpc_urls( chain_id, json_rpc_url ) VALUES( ?, ? )" ) ) { ps =>
           ps.setInt(1, chainId)
           ps.setString(2, jsonRpcUrl)
           ps.executeUpdate()
         }
       }
-      def deleteJsonRpcUrl( conn : Connection, chainId : Int ) : Boolean = {
+      def deleteDefaultJsonRpcUrl( conn : Connection, chainId : Int ) : Boolean = {
         borrow( conn.prepareStatement( "DELETE FROM chain_default_json_rpc_urls WHERE chain_id = ?" ) ) { ps =>
+          ps.setInt(1, chainId)
+          ps.executeUpdate() > 0
+        }
+      }
+    }
+    final object ChainDefaultSenderAddresses {
+      val CreateSql: String = {
+        """|CREATE TABLE IF NOT EXISTS chain_default_sender_addresses (
+           |   chain_id        INTEGER PRIMARY KEY,
+           |   sender_address  CHAR(40)
+           |)""".stripMargin
+      }
+      def selectDefaultSenderAddress( conn : Connection, chainId : Int ) : Option[EthAddress] = {
+        borrow( conn.prepareStatement( "SELECT sender_address FROM chain_default_sender_addresses WHERE chain_id = ?" ) ) { ps =>
+          ps.setInt(1, chainId)
+          borrow( ps.executeQuery() )( getMaybeSingleString ).map( EthAddress.apply )
+        }
+      }
+      def insertDefaultSenderAddress( conn : Connection, chainId : Int, senderAddress : EthAddress ) : Unit = {
+        borrow( conn.prepareStatement( "INSERT INTO chain_default_sender_addresses( chain_id, sender_address ) VALUES( ?, ? )" ) ) { ps =>
+          ps.setInt(1, chainId)
+          ps.setString(2, senderAddress.hex)
+          ps.executeUpdate()
+        }
+      }
+      def deleteDefaultSenderAddress( conn : Connection, chainId : Int ) : Boolean = {
+        borrow( conn.prepareStatement( "DELETE FROM chain_default_sender_addresses WHERE chain_id = ?" ) ) { ps =>
           ps.setInt(1, chainId)
           ps.executeUpdate() > 0
         }

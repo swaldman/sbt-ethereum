@@ -78,7 +78,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   final case class TimestampedAbi( abi : Abi, timestamp : Option[Long] )
 
   object OneTimeWarnedKey {
-    final object NodeJsonRpcInBuild extends OneTimeWarnedKey
+    final object NodeJsonRpcUrlInBuild extends OneTimeWarnedKey
+    final object AddressSenderInBuild  extends OneTimeWarnedKey
   }
   trait OneTimeWarnedKey
 
@@ -239,6 +240,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val LastResortTestEthJsonRpcUrl = testing.Default.EthJsonRpc.Url
 
+  private val LastResortMaybeEthAddressSender = ExternalValue.EthSender.map( EthAddress.apply )
+
+  private val LastResortMaybeTestEthAddressSender = Some( testing.Default.Faucet.Address ) 
+
   private val DefaultEthNetcompileUrl = "http://ethjsonrpc.mchange.com:8456"
 
   private val DefaultPriceRefreshDelay = 300.seconds
@@ -342,15 +347,18 @@ object SbtEthereumPlugin extends AutoPlugin {
     val etherscanApiKeyImport     = taskKey[Unit]  ("Imports an API key for etherscan services.")
     val etherscanApiKeyReveal     = taskKey[Unit]  ("Reveals the currently set API key for etherscan services, if any.")
 
-    val ethAddressAliasDrop           = inputKey[Unit]                             ("Drops an alias for an ethereum address from the sbt-ethereum shoebox database.")
-    val ethAddressAliasList           = taskKey [Unit]                             ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
-    val ethAddressAliasPrint          = inputKey[Unit]                             ("Prints the address associated with a given alias.")
-    val ethAddressAliasSet            = inputKey[Unit]                             ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
-    val ethAddressBalance             = inputKey[BigDecimal]                       ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
-    val ethAddressSenderPrint         = taskKey[Failable[EthAddress]]              ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
-    val ethAddressSenderOverrideDrop  = taskKey [Unit]                             ("Removes any sender override, reverting to any 'ethcfgAddressSender' or defaultSender that may be set.")
-    val ethAddressSenderOverrideSet   = inputKey[Unit]                             ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or defaultSender that may be set.")
-    val ethAddressSenderOverridePrint = taskKey [Unit]                             ("Displays any sender override, if set.")
+    val ethAddressAliasCheck          = inputKey[Unit]       ("Reveals the address associated with a given alias, or the aliases associated with a given address.")
+    val ethAddressAliasDrop           = inputKey[Unit]       ("Drops an alias for an ethereum address from the sbt-ethereum shoebox database.")
+    val ethAddressAliasList           = taskKey [Unit]       ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
+    val ethAddressAliasSet            = inputKey[Unit]       ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
+    val ethAddressBalance             = inputKey[BigDecimal] ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
+    val ethAddressSenderPrint         = taskKey [Unit]       ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
+    val ethAddressSenderDefaultDrop   = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressSenderDefaultSet    = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressSenderDefaultPrint  = taskKey [Unit]       ("Displays any sender override, if set.")
+    val ethAddressSenderOverrideDrop  = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressSenderOverrideSet   = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressSenderOverridePrint = taskKey [Unit]       ("Displays any sender override, if set.")
 
     val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops for an ABI.")
     val ethContractAbiAliasList       = taskKey [Unit] ("Lists aliased ABIs and their hashes.")
@@ -435,7 +443,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethFindCacheRichParserInfo = taskKey[RichParserInfo]("Finds and caches information (aliases, ens info) needed by some parsers")
     val xethFindCacheSessionSolidityCompilerKeys = taskKey[immutable.Set[String]]("Finds and caches keys for available compilers for use by the parser for ethLanguageSolidityCompilerSelect")
     val xethFindCacheSeeds = taskKey[immutable.Map[String,MaybeSpawnable.Seed]]("Finds and caches compiled, deployable contracts, omitting ambiguous duplicates. Triggered by compileSolidity")
-    val xethFindCurrentSender = taskKey[Failable[EthAddress]]("Finds the address that should be used to send ether or messages")
     val xethFindCurrentSolidityCompiler = taskKey[Compiler.Solidity]("Finds and caches keys for available compilers for use parser for ethLanguageSolidityCompilerSelect")
     val xethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
     val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethcfgEntropySource as a source of randomness")
@@ -652,9 +659,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethAddressAliasList in Test := { ethAddressAliasListTask( Test ).value },
 
-    ethAddressAliasPrint in Compile := { ethAddressAliasPrintTask( Compile ).evaluated },
+    ethAddressAliasCheck in Compile := { ethAddressAliasCheckTask( Compile ).evaluated },
 
-    ethAddressAliasPrint in Test := { ethAddressAliasPrintTask( Test ).evaluated },
+    ethAddressAliasCheck in Test := { ethAddressAliasCheckTask( Test ).evaluated },
 
     ethAddressAliasSet in Compile := { ethAddressAliasSetTask( Compile ).evaluated },
 
@@ -671,6 +678,18 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethAddressSenderPrint in Compile := { ethAddressSenderPrintTask( Compile ).value },
 
     ethAddressSenderPrint in Test := { ethAddressSenderPrintTask( Test ).value },
+
+    ethAddressSenderDefaultDrop in Compile := { ethAddressSenderDefaultDropTask( Compile ).value },
+
+    ethAddressSenderDefaultDrop in Test := { ethAddressSenderDefaultDropTask( Test ).value },
+
+    ethAddressSenderDefaultPrint in Compile := { ethAddressSenderDefaultPrintTask( Compile ).value },
+
+    ethAddressSenderDefaultPrint in Test := { ethAddressSenderDefaultPrintTask( Test ).value },
+
+    ethAddressSenderDefaultSet in Compile := { ethAddressSenderDefaultSetTask( Compile ).evaluated },
+
+    ethAddressSenderDefaultSet in Test := { ethAddressSenderDefaultSetTask( Test ).evaluated },
 
     ethAddressSenderOverrideDrop in Compile := { ethAddressSenderOverrideDropTask( Compile ).value },
 
@@ -900,10 +919,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       (xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList ).triggeredBy(ethShoeboxRestore)).value
     },
 
-    xethFindCurrentSender in Compile := { xethFindCurrentSenderTask( Compile ).value },
-
-    xethFindCurrentSender in Test := { xethFindCurrentSenderTask( Test ).value },
-
     xethFindCurrentSolidityCompiler in Compile := { xethFindCurrentSolidityCompilerTask.value },
 
     xethGasPrice in Compile := { xethGasPriceTask( Compile ).value },
@@ -1050,6 +1065,73 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // private, internal task definitions
 
+  private def findAddressSenderTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = Def.task {
+    Failable {
+      val log = streams.value.log
+      val chainId = (config/ethcfgChainId).value
+      val mbOverrideAddressSender = {
+        Mutables.SenderOverride.synchronized {
+          val map = Mutables.SenderOverride.get
+          map.get( chainId )
+        }
+      }
+      mbOverrideAddressSender match {
+        case Some( address ) => {
+          address
+        }
+        case None => {
+          val mbDbAddressSender = shoebox.Database.findDefaultSenderAddress( chainId ).assert
+          (config/ethcfgAddressSender).?.value match {
+            case Some( addressStr ) => {
+              val address = EthAddress( addressStr )
+              if ( warn ) {
+                val warningLinesBuilder = {
+                  () => {
+                    val pfx = {
+                      config match {
+                        case Compile => ""
+                        case Test    => "Test / "
+                        case other   => throw new SbtEthereumException( s"Unexpected task configuration: ${other}" )
+                      }
+                    }
+                    mbDbAddressSender.map ( dbAddressSender =>
+                      Seq (
+                        s"'${pfx}ethcfgAddressSender' has been explicitly set to '${hexString(address)}' in the build or as a global setting in the .sbt directory.",
+                        s" + This value will be used in preference to the value set in the sbt-ethereum shoebox via '${pfx}ethAddressSenderDefaultSet' (currently '${hexString(dbAddressSender)}').",
+                        s" + However, you can temporarily override the hard-coded value for a single session using '${pfx}ethAddressSenderOverrideSet'."
+                      )
+                    )
+                  }
+                }
+                oneTimeWarn( OneTimeWarnedKey.AddressSenderInBuild, config, log, warningLinesBuilder )
+              }
+              address
+            }
+            case None if mbDbAddressSender.nonEmpty => {
+              mbDbAddressSender.get
+            }
+            case None if config == Compile => {
+              LastResortMaybeEthAddressSender.getOrElse {
+                throw new SenderNotAvailableException(
+                  "No address for sender! None of 'ethAddressSenderOverride', 'ethcfgAddressSender', 'ethAddressSenderDefault' " +
+                    s"for chain with ID ${chainId}, System property 'eth.sender', nor environment variable 'ETH_SENDER' have been set."
+                )
+              }
+            }
+            case None if config == Test => {
+              LastResortMaybeTestEthAddressSender.getOrElse {
+                throw new SenderNotAvailableException( "No address for testing could be found. Which is weird, because there should be a hard-coded default value." )
+              }
+            }
+            case None => {
+              throw new UnexpectedConfigurationException( config )
+            }
+          }
+        }
+      }
+    }
+  }
+
   private def findNodeJsonRpcUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[String]] = Def.task {
     val log = streams.value.log
     val chainId = (config/ethcfgChainId).value
@@ -1080,13 +1162,13 @@ object SbtEthereumPlugin extends AutoPlugin {
                   mbDbNodeJsonRpcUrl.map ( dbNodeJsonRpcUrl =>
                     Seq (
                       s"'${pfx}ethcfgNodeJsonRpcUrl' has been explicitly set to '${url}' in the build or as a global setting in the .sbt directory.",
-                      s" - This value will be used in preference to the value set in the sbt-ethereum shoebox via '${pfx}ethNodeJsonRpcUrlDefaultSet' (currently '${dbNodeJsonRpcUrl}').",
-                      s" - However, you can temporarily override the hard-coded value for a single session using '${pfx}ethNodeJsonRpcUrlOverrideSet'."
+                      s" + This value will be used in preference to the value set in the sbt-ethereum shoebox via '${pfx}ethNodeJsonRpcUrlDefaultSet' (currently '${dbNodeJsonRpcUrl}').",
+                      s" + However, you can temporarily override the hard-coded value for a single session using '${pfx}ethNodeJsonRpcUrlOverrideSet'."
                     )
                   )
                 }
               }
-              oneTimeWarn( OneTimeWarnedKey.NodeJsonRpcInBuild, config, log, warningLinesBuilder )
+              oneTimeWarn( OneTimeWarnedKey.NodeJsonRpcUrlInBuild, config, log, warningLinesBuilder )
             }
             url
           }
@@ -1112,7 +1194,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val is = interactionService.value
     val chainId = (ethcfgChainId in config).value
-    val caller = (xethFindCurrentSender in config).value.get
+    val caller = findAddressSenderTask(warn=true)(config).value.assert
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
     findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
   }
@@ -1455,7 +1537,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsSubnodeParser )
 
     Def.inputTaskDyn {
-      val sender = (xethFindCurrentSender in config).value.get
+      val sender = findAddressSenderTask(warn=true)(config).value.assert
       val ( subname, parentName ) = parser.parsed
       ( config / ensSubnodeOwnerSet ).toTask( s" ${subname}.${parentName} 0x${sender.hex}" )
     }
@@ -1545,7 +1627,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethAddressAliasPrintTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethAddressAliasCheckTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genPermissiveAddressAliasOrAddressAsStringParser )
 
     Def.inputTask {
@@ -1601,7 +1683,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val timeout          = xethcfgAsyncOperationTimeout.value
       val baseCurrencyCode = ethcfgBaseCurrencyCode.value
       val mbAddress        = parser.parsed
-      val address          = mbAddress.getOrElse( (xethFindCurrentSender in config).value.get )
+      val address          = mbAddress.getOrElse( findAddressSenderTask(warn=true)(config).value.assert )
 
       val exchangerConfig = findExchangerConfigTask( config ).value
 
@@ -1618,14 +1700,151 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethAddressSenderPrintTask( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = _xethFindCurrentSenderTask( printEffectiveSender = true )( config )
+  private def ethAddressSenderPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+    val f_effective = findAddressSenderTask(warn=false)(config).value
+    val chainId = (config/ethcfgChainId).value
+    try {
+      val effective = f_effective.assert
+      val overridesMap = Mutables.SenderOverride.synchronized {
+        Mutables.SenderOverride.get
+      }
+      val mbOverride = overridesMap.get( chainId )
+      val mbBuildSetting = ethcfgAddressSender.?.value
+      val mbShoeboxDefault = shoebox.Database.findDefaultSenderAddress( chainId ).assert
+
+      log.info( s"The current effective sender address is ${verboseAddress(chainId, effective)}." )
+
+      ( mbOverride, mbBuildSetting, mbShoeboxDefault ) match {
+        case ( Some( ov ), _, _) => {
+          assert( effective == ov, "We expect that if a session override is set, it is the effective sender address." )
+          log.info( " + This value has been explicitly set as a session override via 'ethAddressSenderOverrideSet'." )
+          mbBuildSetting.foreach { hardCoded =>
+            try {
+              val hardCodedAddress = EthAddress( hardCoded )
+              log.info( s" + It has overridden a value explicitly set in the project build or the '.sbt' folder as 'ethcfgAddressSender': ${verboseAddress(chainId,hardCodedAddress)}" )
+            }
+            catch {
+              case e : Exception => log.info(
+                " + It has overridden a value explicitly set in the project build or the '.sbt' folder as 'ethcfgAddressSender' which is not a properly formed address: '${hardCoded}'"
+              )
+            }
+          }
+          mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default sender address for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${verboseAddress(chainId,shoeboxDefault)}" ) )
+        }
+        case ( None, Some( buildSetting ), _ ) => {
+          assert( effective == EthAddress( buildSetting ), "We expect that if no session override is set, but a sender address is set as a build setting, it is the effective sender address." )
+          log.info( " + This value has been explicitly defined as setting 'ethcfgAddressSender' in the project build or the '.sbt' folder, and has not been overridden by a session override." )
+          mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default sender address for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${verboseAddress(chainId,shoeboxDefault)}" ) )
+        }
+        case ( None, None, Some( shoeboxDefault ) ) => {
+          assert(
+            effective == shoeboxDefault,
+            s"We expect that if no session override is set, and no build setting, but a default sender address for chain with ID ${chainId} is set in the shoebox, it is the effective sender address for that chain."
+          )
+          log.info( s" + This value is the default sender address defined in the sbt-ethereum shoebox for chain with ID ${chainId}. " )
+          log.info( " + It has not been overridden with a session override or by an 'ethcfgAddressSender' setting in the project build or the '.sbt' folder." )
+        }
+        case ( None, None, None ) if config == Compile => {
+          assert(
+            effective == LastResortMaybeEthAddressSender.get, // since we found 'effective' without an Exception, get should succeed
+            "With no session override, no 'ethcfgAddressSender' setting in the build, and no sender address set for chain with ID ${chainID}, the effective sender address should be the 'last-resort' address."
+          )
+          log.info(  " + This is the 'last-resort' sender address, taken from environment variable 'ETH_SENDER' or system property 'eth.sender'. " )
+          log.info(  " + It has not been overridden by a session override or by an 'ethcfgAddressSender' setting in the project build or the '.sbt' folder. " )
+          log.info( s" + There is no default sender address defined for chain with ID ${chainId} defined in the sbt-ethereum shoebox." )
+        }
+        case ( None, None, None ) if config == Test => {
+          assert(
+            effective == LastResortMaybeTestEthAddressSender.get, // since we found 'effective' without an Exception, get should succeed
+            "With no session override, no 'ethcfgAddressSender' setting in the build, and no sender address set for chain with ID ${chainID}, the effective sender address should be the 'last-resort' address for configuration Test."
+          )
+          log.info(  " + This is the 'last-resort' sender address, hardcoded into sbt-ethereum for the 'test' configuration. " )
+          log.info(  " + It has not been overridden by a session override or by an 'ethcfgAddressSender' setting in the project build or the '.sbt' folder. " )
+          log.info( s" + There is no default sender address defined for chain with ID ${chainId} defined in the sbt-ethereum shoebox." )
+        }
+        case ( None, None, None ) => {
+          throw new UnexpectedConfigurationException( config )
+        }
+      }
+    }
+    catch {
+      case e : SenderNotAvailableException => {
+        log.info( "No sender is available. Tasks that require a sender would fail." )
+        log.info( " + No session override has been set via 'ethAddressSenderOverrideSet'." )
+        log.info( " + No 'ethcfgSenderAddress has been defined in the project build or the '.sbt' folder." )
+        log.info( " + No default address for chain with ID ${chainId} has been set via 'ethAddressSenderDefaultSet'." )
+        config match {
+          case Compile => log.info( " + No 'last-resort' sender address has been defined via environment variable 'ETH_SENDER' or system propety 'eth.sender'.")
+          case Test    => log.info( " + No 'last-resort' sender address has been defined (WHICH IS A SURPRISE, BECAUSE IN THE 'test' CONFIGURATION THERE SHOULD BE A HARD-CODED DEFAULT)." )
+          case _       => throw new UnexpectedConfigurationException( config )
+        }
+      }
+    }
+  }
+
+  private def ethAddressSenderDefaultPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+    val chainId = (config/ethcfgChainId).value
+    val mbAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
+    mbAddress match {
+      case Some( address ) => {
+        log.info( s"The default sender address for chain with ID ${chainId} is '${hexString(address)}'." )
+      }
+      case None => {
+        log.info( s"No default sender address for chain with ID ${chainId} has been set." )
+      }
+    }
+  }
+
+  private def ethAddressSenderDefaultSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
+
+    Def.inputTask {
+      val log = streams.value.log
+      val is = interactionService.value
+      val chainId = (config/ethcfgChainId).value
+      val newAddress = parser.parsed
+      val oldAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
+      oldAddress.foreach { address =>
+        println( s"A default sender address has already been set for chain with ID ${chainId}: '${hexString(address)}'." )
+        val overwrite = queryYN( is, s"Do you wish to replace it? [y/n] " )
+        if ( overwrite ) {
+          shoebox.Database.dropDefaultSenderAddress( chainId ).assert
+        }
+        else {
+          throw new OperationAbortedByUserException( "User chose not to replace previously set default sender address for chain with ID ${chainId}, which remains '${hexString(address)}'." )
+        }
+      }
+      shoebox.Database.setDefaultSenderAddress( chainId, newAddress ).assert
+      log.info( s"Successfully set default sender address for chain with ID ${chainId} to '${hexString(newAddress)}'." )
+    }
+  }
+
+  private def ethAddressSenderDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+    val chainId = (config/ethcfgChainId).value
+    val oldAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
+    oldAddress match {
+      case Some( senderAddress ) => {
+        val check = shoebox.Database.dropDefaultSenderAddress( chainId ).assert
+        assert( check, "Huh? We had a an old senderAddress value, but trying to delete it failed to delete any rows?" )
+        log.info( s"The default sender address for chain with ID ${chainId} was '${hexString(senderAddress)}', but it has now been successfully dropped." )
+      }
+      case None => {
+        log.info( s"No default sender address for chain with ID ${chainId} has been set. Nothing to do here." )
+      }
+    }
+  }
 
   private def ethAddressSenderOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     Mutables.SenderOverride.synchronized {
       Mutables.SenderOverride.set( Map.empty )
-      log.info("No sender override is now set. Effective sender will be determined by 'ethcfgAddressSender' setting, the System property 'eth.sender', the environment variable 'ETH_SENDER', or a 'defaultSender' alias.")
     }
+    log.info(
+      "No sender override is now set. Effective sender will be determined by 'ethcfgAddressSender' setting, a value set via 'ethAddressSenderDefaultSet', the System property 'eth.sender', the environment variable 'ETH_SENDER'."
+    )
   }
 
   private def ethAddressSenderOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
@@ -2618,10 +2837,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbUrl = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
     mbUrl match {
       case Some( url ) => {
-        log.info( s"The default node json-rpc URL on chain with ID ${chainId} is '${url}'." )
+        log.info( s"The default node json-rpc URL for chain with ID ${chainId} is '${url}'." )
       }
       case None => {
-        log.info( s"No default node json-rpc URL on chain with ID ${chainId} has been set." )
+        log.info( s"No default node json-rpc URL for chain with ID ${chainId} has been set." )
       }
     }
   }
@@ -2657,7 +2876,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.info( s"The default node json-rpc URL for chain with ID ${chainId} was '${url}', but it has now been successfully dropped." )
       }
       case None => {
-        log.info( s"No node json-rpc URL for chain with ID ${chainId} has been set. Nothing to do here." )
+        log.info( s"No default node json-rpc URL for chain with ID ${chainId} has been set. Nothing to do here." )
       }
     }
   }
@@ -2717,31 +2936,31 @@ object SbtEthereumPlugin extends AutoPlugin {
     ( mbOverride, mbBuildSetting, mbShoeboxDefault ) match {
       case ( Some( ov ), _, _) => {
         assert( effective == ov, "We expect that if a session override is set, it is the effective node json-rpc URL." )
-        log.info( " - This value has been explicitly set as a session override via 'ethNodeJsonRpcUrlOverrideSet'." )
-        mbBuildSetting.foreach( hardCoded => log.info( s" - It has overridden a value explicitly set in the project build as 'ethcfgNodeJsonRpcUrl': ${hardCoded}" ) )
-        mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" - It has overridden a default node json-rpc URL value for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
+        log.info( " + This value has been explicitly set as a session override via 'ethNodeJsonRpcUrlOverrideSet'." )
+        mbBuildSetting.foreach( hardCoded => log.info( s" + It has overridden a value explicitly set in the project build or the '.sbt' folder as 'ethcfgNodeJsonRpcUrl': ${hardCoded}" ) )
+        mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node json-rpc URL value for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
       }
       case ( None, Some( buildSetting ), _ ) => {
         assert( effective == buildSetting, "We expect that if no session override is set, but a node json-rpc URL is set as a build setting, it is the effective URL." )
-        log.info( " - This value has been explicitly defined as setting 'ethcfgNodeJsonRpcUrl' in the project build, and has not been overridden by a session override." )
-        mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" - It has overridden a default node json-rpc URL value for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
+        log.info( " + This value has been explicitly defined as setting 'ethcfgNodeJsonRpcUrl' in the project build or the '.sbt' folder, and has not been overridden by a session override." )
+        mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node json-rpc URL value for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
       }
       case ( None, None, Some( shoeboxDefault ) ) => {
         assert(
           effective == shoeboxDefault,
           s"We expect that if no session override is set, and no build setting, but a default node json-rpc URL for chain with ID ${chainId} is set in the shoebox, it is the effective URL for that chain."
         )
-        log.info( s" - This value is the default node json-rpc URL definined in the sbt-ethereum shoebox for chain with ID ${chainId}. " )
-        log.info( " - It has not been overridden with a session override or by an 'ethcfgNodeJsonRpc' setting in the project build." )
+        log.info( s" + This value is the default node json-rpc URL defined in the sbt-ethereum shoebox for chain with ID ${chainId}. " )
+        log.info( " + It has not been overridden with a session override or by an 'ethcfgNodeJsonRpcUrl' setting in the project build or the '.sbt' folder." )
       }
       case ( None, None, None ) if config == Compile => {
         assert(
           effective == LastResortEthJsonRpcUrl,
           "With no session override, no 'ethcfgNodeJsonRpcUrl' setting in the build, and no default URL set for chain with ID ${chainID}, the effective URL should be the 'last-resort' URL."
         )
-        log.info(  " - This is the 'last-resort' URL, either taken from an environment variable or system property, or else hard-coded into sbt-ethereum. " )
-        log.info(  " - It has not been overridden with a session override or by an 'ethcfgNodeJsonRpc' setting in the project build. " )
-        log.info( s" - There is no default node json-rpc URL defined for chain with ID ${chainId} defined in the sbt-ethereum shoebox." )
+        log.info(  " + This is the 'last-resort' URL, either taken from an environment variable or system property, or else hard-coded into sbt-ethereum. " )
+        log.info(  " + It has not been overridden with a session override or by an 'ethcfgNodeJsonRpcUrl' setting in the project build or the '.sbt' folder. " )
+        log.info( s" + There is no default node json-rpc URL defined for chain with ID ${chainId} defined in the sbt-ethereum shoebox." )
       }
       case ( None, None, None ) => {
         throw new UnexpectedConfigurationException( config )
@@ -3072,7 +3291,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = (ethcfgChainId in config).value
       val ephemeralDeployment = chainId < 0
 
-      val sender = (xethFindCurrentSender in config).value.get
+      val sender = findAddressSenderTask(warn=true)(config).value.assert
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
 
       // lazy so if we have nothing to sign, we don't bother to prompt for passcode
@@ -3310,7 +3529,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val is = interactionService.value
       val chainId = (ethcfgChainId in config).value
-      val caller = (xethFindCurrentSender in config).value.get
+      val caller = findAddressSenderTask(warn=true)(config).value.assert
       val nonceOverride = unwrapNonceOverride( Some( log ) )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
@@ -3387,7 +3606,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
-      val from = (xethFindCurrentSender in config).value.get
+      val from = findAddressSenderTask(warn=true)(config).value.assert
       val mbTo = parser.parsed
       val to = mbTo.getOrElse {
         log.info(s"No recipient address supplied, sender address '0x${ from.hex }' will ping itself.")
@@ -3434,7 +3653,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val is = interactionService.value
       val chainId = (ethcfgChainId in config).value
-      val from = (xethFindCurrentSender in config).value.get
+      val from = findAddressSenderTask(warn=true)(config).value.assert
       val (to, data, amount) = parser.parsed
       val nonceOverride = unwrapNonceOverride( Some( log ) )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
@@ -3460,7 +3679,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val is = interactionService.value
       val chainId = (ethcfgChainId in config).value
-      val from = (xethFindCurrentSender in config).value.get
+      val from = findAddressSenderTask(warn=true)(config).value.assert
       val (to, amount) = parser.parsed
       val nonceOverride = unwrapNonceOverride( Some( log ) )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
@@ -3486,7 +3705,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val timeout = xethcfgAsyncOperationTimeout.value
 
-      val from = (xethFindCurrentSender in config).value.recover { failed =>
+      val from = findAddressSenderTask(warn=true)(config).value.recover { failed =>
         log.info( s"Failed to find a current sender, using the zero address as a default.\nCause: ${failed}" )
         EthAddress.Zero
       }.get
@@ -3589,98 +3808,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info("Updating available solidity compiler set.")
     val currentSessionCompilers = (xethUpdateSessionSolidityCompilers in Compile).value
     currentSessionCompilers.keySet
-  }
-
-  private def xethFindCurrentSenderTask( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = _xethFindCurrentSenderTask( printEffectiveSender = false )( config )
-
-  private def _xethFindCurrentSenderTask( printEffectiveSender : Boolean )( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = Def.task {
-    def ifPrint( msg : => String ) = if ( printEffectiveSender ) println( msg )
-    Failable {
-      val log = streams.value.log
-      val chainId = (ethcfgChainId in config).value
-
-      val mbSenderOverride = senderOverrideAddress( chainId )
-      mbSenderOverride match {
-        case Some( address ) => {
-          ifPrint(
-            s"""|The current effective sender is ${verboseAddress(chainId, address)}.
-                |It has been set as a sender override.""".stripMargin
-          )
-          address
-        }
-        case None => {
-          val mbAddrStr = (ethcfgAddressSender in config).?.value
-          mbAddrStr match {
-            case Some( addrStr ) => {
-              val address = EthAddress( addrStr )
-              ifPrint (
-                s"""|The current effective sender is ${verboseAddress(chainId, address)}.
-                    |It has been set by build setting 'ethcfgAddressSender'.
-                    | + No sender override has been set.""".stripMargin
-              )
-              address
-            }
-            case None => {
-              ExternalValue.EthSender.map( EthAddress.apply ) match {
-                case Some( address ) => {
-                  ifPrint (
-                    s"""|The current effective sender is ${verboseAddress(chainId, address)}.
-                        |It has been set by an external value -- either System property 'eth.sender' or environment variable 'ETH_SENDER'.
-                        | + No sender override has been set.
-                        | + Build setting 'ethcfgAddressSender has not been defined.""".stripMargin
-                  )
-                  address
-                }
-                case None => {
-                  val mbDefaultSenderAddress = shoebox.Database.findAddressByAddressAlias( chainId, DefaultSenderAlias ).get
-
-                  mbDefaultSenderAddress match {
-                    case Some( address ) => {
-                      ifPrint (
-                        s"""|The current effective sender is ${verboseAddress(chainId, address)}.
-                            |It has been set by the special alias '${DefaultSenderAlias}'.
-                            | + No sender override has been set.
-                            | + Build setting 'ethcfgAddressSender has not been defined. 
-                            | + Neither the System property 'eth.sender' nor the environment variable 'ETH_SENDER' are defined.""".stripMargin
-                      )
-                      address
-                    }
-                    case None => {
-                      if ( config == Test ) {
-                        val defaultTestAddress = testing.Default.Faucet.Address
-                        ifPrint (
-                          s"""|The current effective sender is the default testing address, '0x${defaultTestAddress.hex}' 
-                              |(with widely known private key '0x${testing.Default.Faucet.PrivateKey.hex}')."
-                              |It has been set because you are in the Test configuration, and no address has been defined for this configuration.
-                              | + No sender override has been set.
-                              | + Build setting 'ethcfgAddressSender has not been defined. 
-                              | + Neither the System property 'eth.sender' nor the environment variable 'ETH_SENDER' are defined.
-                              | + No '${DefaultSenderAlias}' address alias has been defined for chain with ID ${chainId}.""".stripMargin
-                        )
-                        defaultTestAddress
-                      }
-                      else {
-                        val msg ={
-                          s"""|No effective sender is defined. (chain with ID ${chainId}, configuration '${config}')
-                              |Cannot find any of...
-                              | + a sender override
-                              | + a value for build setting 'ethcfgAddressSender' 
-                              | + an 'eth.sender' System property
-                              | + an 'ETH_SENDER' environment variable
-                              | + a '${DefaultSenderAlias}' address alias defined for chain with ID ${chainId}""".stripMargin
-                        }
-                        ifPrint( msg )
-                        throw new SenderNotAvailableException( msg )
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
   }
 
   private def xethFindCurrentSolidityCompilerTask : Initialize[Task[Compiler.Solidity]] = Def.task {
@@ -4130,7 +4257,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethLoadWalletsV3Task( config : Configuration ) : Initialize[Task[immutable.Set[wallet.V3]]] = Def.task {
     val s = state.value
-    val addressStr = (xethFindCurrentSender in config).value.get.hex
+    val addressStr = findAddressSenderTask(warn=true)(config).value.assert.hex
     val extract = Project.extract(s)
     val (_, result) = extract.runInputTask((xethLoadWalletsV3For in config), addressStr, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
     result
@@ -4191,7 +4318,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log        = streams.value.log
     val jsonRpcUrl = findNodeJsonRpcUrlTask(warn=true)(config).value
     val timeout    = xethcfgAsyncOperationTimeout.value
-    val sender     = (xethFindCurrentSender in config).value.get
+    val sender     = findAddressSenderTask(warn=true)(config).value.assert
 
     val exchangerConfig = findExchangerConfigTask( config ).value
 
@@ -4372,52 +4499,35 @@ object SbtEthereumPlugin extends AutoPlugin {
     val s = state.value
     val is = interactionService.value
     val keystoresV3  = OnlyShoeboxKeystoreV3
-    val nontestConfig = Compile                                      // XXX: if you change this, change the hardcoded Compile value in the line below!
-    val nontestChainId = ( Compile / ethcfgChainId ).value // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
+    val nontestConfig = Compile                             // XXX: if you change this, change the hardcoded Compile value in the line below!
+    val nontestChainId = ( Compile / ethcfgChainId ).value  // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
     val combined = combinedKeystoresMultiMap( keystoresV3 )
     if ( combined.isEmpty ) {
-      def prompt : Option[String] = is.readLine( s"There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] ", mask = false )
-
-      @tailrec
-      def checkInstall : Boolean = {
-        prompt match {
-          case None                                  => false
-          case Some( str ) if str.toLowerCase == "y" => true
-          case Some( str ) if str.toLowerCase == "n" => false
-          case _                                     => {
-            println( "Please type 'y' or 'n'." )
-            checkInstall
-          }
-        }
-      }
-
+      val checkInstall = queryYN( is, "There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] " )
       if ( checkInstall ) {
         val extract = Project.extract(s)
         val (_, result) = extract.runTask(ethKeystoreWalletV3Create, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
 
-        if ( mbDefaultSender( nontestChainId ).isEmpty ) {
-          val address = result.address
-          def prompt2 : Option[String] = is.readLine( s"Would you like the new address '${hexString(address)}' to be the default sender on chain with ID ${nontestChainId}? [y/n] ", mask = false )
+        val address = result.address
 
-          @tailrec
-          def checkSetDefault : Boolean = {
-            prompt2 match {
-              case None                                  => false
-              case Some( str ) if str.toLowerCase == "y" => true
-              case Some( str ) if str.toLowerCase == "n" => false
-              case _                                     => {
-                println( "Please type 'y' or 'n'." )
-                checkSetDefault
-              }
-            }
-          }
+        if ( mbDefaultSender( nontestChainId ).isEmpty ) {
+          val checkSetDefault = queryYN( is, s"Would you like the new address '${hexString(address)}' to be the default sender on chain with ID ${nontestChainId}? [y/n] " )
 
           if ( checkSetDefault ) {
-            extract.runInputTask( nontestConfig / ethAddressAliasSet, s"${DefaultSenderAlias} ${address.hex}", s )
+            extract.runInputTask( nontestConfig / ethAddressSenderDefaultSet, address.hex, s )
           }
           else {
-            println(s"No '${DefaultSenderAlias}' alias defined. To create one later, use the command 'ethAddressAliasSet ${DefaultSenderAlias} <address>'.")
+            println(s"No default sender has been defined. To create one later, use the command 'ethAddressSenderDefaultSet <address>'.")
           }
+        }
+
+        val mbNewAlias = {
+          val raw = is.readLine( s"Enter an alias for new address '${hexString(address)}' (or hit <return> to skip): ", mask=false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
+          if ( raw.nonEmpty ) Some( raw ) else None
+        }
+
+        mbNewAlias.foreach { newAlias =>
+          extract.runInputTask( nontestConfig / ethAddressAliasSet, s" ${newAlias} ${address.hex}", s )
         }
       }
       else {
@@ -4603,7 +4713,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       .foldLeft( immutable.Map.empty[EthAddress,immutable.Set[wallet.V3]] )( combineMultiMaps )
   }
 
-  private def mbDefaultSender( chainId : Int ) = shoebox.Database.findAddressByAddressAlias( chainId, DefaultSenderAlias ).get
+  private def mbDefaultSender( chainId : Int ) : Option[EthAddress] = shoebox.Database.findDefaultSenderAddress( chainId ).get
 
   private def installLocalSolcJ( log : sbt.Logger, rootSolcJDir : File, versionToInstall : String, testTimeout : Duration ) : Unit = {
     val versionDir = new File( rootSolcJDir, versionToInstall )
@@ -4887,7 +4997,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def assertSomeSender( log : Logger, fsender : Failable[EthAddress] ) : Option[EthAddress] = {
     val onFailed : Failed[EthAddress] => Nothing = failed => {
       val errMsg = {
-        val base = "No sender found. Please define a 'defaultSender' alias, or the setting 'ethcfgAddressSender', or use 'ethAddressSenderOverrideSet' for a temporary sender."
+        val base = "No sender found. Please define a default via 'ethAddressSenderDefaultSet', or define the build setting 'ethcfgAddressSender', or use 'ethAddressSenderOverrideSet' for a temporary sender."
         val extra = failed.source match {
           case _ : SenderNotAvailableException => ""
           case _                               => s" [Cause: ${failed.message}]"

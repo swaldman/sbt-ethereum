@@ -33,10 +33,10 @@ package object sbtethereum {
   final class BadCodeFormatException( msg : String )           extends SbtEthereumException( msg )
   final class ShoeboxException( msg : String )                 extends SbtEthereumException( msg )
   final class CompilationFailedException( msg : String )       extends SbtEthereumException( msg )
-  final class SenderNotAvailableException( msg : String )      extends SbtEthereumException( msg )
   final class NoSuchCompilationException( msg : String )       extends SbtEthereumException( msg )
   final class FailureOnInitializationException( msg : String ) extends SbtEthereumException( msg, null, noStackTrace = true )
 
+  final class SenderNotAvailableException( msg : String, cause : Throwable = null) extends SbtEthereumException( msg, cause )
   final class CannotReadDirectoryException( msg : String, cause : Throwable = null ) extends SbtEthereumException( msg, cause )
   final class OperationAbortedByUserException( msg : String ) extends SbtEthereumException( s"Aborted by user: ${msg}", null, noStackTrace = true )
   final class NotCurrentlyUnderAuctionException( name : String, status : ens.NameStatus ) extends SbtEthereumException( s"ENS name '${name}' is not currently under auction. Its status is '${status}'." )
