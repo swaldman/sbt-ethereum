@@ -1855,7 +1855,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
       shoebox.Database.setDefaultSenderAddress( chainId, newAddress ).assert
-      log.info( s"Successfully set default sender address for chain with ID ${chainId} to '${hexString(newAddress)}'. You can use the synthetic alias '${DefaultSenderAlias}' to refer to this address." )
+      log.info( s"Successfully set default sender address for chain with ID ${chainId} to '${hexString(newAddress)}'." )
+      log.info( s"You can use the synthetic alias '${DefaultSenderAlias}' to refer to this address." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
       }
