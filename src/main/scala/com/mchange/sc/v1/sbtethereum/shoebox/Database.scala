@@ -438,30 +438,32 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     }
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AddressAliasManager
   def createUpdateAddressAlias( chainId : Int, alias : String, address : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, chainId, alias, address ) ) )
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AddressAliasManager
+  def insertAddressAlias( chainId : Int, alias : String, address : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.AddressAliases.insert( _, chainId, alias, address ) ) )
+  }
+
+  private [shoebox] // external clients use AddressAliasManager
   def findAllAddressAliases( chainId : Int ) : Failable[immutable.SortedMap[String,EthAddress]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectAllForChainId( _, chainId ) ) )
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AddressAliasManager
   def findAddressByAddressAlias( chainId : Int, alias : String ) : Failable[Option[EthAddress]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAlias( _, chainId, alias ) ) )
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AddressAliasManager
   def findAddressAliasesByAddress( chainId : Int, address : EthAddress ) : Failable[immutable.Seq[String]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.selectByAddress( _, chainId, address ) ) )
   }
 
-  private [sbtethereum]
-  def hasAddressAliases( chainId : Int, address : EthAddress ) : Failable[Boolean] = findAddressAliasesByAddress( chainId, address ).map( _.nonEmpty )
-
-  private [sbtethereum]
+  private [shoebox] // external clients use AddressAliasManager
   def dropAddressAlias( chainId : Int, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, chainId, alias ) ) )
   }

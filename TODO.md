@@ -60,8 +60,6 @@ Other
 
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
 
-* Some form of logging of overwriting of aliases
-
 * Generalize reasoning surrounding when interactive transaction approver should be used
 
 * enable Scala libraries to deploy as well as interact with already-deployed contracts

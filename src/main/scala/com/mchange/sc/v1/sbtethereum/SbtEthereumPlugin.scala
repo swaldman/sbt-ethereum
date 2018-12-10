@@ -1608,7 +1608,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ensureAliases = (xethFindCacheRichParserInfo in config)
 
       val alias = parser.parsed
-      val check = shoebox.Database.dropAddressAlias( chainId, alias ).get // assert no database problem
+      val check = shoebox.AddressAliasManager.dropAddressAlias( chainId, alias ).get // assert no database problem
       if (check) log.info( s"Alias '${alias}' successfully dropped (for chain with ID ${chainId}).")
       else log.warn( s"Alias '${alias}' is not defined (on blockchain with ID ${chainId}), and so could not be dropped." )
 
@@ -1621,7 +1621,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log      = streams.value.log
     val chainId  = (ethcfgChainId in config).value
-    val faliases = shoebox.Database.findAllAddressAliases( chainId )
+    val faliases = shoebox.AddressAliasManager.findAllAddressAliases( chainId )
     faliases.fold( _ => log.warn("Could not read aliases from shoebox database.") ) { aliases =>
       aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
     }
@@ -1634,9 +1634,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val chainId = (ethcfgChainId in config).value
       val aliasOrAddress = parser.parsed
-      val mbAddressForAlias = shoebox.Database.findAddressByAddressAlias( chainId, aliasOrAddress ).assert
+      val mbAddressForAlias = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, aliasOrAddress ).assert
       val mbEntryAsAddress = Failable( EthAddress( aliasOrAddress ) ).toOption
-      val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => shoebox.Database.findAddressAliasesByAddress( chainId, addr ).get )
+      val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, addr ).get )
 
       mbAddressForAlias.foreach( addressForAlias => println( s"The alias '${aliasOrAddress}' points to address '${hexString(addressForAlias)}'." ) )
 
@@ -1658,18 +1658,48 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTaskDyn {
       val log = streams.value.log
+      val is = interactionService.value
       val chainId = (ethcfgChainId in config).value
       val ( alias, address ) = parser.parsed
       if (! Failable( EthAddress( alias ) ).isFailed ) {
         throw new SbtEthereumException( s"You cannot use what would be a legitimate Ethereum address as an alias. Bad attempted alias: '${alias}'" )
       }
-      val check = shoebox.Database.createUpdateAddressAlias( chainId, alias, address )
-      check.fold( _.vomit ){ _ => 
-        log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
+      val oldValue = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, alias ).assert
+
+      val shouldUpdate = {
+        oldValue match {
+          case Some( `address` ) => {
+            log.info( s"The alias '${alias}' already points to address '${hexString(address)}' (for chain with ID ${chainId}). Nothing to do." )
+            false
+          }
+          case Some( differentAddress ) => {
+            val replace = queryYN( is, s"The alias '${alias}' currently points to address '${hexString(differentAddress)}' (for chain with ID ${chainId}). Replace? [y/n] " )
+            if (! replace ) {
+              throw new OperationAbortedByUserException( "User chose not to replace previously defined alias '${alias}' (for chain with ID ${chainId}). It continues to point to '${hexString(differentAddress)}'." )
+            }
+            else {
+              val didDrop = shoebox.AddressAliasManager.dropAddressAlias( chainId, alias ).assert
+              assert( didDrop, "Expected deletion of address alias '${alias}' did not in fact delete any rows!" )
+              true
+            }
+          }
+          case None => {
+            true
+          }
+        }
       }
 
-      Def.taskDyn {
-        xethTriggerDirtyAliasCache
+      if ( shouldUpdate ) {
+        val check = shoebox.AddressAliasManager.insertAddressAlias( chainId, alias, address )
+        check.fold( _.vomit ){ _ =>
+          log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
+        }
+        Def.taskDyn {
+          xethTriggerDirtyAliasCache
+        }
+      }
+      else {
+        Def.task( () )
       }
     }
   }
@@ -1800,7 +1830,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressSenderDefaultSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
-    Def.inputTask {
+    Def.inputTaskDyn {
       val log = streams.value.log
       val is = interactionService.value
       val chainId = (config/ethcfgChainId).value
@@ -1817,11 +1847,14 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
       shoebox.Database.setDefaultSenderAddress( chainId, newAddress ).assert
-      log.info( s"Successfully set default sender address for chain with ID ${chainId} to '${hexString(newAddress)}'." )
+      log.info( s"Successfully set default sender address for chain with ID ${chainId} to '${hexString(newAddress)}'. You can use the synthetic alias '${DefaultSenderAlias}' to refer to this address." )
+      Def.taskDyn {
+        xethTriggerDirtyAliasCache
+      }
     }
   }
 
-  private def ethAddressSenderDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+  private def ethAddressSenderDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     val log = streams.value.log
     val chainId = (config/ethcfgChainId).value
     val oldAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
@@ -1834,6 +1867,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       case None => {
         log.info( s"No default sender address for chain with ID ${chainId} has been set. Nothing to do here." )
       }
+    }
+    Def.taskDyn {
+      xethTriggerDirtyAliasCache
     }
   }
 
@@ -2026,7 +2062,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       def finishUpdate = {
         log.info( s"The ABI previously associated with ${sourceDesc} ABI has been associated with address ${hexString(toLinkAddress)}." )
-        if (! shoebox.Database.hasAddressAliases( chainId, toLinkAddress ).assert ) {
+        if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, toLinkAddress ).assert ) {
           interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
         }
         Def.taskDyn {
@@ -2232,11 +2268,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     val deployedContracts = shoebox.Database.allDeployedContractInfosForChainId( chainId ).get
 
     val allRecords = {
-      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Memorized, shoebox.Database.findAddressAliasesByAddress( chainId, address ).get ) )
+      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Memorized, shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).get ) )
       val deployedRecords  = {
         deployedContracts
           .filter( _.mbAbi.nonEmpty )
-          .map( dci => AbiListRecord( dci.contractAddress, AbiListRecord.Deployed( dci.mbName ), shoebox.Database.findAddressAliasesByAddress( chainId, dci.contractAddress ).get ) )
+          .map( dci => AbiListRecord( dci.contractAddress, AbiListRecord.Deployed( dci.mbName ), shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, dci.contractAddress ).get ) )
       }
       memorizedRecords ++ deployedRecords
     }
@@ -2427,7 +2463,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       shoebox.Database.resetMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
       log.info( s"ABI is now known for the contract at address ${hexString(address)}" )
-      if (! shoebox.Database.hasAddressAliases( chainId, address ).assert ) {
+      if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, address ).assert ) {
         interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
       }
       Def.taskDyn {
@@ -2627,7 +2663,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val combined = combinedKeystoresMultiMap( keystoresV3 )
 
     val out = {
-      def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( shoebox.Database.findAddressAliasesByAddress( chainId, address ).get : _* )
+      def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).get : _* )
       immutable.TreeMap( combined.map { case ( address : EthAddress, _ ) => ( address, aliasesSet( address ) ) }.toSeq : _* )( Ordering.by( _.hex ) )
     }
     val cap = "+" + span(44) + "+"
@@ -3790,7 +3826,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethFindCacheRichParserInfoTask( config : Configuration ) : Initialize[Task[RichParserInfo]] = Def.task {
     val chainId            = (config / ethcfgChainId).value
     val jsonRpcUrl         = findNodeJsonRpcUrlTask(warn=false)(config).value
-    val addressAliases     = shoebox.Database.findAllAddressAliases( chainId ).assert
+    val addressAliases     = shoebox.AddressAliasManager.findAllAddressAliases( chainId ).assert
     val abiAliases         = shoebox.Database.findAllAbiAliases( chainId ).assert
     val abiOverrides       = abiOverridesForChain( chainId )
     val nameServiceAddress = (config / enscfgNameServiceAddress).value
@@ -4516,8 +4552,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
           if ( checkSetDefault ) {
             extract.runInputTask( nontestConfig / ethAddressSenderDefaultSet, address.hex, s )
-            log.info( "Giving the new address initial alias 'default-sender'..." )
-            extract.runInputTask( nontestConfig / ethAddressAliasSet, s" default-sender ${address.hex}", s )
           }
           else {
             println(s"No default sender has been defined. To create one later, use the command 'ethAddressSenderDefaultSet <address>'.")
@@ -4949,11 +4983,16 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def interactiveSetAliasForAddress( chainId : Int )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
     def rawFetch : String = is.readLine( s"Enter an optional alias for ${describedAddress} (or [return] for none): ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
     def validate( alias : String ) : Boolean = parsesAsAddressAlias( alias )
+    def inUse( alias : String ) : Boolean = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, alias ).assert.nonEmpty
 
     @tailrec
     def query : Option[String] = {
       rawFetch match {
         case ""                         => None
+        case alias if inUse( alias )    => {
+          println( s"'${alias}' is already defined. Please try again." )
+          query
+        }
         case alias if validate( alias ) => Some( alias )
         case alias                      => {
           println( s"'${alias}' is not a valid alias. Please try again." )
@@ -4964,7 +5003,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     query match {
       case Some( alias ) => {
-        val check = shoebox.Database.createUpdateAddressAlias( chainId, alias, address )
+        val check = shoebox.AddressAliasManager.insertAddressAlias( chainId, alias, address )
         check.fold( _.vomit ){ _ => 
           log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
         }
@@ -5012,7 +5051,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def mbWithNonceClause( nonceOverride : Option[Unsigned256] ) = nonceOverride.fold("")( n => s"with nonce ${n.widen} " )
 
   private def commaSepAliasesForAddress( chainId : Int, address : EthAddress ) : Failable[Option[String]] = {
-    shoebox.Database.findAddressAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
+    shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
   }
   private def leftwardAliasesArrowOrEmpty( chainId : Int, address : EthAddress ) : Failable[String] = {
     commaSepAliasesForAddress( chainId, address ).map( _.fold("")( aliasesStr => s" <-- ${aliasesStr}" ) )
