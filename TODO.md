@@ -21,6 +21,8 @@ Other
 
 * ethNodePing
 
+* etherscanApiKey to set/drop/print convention
+
 * let repositories suggest ABIs <--> addresses <--> aliases ???
 
 * Tool to derive linearization from AST
