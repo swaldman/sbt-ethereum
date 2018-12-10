@@ -78,7 +78,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   final case class TimestampedAbi( abi : Abi, timestamp : Option[Long] )
 
   object OneTimeWarnedKey {
-    final object NodeJsonRpcUrlInBuild extends OneTimeWarnedKey
+    final object NodeUrlInBuild extends OneTimeWarnedKey
     final object AddressSenderInBuild  extends OneTimeWarnedKey
   }
   trait OneTimeWarnedKey
@@ -107,7 +107,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val SenderOverride = new AtomicReference[Map[Int,EthAddress]]( Map.empty )
 
     // MT: protected by NodeJsonRpcOverride's lock
-    val NodeJsonRpcUrlOverride = new AtomicReference[Map[Int,String]]( Map.empty ) // Int is the chain ID
+    val NodeUrlOverride = new AtomicReference[Map[Int,String]]( Map.empty ) // Int is the chain ID
 
     // MT: protected by LocalGanache's lock
     val LocalGanache = new AtomicReference[Option[Process]]( None )
@@ -128,8 +128,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       SenderOverride synchronized {
         SenderOverride.set( Map.empty )
       }
-      NodeJsonRpcUrlOverride.synchronized {
-        NodeJsonRpcUrlOverride.set( Map.empty )
+      NodeUrlOverride.synchronized {
+        NodeUrlOverride.set( Map.empty )
       }
       LocalGanache synchronized {
         LocalGanache.set( None )
@@ -230,7 +230,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val EmptyBytes = List.empty[Byte]
 
-  private val LastResortEthJsonRpcUrl = {
+  private val LastResortEthNodeUrl = {
     // thanks to Mike Slinn for suggesting these external defaults
     def mbInfura               = ExternalValue.EthInfuraToken.map(token => s"https://mainnet.infura.io/$token")
     def mbSpecifiedDefaultNode = ExternalValue.EthDefaultNode
@@ -238,7 +238,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     (mbInfura orElse mbSpecifiedDefaultNode).getOrElse( "https://ethjsonrpc.mchange.com/" )
   }
 
-  private val LastResortTestEthJsonRpcUrl = testing.Default.EthJsonRpc.Url
+  private val LastResortTestEthNodeUrl = testing.Default.EthJsonRpc.Url
 
   private val LastResortMaybeEthAddressSender = ExternalValue.EthSender.map( EthAddress.apply )
 
@@ -304,7 +304,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgKeystoreAutoImportLocationsV3 = settingKey[Seq[File]]   ("Directories from which V3 wallets will be automatically imported into the sbt-ethereum shoebox")
     val ethcfgKeystoreAutoRelockSeconds     = settingKey[Int]         ("Number of seconds after which an unlocked private key should automatically relock")
     val ethcfgNetcompileUrl                 = settingKey[String]      ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
-    val ethcfgNodeJsonRpcUrl                = settingKey[String]      ("URL of the Ethereum JSON-RPC service the build should work with")
+    val ethcfgNodeUrl                = settingKey[String]      ("URL of the Ethereum JSON-RPC service the build should work with")
     val ethcfgScalaStubsPackage             = settingKey[String]      ("Package into which Scala stubs of Solidity compilations should be generated")
     val ethcfgAddressSender                 = settingKey[String]      ("The address from which transactions will be sent")
     val ethcfgSolidityCompilerOptimize      = settingKey[Boolean]     ("Sets whether the Solidity compiler should run its optimizer on generated code, if supported.")
@@ -397,15 +397,17 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethLanguageSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
     val ethLanguageSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
 
-    val ethNodeJsonRpcUrlDefaultSet   = inputKey[Unit]("Sets the default node json-rpc URL, which will be used if not overridden by an 'ethcfgNodeJsonRpcUrl' hardcoded into the build.")
-    val ethNodeJsonRpcUrlDefaultDrop  = taskKey[Unit] ("Drops the default node json-rpc URL.")
-    val ethNodeJsonRpcUrlDefaultPrint = taskKey[Unit] ("Displays the current default node json-rpc URL.")
+    val ethNodeBlockNumberPrint = taskKey[Unit]("Displays the current blocknumber of the current node.")
 
-    val ethNodeJsonRpcUrlOverrideSet   = inputKey[Unit]("Overrides the default node json-rpc URL.")
-    val ethNodeJsonRpcUrlOverrideDrop  = taskKey[Unit] ("Drops any override, reverting to use of the default node json-rpc URL.")
-    val ethNodeJsonRpcUrlOverridePrint = taskKey[Unit] ("Displays any override of the default node json-rpc URL.")
+    val ethNodeUrlDefaultSet   = inputKey[Unit]("Sets the default node json-rpc URL, which will be used if not overridden by an 'ethcfgNodeUrl' hardcoded into the build.")
+    val ethNodeUrlDefaultDrop  = taskKey[Unit] ("Drops the default node json-rpc URL.")
+    val ethNodeUrlDefaultPrint = taskKey[Unit] ("Displays the current default node json-rpc URL.")
 
-    val ethNodeJsonRpcUrlPrint = taskKey[Unit] ("Displays the currently effective node json-rpc URL, and explains the preference order if multiple values are set.")
+    val ethNodeUrlOverrideSet   = inputKey[Unit]("Overrides the default node json-rpc URL.")
+    val ethNodeUrlOverrideDrop  = taskKey[Unit] ("Drops any override, reverting to use of the default node json-rpc URL.")
+    val ethNodeUrlOverridePrint = taskKey[Unit] ("Displays any override of the default node json-rpc URL.")
+
+    val ethNodeUrlPrint = taskKey[Unit] ("Displays the currently effective node json-rpc URL, and explains the preference order if multiple values are set.")
 
     val ethShoeboxBackup              = taskKey[Unit] ("Backs up the sbt-ethereum shoebox.")
     val ethShoeboxDatabaseDumpCreate  = taskKey[Unit] ("Dumps the sbt-ethereum shoebox database as an SQL text file, stored inside the sbt-ethereum shoebox directory.")
@@ -811,33 +813,37 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethLanguageSolidityCompilerPrint in Compile := { ethLanguageSolidityCompilerPrintTask.value },
 
-    ethNodeJsonRpcUrlDefaultDrop in Compile := { ethNodeJsonRpcUrlDefaultDropTask( Compile ).value },
+    ethNodeBlockNumberPrint in Compile := { ethNodeBlockNumberPrintTask( Compile ).value },
 
-    ethNodeJsonRpcUrlDefaultDrop in Test := { ethNodeJsonRpcUrlDefaultDropTask( Test ).value },
+    ethNodeBlockNumberPrint in Test := { ethNodeBlockNumberPrintTask( Test ).value },
 
-    ethNodeJsonRpcUrlDefaultPrint in Compile := { ethNodeJsonRpcUrlDefaultPrintTask( Compile ).value },
+    ethNodeUrlDefaultDrop in Compile := { ethNodeUrlDefaultDropTask( Compile ).value },
 
-    ethNodeJsonRpcUrlDefaultPrint in Test := { ethNodeJsonRpcUrlDefaultPrintTask( Test ).value },
+    ethNodeUrlDefaultDrop in Test := { ethNodeUrlDefaultDropTask( Test ).value },
 
-    ethNodeJsonRpcUrlDefaultSet in Compile := { ethNodeJsonRpcUrlDefaultSetTask( Compile ).evaluated },
+    ethNodeUrlDefaultPrint in Compile := { ethNodeUrlDefaultPrintTask( Compile ).value },
 
-    ethNodeJsonRpcUrlDefaultSet in Test := { ethNodeJsonRpcUrlDefaultSetTask( Test ).evaluated },
+    ethNodeUrlDefaultPrint in Test := { ethNodeUrlDefaultPrintTask( Test ).value },
 
-    ethNodeJsonRpcUrlOverrideDrop in Compile := { ethNodeJsonRpcUrlOverrideDropTask( Compile ).value },
+    ethNodeUrlDefaultSet in Compile := { ethNodeUrlDefaultSetTask( Compile ).evaluated },
 
-    ethNodeJsonRpcUrlOverrideDrop in Test := { ethNodeJsonRpcUrlOverrideDropTask( Test ).value },
+    ethNodeUrlDefaultSet in Test := { ethNodeUrlDefaultSetTask( Test ).evaluated },
 
-    ethNodeJsonRpcUrlOverridePrint in Compile := { ethNodeJsonRpcUrlOverridePrintTask( Compile ).value },
+    ethNodeUrlOverrideDrop in Compile := { ethNodeUrlOverrideDropTask( Compile ).value },
 
-    ethNodeJsonRpcUrlOverridePrint in Test := { ethNodeJsonRpcUrlOverridePrintTask( Test ).value },
+    ethNodeUrlOverrideDrop in Test := { ethNodeUrlOverrideDropTask( Test ).value },
 
-    ethNodeJsonRpcUrlOverrideSet in Compile := { ethNodeJsonRpcUrlOverrideSetTask( Compile ).evaluated },
+    ethNodeUrlOverridePrint in Compile := { ethNodeUrlOverridePrintTask( Compile ).value },
 
-    ethNodeJsonRpcUrlOverrideSet in Test := { ethNodeJsonRpcUrlOverrideSetTask( Test ).evaluated },
+    ethNodeUrlOverridePrint in Test := { ethNodeUrlOverridePrintTask( Test ).value },
 
-    ethNodeJsonRpcUrlPrint in Compile := { ethNodeJsonRpcUrlPrintTask( Compile ).value },
+    ethNodeUrlOverrideSet in Compile := { ethNodeUrlOverrideSetTask( Compile ).evaluated },
 
-    ethNodeJsonRpcUrlPrint in Test := { ethNodeJsonRpcUrlPrintTask( Test ).value },
+    ethNodeUrlOverrideSet in Test := { ethNodeUrlOverrideSetTask( Test ).evaluated },
+
+    ethNodeUrlPrint in Compile := { ethNodeUrlPrintTask( Compile ).value },
+
+    ethNodeUrlPrint in Test := { ethNodeUrlPrintTask( Test ).value },
 
     ethShoeboxBackup := { ethShoeboxBackupTask.value },
 
@@ -1134,22 +1140,22 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def findNodeJsonRpcUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[String]] = Def.task {
+  private def findNodeUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[String]] = Def.task {
     val log = streams.value.log
     val chainId = (config/ethcfgChainId).value
-    val mbOverrideNodeJsonRpcUrl = {
-      Mutables.NodeJsonRpcUrlOverride.synchronized {
-        val map = Mutables.NodeJsonRpcUrlOverride.get
+    val mbOverrideNodeUrl = {
+      Mutables.NodeUrlOverride.synchronized {
+        val map = Mutables.NodeUrlOverride.get
         map.get( chainId )
       }
     }
-    mbOverrideNodeJsonRpcUrl match {
+    mbOverrideNodeUrl match {
       case Some( url ) => {
         url
       }
       case None => {
-        val mbDbNodeJsonRpcUrl = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
-        (config/ethcfgNodeJsonRpcUrl).?.value match {
+        val mbDbNodeUrl = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
+        (config/ethcfgNodeUrl).?.value match {
           case Some( url ) => {
             if ( warn ) {
               val warningLinesBuilder = {
@@ -1161,27 +1167,27 @@ object SbtEthereumPlugin extends AutoPlugin {
                       case other   => throw new SbtEthereumException( s"Unexpected task configuration: ${other}" )
                     }
                   }
-                  mbDbNodeJsonRpcUrl.map ( dbNodeJsonRpcUrl =>
+                  mbDbNodeUrl.map ( dbNodeUrl =>
                     Seq (
-                      s"'${pfx}ethcfgNodeJsonRpcUrl' has been explicitly set to '${url}' in the build or as a global setting in the .sbt directory.",
-                      s" + This value will be used in preference to the value set in the sbt-ethereum shoebox via '${pfx}ethNodeJsonRpcUrlDefaultSet' (currently '${dbNodeJsonRpcUrl}').",
-                      s" + However, you can temporarily override the hard-coded value for a single session using '${pfx}ethNodeJsonRpcUrlOverrideSet'."
+                      s"'${pfx}ethcfgNodeUrl' has been explicitly set to '${url}' in the build or as a global setting in the .sbt directory.",
+                      s" + This value will be used in preference to the value set in the sbt-ethereum shoebox via '${pfx}ethNodeUrlDefaultSet' (currently '${dbNodeUrl}').",
+                      s" + However, you can temporarily override the hard-coded value for a single session using '${pfx}ethNodeUrlOverrideSet'."
                     )
                   )
                 }
               }
-              oneTimeWarn( OneTimeWarnedKey.NodeJsonRpcUrlInBuild, config, log, warningLinesBuilder )
+              oneTimeWarn( OneTimeWarnedKey.NodeUrlInBuild, config, log, warningLinesBuilder )
             }
             url
           }
-          case None if mbDbNodeJsonRpcUrl.nonEmpty => {
-            mbDbNodeJsonRpcUrl.get
+          case None if mbDbNodeUrl.nonEmpty => {
+            mbDbNodeUrl.get
           }
           case None if config == Compile => {
-            LastResortEthJsonRpcUrl
+            LastResortEthNodeUrl
           }
           case None if config == Test => {
-            LastResortTestEthJsonRpcUrl
+            LastResortTestEthNodeUrl
           }
           case None => {
             throw new UnexpectedConfigurationException( config )
@@ -1210,7 +1216,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def findExchangerConfigTask( config : Configuration ) : Initialize[Task[Exchanger.Config]] = Def.task {
-    val httpUrl = findNodeJsonRpcUrlTask(warn=true)(config).value
+    val httpUrl = findNodeUrlTask(warn=true)(config).value
     val timeout = xethcfgAsyncOperationTimeout.value
     Exchanger.Config( new URL(httpUrl), timeout ) 
   }
@@ -1711,7 +1717,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
-      val jsonRpcUrl       = findNodeJsonRpcUrlTask(warn=true)(config).value
+      val jsonRpcUrl       = findNodeUrlTask(warn=true)(config).value
       val timeout          = xethcfgAsyncOperationTimeout.value
       val baseCurrencyCode = ethcfgBaseCurrencyCode.value
       val mbAddress        = parser.parsed
@@ -2869,11 +2875,23 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethNodeJsonRpcUrlDefaultPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+  private def ethNodeBlockNumberPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+
+    implicit val invokerContext = (xethInvokerContext in config).value
+
+    val (url, blockNumber) = jsonrpc.Invoker.withClient { (client, url) =>
+      ( url, Await.result( client.eth.blockNumber(), invokerContext.pollTimeout ) )
+    }
+
+    log.info( s"The current blocknumber is ${blockNumber}, according to node at '${url}'." )
+  }
+
+  private def ethNodeUrlDefaultPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = (config/ethcfgChainId).value
-    val mbUrl = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
-    mbUrl match {
+    val mbJsonRpcUrl = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
+    mbJsonRpcUrl match {
       case Some( url ) => {
         log.info( s"The default node json-rpc URL for chain with ID ${chainId} is '${url}'." )
       }
@@ -2883,7 +2901,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethNodeJsonRpcUrlDefaultSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+  private def ethNodeUrlDefaultSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val is = interactionService.value
     val chainId = (config/ethcfgChainId).value
@@ -2903,7 +2921,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( s"Successfully set default node json-rpc URL for chain with ID ${chainId} to ${newUrl}." )
   }
 
-  private def ethNodeJsonRpcUrlDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+  private def ethNodeUrlDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = (config/ethcfgChainId).value
     val oldValue = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
@@ -2919,54 +2937,54 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethNodeJsonRpcUrlOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+  private def ethNodeUrlOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = (config/ethcfgChainId).value
-    val map = Mutables.NodeJsonRpcUrlOverride.synchronized {
-      Mutables.NodeJsonRpcUrlOverride.get
+    val map = Mutables.NodeUrlOverride.synchronized {
+      Mutables.NodeUrlOverride.get
     }
     map.get( chainId ) match {
       case Some( url ) => {
         log.info( s"The default node json-rpc URL for chain with ID ${chainId} has been overridden. The overridden value '${url}' will be used for all tasks." )
       }
       case None => {
-        log.info( "The default node json-rpc URL for chain with ID ${chainId} has not been overridden, and will be used for all tasks. Try 'ethNodeJsonRpcUrlDefaultPrint' to see that URL." )
+        log.info( "The default node json-rpc URL for chain with ID ${chainId} has not been overridden, and will be used for all tasks. Try 'ethNodeUrlDefaultPrint' to see that URL." )
       }
     }
   }
 
-  private def ethNodeJsonRpcUrlOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+  private def ethNodeUrlOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val chainId = (config/ethcfgChainId).value
     val overrideUrl = urlParser( "<override-json-rpc-url>" ).parsed
-    Mutables.NodeJsonRpcUrlOverride.synchronized {
-      val map = Mutables.NodeJsonRpcUrlOverride.get
-      Mutables.NodeJsonRpcUrlOverride.set( map + Tuple2( chainId, overrideUrl ) )
+    Mutables.NodeUrlOverride.synchronized {
+      val map = Mutables.NodeUrlOverride.get
+      Mutables.NodeUrlOverride.set( map + Tuple2( chainId, overrideUrl ) )
     }
     log.info( s"The default node json-rpc URL for chain with ID ${chainId} has been overridden. The new overridden value '${overrideUrl}' will be used for all tasks." )
   }
 
-  private def ethNodeJsonRpcUrlOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+  private def ethNodeUrlOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = (config/ethcfgChainId).value
-    Mutables.NodeJsonRpcUrlOverride.synchronized {
-      val map = Mutables.NodeJsonRpcUrlOverride.get
-      Mutables.NodeJsonRpcUrlOverride.set( map - chainId )
+    Mutables.NodeUrlOverride.synchronized {
+      val map = Mutables.NodeUrlOverride.get
+      Mutables.NodeUrlOverride.set( map - chainId )
     }
     log.info( s"Any override has been dropped. The default node json-rpc URL for chain with ID ${chainId} will be used for all tasks." )
   }
 
-  private def ethNodeJsonRpcUrlPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
-    val effective = findNodeJsonRpcUrlTask(warn=false)(config).value
+  private def ethNodeUrlPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val effective = findNodeUrlTask(warn=false)(config).value
 
     val log = streams.value.log
     val chainId = (config/ethcfgChainId).value
 
-    val overridesMap = Mutables.NodeJsonRpcUrlOverride.synchronized {
-      Mutables.NodeJsonRpcUrlOverride.get
+    val overridesMap = Mutables.NodeUrlOverride.synchronized {
+      Mutables.NodeUrlOverride.get
     }
     val mbOverride = overridesMap.get( chainId )
-    val mbBuildSetting = ethcfgNodeJsonRpcUrl.?.value
+    val mbBuildSetting = ethcfgNodeUrl.?.value
     val mbShoeboxDefault = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
 
     log.info( s"The current effective node json-rpc URL is '${effective}'." )
@@ -2974,13 +2992,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     ( mbOverride, mbBuildSetting, mbShoeboxDefault ) match {
       case ( Some( ov ), _, _) => {
         assert( effective == ov, "We expect that if a session override is set, it is the effective node json-rpc URL." )
-        log.info( " + This value has been explicitly set as a session override via 'ethNodeJsonRpcUrlOverrideSet'." )
-        mbBuildSetting.foreach( hardCoded => log.info( s" + It has overridden a value explicitly set in the project build or the '.sbt' folder as 'ethcfgNodeJsonRpcUrl': ${hardCoded}" ) )
+        log.info( " + This value has been explicitly set as a session override via 'ethNodeUrlOverrideSet'." )
+        mbBuildSetting.foreach( hardCoded => log.info( s" + It has overridden a value explicitly set in the project build or the '.sbt' folder as 'ethcfgNodeUrl': ${hardCoded}" ) )
         mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node json-rpc URL value for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
       }
       case ( None, Some( buildSetting ), _ ) => {
         assert( effective == buildSetting, "We expect that if no session override is set, but a node json-rpc URL is set as a build setting, it is the effective URL." )
-        log.info( " + This value has been explicitly defined as setting 'ethcfgNodeJsonRpcUrl' in the project build or the '.sbt' folder, and has not been overridden by a session override." )
+        log.info( " + This value has been explicitly defined as setting 'ethcfgNodeUrl' in the project build or the '.sbt' folder, and has not been overridden by a session override." )
         mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node json-rpc URL value for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
       }
       case ( None, None, Some( shoeboxDefault ) ) => {
@@ -2989,15 +3007,15 @@ object SbtEthereumPlugin extends AutoPlugin {
           s"We expect that if no session override is set, and no build setting, but a default node json-rpc URL for chain with ID ${chainId} is set in the shoebox, it is the effective URL for that chain."
         )
         log.info( s" + This value is the default node json-rpc URL defined in the sbt-ethereum shoebox for chain with ID ${chainId}. " )
-        log.info( " + It has not been overridden with a session override or by an 'ethcfgNodeJsonRpcUrl' setting in the project build or the '.sbt' folder." )
+        log.info( " + It has not been overridden with a session override or by an 'ethcfgNodeUrl' setting in the project build or the '.sbt' folder." )
       }
       case ( None, None, None ) if config == Compile => {
         assert(
-          effective == LastResortEthJsonRpcUrl,
-          "With no session override, no 'ethcfgNodeJsonRpcUrl' setting in the build, and no default URL set for chain with ID ${chainID}, the effective URL should be the 'last-resort' URL."
+          effective == LastResortEthNodeUrl,
+          "With no session override, no 'ethcfgNodeUrl' setting in the build, and no default URL set for chain with ID ${chainID}, the effective URL should be the 'last-resort' URL."
         )
         log.info(  " + This is the 'last-resort' URL, either taken from an environment variable or system property, or else hard-coded into sbt-ethereum. " )
-        log.info(  " + It has not been overridden with a session override or by an 'ethcfgNodeJsonRpcUrl' setting in the project build or the '.sbt' folder. " )
+        log.info(  " + It has not been overridden with a session override or by an 'ethcfgNodeUrl' setting in the project build or the '.sbt' folder. " )
         log.info( s" + There is no default node json-rpc URL defined for chain with ID ${chainId} defined in the sbt-ethereum shoebox." )
       }
       case ( None, None, None ) => {
@@ -3827,7 +3845,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethFindCacheRichParserInfoTask( config : Configuration ) : Initialize[Task[RichParserInfo]] = Def.task {
     val chainId            = (config / ethcfgChainId).value
-    val jsonRpcUrl         = findNodeJsonRpcUrlTask(warn=false)(config).value
+    val jsonRpcUrl         = findNodeUrlTask(warn=false)(config).value
     val addressAliases     = shoebox.AddressAliasManager.findAllAddressAliases( chainId ).assert
     val abiAliases         = shoebox.Database.findAllAbiAliases( chainId ).assert
     val abiOverrides       = abiOverridesForChain( chainId )
@@ -3855,7 +3873,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val sessionCompilers = Mutables.SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys during onLoad should have forced sessionCompilers to be set, but it's not." ) )
     val compilerKeys = sessionCompilers.keySet
 
-    val mbJsonRpcUrl = Some( findNodeJsonRpcUrlTask(warn=false)(Compile).value )
+    val mbJsonRpcUrl = Some( findNodeUrlTask(warn=false)(Compile).value )
 
     Mutables.CurrentSolidityCompiler.get.map( _._2).getOrElse {
       def latestLocalInstallVersion : Option[SemanticVersion] = {
@@ -3883,7 +3901,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
     val log        = streams.value.log
-    val jsonRpcUrl = findNodeJsonRpcUrlTask(warn=true)(config).value
+    val jsonRpcUrl = findNodeUrlTask(warn=true)(config).value
 
     val markup          = ethcfgGasPriceMarkup.value
     val defaultGasPrice = (xethDefaultGasPrice in config).value
@@ -3929,7 +3947,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // Used only for Test
     val testingResourcesObjectName = (xethcfgTestingResourcesObjectName in Test).value
-    val testingEthJsonRpcUrl = findNodeJsonRpcUrlTask(warn=true)(Test).value
+    val testingEthNodeUrl = findNodeUrlTask(warn=true)(Test).value
 
     // Sensitive to config
     val scalaStubsTarget = (sourceManaged in config).value
@@ -4004,7 +4022,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                     log.warn(  "The testing resources object '${testingResourcesObjectName}' will not be generated." )
                     immutable.Seq.empty[File]
                   } else {
-                    val gensrc = testing.TestingResourcesGenerator.generateTestingResources( testingResourcesObjectName, testingEthJsonRpcUrl, stubPackage )
+                    val gensrc = testing.TestingResourcesGenerator.generateTestingResources( testingResourcesObjectName, testingEthNodeUrl, stubPackage )
                     val testingResourcesFile = new File( stubsDir, s"${testingResourcesObjectName}.scala" )
                     Files.write( testingResourcesFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
                     immutable.Seq( testingResourcesFile )
@@ -4039,7 +4057,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val log = streams.value.log
 
-    val jsonRpcUrl      = findNodeJsonRpcUrlTask(warn=true)(config).value
+    val jsonRpcUrl      = findNodeUrlTask(warn=true)(config).value
 
     val pollPeriod      = ethcfgTransactionReceiptPollPeriod.value
     val timeout         = ethcfgTransactionReceiptTimeout.value
@@ -4354,7 +4372,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethTransactionCountTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
     val log        = streams.value.log
-    val jsonRpcUrl = findNodeJsonRpcUrlTask(warn=true)(config).value
+    val jsonRpcUrl = findNodeUrlTask(warn=true)(config).value
     val timeout    = xethcfgAsyncOperationTimeout.value
     val sender     = findAddressSenderTask(warn=true)(config).value.assert
 
@@ -4365,15 +4383,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethOnLoadBannerTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    // val mainEthJsonRpcUrl = findNodeJsonRpcUrlTask(warn=false)(Compile).value
-    // val testEthJsonRpcUrl = findNodeJsonRpcUrlTask(warn=false)(Test).value
+    // val mainEthNodeUrl = findNodeUrlTask(warn=false)(Compile).value
+    // val testEthNodeUrl = findNodeUrlTask(warn=false)(Test).value
     // val chainId           = (ethcfgChainId in Compile).value
     // val mbCurrentSender   = (xethFindCurrentSender in Compile).value
     
     log.info( s"sbt-ethereum-${generated.SbtEthereum.Version} successfully initialized (built ${SbtEthereum.BuildTimestamp})" )
     // log.info( s"sbt-ethereum shoebox: '${shoebox.Directory.assert}' <-- Please backup, via 'ethShoeboxBackup' or manually" )
-    // log.info( s"sbt-ethereum main json-rpc endpoint configured to '${mainEthJsonRpcUrl}'" )
-    // log.info( s"sbt-ethereum test json-rpc endpoint configured to '${testEthJsonRpcUrl}'" )
+    // log.info( s"sbt-ethereum main json-rpc endpoint configured to '${mainEthNodeUrl}'" )
+    // log.info( s"sbt-ethereum test json-rpc endpoint configured to '${testEthNodeUrl}'" )
     // mbCurrentSender foreach { currentSender => 
     //   val aliasesPart = commaSepAliasesForAddress( chainId, currentSender ).fold( _ => "" )( _.fold("")( commasep => s", with aliases $commasep" ) )
     //   log.info( s"sbt-ethereum main current sender address: ${hexString(currentSender)}${aliasesPart}" )
@@ -4663,7 +4681,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     import Compiler.Solidity._
 
     val netcompileUrl = ethcfgNetcompileUrl.?.value
-    val jsonRpcUrl    = findNodeJsonRpcUrlTask(warn=false)(Compile).value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
+    val jsonRpcUrl    = findNodeUrlTask(warn=false)(Compile).value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
 
     val testTimeout = xethcfgAsyncOperationTimeout.value
 
