@@ -53,32 +53,34 @@ Downloading sbt launcher for 1.2.7:
     To  /Users/testuser/.sbt/launchers/1.2.7/sbt-launch.jar
 Getting org.scala-sbt sbt 1.2.7  (this may take some time)...
 downloading https://repo1.maven.org/maven2/org/scala-sbt/sbt/1.2.7/sbt-1.2.7.jar ...
-	[SUCCESSFUL ] org.scala-sbt#sbt;1.2.7!sbt.jar (153ms)
-           ...
-[info] 	[SUCCESSFUL ] org.eclipse.jetty#jetty-util;9.4.11.v20180605!jetty-util.jar (558ms)
-[info] 	[SUCCESSFUL ] org.slf4j#slf4j-api;1.7.20!slf4j-api.jar (132ms)
-[info] 	[SUCCESSFUL ] ch.qos.logback#logback-core;1.1.7!logback-core.jar (269ms)
-[info] 	[SUCCESSFUL ] com.fasterxml.jackson.core#jackson-databind;2.8.9!jackson-databind.jar(bundle) (588ms)
+	[SUCCESSFUL ] org.scala-sbt#sbt;1.2.7!sbt.jar (141ms)
+downloading https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.12.7/scala-library-2.12.7.jar ...
+	[SUCCESSFUL ] org.scala-lang#scala-library;2.12.7!scala-library.jar (1353ms)
+	  ...
+	  ...
+[info] 	[SUCCESSFUL ] org.slf4j#slf4j-api;1.7.20!slf4j-api.jar (111ms)
+[info] 	[SUCCESSFUL ] ch.qos.logback#logback-core;1.1.7!logback-core.jar (206ms)
 [info] downloading https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.11.1/log4j-core-2.11.1-tests.jar ...
-[info] 	[SUCCESSFUL ] org.apache.logging.log4j#log4j-core;2.11.1!log4j-core.jar(test-jar) (617ms)
+[info] 	[SUCCESSFUL ] org.apache.logging.log4j#log4j-core;2.11.1!log4j-core.jar(test-jar) (337ms)
+[info] 	[SUCCESSFUL ] com.mchange#sbt-ethereum;0.1.7-SNAPSHOT!sbt-ethereum.jar (5574ms)
+[info] 	[SUCCESSFUL ] com.mchange#consuela_2.12;0.0.11-SNAPSHOT!consuela_2.12.jar (10602ms)
 [info] Done updating.
 [warn] There may be incompatibilities among your library dependencies; run 'evicted' to see detailed eviction warnings.
 [info] Loading settings for project eth-command-line from build.sbt ...
 [info] Set current project to eth-command-line (in build file:/Users/testuser/eth-command-line/)
 There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] y
 ```
-
 _sbt-ethereum_ presents an interactive, text-based user interface. When it's done bootstrapping itself, it notices that it knows of no "wallets",
 which are a combination of an Ethereum "address" (analogous to a bank account number), and the secret that unlocks it. (Learn about wallets in greater
 detail here **TK**). For now, let's go ahead and make one. _sbt-ethereum_ will ask you to type a passphrase. 
 ```
 There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] y
-[info] Generated keypair for address '0xca366f0320e9ef0f6dfa135a282846f7d27b5286'
+[info] Generated keypair for address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2'
 [info] Generating V3 wallet, alogorithm=scrypt, n=262144, r=8, p=1, dklen=32
 Enter passphrase for new wallet: ***************
 Please retype to confirm: ***************
 [info] Wallet generated into sbt-ethereum shoebox: '/Users/testuser/Library/Application Support/sbt-ethereum'. Please backup, via 'ethShoeboxBackup' or manually.
-[info] Consider validating the wallet using 'ethKeystoreWalletV3Validate 0xca366f0320e9ef0f6dfa135a282846f7d27b5286'.
+[info] Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2'.
 ```
 @@@ warning
 
@@ -100,20 +102,19 @@ value and privileges associated with it.
 
 @@@
 
-After generating a wallet for address `0xca366f0320e9ef0f6dfa135a282846f7d27b5286` &mdash; *your address will be different!* &mdash; _sbt-etherum_ asks
+After generating a wallet for address `0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2` &mdash; *your address will be different!* &mdash; _sbt-etherum_ asks
 
 ```
-Would you like the new address '0xca366f0320e9ef0f6dfa135a282846f7d27b5286' to be the default sender on chain with ID 1? [y/n] y
+Would you like the new address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' to be the default sender on chain with ID 1? [y/n] y
 ```
 
 When you wish to interact with the Ethereum blockchain, _sbt-ethereum_ needs to know an address representing on whose behalf it is interacting.
 At Any time, you can set this to any address you like, but it is convenient to have a default address present. Let's answer yes.
 
 ```
-Would you like the new address '0xca366f0320e9ef0f6dfa135a282846f7d27b5286' to be the default sender on chain with ID 1? [y/n] y
-[info] Successfully set default sender address for chain with ID 1 to '0xca366f0320e9ef0f6dfa135a282846f7d27b5286'.
-[info] Giving the new address initial alias 'default-sender'...
-[info] Alias 'default-sender' now points to address '0xca366f0320e9ef0f6dfa135a282846f7d27b5286' (for chain with ID 1).
+Would you like the new address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' to be the default sender on chain with ID 1? [y/n] y
+[info] Successfully set default sender address for chain with ID 1 to '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2'.
+[info] You can use the synthetic alias 'default-sender' to refer to this address.
 [info] Refreshing caches.
 The current default solidity compiler ['0.4.24'] is not installed. Install? [y/n] y
 ```
@@ -123,11 +124,10 @@ and will ask if you would like to insall it. A solidity compiler is useful if yo
 rather than just interacting with applications that others have deployed. Regardless, it doesn't hurt to have one. Let's say yes.
 
 ```
-The current default solidity compiler ['0.4.24'] is not installed. Install? [y/n] y
 [info] Installed local solcJ compiler, version 0.4.24 in '/Users/testuser/Library/Application Support/sbt-ethereum/solcJ'.
 [info] Testing newly installed compiler... ok.
 [info] Updating available solidity compiler set.
-[info] sbt-ethereum-0.1.7-SNAPSHOT successfully initialized (built Sun, 9 Dec 2018 01:17:56 -0800)
+[info] sbt-ethereum-0.1.7-SNAPSHOT successfully initialized (built Sun, 9 Dec 2018 22:12:18 -0800)
 sbt:eth-command-line> 
 ```
 
@@ -147,7 +147,7 @@ We will arrive pretty directly at the command prompt.
 
 When we generated our new address, you may have noticed the message
 ```
-[info] Consider validating the wallet using 'ethKeystoreWalletV3Validate 0xca366f0320e9ef0f6dfa135a282846f7d27b5286'.
+[info] Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2'.
 ```
 Let's try that. You could just copy and paste the (very long!) command, but please don't. _sbt-ethereum_ by design
 relies up _tab completion_ to make typing long but descriptive commands easy. Writing out a "tutorial" in tab completion
@@ -161,7 +161,7 @@ When you type `eth<tab>` you should see a rather useless and intimidatingly long
 
 ```
 sbt:eth-command-line> eth
-Display all 102 possibilities? (y or n) 
+Display all 103 possibilities? (y or n) 
 eth-command-line/                         ethAddressAliasCheck                      ethAddressAliasDrop                       ethAddressAliasList                       
 ethAddressAliasSet                        ethAddressBalance                         ethAddressSenderDefaultDrop               ethAddressSenderDefaultPrint              
 ethAddressSenderDefaultSet                ethAddressSenderOverrideDrop              ethAddressSenderOverridePrint             ethAddressSenderOverrideSet               
@@ -173,21 +173,21 @@ ethContractAbiPrintCompact                ethContractAbiPrintPretty             
 ethContractCompilationList                ethDebugGanacheRestart                    ethDebugGanacheStart                      ethDebugGanacheStop                       
 ethDebugGanacheTest                       ethKeystoreList                           ethKeystorePrivateKeyReveal               ethKeystoreWalletV3Create                 
 ethKeystoreWalletV3FromJsonImport         ethKeystoreWalletV3FromPrivateKeyImport   ethKeystoreWalletV3Print                  ethKeystoreWalletV3Validate               
-ethLanguageSolidityCompilerInstall        ethLanguageSolidityCompilerPrint          ethLanguageSolidityCompilerSelect         ethNodeJsonRpcUrlDefaultDrop              
-ethNodeJsonRpcUrlDefaultPrint             ethNodeJsonRpcUrlDefaultSet               ethNodeJsonRpcUrlOverrideDrop             ethNodeJsonRpcUrlOverridePrint            
-ethNodeJsonRpcUrlOverrideSet              ethNodeJsonRpcUrlPrint                    ethShoeboxBackup                          ethShoeboxDatabaseDumpCreate              
-ethShoeboxDatabaseDumpRestore             ethShoeboxRestore                         ethTransactionDeploy                      ethTransactionGasLimitOverrideDrop        
-ethTransactionGasLimitOverridePrint       ethTransactionGasLimitOverrideSet         ethTransactionGasPriceOverrideDrop        ethTransactionGasPriceOverridePrint       
-ethTransactionGasPriceOverrideSet         ethTransactionInvoke                      ethTransactionLookup                      ethTransactionNonceOverrideDrop           
-ethTransactionNonceOverridePrint          ethTransactionNonceOverrideSet            ethTransactionPing                        ethTransactionRaw                         
-ethTransactionSend                        ethTransactionView                        ethcfgAddressSender                       ethcfgAutoDeployContracts                 
-ethcfgBaseCurrencyCode                    ethcfgChainId                             ethcfgEntropySource                       ethcfgGasLimitCap                         
-ethcfgGasLimitFloor                       ethcfgGasLimitMarkup                      ethcfgGasPriceCap                         ethcfgGasPriceFloor                       
-ethcfgGasPriceMarkup                      ethcfgIncludeLocations                    ethcfgKeystoreAutoImportLocationsV3       ethcfgKeystoreAutoRelockSeconds           
-ethcfgNetcompileUrl                       ethcfgNodeJsonRpcUrl                      ethcfgScalaStubsPackage                   ethcfgSolidityCompilerOptimize            
-ethcfgSolidityCompilerOptimizerRuns       ethcfgSolidityDestination                 ethcfgSoliditySource                      ethcfgTargetDir                           
-ethcfgTransactionReceiptPollPeriod        ethcfgTransactionReceiptTimeout           ethcfgUseReplayAttackProtection           etherscanApiKeyDrop                       
-etherscanApiKeyImport                     etherscanApiKeyReveal                     
+ethLanguageSolidityCompilerInstall        ethLanguageSolidityCompilerPrint          ethLanguageSolidityCompilerSelect         ethNodeBlockNumberPrint                   
+ethNodeUrlDefaultDrop                     ethNodeUrlDefaultPrint                    ethNodeUrlDefaultSet                      ethNodeUrlOverrideDrop                    
+ethNodeUrlOverridePrint                   ethNodeUrlOverrideSet                     ethNodeUrlPrint                           ethShoeboxBackup                          
+ethShoeboxDatabaseDumpCreate              ethShoeboxDatabaseDumpRestore             ethShoeboxRestore                         ethTransactionDeploy                      
+ethTransactionGasLimitOverrideDrop        ethTransactionGasLimitOverridePrint       ethTransactionGasLimitOverrideSet         ethTransactionGasPriceOverrideDrop        
+ethTransactionGasPriceOverridePrint       ethTransactionGasPriceOverrideSet         ethTransactionInvoke                      ethTransactionLookup                      
+ethTransactionNonceOverrideDrop           ethTransactionNonceOverridePrint          ethTransactionNonceOverrideSet            ethTransactionPing                        
+ethTransactionRaw                         ethTransactionSend                        ethTransactionView                        ethcfgAddressSender                       
+ethcfgAutoDeployContracts                 ethcfgBaseCurrencyCode                    ethcfgChainId                             ethcfgEntropySource                       
+ethcfgGasLimitCap                         ethcfgGasLimitFloor                       ethcfgGasLimitMarkup                      ethcfgGasPriceCap                         
+ethcfgGasPriceFloor                       ethcfgGasPriceMarkup                      ethcfgIncludeLocations                    ethcfgKeystoreAutoImportLocationsV3       
+ethcfgKeystoreAutoRelockSeconds           ethcfgNetcompileUrl                       ethcfgNodeUrl                             ethcfgScalaStubsPackage                   
+ethcfgSolidityCompilerOptimize            ethcfgSolidityCompilerOptimizerRuns       ethcfgSolidityDestination                 ethcfgSoliditySource                      
+ethcfgTargetDir                           ethcfgTransactionReceiptPollPeriod        ethcfgTransactionReceiptTimeout           ethcfgUseReplayAttackProtection           
+etherscanApiKeyDrop                       etherscanApiKeyImport                     etherscanApiKeyReveal                     
 ```
 Wow. That's a lot. That's a list of (almost) all of the ethereum-related commands
 available to you. But it's too much information to be useful.
@@ -236,7 +236,7 @@ sbt:eth-command-line> ethKeystoreWalletV3Validate
 <address-hex>    <ens-name>.eth   default-sender   
 sbt:eth-command-line> ethKeystoreWalletV3Validate
 ```
-As in this tutorial, items in angle braces are description of what you might type, rather than things that you literally could type.
+Just as in this tutorial, items in angle braces are description of what you might type, rather than things that you literally should type.
 The first two items are telling you that you could type out (or really paste) the full, long hex address, you could provide an ens name
 that is bound to an address. Or, you could literally write `default-sender`, which you will note is _not_ in angle braces.
 
@@ -247,10 +247,10 @@ sbt:eth-command-line> ethKeystoreWalletV3Validate default-sender
 Now hit `<return>`, and follow the instructions. Let's hope you remember the passphrase you provided for your `defaultSender` address!
 ```
 sbt:eth-command-line> ethKeystoreWalletV3Validate default-sender
-[info] V3 wallet(s) found for '0xca366f0320e9ef0f6dfa135a282846f7d27b5286' (aliases ['default-sender'])
-Enter passphrase or hex private key for address '0xca366f0320e9ef0f6dfa135a282846f7d27b5286': ***************
-[info] A wallet for address '0xca366f0320e9ef0f6dfa135a282846f7d27b5286' is valid and decodable with the credential supplied.
-[success] Total time: 9 s, completed Dec 9, 2018 1:30:58 AM
+[info] V3 wallet(s) found for '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (aliases ['default-sender'])
+Enter passphrase or hex private key for address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2': ***************
+[info] A wallet for address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' is valid and decodable with the credential supplied.
+[success] Total time: 7 s, completed Dec 9, 2018 11:22:46 PM
 ```
 Hooray! We've successfully run an _sbt-ethereum_ command, and (hopefully!) successfully validated our wallet.
 
@@ -264,9 +264,9 @@ sbt:eth-command-line> ethKeystoreList
 +--------------------------------------------+
 | Keystore Addresses                         |
 +--------------------------------------------+
-| 0xca366f0320e9ef0f6dfa135a282846f7d27b5286 | <-- default-sender
+| 0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2 | <-- default-sender
 +--------------------------------------------+
-[success] Total time: 0 s, completed Dec 9, 2018 1:31:37 AM
+[success] Total time: 0 s, completed Dec 9, 2018 11:23:25 PM
 ```
 _sbt-ethereum_ knows about precisely one address, to which has been linked the special _address alias_ `default-sender`.
 You can define as many address aliases as you want for any ethereum address. Type `ethA<tab>A<tab><tab>` to see the relevant commands,
@@ -306,4 +306,91 @@ _sbt-ethereum_ **does not store the passcodes** that unlock these wallets. You n
 If you lose _either one of_ a wallet file or its passcode, **all of the value stored in that wallet's associated address will likely be lost forever**. Ouch.
 
 @@@
+
+### Connect to a node
+
+So far, neither of the commands that we've tried have needed to communicate with a node on the Ethereum network. Let's try that now. __*(Don't type it out! Use the tab completion, Luke.)*__
+```
+sbt:eth-command-line> ethNodeBlockNumberPrint
+```
+It might work! If it does work, you should see something like this:
+```
+sbt:eth-command-line> ethNodeBlockNumberPrint
+[info] The current blocknumber is 6859638, according to node at 'https://ethnode.somewhere.com/'.
+[success] Total time: 0 s, completed Dec 9, 2018 11:44:09 PM
+```
+But it might not work! In which case, you will see something like this:
+```
+sbt:eth-command-line> ethNodeBlockNumberPrint
+[error] java.net.UnknownHostException: ethnode.somewhere.com: nodename nor servname provided, or not known
+[error] 	at java.net.Inet6AddressImpl.lookupAllHostAddr(Native Method)
+[error] 	at java.net.InetAddress$2.lookupAllHostAddr(InetAddress.java:928)
+[error] 	at java.net.InetAddress.getAddressesFromNameService(InetAddress.java:1323)
+[error] 	at java.net.InetAddress.getAllByName0(InetAddress.java:1276)
+[error] 	at java.net.InetAddress.getAllByName(InetAddress.java:1192)
+[error] 	at java.net.InetAddress.getAllByName(InetAddress.java:1126)
+[error] 	at org.eclipse.jetty.util.SocketAddressResolver$Async.lambda$resolve$1(SocketAddressResolver.java:167)
+[error] 	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:762)
+[error] 	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:680)
+[error] 	at java.lang.Thread.run(Thread.java:748)
+[error] (Compile / ethNodeBlockNumberPrint) java.net.UnknownHostException: ethnode.somewhere.com: nodename nor servname provided, or not known
+[error] Total time: 0 s, completed Dec 9, 2018 11:40:17 PM
+```
+Oops! Don't panic!
+
+#### Setting up a URL
+
+_**You only have to do this once!**_
+
+To communicate with the Ethereum network, you need to have access to a _node_, a piece of software somewhere
+on the internet that participates in the network and serves as your gateway. _sbt-ethereum_ may (or may not!)
+have a built-in default URL, and it might (or might not!) even work. But you really, really shouldn't rely upon that.
+You need access to a reliable node.
+
+An easy way to get that access is via [infura.io](https://infura.io.). Create a login, and then a "project". (It doesn't
+matter what the project is, call it "stinky-socks" for all I care. _Infura_ will only give you a URL these days if you tell them you
+have a project.)
+
+Inside your project you'll see an "Endpoint" for `MAINNET`. Copy it. (Click on the little "clipboard icon".) You'll
+have copied a URL, something like `https://mainnet.infura.io/v3/353e8352f0782b827d72757dab9cc946`, except with different
+gibberish at the end. That (your version, not mine!) can be your personal URL into the Ethereum network.
+
+To set-up _sbt-ethereum_ to use URL, just run the following command _(but use your own gosh-danged URL not mine!)_
+```
+sbt:eth-command-line> ethNodeUrlDefaultSet https://mainnet.infura.io/v3/353e8352f0782b827d72757dab9cc946
+[info] Successfully set default node json-rpc URL for chain with ID 1 to https://mainnet.infura.io/v3/353e8352f0782b827d72757dab9cc946
+```
+
+@@@ note
+
+**The value you set with `ethNodeUrlDefaultSet` is persistent.**
+
+It will remain in your "shoebox" until you replace it with a different value,
+or you explicitly remove it with `ethNodeUrlDefaultDrop`. You can always check your current default node URL with `ethNodeUrlDefaultPrint`.
+Try it!
+
+@@@
+
+Now you should be able to very reliably connect to a node:
+```
+sbt:eth-command-line> ethNodeBlockNumberPrint
+[info] The current blocknumber is 6859824, according to node at 'https://mainnet.infura.io/v3/353e8352f0782b827d72757dab9cc946'.
+[success] Total time: 0 s, completed Dec 10, 2018 12:31:24 AM
+```
+
+@@@ note
+
+**The "block number" that we have printed is useful information. It's like the ticking clock of the Ethereum network, and
+you always want it to be current.**
+
+You can check websites like [etherscan](https://etherscan.io) or [ethstats](https://ethstats.net) to make sure that your blocknumber
+is close to theirs. (The block number changes every fifteen seconds or so, don't worry if your the numbers are off by one or two.)
+
+If the node you are working with &mdash; the one behind your URL &mdash; falls behind, it can lead to strange misbehavior. In particular,
+you will be looking "back in time", at old data. **This can lead to heart attacks**, when, for example, you transfer money to an
+address but it seems not to show up, because you don't realize you are looking at yesterday's numbers.
+
+@@@
+
+Did you get a block number? Hooray! You are successfully connecting to a node.
 

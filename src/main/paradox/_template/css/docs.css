@@ -33,12 +33,34 @@ h3 {
     padding-bottom: 0.125em;
 }
 
+h4 {
+    margin-right: 3em;
+    border-style: none none dashed none;
+    border-width: 1px;
+    border-color: #AAAAAA;
+    padding-bottom: 0.125em;
+}
+
+h4:before {
+    font-size: larger;
+    content: "\261B\2002";
+}
+
 a {
     color: black;
 }
 
+a:hover {
+    color: blue;
+}
+
+
 a:visited {
     color: gray;
+}
+
+a:visited:hover {
+    color: blue;
 }
 
 #navigationColumn {
@@ -292,12 +314,16 @@ ul li {
     color: white;
 }
 
+#pageToc > ul > li > a:visited {
+    color: white;
+}
+
     
 .active {
   font-weight: bold;
 }
 
-div.callout {
+#pageContent div.callout {
     font-size: smaller;
     margin-top: 1em;
     margin-left: 4em;
@@ -308,41 +334,44 @@ div.callout {
     width: calc(100% - 20vw - 5vw - 5vw);
 }
 
-div.callout p {
+#pageContent div.callout p {
     padding-left: 50pt;
     padding-right: 50pt;
     text-align: justify;
 }
 
-div.callout-title {
+#pageContent div.callout-title {
     display: none;
 }
 
-div.callout.warning {
+#pageContent div.callout.warning {
     border-left: 10px solid rgba(255, 0, 0, 0.4);
     border-right: 2px solid rgba(255, 0, 0, 0.4);
     background-color: rgba(255, 0, 0, 0.1);
 }
 
-div.callout.warning:before {
+#pageContent div.callout.warning:before {
     content: "\26A0\FE0F";
     font-size: 36pt;
     float: left;
     position: relative;
     top: 20pt;
 }
-div.callout.note {
+#pageContent div.callout.note {
     border-left: 10px solid rgba(0, 100, 0, 0.4);
     border-right: 2px solid rgba(0, 100, 0, 0.4);
     background-color: rgba(0, 100, 0, 0.1);
 }
 
-div.callout.note:before {
+#pageContent div.callout.note:before {
     content: "\1F4A1";
     font-size: 36pt;
     float: left;
     position: relative;
     top: 20pt;
+}
+#pageContent div.callout.note pre, #pageContent div.callout.note code, #pageContent div.callout.note pre > code {
+    background-color: rgba(255, 255, 0, 0.5);
 }
 
 .retroRule {
