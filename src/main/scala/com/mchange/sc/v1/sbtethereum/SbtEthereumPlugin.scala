@@ -1065,6 +1065,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // private, internal task definitions
 
+  private val EmptyTask : Initialize[Task[Unit]] = Def.task( () )
+
   private def findAddressSenderTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = Def.task {
     Failable {
       val log = streams.value.log
@@ -1699,7 +1701,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
       else {
-        Def.task( () )
+        EmptyTask
       }
     }
   }
