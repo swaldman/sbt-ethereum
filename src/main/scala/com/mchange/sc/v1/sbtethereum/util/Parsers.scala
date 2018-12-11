@@ -465,8 +465,8 @@ object Parsers {
   ) : Parser[AbiSource] = {
     mbRpi.fold( failure("ABI aliases not available!" ) : Parser[AbiSource] ) { rpi =>
       literal("abi:") ~>
-      ( ( literal("standard:") ~> token( ID.+ ).examples( StandardAbis.keySet ) ).map( chars => StandardSource( chars.mkString ) ) |
-        ( token( ID.+ ).examples( rpi.abiAliases.keySet ).map( chars => AliasSource( rpi.chainId, chars.mkString ) ) ) )
+      ( ( literal("standard:") ~> token( ID ).examples( StandardAbis.keySet ) ).map( StandardSource.apply ) |
+        ( token( ID ).examples( rpi.abiAliases.keySet ).map( str => AliasSource( rpi.chainId, str ) ) ) )
     }
   }
 
@@ -502,7 +502,7 @@ object Parsers {
   }
 
   private [sbtethereum] val newAbiAliasParser : Parser[String] = {
-    token(Space.*) ~> literal("abi:").? ~> token(ID.+, "<new-abi-alias>").map( _.mkString )
+    token(Space.*) ~> literal("abi:").? ~> token(ID, "<new-abi-alias>")
   }
 
   private [sbtethereum] def genNewAbiAliasAbiSourceParser(
@@ -517,7 +517,7 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[String] = {
     mbRpi.fold( failure( "Could not find RichParserInfo for abiAliases." ) : Parser[String] ) { rpi =>
-      token(Space.*) ~> (literal("abi:") ~> token( ID.+)).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) ).map( _.mkString )
+      token(Space.*) ~> (literal("abi:") ~> token( ID)).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) )
     }
   }
   
