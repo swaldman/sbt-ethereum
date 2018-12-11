@@ -81,6 +81,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   object OneTimeWarnerKey {
     final object NodeUrlInBuild extends OneTimeWarnerKey
     final object AddressSenderInBuild  extends OneTimeWarnerKey
+    final object EtherscanApiKeyInBuild  extends OneTimeWarnerKey
   }
   trait OneTimeWarnerKey
 
@@ -288,7 +289,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgKeystoreAutoImportLocationsV3 = settingKey[Seq[File]]   ("Directories from which V3 wallets will be automatically imported into the sbt-ethereum shoebox")
     val ethcfgKeystoreAutoRelockSeconds     = settingKey[Int]         ("Number of seconds after which an unlocked private key should automatically relock")
     val ethcfgNetcompileUrl                 = settingKey[String]      ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
-    val ethcfgNodeUrl                = settingKey[String]      ("URL of the Ethereum JSON-RPC service the build should work with")
+    val ethcfgNodeUrl                       = settingKey[String]      ("URL of the Ethereum JSON-RPC service the build should work with")
     val ethcfgScalaStubsPackage             = settingKey[String]      ("Package into which Scala stubs of Solidity compilations should be generated")
     val ethcfgAddressSender                 = settingKey[String]      ("The address from which transactions will be sent")
     val ethcfgSolidityCompilerOptimize      = settingKey[Boolean]     ("Sets whether the Solidity compiler should run its optimizer on generated code, if supported.")
@@ -327,9 +328,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensSubnodeCreate    = inputKey[Unit]              ("Creates a subnode (if it does not already exist) beneath an existing ENS name with the current sender as its owner.")
     val ensSubnodeOwnerSet  = inputKey[Unit]              ("Sets the owner of a name beneath an ENS name (creating the 'subnode' if it does not already exist).")
 
-    val etherscanApiKeyDrop       = taskKey[Unit]  ("Removes the API key for etherscan services from the sbt-ethereum database.")
-    val etherscanApiKeyImport     = taskKey[Unit]  ("Imports an API key for etherscan services.")
-    val etherscanApiKeyReveal     = taskKey[Unit]  ("Reveals the currently set API key for etherscan services, if any.")
+    val etherscanApiKeyDrop  = taskKey[Unit]  ("Removes the API key for etherscan services from the sbt-ethereum database.")
+    val etherscanApiKeyPrint = taskKey[Unit]  ("Reveals the currently set API key for etherscan services, if any.")
+    val etherscanApiKeySet   = inputKey[Unit] ("Sets an API key for etherscan services.")
 
     val ethAddressAliasCheck          = inputKey[Unit]       ("Reveals the address associated with a given alias, or the aliases associated with a given address.")
     val ethAddressAliasDrop           = inputKey[Unit]       ("Drops an alias for an ethereum address from the sbt-ethereum shoebox database.")
@@ -633,9 +634,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     etherscanApiKeyDrop := { etherscanApiKeyDropTask.value },
 
-    etherscanApiKeyImport := { etherscanApiKeyImportTask.value },
+    etherscanApiKeySet := { etherscanApiKeySetTask.evaluated },
 
-    etherscanApiKeyReveal := { etherscanApiKeyRevealTask.value },
+    etherscanApiKeyPrint := { etherscanApiKeyPrintTask.value },
 
     ethAddressAliasDrop in Compile := { ethAddressAliasDropTask( Compile ).evaluated },
 
@@ -1561,28 +1562,18 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def etherscanApiKeyImportTask : Initialize[Task[Unit]] = Def.task {
-    val is = interactionService.value
-    val apiKey = is.readLine( "Please enter your Etherscan API key: ", mask = true ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
-    if ( apiKey.isEmpty ) throw nst( new SbtEthereumException( "Invalid empty key provided. Etherscan API key import aborted." ) )
+  private def etherscanApiKeySetTask : Initialize[InputTask[Unit]] = Def.inputTask {
+    val log = streams.value.log
+    val apiKey = etherscanApiKeyParser("<etherscan-api-key>").parsed
     shoebox.Database.setEtherscanApiKey( apiKey ).assert
     println("Etherscan API key successfully set.")
   }
 
-  private def etherscanApiKeyRevealTask : Initialize[Task[Unit]] = Def.task {
-    val is = interactionService.value
-    val confirmation = {
-      is.readLine(s"Are you sure you want to reveal your Etherscan API key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
-        .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
-    }
-    if ( confirmation == "YES" ) {
-      val mbApiKey = shoebox.Database.getEtherscanApiKey().assert
-      mbApiKey match {
-        case Some( apiKey ) => println( s"The currently set Etherscan API key is ${apiKey}" )
-        case None           => println(  "No Etherscan API key has been set." )
-      }
-    } else {
-      throw notConfirmedByUser
+  private def etherscanApiKeyPrintTask : Initialize[Task[Unit]] = Def.task {
+    val mbApiKey = shoebox.Database.getEtherscanApiKey().assert
+    mbApiKey match {
+      case Some( apiKey ) => println( s"The currently set Etherscan API key is ${apiKey}" )
+      case None           => println(  "No Etherscan API key has been set." )
     }
   }
 
@@ -2437,7 +2428,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                 }
                 case None => {
                   log.warn("No Etherscan API key has been set, so you will have to directly paste the ABI.")
-                  log.warn("Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeyImport'.")
+                  log.warn("Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeySet'.")
                   None
                 }
               }

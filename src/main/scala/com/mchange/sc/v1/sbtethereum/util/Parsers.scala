@@ -121,6 +121,10 @@ object Parsers {
 
   private [sbtethereum] val RawUrlParser = NotSpace
 
+  private [sbtethereum] val RawEtherscanApiKeyParser = ID
+
+  private [sbtethereum] def etherscanApiKeyParser( tabHelp : String ) = token(Space.*) ~> token( RawEtherscanApiKeyParser, tabHelp )
+
   //private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )
   private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.*) ~> token(RawAmountParser, tabHelp)
 
