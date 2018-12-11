@@ -1955,7 +1955,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val ( fcn, values ) = ethabi.decodeFunctionCall( abi, bytes ).assert
         println( s"Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
           (values.zip( Stream.from(1) )).foreach { case (value, index) =>
-            println( s"   Arg 1 [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
+            println( s"   Arg ${index} [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
           }
       }
     }
