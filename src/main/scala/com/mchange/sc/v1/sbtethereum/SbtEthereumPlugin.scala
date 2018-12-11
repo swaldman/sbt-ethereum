@@ -9,6 +9,7 @@ import sjsonnew._
 import BasicJsonProtocol._
 
 import util.BaseCodeAndSuffix
+import util.OneTimeWarner
 import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstaller, SourceFile}
 import util.EthJsonRpc._
 import util.Parsers._
@@ -77,11 +78,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   final case class TimestampedAbi( abi : Abi, timestamp : Option[Long] )
 
-  object OneTimeWarnedKey {
-    final object NodeUrlInBuild extends OneTimeWarnedKey
-    final object AddressSenderInBuild  extends OneTimeWarnedKey
+  object OneTimeWarnerKey {
+    final object NodeUrlInBuild extends OneTimeWarnerKey
+    final object AddressSenderInBuild  extends OneTimeWarnerKey
   }
-  trait OneTimeWarnedKey
+  trait OneTimeWarnerKey
 
   private final object Mutables {
     // MT: protected by CurrentAddress' lock
@@ -97,8 +98,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val NonceOverride = new AtomicReference[Option[BigInt]]( None )
 
-    // MT: protected by OneTimeWarned's lock
-    val OneTimeWarned = new AtomicReference[Set[Tuple2[OneTimeWarnedKey,Configuration]]]( Set.empty )
+    // MT: Internally thread-safe
+    val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
 
     // MT: protected by AbiOverride's lock
     val AbiOverrides = new AtomicReference[immutable.Map[Int,immutable.Map[EthAddress,Abi]]]( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
@@ -121,7 +122,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       GasLimitOverride.set( None )
       GasPriceOverride.set( None )
       NonceOverride.set( None )
-      OneTimeWarned.set( Set.empty )
+      OneTimeWarner.resetAll()
       AbiOverrides synchronized {
         AbiOverrides.set( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
       }
@@ -135,23 +136,6 @@ object SbtEthereumPlugin extends AutoPlugin {
         LocalGanache.set( None )
       }
     }
-  }
-
-  private def oneTimeWarn( key : OneTimeWarnedKey, config : Configuration, log : sbt.Logger, messageLinesBuilder : () => Option[Seq[String]] ) : Unit = Mutables.OneTimeWarned.synchronized {
-    val current = Mutables.OneTimeWarned.get
-    val check = Tuple2( key, config )
-    if( !current( check ) ) {
-      messageLinesBuilder().foreach { messageLines =>
-        messageLines.foreach { message =>
-          log.warn( message )
-        }
-        Mutables.OneTimeWarned.set( current + check ) // don't update as set if we built None, if no message was warned
-      }
-    }
-  }
-
-  private def oneTimeWarnedReset( key : OneTimeWarnedKey, config : Configuration ) : Unit = Mutables.OneTimeWarned.synchronized {
-    Mutables.OneTimeWarned.set( Mutables.OneTimeWarned.get() - Tuple2( key, config ) )
   }
 
   private def resetAllState() : Unit = {
@@ -1111,7 +1095,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                     )
                   }
                 }
-                oneTimeWarn( OneTimeWarnedKey.AddressSenderInBuild, config, log, warningLinesBuilder )
+                Mutables.OneTimeWarner.warn( OneTimeWarnerKey.AddressSenderInBuild, config, log, warningLinesBuilder )
               }
               address
             }
@@ -1176,7 +1160,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                   )
                 }
               }
-              oneTimeWarn( OneTimeWarnedKey.NodeUrlInBuild, config, log, warningLinesBuilder )
+              Mutables.OneTimeWarner.warn( OneTimeWarnerKey.NodeUrlInBuild, config, log, warningLinesBuilder )
             }
             url
           }
