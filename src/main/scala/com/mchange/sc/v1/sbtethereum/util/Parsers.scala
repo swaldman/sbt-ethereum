@@ -468,9 +468,10 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[AbiSource] = {
     mbRpi.fold( failure("ABI aliases not available!" ) : Parser[AbiSource] ) { rpi =>
-      literal("abi:") ~>
-      ( ( literal("standard:") ~> token( ID ).examples( StandardAbis.keySet ) ).map( StandardSource.apply ) |
-        ( token( ID ).examples( rpi.abiAliases.keySet ).map( str => AliasSource( rpi.chainId, str ) ) ) )
+      token( literal("abi:") ).flatMap { _ =>
+        ( ( token( literal("standard:") ) ~> token( ID ).examples( StandardAbis.keySet, true ) ).map( StandardSource.apply ) |
+          ( token( ID ).examples( rpi.abiAliases.keySet, true ).map( str => AliasSource( rpi.chainId, str ) ) ) )
+      }
     }
   }
 
@@ -495,14 +496,16 @@ object Parsers {
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[EthAddress, AbiSource]] = {
-    createAddressParser( "<address-to-associate-with-abi>", mbRpi ).flatMap( addr => (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi ) ).map( abiSource => (addr, abiSource) ) )
+    createAddressParser( "<address-to-associate-with-abi>", mbRpi ).flatMap( addr => (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi ).map( abiSource => (addr, abiSource) ) ) )
   }
 
   private [sbtethereum] def genAnyAbiSourceHexBytesParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[AbiSource, immutable.Seq[Byte]]] = {
-    token(Space.*) ~> _genAnyAbiSourceParser( state, mbRpi ) ~ ( (token(Space.+) ~> token( (literal("0x").?) ~> HexDigit.* ) ).map( chars => chars.mkString.decodeHexAsSeq ) )
+    token(Space.*) ~> _genAnyAbiSourceParser( state, mbRpi ).flatMap { abiSource =>
+      ( (token(Space.+) ~> token( (literal("0x").?) ~> token(HexDigit.*) ) ).map( chars => chars.mkString.decodeHexAsSeq ) ).map( hexSeq => ( abiSource, hexSeq ) )
+    }
   }
 
   private [sbtethereum] val newAbiAliasParser : Parser[String] = {
