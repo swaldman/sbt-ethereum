@@ -2,6 +2,18 @@ package com.mchange.sc.v1.sbtethereum.util
 
 import com.mchange.sc.v3.failable._
 
+/*
+ * This utility is not yet used (though I think it's complete and correct).
+ * 
+ * It's an abstraction that factors the common logic out of find/print tasks for items that can be
+ *  1) overridden for a session
+ *  2) specified in a build or '.sbt' folder
+ *  3) rely on a database-defined default
+ *  4) use a hard-coded or external (sysprop, env var) backstop
+ * 
+ * We should, someday, factor the logic of ethAddressSender* and ethNodeUrl* tasks to use this.
+ */ 
+
 object OverrideBuildDefaultBackstop {
   def find[KEY,T] (
     warn                  : Boolean,
