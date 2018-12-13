@@ -121,7 +121,7 @@ object Parsers {
 
   private [sbtethereum] val RawUrlParser = NotSpace
 
-  private [sbtethereum] val RawEtherscanApiKeyParser = ID
+  private [sbtethereum] val RawEtherscanApiKeyParser = NotSpace
 
   private [sbtethereum] def etherscanApiKeyParser( tabHelp : String ) = token(Space.*) ~> token( RawEtherscanApiKeyParser, tabHelp )
 
