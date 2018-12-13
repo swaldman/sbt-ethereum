@@ -6,7 +6,7 @@
 
 @@@ index
 
-* [A. Prerequisites](a_prerequisites.md)
+* [Prerequisites](prerequisites.md)
 
 @@@
 
