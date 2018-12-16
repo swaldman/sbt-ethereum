@@ -8,15 +8,15 @@
  */
 
 body {
-  margin: 0;
-  padding: 0;
-  font-family: 'Source Sans Pro', sans-serif;
-  display: grid;
-  grid-template-columns: 20vw 1fr 5vw;
-  grid-template-rows:    1fr 3.5em;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
+    margin: 0;
+    padding: 0;
+    font-family: 'Source Sans Pro', sans-serif;
+    display: grid;
+    grid-template-columns: 20vw 1fr 5vw;
+    grid-template-rows:    1fr 3.5em;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
 }
 
 h1 {
@@ -72,7 +72,7 @@ a:visited:hover {
     font-family: 'Ubuntu Mono', monospace;
     background-color: black;
     color: rgb(0, 255, 0);
-
+    
     display: flex;
     flex-direction: column;
 }
@@ -82,11 +82,11 @@ a:visited:hover {
 }
 
 #navigationColumn a {
-  color: rgb(0, 255, 0);
+    color: rgb(0, 255, 0);
 }
 
 #navigationColumn a:visited {
-  color: rgb(0, 255, 0);
+    color: rgb(0, 255, 0);
 }
 
 #navigationColumn a.active {
@@ -129,7 +129,7 @@ a:visited:hover {
     font-weight: normal;
     padding-top: 0.5em;
     padding-bottom: 1em;
-
+    
     flex-grow: 0;
     flex-shrink: 0;
 }
@@ -232,29 +232,29 @@ div#pageContent :not(pre) > code {
 }
 
 h1 {
-  margin: 0;
-  padding: 0;
+    margin: 0;
+    padding: 0;
 }
 
 div {
-  margin: 0;
-  padding: 0;
+    margin: 0;
+    padding: 0;
 }
 
 p {
-  margin-top: 0.75em;
-  margin-bottom: 0;
-  padding: 0;
+    margin-top: 0.75em;
+    margin-bottom: 0;
+    padding: 0;
 }
 
 ul li {
-  margin-top: 0.75em;  
-  margin-bottom: 0;
+    margin-top: 0.75em;  
+    margin-bottom: 0;
 }
 
 .toc ul li, #navigation ul li {
-  margin-top: 0;  
-  margin-bottom: 0;
+    margin-top: 0;  
+    margin-bottom: 0;
 }
 
 #projectVersion {
@@ -287,6 +287,10 @@ ul li {
     padding: 0;
 }
 
+#pageToc > ul > li > ul > li > ul > li {
+    margin: 0;
+    padding: 0;
+}
 
 #navigation ul {
     margin-top: 0;
@@ -304,6 +308,26 @@ ul li {
 
 #navigation ul > li > ul > li, #pageToc ul > li > ul > li {
     list-style-type: none;
+}
+
+#pageToc ul > li > ul > li > ul {
+    margin-left:   1.5em;
+    margin-right:  0em;
+    margin-top:    0em;
+    margin-bottom: 0em;
+    padding: 0;
+    font-size: 90%;
+}
+
+#pageToc ul > li > ul > li > ul > li {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+    line-height: 120%;
+}
+
+#pageToc ul > li > ul > li > ul > li > a, #pageToc ul > li > ul > li > ul > li > a:visited {
+    color: rgb(250, 190, 0);
 }
 
 #navigation ul > li > ul > li {

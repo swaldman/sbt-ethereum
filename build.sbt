@@ -39,6 +39,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   ),
   sourceGenerators in Compile += generateBuildInfoSourceGeneratorTask,
   paradoxTheme := None,
+  paradoxNavigationDepth := 3,
   pomExtra := pomExtraForProjectName( name.value )
 )
 

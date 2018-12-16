@@ -24,7 +24,7 @@ But we might not remember that! We can check the @ref:[ethAddress* docs](../task
 
 @@@ div { #uasc_optional_1 .optional }
 
-##### Figuring out our command via tab completion
+**Figuring out our command via tab completion**
 
 We are trying to set an address alias. It's an <u>A</u>ddress thing, so we can do `ethA<tab>` to get
 to the `ethAddress*` submenu and hit `<tab>` again:
