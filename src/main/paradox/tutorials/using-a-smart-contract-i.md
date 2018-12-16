@@ -188,7 +188,7 @@ Now we can run the same command that we did before, but it will go more easily:
 sbt:eth-command-line> ethContractAbiImport fortune
 An ABI for '0x82ea8ab1e836272322f376a5f71d5a34a71688f1' on chain with ID 1 has already been memorized. Overwrite? [y/n] y
 An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] y
-Attempting to fetch ABI for address '${hexString(address)}' from Etherscan.
+Attempting to fetch ABI for address '0x82ea8ab1e836272322f376a5f71d5a34a71688f1' from Etherscan.
 ABI found:
 [{"name":"addFortune","inputs":[{"name":"fortune","type":"string"}],"outputs":[],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"fortunes","inputs":[{"name":"","type":"uint256"}],"outputs":[{"name":"","type":"string"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"drawFortune","inputs":[],"outputs":[{"name":"fortune","type":"string"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"countFortunes","inputs":[],"outputs":[{"name":"count","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"FortuneAdded","inputs":[{"name":"author","type":"address","indexed":false},{"name":"fortune","type":"string","indexed":false}],"anonymous":false,"type":"event"},{"inputs":[{"name":"initialFortune","type":"string"}],"payable":false,"stateMutability":"nonpayable","type":"constructor"}]
 Use this ABI? [y/n] y
@@ -199,5 +199,7 @@ Use this ABI? [y/n] y
 Now _sbt-ethereum_ automatically finds and downloads from _Etherscan_ the same ABI that we copied and pasted by hand.
 The _Etherscan_ API-KEY you have set is retained for you by _sbt-ethereum_, and is pretty much permanent.
 From now on, you can use `ethContractAbiImport` to import ABIs from _Etherscan_ without further ceremony.
+
+
 
 

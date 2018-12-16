@@ -2405,7 +2405,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                 case Some( apiKey ) => {
                   val tryIt = queryYN( is, "An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] " )
                   if ( tryIt ) {
-                    println( "Attempting to fetch ABI for address '${hexString(address)}' from Etherscan." )
+                    println( s"Attempting to fetch ABI for address '${hexString(address)}' from Etherscan." )
                     val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( address )
                     Await.ready( fAbi, timeout )
                     fAbi.value.get match {
