@@ -180,7 +180,7 @@ a:visited:hover {
 }
 
 
-div#pageContent > p, div#pageContent > ul {
+div#pageContent > p, div#pageContent > ul, p, div#pageContent > div {
     margin-left: 0.5em;
     margin-right: 2em;
 }
@@ -404,4 +404,53 @@ ul li {
 
 #githubBox a, #githubBox a:visited {
 		  color: blue;
+}
+
+.optional {
+    display: none;
+    border: 1px solid black;
+    background-color: #EEFFFF;
+    margin: 0.5em;
+    padding: 0.5em;
+    border-radius: 25px;
+    font-size: smaller;
+}
+
+.optional > h5 {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    margin-left: 0.375em;
+    font-size: 125%;
+}
+
+.optional-triangle {
+    text-decoration: none;
+}
+
+a.optional-replace-control {
+    text-decoration: none;
+    font-style: italic;
+    color: green;
+    font-size: smaller;
+}
+
+a.optional-replace-control:hover {
+    cursor: pointer;
+    color: black;
+}
+
+a.optional-replace-control-triangle {
+    text-decoration: none;
+    font-size: 75%;
+    color: #CCCCCC;
+}
+
+a.optional-replace-control-triangle:hover {
+    cursor: pointer;
+    color: black;
+}
+
+div.optional-replace-control-parent {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
 }

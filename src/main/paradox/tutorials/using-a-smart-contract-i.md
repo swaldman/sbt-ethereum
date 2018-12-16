@@ -3,18 +3,84 @@
 _Ethereum_ applications are defined as one or more _smart contract_, each of which live at an
 address on the _Ethereum_ blockchain. To interact with one, the first thing you need is it's address.
 
-The first thing we need, if we mean to interact with one, is to know it's address. We are going to
+We are going to
 work with a brilliant, very exciting, _fortune cookie application_. Finally you will learn the truth
 about your future. And you don't have to just trust me on that. The blockchain is trustless, right?
 
 Anyway, the address of out _fortune_ application is `0x82ea8ab1e836272322f376a5f71d5a34a71688f1`.
+This is not my address or your address. It is the public address of the application itself.
 
 ### Assigning an alias to an Ethereum address
 
 As you can see, an Ethereum address is a long stupid string of "hex" digits that would be very annoying
 and error prone to type. _So try never to type one!_ When absolutely you need to, copy and paste the address, and then double
-check that you didn't drop any digits at the beginning or the end. But better yet, _sbt-ethereum_ permits you to define
-easy to use, tab-completable names as "address aliases". So, let's do it:
+check that you didn't drop any digits at the beginning or the end. But much better yet, _sbt-ethereum_ permits you to define
+easy to use, tab-completable names as "address aliases". So, let's do it.
+
+The command we'll need is `ethAddressAliasSet`.
+But we might not remember that! We can check the @ref:[ethAddress* docs](../tasks/eth/address/index.md), or use tab completion to help us find our command, and figure out what arguments it needs.
+
+<script>writeOptionalReplaceControl("uasc_optional_1", "uasc_optional_1_replace_control", "show optional tab completion tutorial?", "hide optional tab completion tutorial")</script>
+
+@@@ div { #uasc_optional_1 .optional }
+
+##### Figuring out our command via tab completion
+
+We are trying to set an address alias. It's an <u>A</u>ddress thing, so we can do `ethA<tab>` to get
+to the `ethAddress*` submenu and hit `<tab>` again:
+```
+sbt:eth-command-line> ethAddress
+ethAddressAliasCheck            ethAddressAliasDrop             ethAddressAliasList             ethAddressAliasSet              ethAddressBalance               ethAddressSenderDefaultDrop     
+ethAddressSenderDefaultPrint    ethAddressSenderDefaultSet      ethAddressSenderOverrideDrop    ethAddressSenderOverridePrint   ethAddressSenderOverrideSet     ethAddressSenderPrint           
+sbt:eth-command-line> ethAddress
+```
+It's a <u>A</u>lias-related thing, so we add `A<tab>`:
+```
+sbt:eth-command-line> ethAddressAlias
+ethAddressAliasCheck   ethAddressAliasDrop    ethAddressAliasList    ethAddressAliasSet     
+sbt:eth-command-line> ethAddressAlias
+```
+Of those, it's probably `ethAddressAliasSet` that we want to, um, set an alias. So we try `S<tab>`.
+```
+sbt:eth-command-line> ethAddressAliasSet
+```
+But then we'll want to see if it takes any arguments, so we type `<space><tab>`.
+```
+sbt:eth-command-line> ethAddressAliasSet 
+<alias>   
+sbt:eth-command-line> ethAddressAliasSet 
+```
+The command's first argument is an alias, so let's give it that. This application is a fortune cookie, so let's just
+call our alias `fortune`.
+```
+sbt:eth-command-line> ethAddressAliasSet fortune
+```
+The command might take more than one argument. So let's type `<space><tab>` again:
+```
+sbt:eth-command-line> ethAddressAliasSet fortune 
+<address-hex>    <ens-name>.eth   default-sender
+sbt:eth-command-line> ethAddressAliasSet fortune 
+```
+This is what it looks like when a command is asking for an Ethereum address. In _sbt-ethereum_, an address can
+take the form of a long hex string &mdash; `<address-hex>`, an ENS name `<ens-name>.eth` (see the box [below](#ens-box)), or one
+of the aliases that has already been defined. When you set the default sender in [Getting Started](getting-started.md),
+an alias called `default-sender` was automatically defined.
+
+For the fortune application, what we have is a hex address.
+```
+sbt:eth-command-line> ethAddressAliasSet fortune 0x82ea8ab1e836272322f376a5f71d5a34a71688f1
+```
+Just to be sure that the `ethAddressAliasSet` task doesn't require yet another argument, we type `<space><tab>` at the end of that:
+```
+sbt:eth-command-line> ethAddressAliasSet fortune 0x82ea8ab1e836272322f376a5f71d5a34a71688f1 
+{invalid input}   
+sbt:eth-command-line> ethAddressAliasSet fortune 0x82ea8ab1e836272322f376a5f71d5a34a71688f1 
+```
+The response `{invalid input}` means there are no other arguments you can provide. So, just hit `<return>`!
+
+@@@
+
+Once we've figured out our command...
 ```
 sbt:eth-command-line> ethAddressAliasSet fortune 0x82ea8ab1e836272322f376a5f71d5a34a71688f1
 [info] Alias 'fortune' now points to address '0x82ea8ab1e836272322f376a5f71d5a34a71688f1' (for chain with ID 1).
@@ -28,14 +94,15 @@ default-sender -> 0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2
 fortune -> 0x82ea8ab1e836272322f376a5f71d5a34a71688f1
 [success] Total time: 0 s, completed Dec 12, 2018 4:09:34 PM
 ```
-Notice that even though we haven't set an alias, if we set up a default address (as we did in [Getting Started](getting-started.md),
+Remember that even though we haven't explicitly defined an alias, if we set up a default address (as we did in [Getting Started](getting-started.md)),
 there will automatically be a `default-sender` alias to that address.
 
 We do also have the alias `fortune`, which we've just defined. Success!
 
 @@@ note
 
-**Some _Ethereum_ addresses have a public _ENS name_**, and easy to use name that usually ends with `.eth`.
+<a name="ens-box"></a>
+**Some _Ethereum_ addresses have public _ENS names_**, easy-to-use names that usually ends with `.eth`.
 
 _sbt-ethereum_ supports the use of ENS names in place of an address wherever addresses are used,
 if an address has been associated with the name.
