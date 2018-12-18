@@ -1339,7 +1339,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       mbOverpaymentInWei.foreach( opw => log.warn( s"An additional ${opw} wei was transmitted to obscure the value of your bid." ) )
       log.warn( s"YOU MUST REVEAL THIS BID BETWEEN ${ formatInstant(revealStart) } AND ${ formatInstant(auctionFinalized) }. IF YOU DO NOT, YOUR FUNDS WILL BE LOST!" )
       log.warn(  "Bid details, which are required to reveal, have been automatically stored in the sbt-ethereum shoebox," )
-      log.warn( s"and will be provided automatically if revealed by this client, configured with chain ID '${chainId}'." )
+      log.warn( s"and will be provided automatically if revealed by this client, configured with chain ID ${chainId}." )
       log.warn(  "However, it never hurts to be neurotic. You may wish to note:" )
       log.warn( s"    Simple Name:      ${bid.simpleName}" )
       log.warn( s"    Simple Name Hash: 0x${ ens.componentHash( bid.simpleName ).hex }" )
