@@ -30,9 +30,16 @@ import play.api.libs.json._
 object Parsers {
   private implicit lazy val logger = mlogger( this )
 
-  private val ZWSP = "\u200B" // we add zero-width space to parser examples lists where we don't want autocomplete to apply to unique examples
+  private val ZWSP = "\u200B" // HACK: we add zero-width space to parser examples lists where we don't want autocomplete to apply to unique examples
 
   private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
+
+  private val RawBytesAsStringParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 2, 2 ).+ ).map( chars => chars.mkString )
+
+  def rawFixedLengthByteStringAsStringParser( len : Int ) = {
+    val charLen = len * 2
+    ( literal("0x").? ~> Parser.repeat( HexDigit, charLen, charLen ) ).map( chars => chars.mkString )
+  }
 
   private final object EnsAddressCache {
     private val TTL     = 300000 // 300 secs, 5 mins, maybe someday make this sensitive to ENS TTLs
@@ -230,19 +237,23 @@ object Parsers {
     baseParser.map( processedNamesToFunctions )
   }
 
+  private val BytesN_Regex = """bytes(\d+)""".r
+
   private def inputParser( input : jsonrpc.Abi.Parameter, mbRpi : Option[RichParserInfo] ) : Parser[String] = {
     val displayName = if ( input.name.length == 0 ) "mapping key" else input.name
     val sample = s"<${displayName}, of type ${input.`type`}>"
-    if ( input.`type` == "address" && mbRpi.nonEmpty ) { // special case
-      createAddressParser( sample, mbRpi ).map( _.hex )
-    } else {
-      token( (StringEscapable.map( str => s""""${str}"""") | NotQuoted).examples( FixedSetExamples( immutable.Set( sample, ZWSP ) ) ) )
+    val defaultExamples = FixedSetExamples( immutable.Set( sample, ZWSP ) )
+    input.`type` match {
+      case "address" if mbRpi.nonEmpty => createAddressParser( sample, mbRpi ).map( _.hex )
+      case BytesN_Regex( len )         => token( rawFixedLengthByteStringAsStringParser( len.toInt ) ).examples( defaultExamples )
+      case "bytes"                     => token( RawBytesAsStringParser ).examples( defaultExamples )
+      case _                           => token( (StringEscapable.map( str => s""""${str}"""") | NotQuoted) ).examples( defaultExamples ) 
     }
   }
 
   private def inputsParser( inputs : immutable.Seq[jsonrpc.Abi.Parameter], mbRpi : Option[RichParserInfo] ) : Parser[immutable.Seq[String]] = {
     val parserMaker : jsonrpc.Abi.Parameter => Parser[String] = param => inputParser( param, mbRpi )
-    inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => Space.* ~> next.map( str => partial :+ str ) ) )
+    inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => token(Space.+) ~> next.map( str => partial :+ str ) ) )
   }
 
   private def functionAndInputsParser( abi : jsonrpc.Abi, restrictToConstants : Boolean, mbRpi : Option[RichParserInfo] ) : Parser[(jsonrpc.Abi.Function, immutable.Seq[String])] = {
