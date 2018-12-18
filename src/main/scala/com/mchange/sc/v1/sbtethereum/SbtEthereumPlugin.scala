@@ -4053,9 +4053,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val useReplayAttackProtection = ethcfgUseReplayAttackProtection.value
 
+    val rawChainId = (ethcfgChainId in config).value
+
     val chainId = {
-      val raw = (ethcfgChainId in config).value
-      if ( raw <= 0 || !useReplayAttackProtection ) None else Some( EthChainId( raw ) )
+      if ( rawChainId <= 0 || !useReplayAttackProtection ) None else Some( EthChainId( rawChainId ) )
     }
 
     val gasLimitTweak = {
@@ -4083,7 +4084,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val transactionLogger = findTransactionLoggerTask( config ).value
 
-    val approver = transactionApprover( is, currencyCode, config )
+    val approver = transactionApprover( log, rawChainId, is, currencyCode, config )
 
     Invoker.Context.fromUrl(
       jsonRpcUrl = jsonRpcUrl,
@@ -4894,85 +4895,129 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def transactionApprover( is : sbt.InteractionService, currencyCode : String, config : Configuration )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
+  private def transactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String, config : Configuration )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
     config match {
-      case Test => testTransactionApprover( is, currencyCode )( ec )
-      case _    => normalTransactionApprover( is, currencyCode )( ec )
+      case Test => testTransactionApprover( log, chainId, is, currencyCode )( ec )
+      case _    => normalTransactionApprover( log, chainId, is, currencyCode )( ec )
     }
   }
 
   // when using the open test address in Test config, don't bother getting user approval
-  private def testTransactionApprover( is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = txn => {
-    if (txn.sender == testing.Default.Faucet.Address) Future.successful( () ) else normalTransactionApprover( is, currencyCode )( ec )( txn )
+  private def testTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = txn => {
+    if (txn.sender == testing.Default.Faucet.Address) Future.successful( () ) else normalTransactionApprover( log, chainId, is, currencyCode )( ec )( txn )
   }
 
-  private def normalTransactionApprover( is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = txn => Future {
+  private def normalTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
 
-    val gasPrice   = txn.gasPrice.widen
-    val gasLimit   = txn.gasLimit.widen
-    val valueInWei = txn.value.widen
+    val abiOverrides = abiOverridesForChain( chainId )
 
-    val nonce = txn.nonce.widen
+    txn => Future {
 
-    println( s"The transaction you have requested could use up to ${gasLimit} units of gas." )
+      val gasPrice   = txn.gasPrice.widen
+      val gasLimit   = txn.gasLimit.widen
+      val valueInWei = txn.value.widen
 
-    val mbEthPrice = priceFeed.ethPriceInCurrency( currencyCode, forceRefresh = true )
+      val nonce = txn.nonce.widen
 
-    val gweiPerGas = Denominations.GWei.fromWei(gasPrice)
-    val gasCostInWei = gasLimit * gasPrice
-    val gasCostInEth = Denominations.Ether.fromWei( gasCostInWei )
-    val gasCostMessage = {
-      val sb = new StringBuilder
-      sb.append( s"You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether" )
-      mbEthPrice match {
-        case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-          sb.append( s", which is worth ${ gasCostInEth * ethPrice } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
+      println()
+      println( "==> T R A N S A C T I O N   R E Q U E S T" )
+      println( "==>" )
+
+      txn match {
+        case msg : EthTransaction.Message => {
+          println(  """==> The transaction would be a message with...""" )
+          println( s"""==>   To:    ${ticklessVerboseAddress(chainId, msg.to)}""" )
+          println( s"""==>   From:  ${ticklessVerboseAddress(chainId, msg.sender)}""" )
+          println( s"""==>   Data:  ${if (msg.data.length > 0) hexString(msg.data) else "None"}""" )
+          println( s"""==>   Value: ${EthValue(msg.value.widen, Denominations.Ether).denominated} Ether""" )
+
+          try {
+            val abiLookup = abiLookupForAddress( chainId, msg.to, abiOverrides )
+            abiLookup.resolveAbi(Some(log)).foreach { abi =>
+              val ( fcn, values ) = ethabi.decodeFunctionCall( abi, msg.data ).assert
+              println(  "==>" )
+              println( s"==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call..." )
+              println( s"==>   Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
+              (values.zip( Stream.from(1) )).foreach { case (value, index) =>
+                println( s"==>     Arg ${index} [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
+              }
+            }
+          }
+          catch {
+            case e : Exception => log.warn( s"An Exception occurred while trying to interpret this method with an ABI as a function call. Skipping: ${e}" )
+          }
         }
-        case None => {
-          sb.append( "." )
-        }
-      }
-      sb.toString
-    }
-    println( gasCostMessage )
-
-    if ( valueInWei != 0 ) {
-      val xferInEth = Denominations.Ether.fromWei( valueInWei )
-      val maxTotalCostInEth = xferInEth + gasCostInEth
-      print( s"You would also send ${xferInEth} ether" )
-      mbEthPrice match {
-        case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-          println( s" (${ xferInEth * ethPrice } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${maxTotalCostInEth * ethPrice} ${currencyCode})." )
-        }
-        case None => {
-          println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
-        }
-      }
-    }
-
-    println( s"The nonce of the transaction would be ${nonce}." )
-
-    @tailrec
-    def check : Boolean = {
-      val response = is.readLine( "Would you like to submit this transaction? [y/n] ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
-      response.toLowerCase match {
-        case "y" | "yes" => true
-        case "n" | "no"  => false
-        case _           => {
-          println( s"Invalid response '${response}'." )
-          check
+        case cc : EthTransaction.ContractCreation => {
+          println(  """==> The transaction would be a contract creation with...""" )
+          println( s"""==>   From:  ${ticklessVerboseAddress(chainId, cc.sender)}""" )
+          println( s"""==>   Init:  ${if (cc.init.length > 0) hexString(cc.init) else "None"}""" )
+          println( s"""==>   Value: ${EthValue(cc.value.widen, Denominations.Ether).denominated} Ether""" )
         }
       }
-    }
+      println("==>")
+      println( s"==> The nonce of the transaction would be ${nonce}." )
+      println("==>")
 
-    if ( check ) {
-      val txnHash = hashRLP[EthTransaction]( txn )
-      println( s"A transaction with hash '${hexString(txnHash)}' will be submitted. Please wait." )
-    }
-    else {
-      Invoker.throwDisapproved( txn, keepStackTrace = false )
-    }
-  }( ec )
+      println( s"==> The transaction you have requested could use up to ${gasLimit} units of gas." )
+
+      val mbEthPrice = priceFeed.ethPriceInCurrency( currencyCode, forceRefresh = true )
+
+      val gweiPerGas = Denominations.GWei.fromWei(gasPrice)
+      val gasCostInWei = gasLimit * gasPrice
+      val gasCostInEth = Denominations.Ether.fromWei( gasCostInWei )
+      val gasCostMessage = {
+        val sb = new StringBuilder
+        sb.append( s"==> You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether" )
+        mbEthPrice match {
+          case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
+            sb.append( s", which is worth ${ gasCostInEth * ethPrice } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
+          }
+          case None => {
+            sb.append( "." )
+          }
+        }
+        sb.toString
+      }
+      println( gasCostMessage )
+
+      if ( valueInWei != 0 ) {
+        val xferInEth = Denominations.Ether.fromWei( valueInWei )
+        val maxTotalCostInEth = xferInEth + gasCostInEth
+        print( s"==> You would also send ${xferInEth} ether" )
+        mbEthPrice match {
+          case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
+            println( s" (${ xferInEth * ethPrice } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${maxTotalCostInEth * ethPrice} ${currencyCode})." )
+          }
+          case None => {
+            println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
+          }
+        }
+      }
+
+      println()
+
+      @tailrec
+      def check : Boolean = {
+        val response = is.readLine( "Would you like to submit this transaction? [y/n] ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
+        response.toLowerCase match {
+          case "y" | "yes" => true
+          case "n" | "no"  => false
+          case _           => {
+            println( s"Invalid response '${response}'." )
+            check
+          }
+        }
+      }
+
+      if ( check ) {
+        val txnHash = hashRLP[EthTransaction]( txn )
+        println( s"A transaction with hash '${hexString(txnHash)}' will be submitted. Please wait." )
+      }
+      else {
+        Invoker.throwDisapproved( txn, keepStackTrace = false )
+      }
+    }( ec )
+  }
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
 
@@ -5056,6 +5101,11 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def verboseAddress( chainId : Int, address : EthAddress ) : String = {
     val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s"with aliases $str " ) )
     s"'0x${address.hex}' (${aliasesPart}on chain with ID $chainId)"
+  }
+
+  private def ticklessVerboseAddress( chainId : Int, address : EthAddress ) : String = {
+    val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s"with aliases $str " ) )
+    s"0x${address.hex} (${aliasesPart}on chain with ID $chainId)"
   }
 
   private def attemptAdvanceStateWithTask[T]( taskKey : Def.ScopedKey[Task[T]], startState : State ) : State = {

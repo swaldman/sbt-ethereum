@@ -28,7 +28,7 @@ You might lose yur money.
 
 @@@
 
-### Checking Ether balances of addresses
+### Checking the Ether balance of addresses
 
 We did this in the @ref:[prior tutorial](using-a-smart-contract-i.md), but let's do it again.
 To check your default account's ETH balance, use the command `ethAddressBalance`:

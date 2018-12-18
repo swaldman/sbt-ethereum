@@ -390,13 +390,29 @@ sbt:eth-command-line> ethTransactionInvoke fortune addFortune "Make up a better 
 [info] Unlocking address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (on chain with ID 1, aliases ['default-sender'])
 Enter passphrase or hex private key for address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2': ***************
 [info] V3 wallet(s) found for '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (aliases ['default-sender'])
-The transaction you have requested could use up to 112773 units of gas.
-You would pay 2.3 gwei for each unit of gas, for a maximum cost of 0.0002593779 ether, which is worth 0.022000433478 USD (according to Coinbase at 1:30 AM).
-The nonce of the transaction would be 0.
-Would you like to submit this transaction? [y/n] 
+
+==> T R A N S A C T I O N   R E Q U E S T
+==>
+==> The transaction would be a message with...
+==>   To:    0x82ea8ab1e836272322f376a5f71d5a34a71688f1 (with aliases ['fortune'] on chain with ID 1)
+==>   From:  0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2 (with aliases ['default-sender'] on chain with ID 1)
+==>   Data:  0x4cf373e60000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002b4d616b6520757020612062657474657220666f7274756e65207468616e20746869732c20706c656173652e000000000000000000000000000000000000000000
+==>   Value: 0 Ether
+==>
+==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
+==>   Function called: addFortune(string)
+==>     Arg 1 [name=fortune, type=string]: "Make up a better fortune than this, please."
+==>
+==> The nonce of the transaction would be 0.
+==>
+==> The transaction you have requested could use up to 112773 units of gas.
+==> You would pay 3 gwei for each unit of gas, for a maximum cost of 0.000338319 ether, which is worth 0.03104415144 USD (according to Coinbase at 1:03 AM).
+
+Would you like to submit this transaction? [y/n]
 ```
-At the time I am trying this, the transaction I've proposed to invoke would cost up to about 2.2&cent;. *It may cost much
-more than that when you try to execute it!*
+At the time I am trying this, the transaction I've proposed to invoke would cost up to about 3.1&cent;.
+
+*It may cost more than that when you try to execute it! The price of using the Ethereum network varies over time.*
 
 @@@ warning
 
@@ -408,18 +424,33 @@ Be sure that you are okay with what you might be spending.
 
 @@@
 
-I'm okay with spending 2.2&cent;, so I'll go ahead and say `y`.
+I'm okay with spending 3.1&cent;, so I'll go ahead and say `y`.
 
 ```
 sbt:eth-command-line> ethTransactionInvoke fortune addFortune "Make up a better fortune than this, please." 
 [info] Unlocking address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (on chain with ID 1, aliases ['default-sender'])
 Enter passphrase or hex private key for address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2': ***************
 [info] V3 wallet(s) found for '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (aliases ['default-sender'])
-The transaction you have requested could use up to 112773 units of gas.
-You would pay 2.200000001 gwei for each unit of gas, for a maximum cost of 0.000248100600112773 ether, which is worth 0.02102404485355638402 USD (according to Coinbase at 1:36 AM).
-The nonce of the transaction would be 0.
+
+==> T R A N S A C T I O N   R E Q U E S T
+==>
+==> The transaction would be a message with...
+==>   To:    0x82ea8ab1e836272322f376a5f71d5a34a71688f1 (with aliases ['fortune'] on chain with ID 1)
+==>   From:  0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2 (with aliases ['default-sender'] on chain with ID 1)
+==>   Data:  0x4cf373e60000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002b4d616b6520757020612062657474657220666f7274756e65207468616e20746869732c20706c656173652e000000000000000000000000000000000000000000
+==>   Value: 0 Ether
+==>
+==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
+==>   Function called: addFortune(string)
+==>     Arg 1 [name=fortune, type=string]: "Make up a better fortune than this, please."
+==>
+==> The nonce of the transaction would be 0.
+==>
+==> The transaction you have requested could use up to 112773 units of gas.
+==> You would pay 3.01 gwei for each unit of gas, for a maximum cost of 0.00033944673 ether, which is worth 0.0311001094026 USD (according to Coinbase at 1:08 AM).
+
 Would you like to submit this transaction? [y/n] y
-A transaction with hash '0x178b4ad17b64f474ec36fda0a9d2e3746d733dd62f11a6220bc5d51de7d750c6' will be submitted. Please wait.
+A transaction with hash '0xc632669dcb6f1c014074e0a4cad2d44ac123a42368b30d5e4f8783bbd09747f4' will be submitted. Please wait.
 [error] com.mchange.sc.v2.jsonrpc.package$JsonrpcException: insufficient funds for gas * price + value [code=-32000]: No further information
 [error] 	at com.mchange.sc.v2.jsonrpc.Response$Error.vomit(Response.scala:12)
 [error] 	at com.mchange.sc.v1.consuela.ethereum.jsonrpc.Client$Implementation$Exchanger.$anonfun$responseHandler$1(Client.scala:282)
@@ -435,7 +466,7 @@ A transaction with hash '0x178b4ad17b64f474ec36fda0a9d2e3746d733dd62f11a6220bc5d
 [error] 	at java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:1692)
 [error] 	at java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:157)
 [error] (Compile / ethTransactionInvoke) com.mchange.sc.v2.jsonrpc.package$JsonrpcException: insufficient funds for gas * price + value [code=-32000]: No further information
-[error] Total time: 10 s, completed Dec 16, 2018 1:36:23 AM
+[error] Total time: 15 s, completed Dec 18, 2018 1:08:48 AM
 ```
 An ugly-looking error has occurred. The key piece of information in that mess is `insufficient funds for gas * price + value`.
 
@@ -446,7 +477,7 @@ To see that, let's try the command `ethAddressBalance`:
 sbt:eth-command-line> ethAddressBalance default-sender
 0 ether (as of the latest incorporated block, address 0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2)
 This corresponds to approximately 0.00 USD (at a rate of 84.74 USD per ETH, retrieved at 1:36 AM from Coinbase)
-[success] Total time: 1 s, completed Dec 16, 2018 1:39:56 AM
+[success] Total time: 1 s, completed Dec 18, 2018 1:39:56 AM
 ```
 We have no ETH in our account, so we cannot invoke a transaction that changes data on the blockchain.
 
