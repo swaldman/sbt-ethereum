@@ -98,4 +98,12 @@ Other
 
 * A flag in Invoker.Context (update stub.Context factories and stub factories in stub.Generator) for broadcasting rather than round-robin-ing Seq URL.Sources
 
-* documentation: glossary (hex), (ens), (wallet), (ABI)
+* documentation: glossary (hex), (ens), (wallet), (ABI), (transaction)
+
+* xethStubSender? what are the security issues?
+
+* Modify stub.Generator to accept mere addresses as well as stub.Sender as senders for constant functions
+
+* Should I switch from Compile to Zero as the config setting for tasks expected to be run wthout a user-specified config?
+
+* Should I define distinct sbt configs for Mainnet, Rinkeby, Ropsten, etc (so we might do "Rinkeby / ethTransactionInvoke ..." etc)?

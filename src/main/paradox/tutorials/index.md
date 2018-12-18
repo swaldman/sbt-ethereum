@@ -8,6 +8,7 @@
 
 * [Getting Started](getting-started.md)
 * [Using a Smart Contract (Part I)](using-a-smart-contract-i.md)
-* [Working with Ether](working-with-ether.md)
+* [Working with Ether & Multiple Addresses](working-with-ether.md)
+
 @@@
 

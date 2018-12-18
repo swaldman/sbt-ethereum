@@ -108,6 +108,7 @@ _sbt-ethereum_ supports the use of ENS names in place of an address wherever add
 if an address has been associated with the name.
 
 But you have to pay for public names, most simple ones are already taken (and they take a few days to acquire).
+
 For internal use, it's often more convenient to use addres aliases.
 
 @@@
@@ -213,6 +214,10 @@ The _Etherscan_ API-KEY you have set is retained for you by _sbt-ethereum_, and 
 From now on, you can use `ethContractAbiImport` to import ABIs from _Etherscan_ without further ceremony.
 
 ### Accessing read-only methods of an _Ethereum_ smart contract
+
+The _methods_ of an _Ethereum_ smart contract are the paths through which you interact with it. In _sbt-ethereum_, you use
+`ethTransactionView` to access methods that just "look up" information from or about a smart contract witout changing anything,
+and `ethTransactionInvoke` to make changes.
 
 Let's learn our fortune. Let's begin by trying the command `ethTransactionView`, which allows us to access some, but not all, of the methods
 of an _Ethereum_ smart contract, and let's us see the result. We'll tab-complete through the process of calling the command.
@@ -355,7 +360,7 @@ we looked at previously, `addFortune` wouldn't only show us information about fo
 Let's try it. First, let's see what arguments the method requires:
 ```
 sbt:eth-command-line> ethTransactionInvoke fortune addFortune 
-<fortune, of type string>   ​                            
+<fortune, of type string>
 sbt:eth-command-line> ethTransactionInvoke fortune addFortune 
 ```
 The method wants a thing called "fortune" whose type is "string". Let's try giving it a string. Strings should be set in double quotes.
@@ -454,5 +459,6 @@ or other tasks that would change the _Ethereum_ blockchain that we have to pay.
 
 @@@
 
-We'll have to get some ETH before we can invoke methods like `addFortune` that change the state of the blockchain.
+We'll have to get some ETH before we can invoke methods like `addFortune` that change the state of the blockchain. We'll turn to that next.
+
 
