@@ -57,6 +57,8 @@ package object sbtethereum {
 
   val HomeDir = new java.io.File( sys.props( "user.home" ) ).getAbsoluteFile
 
+  val LineSep = System.lineSeparator
+
   def rounded( bd : BigDecimal ) : BigInt = bd.setScale( 0, BigDecimal.RoundingMode.HALF_UP ).toBigInt
 
   final object SpawnInstruction {

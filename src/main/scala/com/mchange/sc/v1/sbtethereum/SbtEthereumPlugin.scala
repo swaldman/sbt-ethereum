@@ -2303,11 +2303,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         println( "Please enter 'y' or 'n'." )
         doPrompt
       }
-      prompt.toLowerCase match {
-        case ""                     => redo
-        case s if s.startsWith("y") => true
-        case s if s.startsWith("n") => false
-        case _                      => redo
+      prompt.trim().toLowerCase match {
+        case ""          => redo
+        case "y" | "yes" => true
+        case "n" | "no"  => false
+        case _           => redo
       }
     }
     doPrompt
@@ -4958,7 +4958,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       println( s"==> The nonce of the transaction would be ${nonce}." )
       println("==>")
 
-      println( s"==> The transaction you have requested could use up to ${gasLimit} units of gas." )
+      println( s"==> $$$$$$ The transaction you have requested could use up to ${gasLimit} units of gas." )
 
       val mbEthPrice = priceFeed.ethPriceInCurrency( currencyCode, forceRefresh = true )
 
@@ -4967,13 +4967,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       val gasCostInEth = Denominations.Ether.fromWei( gasCostInWei )
       val gasCostMessage = {
         val sb = new StringBuilder
-        sb.append( s"==> You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether" )
+        sb.append( s"==> $$$$$$ You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether.${LineSep}" )
         mbEthPrice match {
           case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-            sb.append( s", which is worth ${ gasCostInEth * ethPrice } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
+            sb.append( s"==> $$$$$$ This is worth ${ gasCostInEth * ethPrice } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
           }
           case None => {
-            sb.append( "." )
+            /* ignore */
           }
         }
         sb.toString
@@ -4996,19 +4996,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       println()
 
-      @tailrec
-      def check : Boolean = {
-        val response = is.readLine( "Would you like to submit this transaction? [y/n] ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
-        response.toLowerCase match {
-          case "y" | "yes" => true
-          case "n" | "no"  => false
-          case _           => {
-            println( s"Invalid response '${response}'." )
-            check
-          }
-        }
-      }
-
+      val check = queryYN( is, "Would you like to submit this transaction? [y/n] " )
       if ( check ) {
         val txnHash = hashRLP[EthTransaction]( txn )
         println( s"A transaction with hash '${hexString(txnHash)}' will be submitted. Please wait." )

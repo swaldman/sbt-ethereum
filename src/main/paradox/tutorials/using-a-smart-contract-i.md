@@ -405,10 +405,11 @@ Enter passphrase or hex private key for address '0x1144f4f7aad0c463c667e0f8d73fc
 ==>
 ==> The nonce of the transaction would be 0.
 ==>
-==> The transaction you have requested could use up to 112773 units of gas.
-==> You would pay 3 gwei for each unit of gas, for a maximum cost of 0.000338319 ether, which is worth 0.03104415144 USD (according to Coinbase at 1:03 AM).
+==> $$$ The transaction you have requested could use up to 112773 units of gas.
+==> $$$ You would pay 3 gwei for each unit of gas, for a maximum cost of 0.000338319 ether.
+==> $$$ This is worth 0.03148396614 USD (according to Coinbase at 1:01 PM).
 
-Would you like to submit this transaction? [y/n]
+Would you like to submit this transaction? [y/n] 
 ```
 At the time I am trying this, the transaction I've proposed to invoke would cost up to about 3.1&cent;.
 
@@ -446,11 +447,12 @@ Enter passphrase or hex private key for address '0x1144f4f7aad0c463c667e0f8d73fc
 ==>
 ==> The nonce of the transaction would be 0.
 ==>
-==> The transaction you have requested could use up to 112773 units of gas.
-==> You would pay 3.01 gwei for each unit of gas, for a maximum cost of 0.00033944673 ether, which is worth 0.0311001094026 USD (according to Coinbase at 1:08 AM).
+==> $$$ The transaction you have requested could use up to 112773 units of gas.
+==> $$$ You would pay 3 gwei for each unit of gas, for a maximum cost of 0.000338319 ether.
+==> $$$ This is worth 0.03148396614 USD (according to Coinbase at 1:01 PM).
 
 Would you like to submit this transaction? [y/n] y
-A transaction with hash '0xc632669dcb6f1c014074e0a4cad2d44ac123a42368b30d5e4f8783bbd09747f4' will be submitted. Please wait.
+A transaction with hash '0xa7d785cec2da4b415958e80bb9bbe131a4c39622da4ef064ae1e58fd4338285f' will be submitted. Please wait.
 [error] com.mchange.sc.v2.jsonrpc.package$JsonrpcException: insufficient funds for gas * price + value [code=-32000]: No further information
 [error] 	at com.mchange.sc.v2.jsonrpc.Response$Error.vomit(Response.scala:12)
 [error] 	at com.mchange.sc.v1.consuela.ethereum.jsonrpc.Client$Implementation$Exchanger.$anonfun$responseHandler$1(Client.scala:282)
@@ -466,7 +468,7 @@ A transaction with hash '0xc632669dcb6f1c014074e0a4cad2d44ac123a42368b30d5e4f878
 [error] 	at java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:1692)
 [error] 	at java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:157)
 [error] (Compile / ethTransactionInvoke) com.mchange.sc.v2.jsonrpc.package$JsonrpcException: insufficient funds for gas * price + value [code=-32000]: No further information
-[error] Total time: 15 s, completed Dec 18, 2018 1:08:48 AM
+[error] Total time: 15 s, completed Dec 18, 2018 1:01:20 PM
 ```
 An ugly-looking error has occurred. The key piece of information in that mess is `insufficient funds for gas * price + value`.
 
