@@ -4909,92 +4909,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def normalTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
 
-    val abiOverrides = abiOverridesForChain( chainId )
-
     txn => Future {
 
-      val gasPrice   = txn.gasPrice.widen
-      val gasLimit   = txn.gasLimit.widen
-      val valueInWei = txn.value.widen
-
-      val nonce = txn.nonce.widen
-
-      println()
-      println( "==> T R A N S A C T I O N   R E Q U E S T" )
-      println( "==>" )
-
-      txn match {
-        case msg : EthTransaction.Message => {
-          println(  """==> The transaction would be a message with...""" )
-          println( s"""==>   To:    ${ticklessVerboseAddress(chainId, msg.to)}""" )
-          println( s"""==>   From:  ${ticklessVerboseAddress(chainId, msg.sender)}""" )
-          println( s"""==>   Data:  ${if (msg.data.length > 0) hexString(msg.data) else "None"}""" )
-          println( s"""==>   Value: ${EthValue(msg.value.widen, Denominations.Ether).denominated} Ether""" )
-
-          try {
-            val abiLookup = abiLookupForAddress( chainId, msg.to, abiOverrides )
-            abiLookup.resolveAbi(Some(log)).foreach { abi =>
-              val ( fcn, values ) = ethabi.decodeFunctionCall( abi, msg.data ).assert
-              println(  "==>" )
-              println( s"==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call..." )
-              println( s"==>   Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
-              (values.zip( Stream.from(1) )).foreach { case (value, index) =>
-                println( s"==>     Arg ${index} [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
-              }
-            }
-          }
-          catch {
-            case e : Exception => log.warn( s"An Exception occurred while trying to interpret this method with an ABI as a function call. Skipping: ${e}" )
-          }
-        }
-        case cc : EthTransaction.ContractCreation => {
-          println(  """==> The transaction would be a contract creation with...""" )
-          println( s"""==>   From:  ${ticklessVerboseAddress(chainId, cc.sender)}""" )
-          println( s"""==>   Init:  ${if (cc.init.length > 0) hexString(cc.init) else "None"}""" )
-          println( s"""==>   Value: ${EthValue(cc.value.widen, Denominations.Ether).denominated} Ether""" )
-        }
-      }
-      println("==>")
-      println( s"==> The nonce of the transaction would be ${nonce}." )
-      println("==>")
-
-      println( s"==> $$$$$$ The transaction you have requested could use up to ${gasLimit} units of gas." )
-
-      val mbEthPrice = priceFeed.ethPriceInCurrency( currencyCode, forceRefresh = true )
-
-      val gweiPerGas = Denominations.GWei.fromWei(gasPrice)
-      val gasCostInWei = gasLimit * gasPrice
-      val gasCostInEth = Denominations.Ether.fromWei( gasCostInWei )
-      val gasCostMessage = {
-        val sb = new StringBuilder
-        sb.append( s"==> $$$$$$ You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether.${LineSep}" )
-        mbEthPrice match {
-          case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-            sb.append( s"==> $$$$$$ This is worth ${ gasCostInEth * ethPrice } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
-          }
-          case None => {
-            /* ignore */
-          }
-        }
-        sb.toString
-      }
-      println( gasCostMessage )
-
-      if ( valueInWei != 0 ) {
-        val xferInEth = Denominations.Ether.fromWei( valueInWei )
-        val maxTotalCostInEth = xferInEth + gasCostInEth
-        print( s"==> You would also send ${xferInEth} ether" )
-        mbEthPrice match {
-          case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-            println( s" (${ xferInEth * ethPrice } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${maxTotalCostInEth * ethPrice} ${currencyCode})." )
-          }
-          case None => {
-            println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
-          }
-        }
-      }
-
-      println()
+      displayTransactionRequest( log, chainId, currencyCode, txn, txn.sender )
 
       val check = queryYN( is, "Would you like to submit this transaction? [y/n] " )
       if ( check ) {
@@ -5005,6 +4922,103 @@ object SbtEthereumPlugin extends AutoPlugin {
         Invoker.throwDisapproved( txn, keepStackTrace = false )
       }
     }( ec )
+  }
+
+  private def displayTransactionRequest( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress ) : Unit = {
+
+    val abiOverrides = abiOverridesForChain( chainId )
+
+    val gasPrice   = txn.gasPrice.widen
+    val gasLimit   = txn.gasLimit.widen
+    val valueInWei = txn.value.widen
+
+    val nonce = txn.nonce.widen
+
+    println()
+    println( "==> T R A N S A C T I O N   R E Q U E S T" )
+    println( "==>" )
+
+    txn match {
+      case msg : EthTransaction.Message => {
+        println(  """==> The transaction would be a message with...""" )
+        println( s"""==>   To:    ${ticklessVerboseAddress(chainId, msg.to)}""" )
+        println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
+        println( s"""==>   Data:  ${if (msg.data.length > 0) hexString(msg.data) else "None"}""" )
+        println( s"""==>   Value: ${EthValue(msg.value.widen, Denominations.Ether).denominated} Ether""" )
+
+        try {
+          val abiLookup = abiLookupForAddress( chainId, msg.to, abiOverrides )
+          abiLookup.resolveAbi(Some(log)) match {
+            case Some(abi) => {
+              val ( fcn, values ) = ethabi.decodeFunctionCall( abi, msg.data ).assert
+              println(  "==>" )
+              println( s"==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call..." )
+              println( s"==>   Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
+                (values.zip( Stream.from(1) )).foreach { case (value, index) =>
+                  println( s"==>     Arg ${index} [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
+                }
+            }
+            case None => {
+              println(  "==>" )
+              println( s"==> !!! Any ABI is associated with the destination address is currently unknown, so we cannot decode the message data as a method call !!!" )
+            }
+          }
+        }
+        catch {
+          case e : Exception => {
+            val msg = s"An Exception occurred while trying to interpret this method with an ABI as a function call. Skipping: ${e}"
+            log.warn( msg )
+            DEBUG.log( msg, e )
+          }
+        }
+      }
+      case cc : EthTransaction.ContractCreation => {
+        println(  """==> The transaction would be a contract creation with...""" )
+        println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
+        println( s"""==>   Init:  ${if (cc.init.length > 0) hexString(cc.init) else "None"}""" )
+        println( s"""==>   Value: ${EthValue(cc.value.widen, Denominations.Ether).denominated} Ether""" )
+      }
+    }
+    println("==>")
+    println( s"==> The nonce of the transaction would be ${nonce}." )
+    println("==>")
+
+    println( s"==> $$$$$$ The transaction you have requested could use up to ${gasLimit} units of gas." )
+
+    val mbEthPrice = priceFeed.ethPriceInCurrency( currencyCode, forceRefresh = true )
+
+    val gweiPerGas = Denominations.GWei.fromWei(gasPrice)
+    val gasCostInWei = gasLimit * gasPrice
+    val gasCostInEth = Denominations.Ether.fromWei( gasCostInWei )
+    val gasCostMessage = {
+      val sb = new StringBuilder
+      sb.append( s"==> $$$$$$ You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether.${LineSep}" )
+      mbEthPrice match {
+        case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
+          sb.append( s"==> $$$$$$ This is worth ${ gasCostInEth * ethPrice } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
+        }
+        case None => {
+          /* ignore */
+        }
+      }
+      sb.toString
+    }
+    println( gasCostMessage )
+
+    if ( valueInWei != 0 ) {
+      val xferInEth = Denominations.Ether.fromWei( valueInWei )
+      val maxTotalCostInEth = xferInEth + gasCostInEth
+      print( s"==> You would also send ${xferInEth} ether" )
+      mbEthPrice match {
+        case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
+          println( s" (${ xferInEth * ethPrice } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${maxTotalCostInEth * ethPrice} ${currencyCode})." )
+        }
+        case None => {
+          println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
+        }
+      }
+    }
+    println()
   }
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
@@ -5123,4 +5137,63 @@ object SbtEthereumPlugin extends AutoPlugin {
   override def trigger = allRequirements
 
   override val projectSettings = ethDefaults
+
+  class CautiousSigner private ( log : sbt.Logger, is : sbt.InteractionService, currencyCode : String )( privateKey : EthPrivateKey ) extends EthSigner {
+
+    // throws if the check fails
+    private def doCheck( documentBytes : Seq[Byte], mbChainId : Option[EthChainId] ) : Unit = {
+      val chainId = {
+        mbChainId.fold( -1 ){ ecid =>
+          val bi = ecid.value.widen
+          if ( bi.isValidInt ) bi.toInt else throw new SbtEthereumException( s"Chain IDs outside the range of Ints are not supported. Found ${bi}" )
+        }
+      }
+      def handleSignTransaction( utxn : EthTransaction.Unsigned ) : Unit = {
+        displayTransactionRequest( log, chainId, currencyCode, utxn, privateKey.address )
+        val ok = queryYN( is, "Are you sure it is okay to sign this transaction as ${verboseAddress(chainId, privateKey.address)}?" )
+        if (!ok) aborted( "User chose not to sign proposed transaction." )
+      }
+      def handleSignUnknown = {
+        println( s"""This data does not appear to be a transaction${if (chainId < 0 ) "." else "for chain with ID " + chainId + "."}""" )
+        println( s"""Raw data: ${hexString(documentBytes)}""" )
+        val ok = queryYN( is, "Are you sure it is okay to sign this uninterpreted data as ${verboseAddress(chainId, privateKey.address)}?" )
+        if (!ok) aborted( "User chose not to sign uninterpreted data." )
+      }
+      EthTransaction.Unsigned.areSignableBytesForChainId( documentBytes, mbChainId ) match {
+        case Some( utxn : EthTransaction.Unsigned ) => handleSignTransaction( utxn )
+        case None                                   => handleSignUnknown
+      }
+    }
+    private def doCheck( documentHash : EthHash ) : Unit = {
+      println(  "The application is attempting to sign a hash of some document which sbt-ethereum cannot identify." )
+      println( s"Hash bytes: ${hexString( documentHash )}" )
+      val ok = queryYN( is, "Do you understand the document whose hash the application proposes to sign, and trust the application to sign it?" )
+      if (!ok) aborted( "User chose not to sign proposed document hash." )
+    }
+
+    override def sign( document : Array[Byte] ) : EthSignature = {
+      this.sign( document.toImmutableSeq )
+    }
+    override def sign( document : Seq[Byte] )   : EthSignature = {
+      doCheck( document, None )
+      privateKey.sign( document )
+    }
+    override def signPrehashed( documentHash : EthHash ) : EthSignature = {
+      doCheck( documentHash )
+      privateKey.signPrehashed( documentHash )
+    }
+    override def sign( document : Array[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
+      doCheck( document.toImmutableSeq, Some( chainId ) )
+      privateKey.sign( document, chainId )
+    }
+    override def sign( document : Seq[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
+      doCheck( document, Some( chainId ) )
+      privateKey.sign( document, chainId )
+    }
+    override def signPrehashed( documentHash : EthHash, chainId : EthChainId ) : EthSignature.WithChainId = {
+      doCheck( documentHash )
+      signPrehashed( documentHash, chainId )
+    }
+    override def address : EthAddress = privateKey.address
+  }
 }

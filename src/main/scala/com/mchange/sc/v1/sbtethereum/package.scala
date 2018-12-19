@@ -61,6 +61,8 @@ package object sbtethereum {
 
   def rounded( bd : BigDecimal ) : BigInt = bd.setScale( 0, BigDecimal.RoundingMode.HALF_UP ).toBigInt
 
+  def aborted( msg : String ) : Nothing = throw new OperationAbortedByUserException( msg )
+
   final object SpawnInstruction {
     final case object Auto                                                                                       extends SpawnInstruction
     final case class  UncompiledName( name : String )                                                            extends SpawnInstruction
