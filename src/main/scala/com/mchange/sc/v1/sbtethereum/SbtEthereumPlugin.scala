@@ -454,6 +454,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethShoeboxRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's shoebox to its required user-only values.")
     val xethSqlQueryShoeboxDatabase = inputKey[Unit]("Primarily for debugging. Query the internal shoebox database.")
     val xethSqlUpdateShoeboxDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal shoebox database with arbitrary SQL.")
+    val xethStubEnvironment = taskKey[Tuple2[stub.Context, stub.Sender]]("Offers the elements you need to work with smart-contract stubs from inside an sbt-ethereum build.")
     val xethTriggerDirtyAliasCache = taskKey[Unit]("Indirectly provokes an update of the cache of aliases used for tab completions.")
     val xethTriggerDirtySolidityCompilerList = taskKey[Unit]("Indirectly provokes an update of the cache of aavailable solidity compilers used for tab completions.")
     val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts into the contract database. Returns true if changes were made.")
@@ -981,6 +982,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethSqlQueryShoeboxDatabase := { xethSqlQueryShoeboxDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
 
     xethSqlUpdateShoeboxDatabase := { xethSqlUpdateShoeboxDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
+
+    xethStubEnvironment in Compile := { xethStubEnvironmentTask( Compile ).value },
+
+    xethStubEnvironment in Test := { xethStubEnvironmentTask( Test ).value },
 
     // we leave triggers unscoped, not for any particular reason
     // (we haven't tried scoping them and seen a problem)
@@ -4634,6 +4639,19 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def xethStubEnvironmentTask( config : Configuration ) : Initialize[Task[Tuple2[stub.Context,stub.Sender]]] = Def.task {
+    val log = streams.value.log
+    val is = interactionService.value
+    val currencyCode = ethcfgBaseCurrencyCode.value
+    val icontext = (config / xethInvokerContext).value
+    val privateKey = findPrivateKeyTask( config ).value
+
+    val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, stub.Context.Default.Scheduler )
+    val signer = new CautiousSigner( log, is, currencyCode )( privateKey )
+    val sender = stub.Sender.Basic( signer )
+    (scontext, sender)
+  }
+
   // this is a no-op, its execution just triggers a re-caching of aliases
   private def xethTriggerDirtyAliasCacheTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
@@ -5138,7 +5156,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   override val projectSettings = ethDefaults
 
-  class CautiousSigner private ( log : sbt.Logger, is : sbt.InteractionService, currencyCode : String )( privateKey : EthPrivateKey ) extends EthSigner {
+  class CautiousSigner private [SbtEthereumPlugin] ( log : sbt.Logger, is : sbt.InteractionService, currencyCode : String )( privateKey : EthPrivateKey ) extends EthSigner {
 
     // throws if the check fails
     private def doCheck( documentBytes : Seq[Byte], mbChainId : Option[EthChainId] ) : Unit = {
