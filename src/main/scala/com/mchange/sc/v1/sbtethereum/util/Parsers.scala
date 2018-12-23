@@ -27,6 +27,7 @@ import scala.util.control.NonFatal
 
 import play.api.libs.json._
 
+private [sbtethereum]
 object Parsers {
   private implicit lazy val logger = mlogger( this )
 
@@ -99,7 +100,8 @@ object Parsers {
 
   private def rawAliasedAddressParser( aliases : SortedMap[String,EthAddress] ) : Parser[EthAddress] = rawAddressAliasParser( aliases ).map( aliases )
 
-  private def createAddressParser( tabHelp : String, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
+  private [sbtethereum]
+  def createAddressParser( tabHelp : String, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
     mbRpi match {
       case Some( rpi ) => {
         val aliases = rpi.addressAliases
