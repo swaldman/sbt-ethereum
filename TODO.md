@@ -107,3 +107,11 @@ Other
 * Should I switch from Compile to Zero as the config setting for tasks expected to be run wthout a user-specified config?
 
 * Should I define distinct sbt configs for Mainnet, Rinkeby, Ropsten, etc (so we might do "Rinkeby / ethTransactionInvoke ..." etc)?
+
+
+// dependent libs:
+
+mchange-commons-scala: Clean up inferred return values of com.mchange.sc.v2.io.RichFile methods. Also contents as bytes methods, java.nio.file.Files.readAllBytesPaths.get(filePath)
+
+add a UnitSuccess constant to Failable, to support a FailableUnitSuccess.flatMap( ... ) pattern? maybe a better approach is Failable.flatBuild[T]( op : => Failable[T] ) : Failable[T]
+see unrevoked-signed/build/DataSource for an example uses

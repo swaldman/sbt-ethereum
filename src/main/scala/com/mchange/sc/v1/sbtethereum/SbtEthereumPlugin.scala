@@ -410,6 +410,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethTransactionInvoke = inputKey[Client.TransactionReceipt]("Calls a function on a deployed smart contract")
     val ethTransactionLookup = inputKey[Client.TransactionReceipt]("Looks up (and potentially waits for) the transaction associated with a given transaction hash.")
+    val ethTransactionMock   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Mocks a call to any function. Burns no Ether, makes no persistent changes, returns a simulated result.")
 
     val ethTransactionNonceOverrideDrop  = taskKey[Unit]("Removes any nonce override that may have been set.")
     val ethTransactionNonceOverridePrint = taskKey[Unit]("Prints any nonce override that may have been set.")
@@ -865,6 +866,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionLookup in Compile := { ethTransactionLookupTask( Compile ).evaluated },
 
     ethTransactionLookup in Test := { ethTransactionLookupTask( Test ).evaluated },
+
+    ethTransactionMock in Compile := { ethTransactionMockTask( Compile ).evaluated },
+
+    ethTransactionMock in Test := { ethTransactionMockTask( Test ).evaluated },
 
     // we don't scope the nonce override tasks for now
     // since any nonce override gets used in tests as well as other contexts
@@ -3617,6 +3622,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ethTransactionMockTask( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[Decoded.Value])]] = {
+    ethTransactionViewMockTask( restrictToConstants = false )( config )
+  }
+
   private def ethTransactionNonceOverrideDropTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     Mutables.NonceOverride.set( None )
@@ -3736,7 +3745,11 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethTransactionViewTask( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[Decoded.Value])]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = true ) )
+    ethTransactionViewMockTask( restrictToConstants = true )( config )
+  }
+
+  private def ethTransactionViewMockTask( restrictToConstants : Boolean )( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[Decoded.Value])]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = restrictToConstants ) )
 
     Def.inputTask {
       val log = streams.value.log
@@ -3750,7 +3763,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ( ( contractAddress, function, args, abi, abiLookup), mbWei ) = parser.parsed
       abiLookup.logGenericShadowWarning( log )
       if (! function.constant ) {
-        log.warn( s"Function '${function.name}' is not marked constant! An ephemeral call may not succeed, and in any case, no changes to the state of the blockchain will be preserved." )
+        log.warn( s"Simulating the result of calling nonconstant function '${function.name}'." )
+        log.warn(  "An actual transaction would occur sometime in the future, with potentially different results!" )
+        log.warn(  "No changes that would have been made to the blockchain by a call of this function will be preserved." )
       }
       val amount = mbWei.getOrElse( Zero )
       val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
