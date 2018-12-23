@@ -1192,14 +1192,23 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def findPrivateKeyTask( config : Configuration ) : Initialize[Task[EthPrivateKey]] = Def.task {
+  private class PrivateKeyFinder( val address : EthAddress, findOp : () => EthPrivateKey ) {
+    def find() = findOp().ensuring( privateKey => address == privateKey.address )
+  }
+
+  private def findPrivateKeyFinderTask( config : Configuration ) : Initialize[Task[PrivateKeyFinder]] = Def.task {
     val s = state.value
     val log = streams.value.log
     val is = interactionService.value
     val chainId = (ethcfgNodeChainId in config).value
     val caller = findAddressSenderTask(warn=true)(config).value.assert
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-    findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
+    new PrivateKeyFinder( caller, () => findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true ) )
+  }
+
+  private def findPrivateKeyTask( config : Configuration ) : Initialize[Task[EthPrivateKey]] = Def.task {
+    val privateKeyFinder = findPrivateKeyFinderTask( config ).value
+    privateKeyFinder.find()
   }
 
   private def findTransactionLoggerTask( config : Configuration ) : Initialize[Task[Invoker.TransactionLogger]] = Def.task {
@@ -4659,10 +4668,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val currencyCode = ethcfgBaseCurrencyCode.value
     val icontext = (config / xethInvokerContext).value
-    val privateKey = findPrivateKeyTask( config ).value
+    val privateKeyFinder = findPrivateKeyFinderTask( config ).value
 
     val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, stub.Context.Default.Scheduler )
-    val signer = new CautiousSigner( log, is, currencyCode )( privateKey )
+    val signer = new CautiousSigner( log, is, currencyCode )( privateKeyFinder )
     val sender = stub.Sender.Basic( signer )
     (scontext, sender)
   }
@@ -5171,10 +5180,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   override val projectSettings = ethDefaults
 
-  class CautiousSigner private [SbtEthereumPlugin] ( log : sbt.Logger, is : sbt.InteractionService, currencyCode : String )( privateKey : EthPrivateKey ) extends EthSigner {
+  class CautiousSigner private [SbtEthereumPlugin] ( log : sbt.Logger, is : sbt.InteractionService, currencyCode : String )( privateKeyFinder : PrivateKeyFinder ) extends EthSigner {
 
     // throws if the check fails
-    private def doCheck( documentBytes : Seq[Byte], mbChainId : Option[EthChainId] ) : Unit = {
+    private def doCheckDocument( documentBytes : Seq[Byte], mbChainId : Option[EthChainId] ) : Unit = {
+      val address = privateKeyFinder.address
       val chainId = {
         mbChainId.fold( -1 ){ ecid =>
           val bi = ecid.value.widen
@@ -5182,14 +5192,14 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
       def handleSignTransaction( utxn : EthTransaction.Unsigned ) : Unit = {
-        displayTransactionRequest( log, chainId, currencyCode, utxn, privateKey.address )
-        val ok = queryYN( is, "Are you sure it is okay to sign this transaction as ${verboseAddress(chainId, privateKey.address)}?" )
+        displayTransactionRequest( log, chainId, currencyCode, utxn, address )
+        val ok = queryYN( is, s"Are you sure it is okay to sign this transaction as ${verboseAddress(chainId, address)}?" )
         if (!ok) aborted( "User chose not to sign proposed transaction." )
       }
       def handleSignUnknown = {
         println( s"""This data does not appear to be a transaction${if (chainId < 0 ) "." else "for chain with ID " + chainId + "."}""" )
         println( s"""Raw data: ${hexString(documentBytes)}""" )
-        val ok = queryYN( is, "Are you sure it is okay to sign this uninterpreted data as ${verboseAddress(chainId, privateKey.address)}?" )
+        val ok = queryYN( is, s"Are you sure it is okay to sign this uninterpreted data as ${verboseAddress(chainId, address)}?" )
         if (!ok) aborted( "User chose not to sign uninterpreted data." )
       }
       EthTransaction.Unsigned.areSignableBytesForChainId( documentBytes, mbChainId ) match {
@@ -5197,8 +5207,15 @@ object SbtEthereumPlugin extends AutoPlugin {
         case None                                   => handleSignUnknown
       }
     }
-    private def doCheck( documentHash : EthHash ) : Unit = {
-      println(  "The application is attempting to sign a hash of some document which sbt-ethereum cannot identify." )
+    private def doCheckHash( documentHash : EthHash, mbChainId : Option[EthChainId] ) : Unit = {
+      val chainId = {
+        mbChainId.fold( -1 ){ ecid =>
+          val bi = ecid.value.widen
+          if ( bi.isValidInt ) bi.toInt else throw new SbtEthereumException( s"Chain IDs outside the range of Ints are not supported. Found ${bi}" )
+        }
+      }
+      val address = privateKeyFinder.address
+      println( s"The application is attempting to sign a hash of some document which sbt-ethereum cannot identify, as ${verboseAddress(chainId, address)}." )
       println( s"Hash bytes: ${hexString( documentHash )}" )
       val ok = queryYN( is, "Do you understand the document whose hash the application proposes to sign, and trust the application to sign it?" )
       if (!ok) aborted( "User chose not to sign proposed document hash." )
@@ -5208,25 +5225,25 @@ object SbtEthereumPlugin extends AutoPlugin {
       this.sign( document.toImmutableSeq )
     }
     override def sign( document : Seq[Byte] )   : EthSignature = {
-      doCheck( document, None )
-      privateKey.sign( document )
+      doCheckDocument( document, None )
+      privateKeyFinder.find().sign( document )
     }
     override def signPrehashed( documentHash : EthHash ) : EthSignature = {
-      doCheck( documentHash )
-      privateKey.signPrehashed( documentHash )
+      doCheckHash( documentHash, None )
+      privateKeyFinder.find().signPrehashed( documentHash )
     }
     override def sign( document : Array[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
-      doCheck( document.toImmutableSeq, Some( chainId ) )
-      privateKey.sign( document, chainId )
+      doCheckDocument( document.toImmutableSeq, Some( chainId ) )
+      privateKeyFinder.find().sign( document, chainId )
     }
     override def sign( document : Seq[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
-      doCheck( document, Some( chainId ) )
-      privateKey.sign( document, chainId )
+      doCheckDocument( document, Some( chainId ) )
+      privateKeyFinder.find().sign( document, chainId )
     }
     override def signPrehashed( documentHash : EthHash, chainId : EthChainId ) : EthSignature.WithChainId = {
-      doCheck( documentHash )
+      doCheckHash( documentHash, Some( chainId ) )
       signPrehashed( documentHash, chainId )
     }
-    override def address : EthAddress = privateKey.address
+    override def address : EthAddress = privateKeyFinder.address
   }
 }
