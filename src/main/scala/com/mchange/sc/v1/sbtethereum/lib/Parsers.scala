@@ -14,7 +14,10 @@ object Parsers {
   def parserGenerator[T]( op : Option[RichParserInfo] => Parser[T] ) : ( State, Option[RichParserInfo] ) => Parser[T] = { ( state, mbRpi ) =>
     op( mbRpi )
   }
-  def parserGeneratorForAddress[T]( addressTabHelp : String )( op : Parser[EthAddress] => Parser[T] ) : ( State, Option[RichParserInfo] ) => Parser[T] = { ( state, mbRpi ) =>
+  def parserGeneratorForAddress( addressTabHelp : String ) : ( State, Option[RichParserInfo] ) => Parser[EthAddress] = { ( state, mbRpi ) =>
+    addressParser( addressTabHelp, mbRpi )
+  }
+  def parserGeneratorWithAddress[T]( addressTabHelp : String )( op : Parser[EthAddress] => Parser[T] ) : ( State, Option[RichParserInfo] ) => Parser[T] = { ( state, mbRpi ) =>
     op( addressParser( addressTabHelp, mbRpi ) )
   }
 }
