@@ -4776,7 +4776,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     keystoresV3
-      .map( dir => Failable( wallet.V3.keyStoreMultiMap(dir) ).xdebug( "Failed to read keystore directory: ${dir}" ).recoverWith( immutable.Map.empty[EthAddress,immutable.Set[wallet.V3]] ).get )
+      .map( dir => Failable( wallet.V3.keyStoreMultiMap(dir) ).xdebug( "Failed to read keystore directory: ${dir}" ).recover( _ => immutable.Map.empty[EthAddress,immutable.Set[wallet.V3]] ).assert )
       .foldLeft( immutable.Map.empty[EthAddress,immutable.Set[wallet.V3]] )( combineMultiMaps )
   }
 
