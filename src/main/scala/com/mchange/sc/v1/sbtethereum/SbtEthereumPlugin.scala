@@ -394,6 +394,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethNodeUrlPrint = taskKey[Unit] ("Displays the currently effective node json-rpc URL, and explains the preference order if multiple values are set.")
 
+    val ethNodeUrl = taskKey[String]("Finds the current node URL.")
+
     val ethShoeboxBackup              = taskKey[Unit] ("Backs up the sbt-ethereum shoebox.")
     val ethShoeboxDatabaseDumpCreate  = taskKey[Unit] ("Dumps the sbt-ethereum shoebox database as an SQL text file, stored inside the sbt-ethereum shoebox directory.")
     val ethShoeboxDatabaseDumpRestore = taskKey[Unit] ("Restores the sbt-ethereum shoebox database from a previously generated dump.")
@@ -803,6 +805,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethNodeBlockNumberPrint in Compile := { ethNodeBlockNumberPrintTask( Compile ).value },
 
     ethNodeBlockNumberPrint in Test := { ethNodeBlockNumberPrintTask( Test ).value },
+
+    ethNodeUrl in Compile := { findNodeUrlTask(warn=true)( Compile ).value },
+
+    ethNodeUrl in Test := { findNodeUrlTask(warn=true)( Test ).value },
 
     ethNodeUrlDefaultDrop in Compile := { ethNodeUrlDefaultDropTask( Compile ).value },
 
