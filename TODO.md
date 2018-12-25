@@ -108,6 +108,10 @@ Other
 
 * Should I define distinct sbt configs for Mainnet, Rinkeby, Ropsten, etc (so we might do "Rinkeby / ethTransactionInvoke ..." etc)?
 
+* Fix and make consistent (consistently hex on format, tolerant of serveral formats on parse) Encode.Bytes and Encode.PredefinedByteArray
 
+* Define stub.Sender and stub.Sender with stub.Signer, and enable constant-only senders unusuable in stub transaction methods.
+
+* ethNodeChainIdDefaultSet etc.
 
 

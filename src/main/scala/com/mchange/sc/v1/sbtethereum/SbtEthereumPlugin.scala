@@ -5199,13 +5199,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       def handleSignTransaction( utxn : EthTransaction.Unsigned ) : Unit = {
         displayTransactionRequest( log, chainId, currencyCode, utxn, address )
-        val ok = queryYN( is, s"Are you sure it is okay to sign this transaction as ${verboseAddress(chainId, address)}?" )
+        val ok = queryYN( is, s"Are you sure it is okay to sign this transaction as ${verboseAddress(chainId, address)}? [y/n] " )
         if (!ok) aborted( "User chose not to sign proposed transaction." )
       }
       def handleSignUnknown = {
-        println( s"""This data does not appear to be a transaction${if (chainId < 0 ) "." else "for chain with ID " + chainId + "."}""" )
+        println( s"""This data does not appear to be a transaction${if (chainId < 0 ) "." else " for chain with ID " + chainId + "."}""" )
         println( s"""Raw data: ${hexString(documentBytes)}""" )
-        val ok = queryYN( is, s"Are you sure it is okay to sign this uninterpreted data as ${verboseAddress(chainId, address)}?" )
+        val ok = queryYN( is, s"Are you sure it is okay to sign this uninterpreted data as ${verboseAddress(chainId, address)}? [y/n] " )
         if (!ok) aborted( "User chose not to sign uninterpreted data." )
       }
       EthTransaction.Unsigned.areSignableBytesForChainId( documentBytes, mbChainId ) match {
