@@ -110,6 +110,8 @@ Other
 
 * Fix and make consistent (consistently hex on format, tolerant of serveral formats on parse) Encode.Bytes and Encode.PredefinedByteArray
 
+* Distinguish in output and queries between signature approval of a transaction and approval of a transaction to be sent.
+
 * Define stub.Sender and stub.Sender with stub.Signer, and enable constant-only senders unusuable in stub transaction methods.
 
 * ethNodeChainIdDefaultSet etc.
