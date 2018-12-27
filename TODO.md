@@ -100,13 +100,9 @@ Other
 
 * documentation: glossary (hex), (ens), (wallet), (ABI), (transaction)
 
-[* Modify stub.Generator to accept mere addresses as well as stub.Sender as senders for constant functions -- No, see below.]
-
 * Should I switch from Compile to Zero as the config setting for tasks expected to be run wthout a user-specified config?
 
 * Should I define distinct sbt configs for Mainnet, Rinkeby, Ropsten, etc (so we might do "Rinkeby / ethTransactionInvoke ..." etc)?
-
-* Define stub.Sender and stub.Sender with stub.Signer, and enable constant-only senders unusuable in stub transaction methods.
 
 * ethNodeChainIdDefaultSet etc.
 

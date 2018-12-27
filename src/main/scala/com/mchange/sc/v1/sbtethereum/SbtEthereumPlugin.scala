@@ -457,7 +457,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethShoeboxRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's shoebox to its required user-only values.")
     val xethSqlQueryShoeboxDatabase = inputKey[Unit]("Primarily for debugging. Query the internal shoebox database.")
     val xethSqlUpdateShoeboxDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal shoebox database with arbitrary SQL.")
-    val xethStubEnvironment = taskKey[Tuple2[stub.Context, stub.Sender]]("Offers the elements you need to work with smart-contract stubs from inside an sbt-ethereum build.")
+    val xethStubEnvironment = taskKey[Tuple2[stub.Context, stub.Sender.Signing]]("Offers the elements you need to work with smart-contract stubs from inside an sbt-ethereum build.")
     val xethTriggerDirtyAliasCache = taskKey[Unit]("Indirectly provokes an update of the cache of aliases used for tab completions.")
     val xethTriggerDirtySolidityCompilerList = taskKey[Unit]("Indirectly provokes an update of the cache of aavailable solidity compilers used for tab completions.")
     val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts into the contract database. Returns true if changes were made.")
@@ -4669,7 +4669,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def xethStubEnvironmentTask( config : Configuration ) : Initialize[Task[Tuple2[stub.Context,stub.Sender]]] = Def.task {
+  private def xethStubEnvironmentTask( config : Configuration ) : Initialize[Task[Tuple2[stub.Context,stub.Sender.Signing]]] = Def.task {
     val log = streams.value.log
     val is = interactionService.value
     val currencyCode = ethcfgBaseCurrencyCode.value
