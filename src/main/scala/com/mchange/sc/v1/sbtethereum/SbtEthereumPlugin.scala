@@ -4959,7 +4959,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     txn => Future {
 
-      displayTransactionRequest( log, chainId, currencyCode, txn, txn.sender )
+      displayTransactionSubmissionRequest( log, chainId, currencyCode, txn, txn.sender )
 
       val check = queryYN( is, "Would you like to submit this transaction? [y/n] " )
       if ( check ) {
@@ -4972,7 +4972,15 @@ object SbtEthereumPlugin extends AutoPlugin {
     }( ec )
   }
 
-  private def displayTransactionRequest( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress ) : Unit = {
+  private def displayTransactionSignatureRequest( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress ) : Unit = {
+    _displayTransactionRequest( "==> T R A N S A C T I O N   S I G N A T U R E   R E Q U E S T" )(log, chainId, currencyCode, txn, proposedSender )
+  }
+
+  private def displayTransactionSubmissionRequest( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress ) : Unit = {
+    _displayTransactionRequest( "==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T" )(log, chainId, currencyCode, txn, proposedSender )
+  }
+
+  private def _displayTransactionRequest( titleLine : String )( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress ) : Unit = {
 
     val abiOverrides = abiOverridesForChain( chainId )
 
@@ -4983,7 +4991,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val nonce = txn.nonce.widen
 
     println()
-    println( "==> T R A N S A C T I O N   R E Q U E S T" )
+    println( titleLine )
     println( "==>" )
 
     txn match {
@@ -5198,7 +5206,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
       def handleSignTransaction( utxn : EthTransaction.Unsigned ) : Unit = {
-        displayTransactionRequest( log, chainId, currencyCode, utxn, address )
+        displayTransactionSignatureRequest( log, chainId, currencyCode, utxn, address )
         val ok = queryYN( is, s"Are you sure it is okay to sign this transaction as ${verboseAddress(chainId, address)}? [y/n] " )
         if (!ok) aborted( "User chose not to sign proposed transaction." )
       }
