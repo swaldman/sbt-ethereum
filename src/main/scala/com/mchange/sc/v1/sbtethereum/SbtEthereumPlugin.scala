@@ -535,6 +535,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgNodeChainId in Test := DefaultEphemeralChainId,
 
+    ethcfgNodeUrl in Test := {
+      val log = sLog.value
+      val chainId = (Test / ethcfgNodeChainId).value
+      findBackstopUrl(warn=false)( log, Test, chainId ).get // there is always a backstop URL for ephemeral chain IDs
+    },
+
     ethcfgEntropySource := new java.security.SecureRandom,
 
     ethcfgGasLimitMarkup := 0.2,

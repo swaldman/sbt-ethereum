@@ -26,10 +26,10 @@ object TestingResourcesGenerator {
       iw println s"object $objectName {"
       iw.upIndent()
 
-      iw.println( s"""val EthJsonRpcUrl : String                  = "$testEthJsonRpcUrl"""" )
-      iw.println(  """val TestSender    : IndexedSeq[stub.Sender] = stub.Test.Sender""" )
-      iw.println( s"""val DefaultSender : stub.Sender             = TestSender(0)""" )
-      iw.println(  """val Faucet        : stub.Sender             = DefaultSender""" )
+      iw.println( s"""val EthJsonRpcUrl : String                          = "$testEthJsonRpcUrl"""" )
+      iw.println(  """val TestSender    : IndexedSeq[stub.Sender.Signing] = stub.Test.Sender""" )
+      iw.println( s"""val DefaultSender : stub.Sender.Signing             = TestSender(0)""" )
+      iw.println(  """val Faucet        : stub.Sender.Signing             = DefaultSender""" )
       iw.println()
 
       iw.println( "val EntropySource = new java.security.SecureRandom()" )
@@ -40,7 +40,7 @@ object TestingResourcesGenerator {
 
       iw.println( s"implicit val scontext = stub.Context.fromUrl( EthJsonRpcUrl )" )
 
-      iw.println( "def createRandomSender() : stub.Sender = stub.Sender.Basic( EthPrivateKey( EntropySource ) )" )
+      iw.println( "def createRandomSender() : stub.Sender.Signing = stub.Sender.Basic( EthPrivateKey( EntropySource ) )" )
 
       iw.downIndent()
       iw.println( "}" )
@@ -48,7 +48,7 @@ object TestingResourcesGenerator {
       iw.println( "trait AutoSender extends Context {" )
       iw.upIndent()
 
-      iw.println( s"implicit val DefaultSender : stub.Sender = ${objectName}.DefaultSender" )
+      iw.println( s"implicit val DefaultSender : stub.Sender.Signing = ${objectName}.DefaultSender" )
 
       iw.downIndent()
       iw.println( "}" )
