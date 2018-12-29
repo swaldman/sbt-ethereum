@@ -60,8 +60,6 @@ Other
 
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
 
-* Generalize reasoning surrounding when interactive transaction approver should be used
-
 * enable Scala libraries to deploy as well as interact with already-deployed contracts
   * embed compilations as a resource in jar files
   * add method in jsonrpc.Invoker for contract creation

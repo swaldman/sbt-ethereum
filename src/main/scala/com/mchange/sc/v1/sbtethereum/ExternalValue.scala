@@ -4,14 +4,16 @@ package com.mchange.sc.v1.sbtethereum
 
 object ExternalValue {
   private val SystemPropKeys = Map(
-    'EthSender      -> "eth.sender",
-    'EthInfuraToken -> "eth.infura.token",
-    'EthDefaultNode -> "eth.default.node"
+    'EthSender          -> "eth.sender",
+    'EthInfuraProjectId -> "eth.infura.project.id",
+    'EthInfuraToken     -> "eth.infura.token",
+    'EthDefaultNode     -> "eth.default.node"
   )
   private val EnvironmentVarKeys = Map(
-    'EthSender      -> "ETH_SENDER",
-    'EthInfuraToken -> "ETH_INFURA_TOKEN",
-    'EthDefaultNode -> "ETH_DEFAULT_NODE"
+    'EthSender          -> "ETH_SENDER",
+    'EthInfuraProjectId -> "ETH_INFURA_PROJECT_ID",
+    'EthInfuraToken     -> "ETH_INFURA_TOKEN",
+    'EthDefaultNode     -> "ETH_DEFAULT_NODE"
   )
 
   private def find( keySym : Symbol ) : Option[String] = {
@@ -20,8 +22,9 @@ object ExternalValue {
     mbSysProp orElse mbEnvVar
   }
 
-  lazy val EthSender      = find( 'EthSender )
-  lazy val EthInfuraToken = find( 'EthInfuraToken )
-  lazy val EthDefaultNode = find( 'EthDefaultNode )
+  lazy val EthSender          = find( 'EthSender )
+  lazy val EthInfuraProjectId = find( 'EthInfuraProjectId )
+  lazy val EthInfuraToken     = find( 'EthInfuraToken )
+  lazy val EthDefaultNode     = find( 'EthDefaultNode )
 }
 

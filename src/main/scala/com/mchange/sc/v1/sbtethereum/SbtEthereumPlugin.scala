@@ -82,9 +82,22 @@ object SbtEthereumPlugin extends AutoPlugin {
     final object NodeUrlInBuild extends OneTimeWarnerKey
     final object AddressSenderInBuild  extends OneTimeWarnerKey
     final object EtherscanApiKeyInBuild  extends OneTimeWarnerKey
-  }
-  trait OneTimeWarnerKey
 
+    final object EthDefaultNodeSupportedOnlyForMainet extends OneTimeWarnerKey
+    final object UsingUnreliableBackstopNodeUrl extends OneTimeWarnerKey
+  }
+  sealed trait OneTimeWarnerKey
+
+  // TODO: Make a consistent choice about whether overrides should be scoped to ethNodeChainIds, or whether
+  //       they should be unscoped but reset upon any sort of update of ethNodeChainId
+  //
+  //       They are reset, along with all mutables, if the session is reinitialized via
+  //
+  //         'set ethNodeChainId := <int>'
+  //
+  //       But perhaps its best to retain overrides across (to-be-implemented) gentler switches (and report the overrides
+  //       upon any switch
+  //
   private final object Mutables {
     // MT: protected by CurrentAddress' lock
     val CurrentAddress = new AtomicReference[AddressInfo]( NoAddress )
@@ -99,9 +112,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val NonceOverride = new AtomicReference[Option[BigInt]]( None )
 
-    // MT: Internally thread-safe
-    val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
-
     // MT: protected by AbiOverride's lock
     val AbiOverrides = new AtomicReference[immutable.Map[Int,immutable.Map[EthAddress,Abi]]]( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
 
@@ -110,6 +120,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // MT: protected by NodeJsonRpcOverride's lock
     val NodeUrlOverride = new AtomicReference[Map[Int,String]]( Map.empty ) // Int is the chain ID
+
+    // MT: Internally thread-safe
+    val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
 
     // MT: protected by LocalGanache's lock
     val LocalGanache = new AtomicReference[Option[Process]]( None )
@@ -215,15 +228,19 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val EmptyBytes = List.empty[Byte]
 
-  private val LastResortEthNodeUrl = {
-    // thanks to Mike Slinn for suggesting these external defaults
-    def mbInfura               = ExternalValue.EthInfuraToken.map(token => s"https://mainnet.infura.io/$token")
-    def mbSpecifiedDefaultNode = ExternalValue.EthDefaultNode
+  private val InfuraNames = Map[Int,String] (
+    1  -> "mainnet",
+    3  -> "ropsten",
+    4  -> "rinkeby",
+    42 -> "kovan"
+  )
 
-    (mbInfura orElse mbSpecifiedDefaultNode).getOrElse( "https://ethjsonrpc.mchange.com/" )
-  }
-
-  private val LastResortTestEthNodeUrl = testing.Default.EthJsonRpc.Url
+  private val HardcodedBackstopNodeUrls = Map[Int,String] (
+    1  -> "https://ethjsonrpc.mchange.com/",
+    3  -> "https://ropsten.infura.io/",
+    4  -> "https://rinkeby.infura.io/",
+    42 -> "https://kovan.infura.io/"
+  )
 
   private val LastResortMaybeEthAddressSender = ExternalValue.EthSender.map( EthAddress.apply )
 
@@ -299,7 +316,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgTargetDir                     = settingKey[File]        ("Location in target directory where ethereum artifacts will be placed")
     val ethcfgTransactionReceiptPollPeriod  = settingKey[Duration]    ("Length of period after which sbt-ethereum will poll and repoll for a Client.TransactionReceipt after a transaction")
     val ethcfgTransactionReceiptTimeout     = settingKey[Duration]    ("Length of period after which sbt-ethereum will give up on polling for a Client.TransactionReceipt after a transaction")
-    val ethcfgUseReplayAttackProtection     = settingKey[Boolean]     ("Defines whether transactions should be signed with EIP-155 \"simple replay attack protection\"")
+    val ethcfgUseReplayAttackProtection     = settingKey[Boolean]     ("Defines whether transactions should be signed with EIP-155 \"simple replay attack protection\", if (and only if) we are on a nonephemeral chain.")
 
     val xethcfgAsyncOperationTimeout      = settingKey[Duration]("Length of time to wait for asynchronous operations, like HTTP calls and external processes.")
     val xethcfgNamedAbiSource             = settingKey[File]    ("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
@@ -1096,13 +1113,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               if ( warn ) {
                 val warningLinesBuilder = {
                   () => {
-                    val pfx = {
-                      config match {
-                        case Compile => ""
-                        case Test    => "Test / "
-                        case other   => throw new SbtEthereumException( s"Unexpected task configuration: ${other}" )
-                      }
-                    }
+                    val pfx = configPrefix( config )
                     mbDbAddressSender.map ( dbAddressSender =>
                       Seq (
                         s"'${pfx}ethcfgAddressSender' has been explicitly set to '${hexString(address)}' in the build or as a global setting in the .sbt directory.",
@@ -1141,7 +1152,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def findNodeUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[String]] = Def.task {
+  // make sure this task is kept in sync with ethNodeUrlPrint
+  private def maybeFindNodeUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Option[String]]] = Def.task {
     val log = streams.value.log
     val chainId = (config/ethcfgNodeChainId).value
     val mbOverrideNodeUrl = {
@@ -1152,7 +1164,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     mbOverrideNodeUrl match {
       case Some( url ) => {
-        url
+        Some( url )
       }
       case None => {
         val mbDbNodeUrl = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
@@ -1161,13 +1173,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             if ( warn ) {
               val warningLinesBuilder = {
                 () => {
-                  val pfx = {
-                    config match {
-                      case Compile => ""
-                      case Test    => "Test / "
-                      case other   => throw new SbtEthereumException( s"Unexpected task configuration: ${other}" )
-                    }
-                  }
+                  val pfx = configPrefix( config )
                   mbDbNodeUrl.map ( dbNodeUrl =>
                     Seq (
                       s"'${pfx}ethcfgNodeUrl' has been explicitly set to '${url}' in the build or as a global setting in the .sbt directory.",
@@ -1179,23 +1185,20 @@ object SbtEthereumPlugin extends AutoPlugin {
               }
               Mutables.OneTimeWarner.warn( OneTimeWarnerKey.NodeUrlInBuild, config, log, warningLinesBuilder )
             }
-            url
-          }
-          case None if mbDbNodeUrl.nonEmpty => {
-            mbDbNodeUrl.get
-          }
-          case None if config == Compile => {
-            LastResortEthNodeUrl
-          }
-          case None if config == Test => {
-            LastResortTestEthNodeUrl
+            Some( url )
           }
           case None => {
-            throw new UnexpectedConfigurationException( config )
+            mbDbNodeUrl orElse findBackstopUrl(warn=warn)( log, config, chainId )
           }
         }
       }
     }
+  }
+
+  private def findNodeUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[String]] = Def.task {
+    val mbNodeUrl = maybeFindNodeUrlTask( warn )( config ).value
+    val chainId = (config/ethcfgNodeChainId).value
+    mbNodeUrl.getOrElse( throw new NodeUrlNotAvailableException( s"No 'ethNodeUrl' for chain with ID '${chainId}' is curretly available." ) )
   }
 
   private class PrivateKeyFinder( val address : EthAddress, findOp : () => EthPrivateKey ) {
@@ -2975,8 +2978,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( s"Any override has been dropped. The default node json-rpc URL for chain with ID ${chainId} will be used for all tasks." )
   }
 
+  // make sure this task is kept in sync with maybeFindNodeUrlTask(...)
   private def ethNodeUrlPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
-    val effective = findNodeUrlTask(warn=false)(config).value
+    val mbEffective = maybeFindNodeUrlTask(warn=false)(config).value
 
     val log = streams.value.log
     val chainId = (config/ethcfgNodeChainId).value
@@ -2988,39 +2992,48 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbBuildSetting = ethcfgNodeUrl.?.value
     val mbShoeboxDefault = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
 
-    log.info( s"The current effective node json-rpc URL is '${effective}'." )
+    val pfx = configPrefix( config )
 
-    ( mbOverride, mbBuildSetting, mbShoeboxDefault ) match {
-      case ( Some( ov ), _, _) => {
-        assert( effective == ov, "We expect that if a session override is set, it is the effective node json-rpc URL." )
-        log.info( " + This value has been explicitly set as a session override via 'ethNodeUrlOverrideSet'." )
-        mbBuildSetting.foreach( hardCoded => log.info( s" + It has overridden a value explicitly set in the project build or the '.sbt' folder as 'ethcfgNodeUrl': ${hardCoded}" ) )
-        mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node json-rpc URL value for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
+    mbEffective match {
+      case Some( effective ) => {
+        log.info( s"The current effective node json-rpc URL is '${effective}'." )
+
+        ( mbOverride, mbBuildSetting, mbShoeboxDefault ) match {
+          case ( Some( ov ), _, _) => {
+            assert( effective == ov, "We expect that if a session override is set, it is the effective node json-rpc URL." )
+            log.info( " + This value has been explicitly set as a session override via 'ethNodeUrlOverrideSet'." )
+            mbBuildSetting.foreach( hardCoded => log.info( s" + It has overridden a value explicitly set in the project build or the '.sbt' folder as '${pfx}ethcfgNodeUrl': ${hardCoded}" ) )
+            mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node json-rpc URL value for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
+          }
+          case ( None, Some( buildSetting ), _ ) => {
+            assert( effective == buildSetting, "We expect that if no session override is set, but a node json-rpc URL is set as a build setting, it is the effective URL." )
+            log.info( s" + This value has been explicitly defined as setting '${pfx}ethcfgNodeUrl' in the project build or the '.sbt' folder, and has not been overridden by a session override." )
+            mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node json-rpc URL value for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
+          }
+          case ( None, None, Some( shoeboxDefault ) ) => {
+            assert(
+              effective == shoeboxDefault,
+              s"We expect that if no session override is set, and no build setting, but a default node json-rpc URL for chain with ID ${chainId} is set in the shoebox, it is the effective URL for that chain."
+            )
+            log.info( s" + This value is the default node json-rpc URL defined in the sbt-ethereum shoebox for chain with ID ${chainId}. " )
+            log.info( s" + It has not been overridden with a session override or by an '${pfx}ethcfgNodeUrl' setting in the project build or the '.sbt' folder." )
+          }
+          case ( None, None, None ) => {
+            assert(
+              effective == findBackstopUrl(warn=false)( log, config, chainId ),
+              s"With no session override, no '${pfx}ethcfgNodeUrl' setting in the build, and no default URL set for chain with ID ${chainId}, the effective URL should be the last-resort 'backstop' URL."
+            )
+            log.info(  " + This is the 'last-resort', backstop URL, either taken from an environment variable or system property, or else hard-coded into sbt-ethereum. " )
+            log.info( s" + It has not been overridden with a session override or by an '${pfx}ethcfgNodeUrl' setting in the project build or the '.sbt' folder. " )
+            log.info( s" + There is no default node json-rpc URL for chain with ID ${chainId} defined in the sbt-ethereum shoebox." )
+          }
+        }
       }
-      case ( None, Some( buildSetting ), _ ) => {
-        assert( effective == buildSetting, "We expect that if no session override is set, but a node json-rpc URL is set as a build setting, it is the effective URL." )
-        log.info( " + This value has been explicitly defined as setting 'ethcfgNodeUrl' in the project build or the '.sbt' folder, and has not been overridden by a session override." )
-        mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node json-rpc URL value for chain with ID ${chainId} set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
-      }
-      case ( None, None, Some( shoeboxDefault ) ) => {
-        assert(
-          effective == shoeboxDefault,
-          s"We expect that if no session override is set, and no build setting, but a default node json-rpc URL for chain with ID ${chainId} is set in the shoebox, it is the effective URL for that chain."
-        )
-        log.info( s" + This value is the default node json-rpc URL defined in the sbt-ethereum shoebox for chain with ID ${chainId}. " )
-        log.info( " + It has not been overridden with a session override or by an 'ethcfgNodeUrl' setting in the project build or the '.sbt' folder." )
-      }
-      case ( None, None, None ) if config == Compile => {
-        assert(
-          effective == LastResortEthNodeUrl,
-          "With no session override, no 'ethcfgNodeUrl' setting in the build, and no default URL set for chain with ID ${chainID}, the effective URL should be the 'last-resort' URL."
-        )
-        log.info(  " + This is the 'last-resort' URL, either taken from an environment variable or system property, or else hard-coded into sbt-ethereum. " )
-        log.info(  " + It has not been overridden with a session override or by an 'ethcfgNodeUrl' setting in the project build or the '.sbt' folder. " )
-        log.info( s" + There is no default node json-rpc URL defined for chain with ID ${chainId} defined in the sbt-ethereum shoebox." )
-      }
-      case ( None, None, None ) => {
-        throw new UnexpectedConfigurationException( config )
+      case None => {
+        log.warn(  "No node json-rpc URL is currently available!")
+        log.warn( s" + No session override has been set with '${pfx}ethNodeUrlOverrideSet'" )
+        log.warn( s" + No default node json-rpc URL for chain with ID ${chainId} has been defined in the sbt-ethereum shoebox." )
+        log.warn( s" + No backstop node URL suitable to chain ID ${chainId} is available as a system property, environment variable, nor hardcoded default." )
       }
     }
   }
@@ -3346,7 +3359,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val log = streams.value.log
       val chainId = (ethcfgNodeChainId in config).value
-      val ephemeralDeployment = chainId < 0
+      val ephemeralDeployment = isEphemeralChain( chainId )
 
       val sender = findAddressSenderTask(warn=true)(config).value.assert
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
@@ -4091,7 +4104,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val rawChainId = (ethcfgNodeChainId in config).value
 
     val chainId = {
-      if ( rawChainId <= 0 || !useReplayAttackProtection ) None else Some( EthChainId( rawChainId ) )
+      if ( isEphemeralChain( rawChainId ) || !useReplayAttackProtection ) None else Some( EthChainId( rawChainId ) )
     }
 
     val gasLimitTweak = {
@@ -4119,7 +4132,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val transactionLogger = findTransactionLoggerTask( config ).value
 
-    val approver = transactionApprover( log, rawChainId, is, currencyCode, config )
+    val approver = transactionApprover( log, rawChainId, is, currencyCode )
 
     Invoker.Context.fromUrl(
       jsonRpcUrl = jsonRpcUrl,
@@ -4772,6 +4785,81 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // helper functions
 
+  private def configPrefix( config : Configuration ) : String = {
+    config match {
+      case Compile => ""
+      case Test    => "Test / "
+      case other   => throw new SbtEthereumException( s"Unexpected task configuration: ${other}" )
+    }
+  }
+
+  def isEphemeralChain( chainId : Int ) : Boolean = {
+    chainId < 0
+  }
+
+  private def findBackstopUrl( warn : Boolean )( log : sbt.Logger, config : Configuration, chainId : Int ) : Option[String] = {
+    def mbInfuraProjectId = { // thanks to Mike Slinn for suggesting these external defaults
+      ExternalValue.EthInfuraToken.flatMap { projectId =>
+        InfuraNames.get( chainId ).map( infuraName => s"https://${infuraName}.infura.io/v3/${projectId}")
+      }
+    }
+    def mbInfuraToken = { // thanks to Mike Slinn for suggesting these external defaults
+      ExternalValue.EthInfuraToken.flatMap {token =>
+        InfuraNames.get( chainId ).map( infuraName => s"https://${infuraName}.infura.io/${token}")
+      }
+    }
+    def mbSpecifiedDefaultNode = { // thanks to Mike Slinn for suggesting these external defaults
+      ExternalValue.EthDefaultNode.flatMap { nodeUrl =>
+        if (chainId != 1) {
+          if (!isEphemeralChain( chainId )) {
+            if ( warn ) {
+              val warningLinesBuilder = {
+                () => Some(
+                  immutable.Seq(
+                    s"Cannot use backstop URL from environment variable 'ETH_DEFAULT_NODE' or System property 'eth.defaullt.node'.",
+                    s"These values are intended to refer to a mainnet node with chain ID 1, but we are set up for a chain with ID ${chainId}."
+                  )
+                )
+              }
+              Mutables.OneTimeWarner.warn( OneTimeWarnerKey.EthDefaultNodeSupportedOnlyForMainet, config, log, warningLinesBuilder )
+            }
+          }
+          None
+        }
+        else {
+          Some( nodeUrl )
+        }
+      }
+    }
+    def mbHardCodedBackstop = {
+      HardcodedBackstopNodeUrls.get( chainId ).map { hardcodedNodeUrl =>
+        if ( warn ) {
+          val pfx = configPrefix( config )
+          val warningLinesBuilder = {
+            () => Some(
+              immutable.Seq(
+                s"Using hard-coded, backstop node URL '${hardcodedNodeUrl}', which may not be reliable.",
+                s"Please use '${pfx}ethNodeUrlDefaultSet` to define a node URL for chain with ID ${chainId} to which you have reliable access."
+              )
+            )
+          }
+          Mutables.OneTimeWarner.warn( OneTimeWarnerKey.UsingUnreliableBackstopNodeUrl, config, log, warningLinesBuilder )
+        }
+        hardcodedNodeUrl
+      }
+    }
+    def mbDefaultEphemeralNodeUrl = {
+      if ( isEphemeralChain( chainId ) ) {
+        Some( testing.Default.EthJsonRpc.Url )
+      }
+      else {
+        None
+      }
+    }
+  
+    mbInfuraProjectId orElse mbInfuraToken orElse mbSpecifiedDefaultNode orElse mbHardCodedBackstop orElse mbDefaultEphemeralNodeUrl
+  }
+
   private def combinedKeystoresMultiMap( keystoresV3 : Seq[File] ) : immutable.Map[EthAddress, immutable.Set[wallet.V3]] = {
     def combineMultiMaps( base : immutable.Map[EthAddress, immutable.Set[wallet.V3]], next : immutable.Map[EthAddress, immutable.Set[wallet.V3]] ) : immutable.Map[EthAddress, immutable.Set[wallet.V3]] = {
       val newTuples = next.map { case ( key, valueSet ) =>
@@ -4943,16 +5031,17 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def transactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String, config : Configuration )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
-    config match {
-      case Test => testTransactionApprover( log, chainId, is, currencyCode )( ec )
-      case _    => normalTransactionApprover( log, chainId, is, currencyCode )( ec )
+  private def transactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
+    if ( isEphemeralChain( chainId ) ) {
+      ephemeralTransactionApprover( log, chainId, is, currencyCode )( ec )
+    }
+    else {
+      normalTransactionApprover( log, chainId, is, currencyCode )( ec )
     }
   }
 
-  // when using the open test address in Test config, don't bother getting user approval
-  private def testTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = txn => {
-    if (txn.sender == testing.Default.Faucet.Address) Future.successful( () ) else normalTransactionApprover( log, chainId, is, currencyCode )( ec )( txn )
+  private def ephemeralTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
+    txn => Future.successful( () )
   }
 
   private def normalTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
