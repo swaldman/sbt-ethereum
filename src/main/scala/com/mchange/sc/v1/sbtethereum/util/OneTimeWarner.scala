@@ -6,10 +6,10 @@ import scala.collection._
 
 class OneTimeWarner[KEY] {
   //MT: protected by this' lock
-  val warned = mutable.Set.empty[Tuple2[KEY,Configuration]]
+  val warned = mutable.Set.empty[Tuple3[KEY,Configuration,Int]]
 
-  def warn( key : KEY, config : Configuration, log : sbt.Logger, messageLinesBuilder : () => Option[Seq[String]] ) : Unit = this.synchronized {
-    val check = Tuple2( key, config )
+  def warn( key : KEY, config : Configuration, chainId : Int, log : sbt.Logger, messageLinesBuilder : () => Option[Seq[String]] ) : Unit = this.synchronized {
+    val check = Tuple3( key, config, chainId )
     if( !warned( check ) ) {
       messageLinesBuilder().foreach { messageLines =>
         messageLines.foreach { message =>
@@ -20,8 +20,8 @@ class OneTimeWarner[KEY] {
     }
   }
 
-  def reset( key : KEY, config : Configuration ) : Unit = this.synchronized {
-    warned -= Tuple2( key, config )
+  def reset( key : KEY, config : Configuration, chainId : Int ) : Unit = this.synchronized {
+    warned -= Tuple3( key, config, chainId )
   }
 
   def resetAll() : Unit = this.synchronized {

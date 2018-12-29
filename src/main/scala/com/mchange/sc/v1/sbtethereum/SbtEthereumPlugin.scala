@@ -1129,7 +1129,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                     )
                   }
                 }
-                Mutables.OneTimeWarner.warn( OneTimeWarnerKey.AddressSenderInBuild, config, log, warningLinesBuilder )
+                Mutables.OneTimeWarner.warn( OneTimeWarnerKey.AddressSenderInBuild, config, chainId, log, warningLinesBuilder )
               }
               address
             }
@@ -1189,7 +1189,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                   )
                 }
               }
-              Mutables.OneTimeWarner.warn( OneTimeWarnerKey.NodeUrlInBuild, config, log, warningLinesBuilder )
+              Mutables.OneTimeWarner.warn( OneTimeWarnerKey.NodeUrlInBuild, config, chainId, log, warningLinesBuilder )
             }
             Some( url )
           }
@@ -4829,7 +4829,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                   )
                 )
               }
-              Mutables.OneTimeWarner.warn( OneTimeWarnerKey.EthDefaultNodeSupportedOnlyForMainet, config, log, warningLinesBuilder )
+              Mutables.OneTimeWarner.warn( OneTimeWarnerKey.EthDefaultNodeSupportedOnlyForMainet, config, chainId, log, warningLinesBuilder )
             }
           }
           None
@@ -4847,11 +4847,11 @@ object SbtEthereumPlugin extends AutoPlugin {
             () => Some(
               immutable.Seq(
                 s"Using hard-coded, backstop node URL '${hardcodedNodeUrl}', which may not be reliable.",
-                s"Please use '${pfx}ethNodeUrlDefaultSet` to define a node URL for chain with ID ${chainId} to which you have reliable access."
+                s"Please use '${pfx}ethNodeUrlDefaultSet` to define a node URL (for chain with ID ${chainId}) to which you have reliable access."
               )
             )
           }
-          Mutables.OneTimeWarner.warn( OneTimeWarnerKey.UsingUnreliableBackstopNodeUrl, config, log, warningLinesBuilder )
+          Mutables.OneTimeWarner.warn( OneTimeWarnerKey.UsingUnreliableBackstopNodeUrl, config, chainId, log, warningLinesBuilder )
         }
         hardcodedNodeUrl
       }
