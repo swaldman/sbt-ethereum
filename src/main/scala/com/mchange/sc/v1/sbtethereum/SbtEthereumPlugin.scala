@@ -3869,14 +3869,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethFindCacheRichParserInfoTask( config : Configuration ) : Initialize[Task[RichParserInfo]] = Def.task {
     val chainId            = (config / ethcfgNodeChainId).value
-    val jsonRpcUrl         = findNodeUrlTask(warn=false)(config).value
+    val mbJsonRpcUrl       = maybeFindNodeUrlTask(warn=false)(config).value
     val addressAliases     = shoebox.AddressAliasManager.findAllAddressAliases( chainId ).assert
     val abiAliases         = shoebox.Database.findAllAbiAliases( chainId ).assert
     val abiOverrides       = abiOverridesForChain( chainId )
     val nameServiceAddress = (config / enscfgNameServiceAddress).value
     val tld                = (config / enscfgNameServiceTld).value
     val reverseTld         = (config / enscfgNameServiceReverseTld).value
-    RichParserInfo( chainId, jsonRpcUrl, addressAliases, abiAliases, abiOverrides, nameServiceAddress, tld, reverseTld )
+    RichParserInfo( chainId, mbJsonRpcUrl, addressAliases, abiAliases, abiOverrides, nameServiceAddress, tld, reverseTld )
   }
 
   private def xethFindCacheSeedsTask( config : Configuration ) : Initialize[Task[immutable.Map[String,MaybeSpawnable.Seed]]] = Def.task {
@@ -4719,7 +4719,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     import Compiler.Solidity._
 
     val netcompileUrl = ethcfgNetcompileUrl.?.value
-    val jsonRpcUrl    = findNodeUrlTask(warn=false)(Compile).value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
+    val mbJsonRpcUrl  = maybeFindNodeUrlTask(warn=false)(Compile).value // we use the main (compile) configuration, don't bother with a test json-rpc for compilation
 
     val testTimeout = xethcfgAsyncOperationTimeout.value
 
@@ -4738,7 +4738,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     def defaultNetcompile = checkNetcompileUrl( DefaultEthNetcompileUrl )
 
     def ethJsonRpc = {
-      check( s"${EthJsonRpc.KeyPrefix}${jsonRpcUrl}", Compiler.Solidity.EthJsonRpc( jsonRpcUrl ) )
+      mbJsonRpcUrl.flatMap { jsonRpcUrl =>
+        check( s"${EthJsonRpc.KeyPrefix}${jsonRpcUrl}", Compiler.Solidity.EthJsonRpc( jsonRpcUrl ) )
+      }
     }
     def localPath = {
       check( Compiler.Solidity.LocalPathSolcKey, Compiler.Solidity.LocalPathSolc )

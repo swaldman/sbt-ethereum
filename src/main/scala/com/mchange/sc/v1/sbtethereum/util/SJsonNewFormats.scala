@@ -58,7 +58,7 @@ object SJsonNewFormats {
     def write[J](api : RichParserInfo, builder: Builder[J]) : Unit = {
       builder.beginObject()
       builder.addField("chainId", api.chainId)
-      builder.addField("jsonRpcUrl", api.jsonRpcUrl)
+      builder.addField("mbJsonRpcUrl", api.mbJsonRpcUrl)
       builder.addField("addressAliases", api.addressAliases)
       builder.addField("abiAliases", api.abiAliases)
       builder.addField("abiOverrides", api.abiOverrides)
@@ -72,7 +72,7 @@ object SJsonNewFormats {
         case Some(js) =>
           unbuilder.beginObject(js)
           val chainId = unbuilder.readField[Int]("chainId")
-          val jsonRpcUrl = unbuilder.readField[String]("jsonRpcUrl")
+          val jsonRpcUrl = unbuilder.readField[Option[String]]("mbJsonRpcUrl")
           val addressAliases = unbuilder.readField[immutable.SortedMap[String,EthAddress]]("addressAliases")
           val abiAliases = unbuilder.readField[immutable.SortedMap[String,EthHash]]("abiAliases")
           val abiOverrides = unbuilder.readField[immutable.Map[EthAddress,jsonrpc.Abi]]("abiOverrides")

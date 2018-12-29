@@ -72,18 +72,20 @@ object Parsers {
     }
 
     def lookup( rpi : RichParserInfo, name : String ) : Failable[EthAddress] = this.synchronized {
-      val key = Key( rpi.chainId, rpi.jsonRpcUrl, rpi.nameServiceAddress, rpi.nameServiceTld, rpi.nameServiceReverseTld, name )
-      val ( result, timestamp ) = {
-        cache.get( key ) match {
-          case Some( tup ) => if ( System.currentTimeMillis() > tup._2 + TTL ) update( key ) else tup
-          case None        => update( key )
+      rpi.mbJsonRpcUrl.toFailable( "No jsonRpcUrl (node URL) available for ENS lookups." ).flatMap { jsonRpcUrl =>
+        val key = Key( rpi.chainId, jsonRpcUrl, rpi.nameServiceAddress, rpi.nameServiceTld, rpi.nameServiceReverseTld, name )
+        val ( result, timestamp ) = {
+          cache.get( key ) match {
+            case Some( tup ) => if ( System.currentTimeMillis() > tup._2 + TTL ) update( key ) else tup
+            case None        => update( key )
+          }
         }
+        if ( cache.size > MaxSize ) { // an ugly, but easy, way to bound the size of th cache
+          cache.clear()
+          cache += Tuple2( key, Tuple2( result, timestamp ) )
+        }
+        result
       }
-      if ( cache.size > MaxSize ) { // an ugly, but easy, way to bound the size of th cache
-        cache.clear()
-        cache += Tuple2( key, Tuple2( result, timestamp ) )
-      }
-      result
     }
 
     def reset() : Unit = this.synchronized( cache.clear() )
