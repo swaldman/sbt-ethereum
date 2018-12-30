@@ -79,6 +79,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   final case class TimestampedAbi( abi : Abi, timestamp : Option[Long] )
 
   object OneTimeWarnerKey {
+    final object NodeChainIdInBuild extends OneTimeWarnerKey
     final object NodeUrlInBuild extends OneTimeWarnerKey
     final object AddressSenderInBuild  extends OneTimeWarnerKey
     final object EtherscanApiKeyInBuild  extends OneTimeWarnerKey
@@ -105,6 +106,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
 
     val CurrentSolidityCompiler = new AtomicReference[Option[( String, Compiler.Solidity )]]( None )
+
+    // MT: protected by ChainIdOverrides' lock
+    val ChainIdOverrides = new AtomicReference[immutable.Map[Configuration,Int]]( immutable.Map.empty )
 
     val GasLimitOverride = new AtomicReference[Option[BigInt]]( None )
 
@@ -133,6 +137,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       SessionSolidityCompilers.set( None )
       CurrentSolidityCompiler.set( None )
+      ChainIdOverrides.set( immutable.Map.empty )
       GasLimitOverride.set( None )
       GasPriceOverride.set( None )
       NonceOverride.set( None )
@@ -401,6 +406,18 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethNodeBlockNumberPrint = taskKey[Unit]("Displays the current blocknumber of the current node.")
 
+    val ethNodeChainIdDefaultDrop  = taskKey[Unit] ("Removes any default chain ID that has been set, leaving sbt-ethereum to a hard-coded default.")
+    val ethNodeChainIdDefaultSet   = inputKey[Unit]("Sets the default chain ID sbt-ethereum should use.")
+    val ethNodeChainIdDefaultPrint = taskKey[Unit] ("Displays any default chain ID that may have been set.")
+
+    val ethNodeChainIdOverrideDrop  = taskKey[Unit] ("Removes session override of the default and/or hard-coded chain ID that may have been set for the current configuration.")
+    val ethNodeChainIdOverrideSet   = inputKey[Unit]("Sets a session override of any default or hard-coded chain ID for the current configuration.")
+    val ethNodeChainIdOverridePrint = taskKey[Unit] ("Displays any session override of the chain ID that may have been set for the current configuration.")
+
+    val ethNodeChainIdPrint = taskKey[Unit]("Displays the node chain ID for the current configuration, and explains how it is configured.")
+
+    val ethNodeChainId = taskKey[Int]("Yields the node chain ID for the current configuration.")
+
     val ethNodeUrlDefaultSet   = inputKey[Unit]("Sets the default node json-rpc URL, which will be used if not overridden by an 'ethcfgNodeUrl' hardcoded into the build.")
     val ethNodeUrlDefaultDrop  = taskKey[Unit] ("Drops the default node json-rpc URL.")
     val ethNodeUrlDefaultPrint = taskKey[Unit] ("Displays the current default node json-rpc URL.")
@@ -409,9 +426,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethNodeUrlOverrideDrop  = taskKey[Unit] ("Drops any override, reverting to use of the default node json-rpc URL.")
     val ethNodeUrlOverridePrint = taskKey[Unit] ("Displays any override of the default node json-rpc URL.")
 
-    val ethNodeUrlPrint = taskKey[Unit] ("Displays the currently effective node json-rpc URL, and explains the preference order if multiple values are set.")
+    val ethNodeUrlPrint = taskKey[Unit] ("Displays the currently effective node json-rpc URL, and explains how it is configured.")
 
-    val ethNodeUrl = taskKey[String]("Finds the current node URL.")
+    val ethNodeUrl = taskKey[String]("Yields the current node URL.")
 
     val ethShoeboxBackup              = taskKey[Unit] ("Backs up the sbt-ethereum shoebox.")
     val ethShoeboxDatabaseDumpCreate  = taskKey[Unit] ("Dumps the sbt-ethereum shoebox database as an SQL text file, stored inside the sbt-ethereum shoebox directory.")
@@ -531,13 +548,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgBaseCurrencyCode := "USD",
 
-    ethcfgNodeChainId := MainnetChainId,
-
-    ethcfgNodeChainId in Test := DefaultEphemeralChainId,
-
     ethcfgNodeUrl in Test := {
       val log = sLog.value
-      val chainId = (Test / ethcfgNodeChainId).value
+      val chainId = findNodeChainIdTask(warn=true)( Test ).value
       findBackstopUrl(warn=false)( log, Test, chainId ).get // there is always a backstop URL for ephemeral chain IDs
     },
 
@@ -829,6 +842,38 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethNodeBlockNumberPrint in Test := { ethNodeBlockNumberPrintTask( Test ).value },
 
+    ethNodeChainId in Compile := { findNodeChainIdTask(warn=true)( Compile ).value },
+
+    ethNodeChainId in Test := { findNodeChainIdTask(warn=true)( Test ).value },
+
+    ethNodeChainIdDefaultDrop in Compile := { ethNodeChainIdDefaultDropTask( Compile ).value },
+
+    ethNodeChainIdDefaultDrop in Test := { ethNodeChainIdDefaultDropTask( Test ).value },
+
+    ethNodeChainIdDefaultPrint in Compile := { ethNodeChainIdDefaultPrintTask( Compile ).value },
+
+    ethNodeChainIdDefaultPrint in Test := { ethNodeChainIdDefaultPrintTask( Test ).value },
+
+    ethNodeChainIdDefaultSet in Compile := { ethNodeChainIdDefaultSetTask( Compile ).evaluated },
+
+    ethNodeChainIdDefaultSet in Test := { ethNodeChainIdDefaultSetTask( Test ).evaluated },
+
+    ethNodeChainIdOverrideDrop in Compile := { ethNodeChainIdOverrideDropTask( Compile ).value },
+
+    ethNodeChainIdOverrideDrop in Test := { ethNodeChainIdOverrideDropTask( Test ).value },
+
+    ethNodeChainIdOverridePrint in Compile := { ethNodeChainIdOverridePrintTask( Compile ).value },
+
+    ethNodeChainIdOverridePrint in Test := { ethNodeChainIdOverridePrintTask( Test ).value },
+
+    ethNodeChainIdOverrideSet in Compile := { ethNodeChainIdOverrideSetTask( Compile ).evaluated },
+
+    ethNodeChainIdOverrideSet in Test := { ethNodeChainIdOverrideSetTask( Test ).evaluated },
+
+    ethNodeChainIdPrint in Compile := { ethNodeChainIdPrintTask( Compile ).value },
+
+    ethNodeChainIdPrint in Test := { ethNodeChainIdPrintTask( Test ).value },
+
     ethNodeUrl in Compile := { findNodeUrlTask(warn=true)( Compile ).value },
 
     ethNodeUrl in Test := { findNodeUrlTask(warn=true)( Test ).value },
@@ -1100,7 +1145,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def findAddressSenderTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = Def.task {
     Failable {
       val log = streams.value.log
-      val chainId = (config/ethcfgNodeChainId).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val mbOverrideAddressSender = {
         Mutables.SenderOverride.synchronized {
           val map = Mutables.SenderOverride.get
@@ -1158,10 +1203,71 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  // make sure this task is kept in sync with ethNodeChainIdPrint
+  private def maybeFindNodeChainIdTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Option[Int]]] = Def.task {
+    val log = streams.value.log
+    val mbOverrideNodeChainId = {
+      Mutables.ChainIdOverrides.synchronized {
+        val map = Mutables.ChainIdOverrides.get
+        map.get( config )
+      }
+    }
+    mbOverrideNodeChainId match {
+      case Some( id ) => {
+        Some( id )
+      }
+      case None => {
+        val mbDbNodeChainId = {
+          config match {
+            case Compile => shoebox.Database.getDefaultChainId().assert
+            case Test    => shoebox.Database.getDefaultTestChainId().assert
+            case _       => None
+          }
+        }
+        (config/ethcfgNodeChainId).?.value match {
+          case Some( explicitId ) => {
+            if ( warn ) {
+              val warningLinesBuilder = {
+                () => {
+                  val pfx = configPrefix( config )
+                  mbDbNodeChainId.map ( dbNodeChainId =>
+                    Seq (
+                      s"'${pfx}ethcfgNodeChainId' has been explicitly set to ${explicitId} in the build or as a global setting in the .sbt directory.",
+                      s" + This value will be used in preference to the value set in the sbt-ethereum shoebox via '${pfx}ethNodeChainIdDefaultSet' (currently ${dbNodeChainId}).",
+                      s" + However, you can temporarily override the hard-coded value for a single session using '${pfx}ethNodeChainIdOverrideSet'."
+                    )
+                  )
+                }
+              }
+              Mutables.OneTimeWarner.warn( OneTimeWarnerKey.NodeChainIdInBuild, config, explicitId, log, warningLinesBuilder )
+            }
+            Some( explicitId )
+          }
+          case None => {
+            mbDbNodeChainId orElse findBackstopChainId( config )
+          }
+        }
+      }
+    }
+  }
+
+  private def findNodeChainIdTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Int]] = Def.task {
+    val mbNodeChainId = maybeFindNodeChainIdTask( warn )( config ).value
+
+    def oops : Nothing = {
+      config match {
+        case Compile | Test => throw new SbtEthereumException( s"Could not find a chain ID for supported configuration '${config}'." )
+        case _              => throw new UnexpectedConfigurationException( config )
+      }
+    }
+
+    mbNodeChainId.getOrElse( oops )
+  }
+
   // make sure this task is kept in sync with ethNodeUrlPrint
   private def maybeFindNodeUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Option[String]]] = Def.task {
     val log = streams.value.log
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val mbOverrideNodeUrl = {
       Mutables.NodeUrlOverride.synchronized {
         val map = Mutables.NodeUrlOverride.get
@@ -1203,7 +1309,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def findNodeUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[String]] = Def.task {
     val mbNodeUrl = maybeFindNodeUrlTask( warn )( config ).value
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     mbNodeUrl.getOrElse( throw new NodeUrlNotAvailableException( s"No 'ethNodeUrl' for chain with ID '${chainId}' is curretly available." ) )
   }
 
@@ -1215,7 +1321,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val s = state.value
     val log = streams.value.log
     val is = interactionService.value
-    val chainId = (ethcfgNodeChainId in config).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val caller = findAddressSenderTask(warn=true)(config).value.assert
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
     new PrivateKeyFinder( caller, () => findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true ) )
@@ -1227,7 +1333,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def findTransactionLoggerTask( config : Configuration ) : Initialize[Task[Invoker.TransactionLogger]] = Def.task {
-    val chainId = (ethcfgNodeChainId in config).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
 
     ( tle : Invoker.TransactionLogEntry, ec : ExecutionContext ) => Future (
       shoebox.TransactionLog.logTransaction( chainId, tle.jsonRpcUrl, tle.transaction, tle.transactionHash ).get
@@ -1245,7 +1351,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   // ens tasks
 
   private def ensAddressLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
-    val chainId   = (ethcfgNodeChainId in config).value
+    val chainId   = findNodeChainIdTask(warn=true)(config).value
     val ensClient = ( config / xensClient).value
     val name      = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
     val mbAddress = ensClient.address( name )
@@ -1264,7 +1370,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log               = streams.value.log
       val privateKey        = findPrivateKeyTask( config ).value
-      val chainId           = ( config / ethcfgNodeChainId ).value
+      val chainId           = findNodeChainIdTask(warn=true)(config).value
       val ensClient         = ( config / xensClient).value
       val is                = interactionService.value
       val mbDefaultResolver = ( config / enscfgNameServicePublicResolver).?.value
@@ -1322,7 +1428,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ensAuctionBidListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     import shoebox.Schema_h2.Table.EnsBidStore.RawBid
 
-    val chainId = (ethcfgNodeChainId in config).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val rawBids = shoebox.Database.ensAllRawBidsForChainId( chainId ).get
     val columns = immutable.Vector( "Bid Hash", "Simple Name", "Bidder Address", "ETH", "Salt", "Timestamp", "Accepted", "Revealed", "Removed" ).map( texttable.Column.apply( _ ) )
 
@@ -1343,7 +1449,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ensAuctionBidPlaceTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
-    val chainId = (config / ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val ensClient = ( config / xensClient ).value
     val privateKey = findPrivateKeyTask( config ).value
 
@@ -1386,7 +1492,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ensAuctionBidRevealTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
-    val chainId = (config / ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val ensClient = ( config / xensClient).value
     val privateKey = findPrivateKeyTask( config ).value
     val tld = ensClient.tld
@@ -1505,7 +1611,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ensOwnerLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
-    val chainId   = (ethcfgNodeChainId in config).value
+    val chainId   = findNodeChainIdTask(warn=true)(config).value
     val ensClient = ( config / xensClient).value
     val name      = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
     val mbOwner   = ensClient.owner( name )
@@ -1524,7 +1630,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log        = streams.value.log
       val privateKey = findPrivateKeyTask( config ).value
-      val chainId    = (config / ethcfgNodeChainId).value
+      val chainId    = findNodeChainIdTask(warn=true)(config).value
       val ensClient  = ( config / xensClient).value
       val ( ensName, ownerAddress ) = parser.parsed
       ensClient.setOwner( privateKey, ensName, ownerAddress )
@@ -1533,7 +1639,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ensResolverLookupTask( config : Configuration ) : Initialize[InputTask[Option[EthAddress]]] = Def.inputTask {
-    val chainId    = (ethcfgNodeChainId in config).value
+    val chainId    = findNodeChainIdTask(warn=true)(config).value
     val ensClient  = ( config / xensClient).value
     val name       = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
     val mbResolver = ensClient.resolver( name )
@@ -1552,7 +1658,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log        = streams.value.log
       val privateKey = findPrivateKeyTask( config ).value
-      val chainId    = (config / ethcfgNodeChainId).value
+      val chainId    = findNodeChainIdTask(warn=true)(config).value
       val ensClient  = ( config / xensClient).value
       val ( ensName, resolverAddress ) = parser.parsed
       ensClient.setResolver( privateKey, ensName, resolverAddress )
@@ -1576,7 +1682,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log        = streams.value.log
       val privateKey = findPrivateKeyTask( config ).value
-      val chainId    = (config / ethcfgNodeChainId).value
+      val chainId    = findNodeChainIdTask(warn=true)(config).value
       val ensClient  = ( config / xensClient).value
       val ( subname, parentName, newOwnerAddress) = parser.parsed
       ensClient.setSubnodeOwner( privateKey, parentName, subname, newOwnerAddress )
@@ -1618,7 +1724,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTaskDyn {
       val log = streams.value.log
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
 
       // not sure why, but without this xethFindCacheRichParserInfo, which should be triggered by the parser,
       // sometimes fails initialize the parser
@@ -1637,7 +1743,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethAddressAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log      = streams.value.log
-    val chainId  = (ethcfgNodeChainId in config).value
+    val chainId  = findNodeChainIdTask(warn=true)(config).value
     val faliases = shoebox.AddressAliasManager.findAllAddressAliases( chainId )
     faliases.fold( _ => log.warn("Could not read aliases from shoebox database.") ) { aliases =>
       aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
@@ -1649,7 +1755,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val aliasOrAddress = parser.parsed
       val mbAddressForAlias = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, aliasOrAddress ).assert
       val mbEntryAsAddress = Failable( EthAddress( aliasOrAddress ) ).toOption
@@ -1676,7 +1782,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTaskDyn {
       val log = streams.value.log
       val is = interactionService.value
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val ( alias, address ) = parser.parsed
       if (! Failable( EthAddress( alias ) ).isFailed ) {
         throw new SbtEthereumException( s"You cannot use what would be a legitimate Ethereum address as an alias. Bad attempted alias: '${alias}'" )
@@ -1750,14 +1856,14 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressSenderPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val f_effective = findAddressSenderTask(warn=false)(config).value
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     try {
       val effective = f_effective.assert
       val overridesMap = Mutables.SenderOverride.synchronized {
         Mutables.SenderOverride.get
       }
       val mbOverride = overridesMap.get( chainId )
-      val mbBuildSetting = ethcfgAddressSender.?.value
+      val mbBuildSetting = (config/ethcfgAddressSender).?.value
       val mbShoeboxDefault = shoebox.Database.findDefaultSenderAddress( chainId ).assert
 
       log.info( s"The current effective sender address is ${verboseAddress(chainId, effective)}." )
@@ -1832,7 +1938,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethAddressSenderDefaultPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val mbAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
     mbAddress match {
       case Some( address ) => {
@@ -1850,7 +1956,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTaskDyn {
       val log = streams.value.log
       val is = interactionService.value
-      val chainId = (config/ethcfgNodeChainId).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val newAddress = parser.parsed
       val oldAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
       oldAddress.foreach { address =>
@@ -1874,7 +1980,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethAddressSenderDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     val log = streams.value.log
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val oldAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
     oldAddress match {
       case Some( senderAddress ) => {
@@ -1904,7 +2010,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressSenderOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
 
-    val chainId = (ethcfgNodeChainId in config).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
 
     val mbSenderOverride = senderOverrideAddress( chainId )
 
@@ -1922,7 +2028,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       Mutables.SenderOverride.synchronized {
         val log = streams.value.log
-        val chainId = (ethcfgNodeChainId in config).value
+        val chainId = findNodeChainIdTask(warn=true)(config).value
         val address = parser.parsed
         val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "")( _.fold("")( str => s", aliases $str)" ) )
 
@@ -1938,7 +2044,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genExistingAbiAliasParser )
 
     Def.inputTaskDyn {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val dropMeAbiAlias = parser.parsed
       shoebox.Database.dropAbiAlias( chainId, dropMeAbiAlias )
@@ -1950,7 +2056,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractAbiAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
-    val chainId = (ethcfgNodeChainId in config).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val abiAliases = shoebox.Database.findAllAbiAliases( chainId ).assert
     val columns = immutable.Vector( "ABI Alias", "ABI Hash" ).map( texttable.Column.apply( _ ) )
 
@@ -1966,7 +2072,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genNewAbiAliasAbiSourceParser )
 
     Def.inputTaskDyn {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val ( newAbiAlias, abiSource ) = parser.parsed
       val ( abi : Abi, sourceDesc : String) = standardSortAbiAndSourceDesc( log, abiSource )
@@ -1982,7 +2088,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAnyAbiSourceHexBytesParser )
 
     Def.inputTask {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val ( abiSource, bytes ) = parser.parsed
       loggedAbiFromAbiSource( log, abiSource ).fold( throw nst( new AbiUnknownException( s"Can't find ABI for ${abiSource.sourceDesc}" ) ) ) { abi =>
@@ -1999,7 +2105,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAbiMaybeWarningFunctionInputsParser( restrictedToConstants = false ) )
 
     Def.inputTask {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val ( abi, mbWarning, function, inputs ) = parser.parsed
       mbWarning.foreach( warning => log.warn( warning ) )
@@ -2013,7 +2119,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val address = parser.parsed
       val found = shoebox.Database.deleteMemorizedContractAbi( chainId, address ).get // throw an Exception if there's a database issue
@@ -2043,7 +2149,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAnyAbiSourceParser )
 
     Def.inputTaskDyn {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
@@ -2152,7 +2258,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAnyAbiSourceParser )
 
     Def.inputTaskDyn {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val s = state.value
       val log = streams.value.log
       val ( toLinkAddress, abiSource ) = parser.parsed
@@ -2167,7 +2273,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractAbiOverrideListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
-    val chainId = (ethcfgNodeChainId in config).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val s = state.value
     val log = streams.value.log
     val currentAbiOverrides = abiOverridesForChain( chainId )
@@ -2178,7 +2284,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractAbiOverrideClearTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
-    val chainId = (ethcfgNodeChainId in config).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val s = state.value
     val log = streams.value.log
     val out = clearAbiOverrideForChain( chainId )
@@ -2198,7 +2304,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val s = state.value
       val log = streams.value.log
       val address = parser.parsed
@@ -2220,7 +2326,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTaskDyn {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val s = state.value
       val log = streams.value.log
       val address = parser.parsed
@@ -2242,7 +2348,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo)( genAnyAbiSourceParser )
 
     Def.inputTask {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val abiSource = parser.parsed
       val mbTup = abiFromAbiSource( abiSource )
@@ -2277,7 +2383,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractAbiListTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
-    val chainId = (ethcfgNodeChainId in config).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val log = streams.value.log
 
     val mbRegex = regexParser( defaultToCaseInsensitive = true ).parsed
@@ -2397,7 +2503,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTaskDyn {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val abiOverrides = abiOverridesForChain( chainId )
       val s = state.value
       val log = streams.value.log
@@ -2501,7 +2607,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genContractAddressOrCodeHashParser )
 
     Def.inputTask {
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
 
       println()
@@ -2676,7 +2782,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethKeystoreListTask( config : Configuration ) : Initialize[Task[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]] = Def.task {
     val keystoresV3 = OnlyShoeboxKeystoreV3
     val log         = streams.value.log
-    val chainId     = (ethcfgNodeChainId in config).value
+    val chainId     = findNodeChainIdTask(warn=true)(config).value
 
     val combined = combinedKeystoresMultiMap( keystoresV3 )
 
@@ -2897,9 +3003,168 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( s"The current blocknumber is ${blockNumber}, according to node at '${url}'." )
   }
 
+  private def ethNodeChainIdDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+    config match {
+      case Compile => shoebox.Database.deleteDefaultChainId().assert
+      case Test    => shoebox.Database.deleteDefaultTestChainId().assert
+      case _       => throw new UnexpectedConfigurationException( config )
+    }
+    log.info( s"Any default chain ID set for configuration '${config}' has been dropped." )
+    log.info(  "The chain ID will be determined by hardcoded defaults." )
+  }
+
+  private def ethNodeChainIdDefaultSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser  = intParser("<new-default-chain-id>")
+
+    Def.inputTask {
+      val log     = streams.value.log
+      val is      = interactionService.value
+      val chainId = parser.parsed
+      config match {
+        case Compile => {
+          shoebox.Database.setDefaultChainId(chainId).assert
+        }
+        case Test => {
+          val check = queryYN( is, "Overriding the hard-coded default chain ID for the Test configuration may break sbt-ethereum's default testing scheme. Are you sure you wish to do this? [y/n] " )
+          if ( check ) {
+            shoebox.Database.setDefaultTestChainId(chainId).assert
+          }
+          else {
+            throw new OperationAbortedByUserException( "User chose not to override the hard-coded default chain ID for the Test configuration." )
+          }
+        }
+        case _ => throw new UnexpectedConfigurationException( config )
+      }
+      log.info( s"The default chain ID for configuration '${config}' has been set to ${chainId}." )
+    }
+  }
+
+  private def ethNodeChainIdDefaultPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+    val mbChainId = {
+      config match {
+        case Compile => shoebox.Database.getDefaultChainId().assert
+        case Test    => shoebox.Database.getDefaultTestChainId().assert
+        case _       => throw new UnexpectedConfigurationException( config )
+      }
+    }
+    mbChainId match {
+      case Some( chainId ) => log.info( s"A default chain ID for configuration '${config}' has been explicity set to value ${chainId}." )
+      case None            => log.info( s"No default chain ID for configuration '${config}' has been explicitly set. A hardcoded default will be used." )
+    }
+  }
+
+  private def ethNodeChainIdOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+    Mutables.ChainIdOverrides.synchronized {
+      val overrides = Mutables.ChainIdOverrides.get
+      val oldValue = overrides.get( config )
+      Mutables.ChainIdOverrides.set( overrides - config )
+      oldValue match {
+        case Some( chainId ) => log.info( "A chain ID override for configuration '${config}' was set, but has been dropped." ) // when we have the find task implemented, make this more informative
+        case None            => log.info( "No chain ID override for configuration '${config}' was set to be dropped." )
+      }
+    }
+  }
+
+  private def ethNodeChainIdOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser  = intParser(s"<chain-id-for-config-${config}>")
+
+    Def.inputTask {
+      val log = streams.value.log
+      Mutables.ChainIdOverrides.synchronized {
+        val overrides = Mutables.ChainIdOverrides.get
+        val newOverride = parser.parsed
+        val oldValue = overrides.get( config )
+        Mutables.ChainIdOverrides.set( overrides + Tuple2(config, newOverride) )
+        oldValue match {
+          case Some( oldChainId ) => log.info( s"A prior chain ID override (${oldChainId}) for configuration '${config}' has been replaced with a new override, chain ID ${newOverride}." )
+          case None               => log.info( s"The chain ID for configuration '${config}' has been overridden to ${newOverride}." )
+        }
+      }
+    }
+  }
+
+  private def ethNodeChainIdOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    Mutables.ChainIdOverrides.synchronized {
+      val log = streams.value.log
+      val overrides = Mutables.ChainIdOverrides.get
+      val value = overrides.get( config )
+      value match {
+        case Some( chainId ) => log.info( "The chain ID for configuration '${config}' is overridden to ${chainId}." )
+        case None            => log.info( "The chain ID for configuration '${config}' has not been overridden." )
+      }
+    }
+  }
+
+  // make sure this task is kept in sync with maybeFindNodeChainIdTask(...)
+  private def ethNodeChainIdPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    val mbEffective = maybeFindNodeChainIdTask(warn=false)(config).value
+
+    val log = streams.value.log
+
+    val overridesMap = Mutables.ChainIdOverrides.synchronized {
+      Mutables.ChainIdOverrides.get
+    }
+    val mbOverride = overridesMap.get( config )
+    val mbBuildSetting = (config / ethcfgNodeChainId).?.value
+    val mbShoeboxDefault = {
+      config match {
+        case Compile => shoebox.Database.getDefaultChainId().assert
+        case Test    => shoebox.Database.getDefaultTestChainId().assert
+      }
+    }
+
+    val pfx = configPrefix( config )
+
+    mbEffective match {
+      case Some( effective ) => {
+        log.info( s"The current effective node chain ID for configuration '${config}' is '${effective}'." )
+
+        ( mbOverride, mbBuildSetting, mbShoeboxDefault ) match {
+          case ( Some( ov ), _, _) => {
+            assert( effective == ov, "We expect that if a session override is set, it is the effective node chain ID." )
+            log.info( " + This value has been explicitly set as a session override via 'ethNodeChainIdOverrideSet'." )
+            mbBuildSetting.foreach( hardCoded => log.info( s" + It has overridden a value explicitly set in the project build or the '.sbt' folder as '${pfx}ethcfgNodeChainId': ${hardCoded}" ) )
+            mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node chain ID value for configuration '${config}' set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
+          }
+          case ( None, Some( buildSetting ), _ ) => {
+            assert( effective == buildSetting, "We expect that if no session override is set, but a node chain ID is set as a build setting, it is the effective chain ID." )
+            log.info( s" + This value has been explicitly defined as setting '${pfx}ethcfgNodeChainId' in the project build or the '.sbt' folder, and has not been overridden by a session override." )
+            mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node chain ID value for configuration '${config}' set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
+          }
+          case ( None, None, Some( shoeboxDefault ) ) => {
+            assert(
+              effective == shoeboxDefault,
+              s"We expect that if no session override is set, and no build setting, but a default node chain ID for configuration '${config}' is set in the shoebox, it is the effective URL for that chain."
+            )
+            log.info( s" + This value is the default node chain ID defined in the sbt-ethereum shoebox for config '${config}'. " )
+            log.info( s" + It has not been overridden with a session override or by an '${pfx}ethcfgNodeChainId' setting in the project build or the '.sbt' folder." )
+          }
+          case ( None, None, None ) => {
+            assert(
+              effective == findBackstopChainId( config ),
+              s"With no session override, no '${pfx}ethcfgNodeChainId' setting in the build, and no default chain ID set for config '${config}', the effective chain ID should be the last-resort hard-coded chain ID."
+            )
+            log.info(  " + This is the hardcoded default chain ID for configuration '${config}', hard-coded into sbt-ethereum. " )
+            log.info( s" + It has not been overridden with a session override or by an '${pfx}ethcfgNodeChainId' setting in the project build or the '.sbt' folder. " )
+            log.info( s" + There is no default node chain ID for configuration '${config}' defined in the sbt-ethereum shoebox." )
+          }
+        }
+      }
+      case None => {
+        log.warn(  "No node chain ID is currently available!")
+        log.warn( s" + No session override for configuration '${config}' has been set with '${pfx}ethNodeChainIdOverrideSet'" )
+        log.warn( s" + No default node chain ID for configuration '${config}' has been defined in the sbt-ethereum shoebox." )
+        log.warn( s" + No backstop node chain ID suitable for configuration '${config}' is available as a hardcoded default." )
+      }
+    }
+  }
+
   private def ethNodeUrlDefaultPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val mbJsonRpcUrl = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
     mbJsonRpcUrl match {
       case Some( url ) => {
@@ -2914,7 +3179,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeUrlDefaultSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val is = interactionService.value
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val newUrl = urlParser( "<json-rpc-url>" ).parsed
     val oldValue = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
     oldValue.foreach { url =>
@@ -2933,7 +3198,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethNodeUrlDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val oldValue = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
     oldValue match {
       case Some( url ) => {
@@ -2949,7 +3214,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethNodeUrlOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val map = Mutables.NodeUrlOverride.synchronized {
       Mutables.NodeUrlOverride.get
     }
@@ -2965,7 +3230,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethNodeUrlOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val overrideUrl = urlParser( "<override-json-rpc-url>" ).parsed
     Mutables.NodeUrlOverride.synchronized {
       val map = Mutables.NodeUrlOverride.get
@@ -2976,7 +3241,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethNodeUrlOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     Mutables.NodeUrlOverride.synchronized {
       val map = Mutables.NodeUrlOverride.get
       Mutables.NodeUrlOverride.set( map - chainId )
@@ -2989,13 +3254,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbEffective = maybeFindNodeUrlTask(warn=false)(config).value
 
     val log = streams.value.log
-    val chainId = (config/ethcfgNodeChainId).value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
 
     val overridesMap = Mutables.NodeUrlOverride.synchronized {
       Mutables.NodeUrlOverride.get
     }
     val mbOverride = overridesMap.get( chainId )
-    val mbBuildSetting = ethcfgNodeUrl.?.value
+    val mbBuildSetting = (config/ethcfgNodeUrl).?.value
     val mbShoeboxDefault = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
 
     val pfx = configPrefix( config )
@@ -3364,7 +3629,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val is = interactionService.value
       val log = streams.value.log
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val ephemeralDeployment = isEphemeralChain( chainId )
 
       val sender = findAddressSenderTask(warn=true)(config).value.assert
@@ -3604,7 +3869,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val caller = findAddressSenderTask(warn=true)(config).value.assert
       val nonceOverride = unwrapNonceOverride( Some( log ) )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
@@ -3636,7 +3901,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val s = state.value
       val log = streams.value.log
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val abiOverrides = abiOverridesForChain( chainId )
       val txnHash = parser.parsed
 
@@ -3732,7 +3997,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val from = findAddressSenderTask(warn=true)(config).value.assert
       val (to, data, amount) = parser.parsed
       val nonceOverride = unwrapNonceOverride( Some( log ) )
@@ -3758,7 +4023,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val from = findAddressSenderTask(warn=true)(config).value.assert
       val (to, amount) = parser.parsed
       val nonceOverride = unwrapNonceOverride( Some( log ) )
@@ -3874,7 +4139,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def xethFindCacheRichParserInfoTask( config : Configuration ) : Initialize[Task[RichParserInfo]] = Def.task {
-    val chainId            = (config / ethcfgNodeChainId).value
+    val chainId            = findNodeChainIdTask(warn=false)(config).value
     val mbJsonRpcUrl       = maybeFindNodeUrlTask(warn=false)(config).value
     val addressAliases     = shoebox.AddressAliasManager.findAllAddressAliases( chainId ).assert
     val abiAliases         = shoebox.Database.findAllAbiAliases( chainId ).assert
@@ -4107,7 +4372,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val useReplayAttackProtection = ethcfgUseReplayAttackProtection.value
 
-    val rawChainId = (ethcfgNodeChainId in config).value
+    val rawChainId = findNodeChainIdTask(warn=true)(config).value
 
     val chainId = {
       if ( isEphemeralChain( rawChainId ) || !useReplayAttackProtection ) None else Some( EthChainId( rawChainId ) )
@@ -4196,7 +4461,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val abiOverrides = abiOverridesForChain( chainId )
       ensureAbiLookupForAddress( chainId, parser.parsed, abiOverrides ).resolveAbi( Some( log ) ).get
     }
@@ -4357,7 +4622,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val keystoresV3 = OnlyShoeboxKeystoreV3
       val log         = streams.value.log
 
-      val chainId = (ethcfgNodeChainId in config).value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
 
       val address = parser.parsed
 
@@ -4416,7 +4681,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     // val mainEthNodeUrl = findNodeUrlTask(warn=false)(Compile).value
     // val testEthNodeUrl = findNodeUrlTask(warn=false)(Test).value
-    // val chainId           = (ethcfgNodeChainId in Compile).value
+    // val chainId           = findNodeChainIdTask(warn=true)(Compile).value
     // val mbCurrentSender   = (xethFindCurrentSender in Compile).value
     
     log.info( s"sbt-ethereum-${generated.SbtEthereum.Version} successfully initialized (built ${SbtEthereum.BuildTimestamp})" )
@@ -4587,8 +4852,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val log = streams.value.log
     val keystoresV3  = OnlyShoeboxKeystoreV3
-    val nontestConfig = Compile                                 // XXX: if you change this, change the hardcoded Compile value in the line below!
-    val nontestChainId = ( Compile / ethcfgNodeChainId ).value  // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
+    val nontestConfig = Compile                                         // XXX: if you change this, change the hardcoded Compile value in the line below!
+    val nontestChainId = findNodeChainIdTask(warn=true)(Compile).value  // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
     val combined = combinedKeystoresMultiMap( keystoresV3 )
     if ( combined.isEmpty ) {
       val checkInstall = queryYN( is, "There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] " )
@@ -4801,8 +5066,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def isEphemeralChain( chainId : Int ) : Boolean = {
+  private def isEphemeralChain( chainId : Int ) : Boolean = {
     chainId < 0
+  }
+
+  private def findBackstopChainId( config : Configuration ) : Option[Int] = {
+    config match {
+      case Compile => Some( MainnetChainId )
+      case Test    => Some( DefaultEphemeralChainId )// ephemeral chain with no EIP-155 chain ID
+      case _       => None
+    }
   }
 
   private def findBackstopUrl( warn : Boolean )( log : sbt.Logger, config : Configuration, chainId : Int ) : Option[String] = {

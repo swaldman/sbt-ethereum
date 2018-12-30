@@ -569,6 +569,64 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
+  def deleteDefaultChainId() : Failable[Boolean] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.Metadata.delete( _, Table.Metadata.Key.DefaultChainId ) ) )
+  }
+
+  private [sbtethereum]
+  def getDefaultChainId() : Failable[Option[Int]] = DataSource.flatMap { ds =>
+    Failable {
+      borrow( ds.getConnection() ){ conn =>
+        Table.Metadata.select( conn, Table.Metadata.Key.DefaultChainId ).flatMap { str =>
+          try {
+            Some( str.toInt )
+          }
+          catch {
+            case nfe : NumberFormatException => {
+              WARNING.log( s"Default chain ID in database, '${str}', cannot be parsed as an Int, and will be ignored." )
+              None
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private [sbtethereum]
+  def setDefaultChainId( chainId : Int ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.Metadata.upsert( _, Table.Metadata.Key.DefaultChainId, chainId.toString ) ) )
+  }
+
+  private [sbtethereum]
+  def deleteDefaultTestChainId() : Failable[Boolean] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.Metadata.delete( _, Table.Metadata.Key.DefaultTestChainId ) ) )
+  }
+
+  private [sbtethereum]
+  def getDefaultTestChainId() : Failable[Option[Int]] = DataSource.flatMap { ds =>
+    Failable {
+      borrow( ds.getConnection() ){ conn =>
+        Table.Metadata.select( conn, Table.Metadata.Key.DefaultTestChainId ).flatMap { str =>
+          try {
+            Some( str.toInt )
+          }
+          catch {
+            case nfe : NumberFormatException => {
+              WARNING.log( s"Default test chain ID in database, '${str}', cannot be parsed as an Int, and will be ignored." )
+              None
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private [sbtethereum]
+  def setDefaultTestChainId( chainId : Int ) : Failable[Unit] = DataSource.flatMap { ds =>
+    Failable( borrow( ds.getConnection() )( Table.Metadata.upsert( _, Table.Metadata.Key.DefaultTestChainId, chainId.toString ) ) )
+  }
+
+  private [sbtethereum]
   def getShoeboxBackupDir() : Failable[Option[String]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.Metadata.select( _, Table.Metadata.Key.ShoeboxBackupDir ) ) )
   }
