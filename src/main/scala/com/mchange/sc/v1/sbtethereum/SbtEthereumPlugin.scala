@@ -10,6 +10,7 @@ import BasicJsonProtocol._
 
 import util.BaseCodeAndSuffix
 import util.OneTimeWarner
+import util.ChainIdMutable
 import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstaller, SourceFile}
 import util.EthJsonRpc._
 import util.Parsers._
@@ -119,13 +120,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     // MT: protected by AbiOverride's lock
     val AbiOverrides = new AtomicReference[immutable.Map[Int,immutable.Map[EthAddress,Abi]]]( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
 
-    // MT: protected by SenderOverride's lock
-    val SenderOverride = new AtomicReference[Map[Int,EthAddress]]( Map.empty )
+    // MT: internally thread-safe
+    val SenderOverride = new ChainIdMutable[EthAddress]
 
     // MT: protected by NodeJsonRpcOverride's lock
     val NodeUrlOverride = new AtomicReference[Map[Int,String]]( Map.empty ) // Int is the chain ID
 
-    // MT: Internally thread-safe
+    // MT: onternally thread-safe
     val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
 
     // MT: protected by LocalGanache's lock
@@ -145,9 +146,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       AbiOverrides synchronized {
         AbiOverrides.set( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
       }
-      SenderOverride synchronized {
-        SenderOverride.set( Map.empty )
-      }
+      SenderOverride.reset()
       NodeUrlOverride.synchronized {
         NodeUrlOverride.set( Map.empty )
       }
@@ -171,13 +170,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
     out
-  }
-
-  private def senderOverrideAddress( chainId : Int ) : Option[EthAddress] = {
-    Mutables.SenderOverride.synchronized {
-      val map = Mutables.SenderOverride.get
-      map.get( chainId )
-    }
   }
 
   private def abiOverridesForChain( chainId : Int ) : immutable.Map[EthAddress,Abi] = {
@@ -1164,12 +1156,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Failable {
       val log = streams.value.log
       val chainId = findNodeChainIdTask(warn=true)(config).value
-      val mbOverrideAddressSender = {
-        Mutables.SenderOverride.synchronized {
-          val map = Mutables.SenderOverride.get
-          map.get( chainId )
-        }
-      }
+      val mbOverrideAddressSender = Mutables.SenderOverride.get( chainId )
       mbOverrideAddressSender match {
         case Some( address ) => {
           address
@@ -1881,10 +1868,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     try {
       val effective = f_effective.assert
-      val overridesMap = Mutables.SenderOverride.synchronized {
-        Mutables.SenderOverride.get
-      }
-      val mbOverride = overridesMap.get( chainId )
+      val mbOverride = Mutables.SenderOverride.get( chainId )
       val mbBuildSetting = (config/ethcfgAddressSender).?.value
       val mbShoeboxDefault = shoebox.Database.findDefaultSenderAddress( chainId ).assert
 
@@ -2021,11 +2005,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethAddressSenderOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    Mutables.SenderOverride.synchronized {
-      Mutables.SenderOverride.set( Map.empty )
-    }
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    Mutables.SenderOverride.drop( chainId )
     log.info("No sender override is now set.")
-    log.info("Effective sender will be determined by 'ethcfgAddressSender' setting, a value set via 'ethAddressSenderDefaultSet', the System property 'eth.sender', the environment variable 'ETH_SENDER'.")
+    log.info("Effective sender will be determined by 'ethcfgAddressSender' setting, a value set via 'ethAddressSenderDefaultSet', the System property 'eth.sender', or the environment variable 'ETH_SENDER'.")
   }
 
   private def ethAddressSenderOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
@@ -2033,7 +2016,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val chainId = findNodeChainIdTask(warn=true)(config).value
 
-    val mbSenderOverride = senderOverrideAddress( chainId )
+    val mbSenderOverride = Mutables.SenderOverride.get( chainId )
 
     val message = mbSenderOverride.fold( s"No sender override is currently set (for chain with ID ${chainId})." ) { address =>
       val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s", aliases $str)" ) )
@@ -2047,17 +2030,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
-      Mutables.SenderOverride.synchronized {
-        val log = streams.value.log
-        val chainId = findNodeChainIdTask(warn=true)(config).value
-        val address = parser.parsed
-        val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "")( _.fold("")( str => s", aliases $str)" ) )
-
-        val current = Mutables.SenderOverride.get
-        Mutables.SenderOverride.set( current + Tuple2(chainId, address) )
-
-        log.info( s"Sender override set to '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart})." )
-      }
+      val log = streams.value.log
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+      val address = parser.parsed
+      val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "")( _.fold("")( str => s", aliases $str)" ) )
+      Mutables.SenderOverride.set( chainId, address )
+      log.info( s"Sender override set to '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart})." )
     }
   }
 
@@ -2214,7 +2192,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           xethTriggerDirtyAliasCache
         }
       }
-      def noop = Def.task{}
+      def noop = EmptyTask
 
       val lookupExisting = abiLookupForAddress( chainId, toLinkAddress, currentAbiOverrides )
       lookupExisting match {
@@ -3024,7 +3002,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( s"The current blocknumber is ${blockNumber}, according to node at '${url}'." )
   }
 
-  private def ethNodeChainIdDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+  private def ethNodeChainIdDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     assert( config == Compile, "Only the Compile confg is supported for now." )
 
     val log = streams.value.log
@@ -3038,9 +3016,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         log.info( s"Default chain ID, previously set to ${id}, has now been dropped. No default node chain ID is set." )
         log.info(  "The node chain ID will be determined by hardcoded defaults, unless overridden by an on override." )
+        xethTriggerDirtyAliasCache
       }
       case None => {
         log.info( s"No default chain ID was set to be dropped." )
+        EmptyTask
       }
     }
   }
@@ -3050,7 +3030,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val parser  = intParser("<new-default-chain-id>")
 
-    Def.inputTask {
+    Def.inputTaskDyn {
       val log     = streams.value.log
       val is      = interactionService.value
       val chainId = parser.parsed
@@ -3062,6 +3042,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         case _    => throw new UnexpectedConfigurationException( config )
       }
       log.info( s"The default chain ID has been set to ${chainId}." )
+      xethTriggerDirtyAliasCache
     }
   }
 
@@ -3082,7 +3063,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethNodeChainIdOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+  private def ethNodeChainIdOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     assert( config == Compile, "Only the Compile confg is supported for now." )
 
     val log = streams.value.log
@@ -3090,8 +3071,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       val oldValue = Mutables.ChainIdOverride.get
       Mutables.ChainIdOverride.set( None )
       oldValue match {
-        case Some( chainId ) => log.info( "A chain ID override was set, but has been dropped." ) // when we have the find task implemented, make this more informative
-        case None            => log.info( "No chain ID override was set to be dropped." )
+        case Some( chainId ) => {
+          log.info( s"A chain ID override had been set to ${chainId}, but has now been dropped." ) // when we have the find task implemented, make this more informative
+          log.info( "The effective chain ID will be determined either by a default set with 'ethNodeChainIdDefaultSet', by an 'ethcfgNodeChainId' set in the build or '.sbt. folder, or an sbt-ethereum hardcoded default." )
+          xethTriggerDirtyAliasCache
+        }
+        case None => {
+          log.info( "No chain ID override was set to be dropped." )
+          EmptyTask
+        }
       }
     }
   }
@@ -3101,15 +3089,26 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val parser  = intParser(s"<chain-id>")
 
-    Def.inputTask {
+    Def.inputTaskDyn {
       val log = streams.value.log
       Mutables.ChainIdOverride.synchronized {
         val oldValue = Mutables.ChainIdOverride.get
         val newValue = parser.parsed
-        Mutables.ChainIdOverride.set( Some( newValue ) )
         oldValue match {
-          case Some( oldChainId ) => log.info( s"A prior chain ID override (${oldChainId}) has been replaced with a new override, chain ID ${newValue}." )
-          case None               => log.info( s"The chain ID has been overridden to ${newValue}." )
+          case Some( oldOverride ) if oldOverride == newValue => {
+            log.info( s"A chain ID override had already been set to ${oldOverride}. Nothing to do." )
+            EmptyTask
+          }
+          case Some( oldOverride ) => {
+            Mutables.ChainIdOverride.set( Some( newValue ) )
+            log.info( s"A prior chain ID override (${oldOverride}) has been replaced with a new override, chain ID ${newValue}." )
+            xethTriggerDirtyAliasCache
+          }
+          case None => {
+            Mutables.ChainIdOverride.set( Some( newValue ) )
+            log.info( s"The chain ID has been overridden to ${newValue}." )
+            xethTriggerDirtyAliasCache
+          }
         }
       }
     }
