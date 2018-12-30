@@ -344,7 +344,6 @@ private [sbtethereum] object Schema_h2 {
         val ShoeboxBackupDir                 = "ShoeboxBackupDir"
         val LastSuccessfulSbtEthereumVersion = "LastSuccessfulSbtEthereumVersion"
         val DefaultChainId                   = "DefaultChainId"
-        val DefaultTestChainId               = "DefaultTestChainId"
       }
     }
 

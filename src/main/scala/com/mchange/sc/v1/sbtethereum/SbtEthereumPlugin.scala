@@ -107,8 +107,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val CurrentSolidityCompiler = new AtomicReference[Option[( String, Compiler.Solidity )]]( None )
 
-    // MT: protected by ChainIdOverrides' lock
-    val ChainIdOverrides = new AtomicReference[immutable.Map[Configuration,Int]]( immutable.Map.empty )
+    // MT: protected by ChainIdOverride' lock
+    val ChainIdOverride = new AtomicReference[Option[Int]]( None ) // Only supported for Compile config
 
     val GasLimitOverride = new AtomicReference[Option[BigInt]]( None )
 
@@ -137,7 +137,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       SessionSolidityCompilers.set( None )
       CurrentSolidityCompiler.set( None )
-      ChainIdOverrides.set( immutable.Map.empty )
+      ChainIdOverride.set( None )
       GasLimitOverride.set( None )
       GasPriceOverride.set( None )
       NonceOverride.set( None )
@@ -410,9 +410,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethNodeChainIdDefaultSet   = inputKey[Unit]("Sets the default chain ID sbt-ethereum should use.")
     val ethNodeChainIdDefaultPrint = taskKey[Unit] ("Displays any default chain ID that may have been set.")
 
-    val ethNodeChainIdOverrideDrop  = taskKey[Unit] ("Removes session override of the default and/or hard-coded chain ID that may have been set for the current configuration.")
-    val ethNodeChainIdOverrideSet   = inputKey[Unit]("Sets a session override of any default or hard-coded chain ID for the current configuration.")
-    val ethNodeChainIdOverridePrint = taskKey[Unit] ("Displays any session override of the chain ID that may have been set for the current configuration.")
+    val ethNodeChainIdOverrideDrop  = taskKey[Unit] ("Removes session override of the default and/or hard-coded chain ID that may have been set.")
+    val ethNodeChainIdOverrideSet   = inputKey[Unit]("Sets a session override of any default or hard-coded chain ID.")
+    val ethNodeChainIdOverridePrint = taskKey[Unit] ("Displays any session override of the chain ID that may have been set.")
 
     val ethNodeChainIdPrint = taskKey[Unit]("Displays the node chain ID for the current configuration, and explains how it is configured.")
 
@@ -548,10 +548,17 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethcfgBaseCurrencyCode := "USD",
 
+    ethcfgNodeChainId in Test := {
+      findBackstopChainId( Test ).get // we know there is a value for Test
+    },
+
     ethcfgNodeUrl in Test := {
       val log = sLog.value
-      val chainId = findNodeChainIdTask(warn=true)( Test ).value
-      findBackstopUrl(warn=false)( log, Test, chainId ).get // there is always a backstop URL for ephemeral chain IDs
+      val chainId = (ethcfgNodeChainId in Test).value
+
+      // there is always a backstop URL with the default chain ID for test
+      // builds that overwrite Test/ethcfgChainId probably will want to overwrite this as well
+      findBackstopUrl(warn=false)( log, Test, chainId ).get 
     },
 
     ethcfgEntropySource := new java.security.SecureRandom,
@@ -846,29 +853,17 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethNodeChainId in Test := { findNodeChainIdTask(warn=true)( Test ).value },
 
-    ethNodeChainIdDefaultDrop in Compile := { ethNodeChainIdDefaultDropTask( Compile ).value },
+    ethNodeChainIdDefaultDrop in Compile := { ethNodeChainIdDefaultDropTask( Compile ).value }, // only Compile config is supported
 
-    ethNodeChainIdDefaultDrop in Test := { ethNodeChainIdDefaultDropTask( Test ).value },
+    ethNodeChainIdDefaultPrint in Compile := { ethNodeChainIdDefaultPrintTask( Compile ).value }, // only Compile config is supported
 
-    ethNodeChainIdDefaultPrint in Compile := { ethNodeChainIdDefaultPrintTask( Compile ).value },
+    ethNodeChainIdDefaultSet in Compile := { ethNodeChainIdDefaultSetTask( Compile ).evaluated }, // only Compile config is supported
 
-    ethNodeChainIdDefaultPrint in Test := { ethNodeChainIdDefaultPrintTask( Test ).value },
+    ethNodeChainIdOverrideDrop in Compile := { ethNodeChainIdOverrideDropTask( Compile ).value }, // only Compile config is supported
 
-    ethNodeChainIdDefaultSet in Compile := { ethNodeChainIdDefaultSetTask( Compile ).evaluated },
+    ethNodeChainIdOverridePrint in Compile := { ethNodeChainIdOverridePrintTask( Compile ).value }, // only Compile config is supported
 
-    ethNodeChainIdDefaultSet in Test := { ethNodeChainIdDefaultSetTask( Test ).evaluated },
-
-    ethNodeChainIdOverrideDrop in Compile := { ethNodeChainIdOverrideDropTask( Compile ).value },
-
-    ethNodeChainIdOverrideDrop in Test := { ethNodeChainIdOverrideDropTask( Test ).value },
-
-    ethNodeChainIdOverridePrint in Compile := { ethNodeChainIdOverridePrintTask( Compile ).value },
-
-    ethNodeChainIdOverridePrint in Test := { ethNodeChainIdOverridePrintTask( Test ).value },
-
-    ethNodeChainIdOverrideSet in Compile := { ethNodeChainIdOverrideSetTask( Compile ).evaluated },
-
-    ethNodeChainIdOverrideSet in Test := { ethNodeChainIdOverrideSetTask( Test ).evaluated },
+    ethNodeChainIdOverrideSet in Compile := { ethNodeChainIdOverrideSetTask( Compile ).evaluated }, // only Compile config is supported
 
     ethNodeChainIdPrint in Compile := { ethNodeChainIdPrintTask( Compile ).value },
 
@@ -1207,9 +1202,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def maybeFindNodeChainIdTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Option[Int]]] = Def.task {
     val log = streams.value.log
     val mbOverrideNodeChainId = {
-      Mutables.ChainIdOverrides.synchronized {
-        val map = Mutables.ChainIdOverrides.get
-        map.get( config )
+      if (config == Compile ) { // chain ID overrides only supported for Compile config
+        Mutables.ChainIdOverride.synchronized {
+          Mutables.ChainIdOverride.get
+        }
+      }
+      else {
+        None
       }
     }
     mbOverrideNodeChainId match {
@@ -1220,7 +1219,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val mbDbNodeChainId = {
           config match {
             case Compile => shoebox.Database.getDefaultChainId().assert
-            case Test    => shoebox.Database.getDefaultTestChainId().assert
+            case Test    => None // default chain IDs not supported for Test. modifications must be embedded in build
             case _       => None
           }
         }
@@ -3004,17 +3003,29 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethNodeChainIdDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    assert( config == Compile, "Only the Compile confg is supported for now." )
+
     val log = streams.value.log
-    config match {
-      case Compile => shoebox.Database.deleteDefaultChainId().assert
-      case Test    => shoebox.Database.deleteDefaultTestChainId().assert
-      case _       => throw new UnexpectedConfigurationException( config )
+    val oldValue = shoebox.Database.getDefaultChainId().assert
+    oldValue match {
+      case Some( id ) => {
+        config match {
+          case Compile => shoebox.Database.deleteDefaultChainId().assert
+          case Test    => throw new UnexpectedConfigurationException( config )
+          case _       => throw new UnexpectedConfigurationException( config )
+        }
+        log.info( s"Any default chain ID set for configuration '${config}' has been dropped." )
+        log.info(  "The node chain ID will be determined by hardcoded defaults, unless overridden by an on override." )
+      }
+      case None => {
+        log.info( s"No default chain ID was set to be dropped." )
+      }
     }
-    log.info( s"Any default chain ID set for configuration '${config}' has been dropped." )
-    log.info(  "The chain ID will be determined by hardcoded defaults." )
   }
 
   private def ethNodeChainIdDefaultSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    assert( config == Compile, "Only the Compile confg is supported for now." )
+
     val parser  = intParser("<new-default-chain-id>")
 
     Def.inputTask {
@@ -3025,27 +3036,21 @@ object SbtEthereumPlugin extends AutoPlugin {
         case Compile => {
           shoebox.Database.setDefaultChainId(chainId).assert
         }
-        case Test => {
-          val check = queryYN( is, "Overriding the hard-coded default chain ID for the Test configuration may break sbt-ethereum's default testing scheme. Are you sure you wish to do this? [y/n] " )
-          if ( check ) {
-            shoebox.Database.setDefaultTestChainId(chainId).assert
-          }
-          else {
-            throw new OperationAbortedByUserException( "User chose not to override the hard-coded default chain ID for the Test configuration." )
-          }
-        }
-        case _ => throw new UnexpectedConfigurationException( config )
+        case Test => throw new UnexpectedConfigurationException( config ) 
+        case _    => throw new UnexpectedConfigurationException( config )
       }
       log.info( s"The default chain ID for configuration '${config}' has been set to ${chainId}." )
     }
   }
 
   private def ethNodeChainIdDefaultPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    assert( config == Compile, "Only the Compile confg is supported for now." )
+
     val log = streams.value.log
     val mbChainId = {
       config match {
         case Compile => shoebox.Database.getDefaultChainId().assert
-        case Test    => shoebox.Database.getDefaultTestChainId().assert
+        case Test    => throw new UnexpectedConfigurationException( config )
         case _       => throw new UnexpectedConfigurationException( config )
       }
     }
@@ -3056,11 +3061,12 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethNodeChainIdOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
+    assert( config == Compile, "Only the Compile confg is supported for now." )
+
     val log = streams.value.log
-    Mutables.ChainIdOverrides.synchronized {
-      val overrides = Mutables.ChainIdOverrides.get
-      val oldValue = overrides.get( config )
-      Mutables.ChainIdOverrides.set( overrides - config )
+    Mutables.ChainIdOverride.synchronized {
+      val oldValue = Mutables.ChainIdOverride.get
+      Mutables.ChainIdOverride.set( None )
       oldValue match {
         case Some( chainId ) => log.info( "A chain ID override for configuration '${config}' was set, but has been dropped." ) // when we have the find task implemented, make this more informative
         case None            => log.info( "No chain ID override for configuration '${config}' was set to be dropped." )
@@ -3069,28 +3075,30 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethNodeChainIdOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    assert( config == Compile, "Only the Compile confg is supported for now." )
+
     val parser  = intParser(s"<chain-id-for-config-${config}>")
 
     Def.inputTask {
       val log = streams.value.log
-      Mutables.ChainIdOverrides.synchronized {
-        val overrides = Mutables.ChainIdOverrides.get
-        val newOverride = parser.parsed
-        val oldValue = overrides.get( config )
-        Mutables.ChainIdOverrides.set( overrides + Tuple2(config, newOverride) )
+      Mutables.ChainIdOverride.synchronized {
+        val oldValue = Mutables.ChainIdOverride.get
+        val newValue = parser.parsed
+        Mutables.ChainIdOverride.set( Some( newValue ) )
         oldValue match {
-          case Some( oldChainId ) => log.info( s"A prior chain ID override (${oldChainId}) for configuration '${config}' has been replaced with a new override, chain ID ${newOverride}." )
-          case None               => log.info( s"The chain ID for configuration '${config}' has been overridden to ${newOverride}." )
+          case Some( oldChainId ) => log.info( s"A prior chain ID override (${oldChainId}) for configuration '${config}' has been replaced with a new override, chain ID ${newValue}." )
+          case None               => log.info( s"The chain ID for configuration '${config}' has been overridden to ${newValue}." )
         }
       }
     }
   }
 
   private def ethNodeChainIdOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
-    Mutables.ChainIdOverrides.synchronized {
+    assert( config == Compile, "Only the Compile confg is supported for now." )
+
+    Mutables.ChainIdOverride.synchronized {
       val log = streams.value.log
-      val overrides = Mutables.ChainIdOverrides.get
-      val value = overrides.get( config )
+      val value = Mutables.ChainIdOverride.get
       value match {
         case Some( chainId ) => log.info( "The chain ID for configuration '${config}' is overridden to ${chainId}." )
         case None            => log.info( "The chain ID for configuration '${config}' has not been overridden." )
@@ -3104,15 +3112,19 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val log = streams.value.log
 
-    val overridesMap = Mutables.ChainIdOverrides.synchronized {
-      Mutables.ChainIdOverrides.get
+    val mbOverride = {
+      config match {
+        case Compile => Mutables.ChainIdOverride.synchronized { Mutables.ChainIdOverride.get }
+        case Test    => None // overrides only supported for config compile, for now
+        case _       => None 
+      }
     }
-    val mbOverride = overridesMap.get( config )
     val mbBuildSetting = (config / ethcfgNodeChainId).?.value
     val mbShoeboxDefault = {
       config match {
         case Compile => shoebox.Database.getDefaultChainId().assert
-        case Test    => shoebox.Database.getDefaultTestChainId().assert
+        case Test    => None // shoebox default chain ID only supported in Compile
+        case _       => None
       }
     }
 
@@ -3120,44 +3132,44 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     mbEffective match {
       case Some( effective ) => {
-        log.info( s"The current effective node chain ID for configuration '${config}' is '${effective}'." )
+        log.info( s"The current effective node chain ID is '${effective}'." )
 
         ( mbOverride, mbBuildSetting, mbShoeboxDefault ) match {
           case ( Some( ov ), _, _) => {
             assert( effective == ov, "We expect that if a session override is set, it is the effective node chain ID." )
             log.info( " + This value has been explicitly set as a session override via 'ethNodeChainIdOverrideSet'." )
             mbBuildSetting.foreach( hardCoded => log.info( s" + It has overridden a value explicitly set in the project build or the '.sbt' folder as '${pfx}ethcfgNodeChainId': ${hardCoded}" ) )
-            mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node chain ID value for configuration '${config}' set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
+            mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node chain ID value set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
           }
           case ( None, Some( buildSetting ), _ ) => {
             assert( effective == buildSetting, "We expect that if no session override is set, but a node chain ID is set as a build setting, it is the effective chain ID." )
             log.info( s" + This value has been explicitly defined as setting '${pfx}ethcfgNodeChainId' in the project build or the '.sbt' folder, and has not been overridden by a session override." )
-            mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node chain ID value for configuration '${config}' set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
+            mbShoeboxDefault.foreach( shoeboxDefault => log.info( s" + It has overridden a default node chain ID value set in the sbt-ethereum shoebox: ${shoeboxDefault}" ) )
           }
           case ( None, None, Some( shoeboxDefault ) ) => {
             assert(
               effective == shoeboxDefault,
-              s"We expect that if no session override is set, and no build setting, but a default node chain ID for configuration '${config}' is set in the shoebox, it is the effective URL for that chain."
+              s"We expect that if no session override is set, and no build setting, but a default node chain ID is set in the shoebox, it is the effective URL for that chain."
             )
-            log.info( s" + This value is the default node chain ID defined in the sbt-ethereum shoebox for config '${config}'. " )
+            log.info( s" + This value is the default node chain ID defined in the sbt-ethereum shoebox. " )
             log.info( s" + It has not been overridden with a session override or by an '${pfx}ethcfgNodeChainId' setting in the project build or the '.sbt' folder." )
           }
           case ( None, None, None ) => {
             assert(
-              effective == findBackstopChainId( config ),
-              s"With no session override, no '${pfx}ethcfgNodeChainId' setting in the build, and no default chain ID set for config '${config}', the effective chain ID should be the last-resort hard-coded chain ID."
+              effective == findBackstopChainId( config ).get,
+              s"With no session override, no '${pfx}ethcfgNodeChainId' setting in the build, and no default chain ID set, the effective chain ID should be the last-resort hard-coded chain ID."
             )
-            log.info(  " + This is the hardcoded default chain ID for configuration '${config}', hard-coded into sbt-ethereum. " )
+            log.info(  " + This is the default chain ID hard-coded into sbt-ethereum. " )
             log.info( s" + It has not been overridden with a session override or by an '${pfx}ethcfgNodeChainId' setting in the project build or the '.sbt' folder. " )
-            log.info( s" + There is no default node chain ID for configuration '${config}' defined in the sbt-ethereum shoebox." )
+            log.info( s" + There is no default node chain ID defined in the sbt-ethereum shoebox." )
           }
         }
       }
       case None => {
         log.warn(  "No node chain ID is currently available!")
-        log.warn( s" + No session override for configuration '${config}' has been set with '${pfx}ethNodeChainIdOverrideSet'" )
-        log.warn( s" + No default node chain ID for configuration '${config}' has been defined in the sbt-ethereum shoebox." )
-        log.warn( s" + No backstop node chain ID suitable for configuration '${config}' is available as a hardcoded default." )
+        log.warn( s" + No session override has been set with '${pfx}ethNodeChainIdOverrideSet'" )
+        log.warn( s" + No default node chain ID has been defined in the sbt-ethereum shoebox." )
+        log.warn( s" + No backstop node chain ID is available as a hardcoded default." )
       }
     }
   }
@@ -3267,7 +3279,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     mbEffective match {
       case Some( effective ) => {
-        log.info( s"The current effective node json-rpc URL is '${effective}'." )
+        log.info( s"The current effective node json-rpc URL is ${effective}." )
 
         ( mbOverride, mbBuildSetting, mbShoeboxDefault ) match {
           case ( Some( ov ), _, _) => {
@@ -3291,7 +3303,8 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
           case ( None, None, None ) => {
             assert(
-              effective == findBackstopUrl(warn=false)( log, config, chainId ),
+              effective == findBackstopUrl(warn=false)( log, config, chainId ).get,
+              s"${effective} != ${findBackstopUrl(warn=false)( log, config, chainId ).get}: " +
               s"With no session override, no '${pfx}ethcfgNodeUrl' setting in the build, and no default URL set for chain with ID ${chainId}, the effective URL should be the last-resort 'backstop' URL."
             )
             log.info(  " + This is the 'last-resort', backstop URL, either taken from an environment variable or system property, or else hard-coded into sbt-ethereum. " )

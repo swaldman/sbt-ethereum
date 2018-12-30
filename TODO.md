@@ -102,8 +102,6 @@ Other
 
 * Should I define distinct sbt configs for Mainnet, Rinkeby, Ropsten, etc (so we might do "Rinkeby / ethTransactionInvoke ..." etc)?
 
-* ethNodeChainIdDefaultSet etc.
-
 * ethTransactionMockRaw ?
 
 * try Space ~> Space.* ~> for parsers? (Is Space Parser[Char] or Parser[String]???)
