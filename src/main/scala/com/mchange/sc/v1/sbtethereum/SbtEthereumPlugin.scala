@@ -123,10 +123,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     // MT: internally thread-safe
     val SenderOverride = new ChainIdMutable[EthAddress]
 
-    // MT: protected by NodeJsonRpcOverride's lock
-    val NodeUrlOverride = new AtomicReference[Map[Int,String]]( Map.empty ) // Int is the chain ID
+    // MT: internally thread-safe
+    val NodeUrlOverride = new ChainIdMutable[String]
 
-    // MT: onternally thread-safe
+    // MT: internally thread-safe
     val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
 
     // MT: protected by LocalGanache's lock
@@ -147,9 +147,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         AbiOverrides.set( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
       }
       SenderOverride.reset()
-      NodeUrlOverride.synchronized {
-        NodeUrlOverride.set( Map.empty )
-      }
+      NodeUrlOverride.reset()
       LocalGanache synchronized {
         LocalGanache.set( None )
       }
@@ -1277,12 +1275,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def maybeFindNodeUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Option[String]]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val mbOverrideNodeUrl = {
-      Mutables.NodeUrlOverride.synchronized {
-        val map = Mutables.NodeUrlOverride.get
-        map.get( chainId )
-      }
-    }
+    val mbOverrideNodeUrl = Mutables.NodeUrlOverride.get( chainId )
     mbOverrideNodeUrl match {
       case Some( url ) => {
         Some( url )
@@ -3101,7 +3094,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
           case Some( oldOverride ) => {
             Mutables.ChainIdOverride.set( Some( newValue ) )
-            log.info( s"A prior chain ID override (${oldOverride}) has been replaced with a new override, chain ID ${newValue}." )
+            log.info( s"A prior chain ID override (old value ${oldOverride}) has been replaced with a new override, chain ID ${newValue}." )
             xethTriggerDirtyAliasCache
           }
           case None => {
@@ -3248,10 +3241,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeUrlOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val map = Mutables.NodeUrlOverride.synchronized {
-      Mutables.NodeUrlOverride.get
-    }
-    map.get( chainId ) match {
+    val mbNodeUrlOverride = Mutables.NodeUrlOverride.get( chainId )
+    mbNodeUrlOverride match {
       case Some( url ) => {
         log.info( s"The default node json-rpc URL for chain with ID ${chainId} has been overridden. The overridden value '${url}' will be used for all tasks." )
       }
@@ -3265,21 +3256,15 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val overrideUrl = urlParser( "<override-json-rpc-url>" ).parsed
-    Mutables.NodeUrlOverride.synchronized {
-      val map = Mutables.NodeUrlOverride.get
-      Mutables.NodeUrlOverride.set( map + Tuple2( chainId, overrideUrl ) )
-    }
+    Mutables.NodeUrlOverride.set( chainId, overrideUrl )
     log.info( s"The default node json-rpc URL for chain with ID ${chainId} has been overridden. The new overridden value '${overrideUrl}' will be used for all tasks." )
   }
 
   private def ethNodeUrlOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    Mutables.NodeUrlOverride.synchronized {
-      val map = Mutables.NodeUrlOverride.get
-      Mutables.NodeUrlOverride.set( map - chainId )
-    }
-    log.info( s"Any override has been dropped. The default node json-rpc URL for chain with ID ${chainId} will be used for all tasks." )
+    Mutables.NodeUrlOverride.drop( chainId )
+    log.info( s"Any override has been dropped. The default node json-rpc URL for chain with ID ${chainId}, or else an sbt-ethereum hardcoded value, will be used for all tasks." )
   }
 
   // make sure this task is kept in sync with maybeFindNodeUrlTask(...)
@@ -3289,10 +3274,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
 
-    val overridesMap = Mutables.NodeUrlOverride.synchronized {
-      Mutables.NodeUrlOverride.get
-    }
-    val mbOverride = overridesMap.get( chainId )
+    val mbOverride = Mutables.NodeUrlOverride.get( chainId )
     val mbBuildSetting = (config/ethcfgNodeUrl).?.value
     val mbShoeboxDefault = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
 
@@ -3300,7 +3282,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     mbEffective match {
       case Some( effective ) => {
-        log.info( s"The current effective node json-rpc URL is ${effective}." )
+        log.info( s"The current effective node json-rpc URL is '${effective}'." )
 
         ( mbOverride, mbBuildSetting, mbShoeboxDefault ) match {
           case ( Some( ov ), _, _) => {
