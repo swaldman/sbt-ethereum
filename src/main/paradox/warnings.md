@@ -12,7 +12,7 @@ Interacting with blockchains, you may find yourself putting serious economic val
 This is young, new, very lightly tested free software. It is provided with __NO WARRANTIES__ to the extent permitted by applicable law.
 It has not thus far been subject to security audits or any kind of formal verification.
 
-Please be careful, and try out whatever it is you mean to do with small stakes before working with serious money.
+Please be careful, and **try out whatever it is you mean to do with small stakes** before working with serious money.
 
 @@@
 
