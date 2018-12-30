@@ -19,8 +19,6 @@ DB schema updates
 
 Other
 
-* ethNodePing
-
 * etherscanApiKey to set/drop/print convention
 
 * let repositories suggest ABIs <--> addresses <--> aliases ???
@@ -106,6 +104,10 @@ Other
 
 * try Space ~> Space.* ~> for parsers? (Is Space Parser[Char] or Parser[String]???)
 
+
+* Rationalize / modularize Mutables
+
+* Adopt consistent policy re handling of overrides across chain switches
 
 
 

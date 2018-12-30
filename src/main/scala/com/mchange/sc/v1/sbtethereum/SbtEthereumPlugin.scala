@@ -363,6 +363,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressSenderDefaultDrop   = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderDefaultSet    = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderDefaultPrint  = taskKey [Unit]       ("Displays any sender override, if set.")
+    val ethAddressSenderOverride      = inputKey[Unit]       ("Basically an alias to 'ethAddressSenderOverrideSet'.")
     val ethAddressSenderOverrideDrop  = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderOverrideSet   = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderOverridePrint = taskKey [Unit]       ("Displays any sender override, if set.")
@@ -410,6 +411,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethNodeChainIdDefaultSet   = inputKey[Unit]("Sets the default chain ID sbt-ethereum should use.")
     val ethNodeChainIdDefaultPrint = taskKey[Unit] ("Displays any default chain ID that may have been set.")
 
+    val ethNodeChainIdOverride      = inputKey[Unit]("Basically an alias to 'ethNodeChainIdOverrideSet'.")
     val ethNodeChainIdOverrideDrop  = taskKey[Unit] ("Removes session override of the default and/or hard-coded chain ID that may have been set.")
     val ethNodeChainIdOverrideSet   = inputKey[Unit]("Sets a session override of any default or hard-coded chain ID.")
     val ethNodeChainIdOverridePrint = taskKey[Unit] ("Displays any session override of the chain ID that may have been set.")
@@ -422,8 +424,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethNodeUrlDefaultDrop  = taskKey[Unit] ("Drops the default node json-rpc URL.")
     val ethNodeUrlDefaultPrint = taskKey[Unit] ("Displays the current default node json-rpc URL.")
 
-    val ethNodeUrlOverrideSet   = inputKey[Unit]("Overrides the default node json-rpc URL.")
+    val ethNodeUrlOverride      = inputKey[Unit]("Basically an alias to 'ethNodeUrlOverrideSet'.")
     val ethNodeUrlOverrideDrop  = taskKey[Unit] ("Drops any override, reverting to use of the default node json-rpc URL.")
+    val ethNodeUrlOverrideSet   = inputKey[Unit]("Overrides the default node json-rpc URL.")
     val ethNodeUrlOverridePrint = taskKey[Unit] ("Displays any override of the default node json-rpc URL.")
 
     val ethNodeUrlPrint = taskKey[Unit] ("Displays the currently effective node json-rpc URL, and explains how it is configured.")
@@ -437,9 +440,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethTransactionDeploy = inputKey[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]("""Deploys the named contract, if specified, or else all contracts in 'ethcfgAutoDeployContracts'""")
 
+    val ethTransactionGasLimitOverride      = inputKey[Unit] ("Basically an alias to 'ethTransactionGasLimitOverrideSet'.")
     val ethTransactionGasLimitOverrideSet   = inputKey[Unit] ("Defines a value which overrides the usual automatic marked-up estimation of gas required for a transaction.")
     val ethTransactionGasLimitOverrideDrop  = taskKey [Unit] ("Removes any previously set gas override, reverting to the usual automatic marked-up estimation of gas required for a transaction.")
     val ethTransactionGasLimitOverridePrint = taskKey [Unit] ("Displays the current gas override, if set.")
+
+    val ethTransactionGasPriceOverride      = inputKey[Unit] ("Basically an alias to 'ethTransactionGasPriceOverrideSet'.")
     val ethTransactionGasPriceOverrideSet   = inputKey[Unit] ("Defines a value which overrides the usual automatic marked-up default gas price that will be paid for a transaction.")
     val ethTransactionGasPriceOverrideDrop  = taskKey [Unit] ("Removes any previously set gas price override, reverting to the usual automatic marked-up default.")
     val ethTransactionGasPriceOverridePrint = taskKey [Unit] ("Displays the current gas price override, if set.")
@@ -448,6 +454,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionLookup = inputKey[Client.TransactionReceipt]("Looks up (and potentially waits for) the transaction associated with a given transaction hash.")
     val ethTransactionMock   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Mocks a call to any function. Burns no Ether, makes no persistent changes, returns a simulated result.")
 
+    val ethTransactionNonceOverride      = inputKey[Unit]("Basically an alias to 'ethTransactionNonceOverrideSet'.")
     val ethTransactionNonceOverrideDrop  = taskKey[Unit]("Removes any nonce override that may have been set.")
     val ethTransactionNonceOverridePrint = taskKey[Unit]("Prints any nonce override that may have been set.")
     val ethTransactionNonceOverrideSet   = inputKey[Unit]("Sets a fixed nonce to be used in the transactions, rather than automatically choosing the next nonce. (Remains fixed and set until explicitly dropped.)")
@@ -737,6 +744,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethAddressSenderOverrideSet in Test := { ethAddressSenderOverrideSetTask( Test ).evaluated },
 
+    ethAddressSenderOverride in Compile := { ethAddressSenderOverrideSetTask( Compile ).evaluated },
+
+    ethAddressSenderOverride in Test := { ethAddressSenderOverrideSetTask( Test ).evaluated },
+
     ethContractAbiAliasDrop in Compile := { ethContractAbiAliasDropTask( Compile ).evaluated },
 
     ethContractAbiAliasDrop in Test := { ethContractAbiAliasDropTask( Test ).evaluated },
@@ -865,6 +876,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethNodeChainIdOverrideSet in Compile := { ethNodeChainIdOverrideSetTask( Compile ).evaluated }, // only Compile config is supported
 
+    ethNodeChainIdOverride in Compile := { ethNodeChainIdOverrideSetTask( Compile ).evaluated }, // only Compile config is supported
+
     ethNodeChainIdPrint in Compile := { ethNodeChainIdPrintTask( Compile ).value },
 
     ethNodeChainIdPrint in Test := { ethNodeChainIdPrintTask( Test ).value },
@@ -897,6 +910,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethNodeUrlOverrideSet in Test := { ethNodeUrlOverrideSetTask( Test ).evaluated },
 
+    ethNodeUrlOverride in Compile := { ethNodeUrlOverrideSetTask( Compile ).evaluated },
+
+    ethNodeUrlOverride in Test := { ethNodeUrlOverrideSetTask( Test ).evaluated },
+
     ethNodeUrlPrint in Compile := { ethNodeUrlPrintTask( Compile ).value },
 
     ethNodeUrlPrint in Test := { ethNodeUrlPrintTask( Test ).value },
@@ -918,11 +935,15 @@ object SbtEthereumPlugin extends AutoPlugin {
     // we may bifurcate and scope this in the future
     ethTransactionGasLimitOverrideSet := { ethTransactionGasLimitOverrideSetTask.evaluated },
 
+    ethTransactionGasLimitOverride := { ethTransactionGasLimitOverrideSetTask.evaluated },
+
     ethTransactionGasLimitOverrideDrop := { ethTransactionGasLimitOverrideDropTask.value },
 
     ethTransactionGasLimitOverridePrint := { ethTransactionGasLimitOverridePrintTask.value },
 
     ethTransactionGasPriceOverrideSet := { ethTransactionGasPriceOverrideSetTask.evaluated },
+
+    ethTransactionGasPriceOverride := { ethTransactionGasPriceOverrideSetTask.evaluated },
 
     ethTransactionGasPriceOverrideDrop := { ethTransactionGasPriceOverrideDropTask.value },
 
@@ -944,6 +965,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     // since any nonce override gets used in tests as well as other contexts
     // we may bifurcate and scope this in the future
     ethTransactionNonceOverrideSet := { ethTransactionNonceOverrideSetTask.evaluated },
+
+    ethTransactionNonceOverride := { ethTransactionNonceOverrideSetTask.evaluated },
 
     ethTransactionNonceOverrideDrop := { ethTransactionNonceOverrideDropTask.value },
 
@@ -2001,9 +2024,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     Mutables.SenderOverride.synchronized {
       Mutables.SenderOverride.set( Map.empty )
     }
-    log.info(
-      "No sender override is now set. Effective sender will be determined by 'ethcfgAddressSender' setting, a value set via 'ethAddressSenderDefaultSet', the System property 'eth.sender', the environment variable 'ETH_SENDER'."
-    )
+    log.info("No sender override is now set.")
+    log.info("Effective sender will be determined by 'ethcfgAddressSender' setting, a value set via 'ethAddressSenderDefaultSet', the System property 'eth.sender', the environment variable 'ETH_SENDER'.")
   }
 
   private def ethAddressSenderOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
@@ -3014,7 +3036,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           case Test    => throw new UnexpectedConfigurationException( config )
           case _       => throw new UnexpectedConfigurationException( config )
         }
-        log.info( s"Any default chain ID set for configuration '${config}' has been dropped." )
+        log.info( s"Default chain ID, previously set to ${id}, has now been dropped. No default node chain ID is set." )
         log.info(  "The node chain ID will be determined by hardcoded defaults, unless overridden by an on override." )
       }
       case None => {
@@ -3039,7 +3061,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         case Test => throw new UnexpectedConfigurationException( config ) 
         case _    => throw new UnexpectedConfigurationException( config )
       }
-      log.info( s"The default chain ID for configuration '${config}' has been set to ${chainId}." )
+      log.info( s"The default chain ID has been set to ${chainId}." )
     }
   }
 
@@ -3055,8 +3077,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
     mbChainId match {
-      case Some( chainId ) => log.info( s"A default chain ID for configuration '${config}' has been explicity set to value ${chainId}." )
-      case None            => log.info( s"No default chain ID for configuration '${config}' has been explicitly set. A hardcoded default will be used." )
+      case Some( chainId ) => log.info( s"A default chain ID has been explicity set to value ${chainId}." )
+      case None            => log.info( s"No default chain ID has been explicitly set. A hardcoded default will be used." )
     }
   }
 
@@ -3068,8 +3090,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       val oldValue = Mutables.ChainIdOverride.get
       Mutables.ChainIdOverride.set( None )
       oldValue match {
-        case Some( chainId ) => log.info( "A chain ID override for configuration '${config}' was set, but has been dropped." ) // when we have the find task implemented, make this more informative
-        case None            => log.info( "No chain ID override for configuration '${config}' was set to be dropped." )
+        case Some( chainId ) => log.info( "A chain ID override was set, but has been dropped." ) // when we have the find task implemented, make this more informative
+        case None            => log.info( "No chain ID override was set to be dropped." )
       }
     }
   }
@@ -3077,7 +3099,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeChainIdOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     assert( config == Compile, "Only the Compile confg is supported for now." )
 
-    val parser  = intParser(s"<chain-id-for-config-${config}>")
+    val parser  = intParser(s"<chain-id>")
 
     Def.inputTask {
       val log = streams.value.log
@@ -3086,8 +3108,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         val newValue = parser.parsed
         Mutables.ChainIdOverride.set( Some( newValue ) )
         oldValue match {
-          case Some( oldChainId ) => log.info( s"A prior chain ID override (${oldChainId}) for configuration '${config}' has been replaced with a new override, chain ID ${newValue}." )
-          case None               => log.info( s"The chain ID for configuration '${config}' has been overridden to ${newValue}." )
+          case Some( oldChainId ) => log.info( s"A prior chain ID override (${oldChainId}) has been replaced with a new override, chain ID ${newValue}." )
+          case None               => log.info( s"The chain ID has been overridden to ${newValue}." )
         }
       }
     }
@@ -3100,8 +3122,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val value = Mutables.ChainIdOverride.get
       value match {
-        case Some( chainId ) => log.info( "The chain ID for configuration '${config}' is overridden to ${chainId}." )
-        case None            => log.info( "The chain ID for configuration '${config}' has not been overridden." )
+        case Some( chainId ) => log.info( s"The chain ID is overridden to ${chainId}." )
+        case None            => log.info(  "The chain ID has not been overridden." )
       }
     }
   }
