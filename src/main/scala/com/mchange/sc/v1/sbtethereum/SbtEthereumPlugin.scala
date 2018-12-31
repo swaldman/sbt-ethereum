@@ -4026,19 +4026,16 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       catch {
         case t : Poller.TimeoutException => {
-          log.warn( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } may or may not eventually succeed, but we've timed out before hearing back.""" )
-          None
+          throw nst( new PingFailedException( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } may or may not eventually succeed, but we've timed out before hearing back.""" ) )
         }
         case inc @ Incomplete( _, _, mbMsg, _, mbCause ) => {
           mbMsg.foreach( msg => log.warn( s"sbt.Incomplete - Message: ${msg}" ) )
           mbCause.foreach( _.printStackTrace() )
-          log.warn( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } yielded an sbt.Incomplete: ${inc}""")
-          None
+          throw nst( new PingFailedException( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } yielded an sbt.Incomplete: ${inc}""") )
         }
         case NonFatal(t) => {
           t.printStackTrace()
-          log.warn( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } yielded an Exception: ${t}""")
-          None
+          throw new PingFailedException( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } yielded an Exception: ${t}""", t)
         }
       }
     }
