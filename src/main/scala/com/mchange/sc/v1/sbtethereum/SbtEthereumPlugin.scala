@@ -112,6 +112,15 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ChainIdOverride = new AtomicReference[Option[Int]]( None ) // Only supported for Compile config
 
     // MT: internally thread-safe
+    val SenderOverrides = new ChainIdMutable[EthAddress]
+
+    // MT: internally thread-safe
+    val NodeUrlOverrides = new ChainIdMutable[String]
+
+    // MT: internally thread-safe
+    val AbiOverrides = new ChainIdMutable[immutable.Map[EthAddress,Abi]]
+
+    // MT: internally thread-safe
     val GasLimitOverrides = new ChainIdMutable[BigInt]
 
     // MT: internally thread-safe
@@ -119,15 +128,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // MT: internally thread-safe
     val NonceOverrides = new ChainIdMutable[BigInt]
-
-    // MT: internally thread-safe
-    val AbiOverrides = new ChainIdMutable[immutable.Map[EthAddress,Abi]]
-
-    // MT: internally thread-safe
-    val SenderOverride = new ChainIdMutable[EthAddress]
-
-    // MT: internally thread-safe
-    val NodeUrlOverride = new ChainIdMutable[String]
 
     // MT: internally thread-safe
     val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
@@ -142,13 +142,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       SessionSolidityCompilers.set( None )
       CurrentSolidityCompiler.set( None )
       ChainIdOverride.set( None )
+      SenderOverrides.reset()
+      NodeUrlOverrides.reset()
+      AbiOverrides.reset()
       GasLimitOverrides.reset()
       GasPriceOverrides.reset()
       NonceOverrides.reset()
       OneTimeWarner.resetAll()
-      AbiOverrides.reset()
-      SenderOverride.reset()
-      NodeUrlOverride.reset()
       LocalGanache synchronized {
         LocalGanache.set( None )
       }
@@ -185,7 +185,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val modified = {
       Mutables.AbiOverrides.modify( chainId ) { pre =>
         pre match {
-          case Some( mapping ) => Some(mapping - address)
+          case Some( mapping ) => Some(mapping - address).filter( _.nonEmpty )
           case None            => None
         }
       }
@@ -471,11 +471,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethOnLoadRecoverInconsistentSchema = taskKey[Unit]( "Checks to see if the shoebox database schema is in an inconsistent state, and offers to recover a consistent version from dump." )
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
-    val xethTransactionCount = taskKey[BigInt]("Finds the next nonce for the current sender")
     val xethShoeboxRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's shoebox to its required user-only values.")
     val xethSqlQueryShoeboxDatabase = inputKey[Unit]("Primarily for debugging. Query the internal shoebox database.")
     val xethSqlUpdateShoeboxDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal shoebox database with arbitrary SQL.")
     val xethStubEnvironment = taskKey[Tuple2[stub.Context, stub.Sender.Signing]]("Offers the elements you need to work with smart-contract stubs from inside an sbt-ethereum build.")
+    val xethTransactionCount = taskKey[BigInt]("Finds the next nonce for the current sender")
     val xethTriggerDirtyAliasCache = taskKey[Unit]("Indirectly provokes an update of the cache of aliases used for tab completions.")
     val xethTriggerDirtySolidityCompilerList = taskKey[Unit]("Indirectly provokes an update of the cache of aavailable solidity compilers used for tab completions.")
     val xethUpdateContractDatabase = taskKey[Boolean]("Integrates newly compiled contracts into the contract database. Returns true if changes were made.")
@@ -1159,11 +1159,24 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val EmptyTask : Initialize[Task[Unit]] = Def.task( () )
 
+  private def markPotentiallyResetChainId( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
+    val log = streams.value.log
+    val chainId = findNodeChainIdTask(warn=false)(config).value
+    log.info( s"The session is now active on chain with ID ${chainId}." )
+    Mutables.SenderOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The sender overridden to ${verboseAddress( chainId, ovr )}.") }
+    Mutables.NodeUrlOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The node URL has been overridden to '${ovr}'.") }
+    Mutables.AbiOverrides.get( chainId ).foreach { ovr => log.warn( s"""NOTE: ABI overrides are set for the following addresses on this chain: ${ovr.keys.map(hexString).mkString(", ")}""" ) }
+    Mutables.GasLimitOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas limit overrides remains set for this chain, ${ovr} wei." ) }
+    Mutables.GasPriceOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas price override remains set for this chain, ${ovr} wei." ) }
+    Mutables.NonceOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A nonce override remains set for this chain. Its value is ${ovr}." ) }
+    xethTriggerDirtyAliasCache
+  }
+
   private def findAddressSenderTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = Def.task {
     Failable {
       val log = streams.value.log
       val chainId = findNodeChainIdTask(warn=true)(config).value
-      val mbOverrideAddressSender = Mutables.SenderOverride.get( chainId )
+      val mbOverrideAddressSender = Mutables.SenderOverrides.get( chainId )
       mbOverrideAddressSender match {
         case Some( address ) => {
           address
@@ -1284,7 +1297,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def maybeFindNodeUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Option[String]]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val mbOverrideNodeUrl = Mutables.NodeUrlOverride.get( chainId )
+    val mbOverrideNodeUrl = Mutables.NodeUrlOverrides.get( chainId )
     mbOverrideNodeUrl match {
       case Some( url ) => {
         Some( url )
@@ -1870,7 +1883,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     try {
       val effective = f_effective.assert
-      val mbOverride = Mutables.SenderOverride.get( chainId )
+      val mbOverride = Mutables.SenderOverrides.get( chainId )
       val mbBuildSetting = (config/ethcfgAddressSender).?.value
       val mbShoeboxDefault = shoebox.Database.findDefaultSenderAddress( chainId ).assert
 
@@ -2008,7 +2021,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressSenderOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    Mutables.SenderOverride.drop( chainId )
+    Mutables.SenderOverrides.drop( chainId )
     log.info("No sender override is now set.")
     log.info("Effective sender will be determined by 'ethcfgAddressSender' setting, a value set via 'ethAddressSenderDefaultSet', the System property 'eth.sender', or the environment variable 'ETH_SENDER'.")
   }
@@ -2018,7 +2031,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val chainId = findNodeChainIdTask(warn=true)(config).value
 
-    val mbSenderOverride = Mutables.SenderOverride.get( chainId )
+    val mbSenderOverride = Mutables.SenderOverrides.get( chainId )
 
     val message = mbSenderOverride.fold( s"No sender override is currently set (for chain with ID ${chainId})." ) { address =>
       val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s", aliases $str)" ) )
@@ -2036,7 +2049,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val address = parser.parsed
       val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "")( _.fold("")( str => s", aliases $str)" ) )
-      Mutables.SenderOverride.set( chainId, address )
+      Mutables.SenderOverrides.set( chainId, address )
       log.info( s"Sender override set to '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart})." )
     }
   }
@@ -3018,7 +3031,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         log.info( s"Default chain ID, previously set to ${id}, has now been dropped. No default node chain ID is set." )
         log.info(  "The node chain ID will be determined by hardcoded defaults, unless overridden by an on override." )
-        xethTriggerDirtyAliasCache
+        markPotentiallyResetChainId( config )
       }
       case None => {
         log.info( s"No default chain ID was set to be dropped." )
@@ -3044,7 +3057,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         case _    => throw new UnexpectedConfigurationException( config )
       }
       log.info( s"The default chain ID has been set to ${chainId}." )
-      xethTriggerDirtyAliasCache
+      markPotentiallyResetChainId( config )
     }
   }
 
@@ -3076,7 +3089,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         case Some( chainId ) => {
           log.info( s"A chain ID override had been set to ${chainId}, but has now been dropped." ) // when we have the find task implemented, make this more informative
           log.info( "The effective chain ID will be determined either by a default set with 'ethNodeChainIdDefaultSet', by an 'ethcfgNodeChainId' set in the build or '.sbt. folder, or an sbt-ethereum hardcoded default." )
-          xethTriggerDirtyAliasCache
+          markPotentiallyResetChainId( config )
         }
         case None => {
           log.info( "No chain ID override was set to be dropped." )
@@ -3104,12 +3117,12 @@ object SbtEthereumPlugin extends AutoPlugin {
           case Some( oldOverride ) => {
             Mutables.ChainIdOverride.set( Some( newValue ) )
             log.info( s"A prior chain ID override (old value ${oldOverride}) has been replaced with a new override, chain ID ${newValue}." )
-            xethTriggerDirtyAliasCache
+            markPotentiallyResetChainId( config )
           }
           case None => {
             Mutables.ChainIdOverride.set( Some( newValue ) )
             log.info( s"The chain ID has been overridden to ${newValue}." )
-            xethTriggerDirtyAliasCache
+            markPotentiallyResetChainId( config )
           }
         }
       }
@@ -3250,7 +3263,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeUrlOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val mbNodeUrlOverride = Mutables.NodeUrlOverride.get( chainId )
+    val mbNodeUrlOverride = Mutables.NodeUrlOverrides.get( chainId )
     mbNodeUrlOverride match {
       case Some( url ) => {
         log.info( s"The default node json-rpc URL for chain with ID ${chainId} has been overridden. The overridden value '${url}' will be used for all tasks." )
@@ -3265,14 +3278,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val overrideUrl = urlParser( "<override-json-rpc-url>" ).parsed
-    Mutables.NodeUrlOverride.set( chainId, overrideUrl )
+    Mutables.NodeUrlOverrides.set( chainId, overrideUrl )
     log.info( s"The default node json-rpc URL for chain with ID ${chainId} has been overridden. The new overridden value '${overrideUrl}' will be used for all tasks." )
   }
 
   private def ethNodeUrlOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    Mutables.NodeUrlOverride.drop( chainId )
+    Mutables.NodeUrlOverrides.drop( chainId )
     log.info( s"Any override has been dropped. The default node json-rpc URL for chain with ID ${chainId}, or else an sbt-ethereum hardcoded value, will be used for all tasks." )
   }
 
@@ -3283,7 +3296,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
 
-    val mbOverride = Mutables.NodeUrlOverride.get( chainId )
+    val mbOverride = Mutables.NodeUrlOverrides.get( chainId )
     val mbBuildSetting = (config/ethcfgNodeUrl).?.value
     val mbShoeboxDefault = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
 
