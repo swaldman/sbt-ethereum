@@ -115,7 +115,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val GasPriceOverride = new AtomicReference[Option[BigInt]]( None )
 
-    val NonceOverride = new AtomicReference[Option[BigInt]]( None )
+    // MT: internally thread-safe
+    val NonceOverrides = new ChainIdMutable[BigInt]
 
     // MT: internally thread-safe
     val AbiOverrides = new ChainIdMutable[immutable.Map[EthAddress,Abi]]
@@ -141,7 +142,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       ChainIdOverride.set( None )
       GasLimitOverride.set( None )
       GasPriceOverride.set( None )
-      NonceOverride.set( None )
+      NonceOverrides.reset()
       OneTimeWarner.resetAll()
       AbiOverrides.reset()
       SenderOverride.reset()
@@ -158,8 +159,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     util.Parsers.reset()
   }
 
-  private def unwrapNonceOverride( mbLog : Option[sbt.Logger] ) : Option[Unsigned256] = {
-    val out = Mutables.NonceOverride.get.map( Unsigned256.apply )
+  private def unwrapNonceOverride( mbLog : Option[sbt.Logger], chainId : Int ) : Option[Unsigned256] = {
+    val out = Mutables.NonceOverrides.get( chainId ).map( Unsigned256.apply )
     out.foreach { noverride =>
       mbLog.foreach { log =>
         log.info( s"Nonce override set: ${noverride.widen}" )
@@ -939,16 +940,21 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethTransactionMock in Test := { ethTransactionMockTask( Test ).evaluated },
 
-    // we don't scope the nonce override tasks for now
-    // since any nonce override gets used in tests as well as other contexts
-    // we may bifurcate and scope this in the future
-    ethTransactionNonceOverrideSet := { ethTransactionNonceOverrideSetTask.evaluated },
+    ethTransactionNonceOverride in Compile := { ethTransactionNonceOverrideSetTask( Compile ).evaluated },
 
-    ethTransactionNonceOverride := { ethTransactionNonceOverrideSetTask.evaluated },
+    ethTransactionNonceOverride in Test := { ethTransactionNonceOverrideSetTask( Test ).evaluated },
 
-    ethTransactionNonceOverrideDrop := { ethTransactionNonceOverrideDropTask.value },
+    ethTransactionNonceOverrideSet in Compile := { ethTransactionNonceOverrideSetTask( Compile ).evaluated },
 
-    ethTransactionNonceOverridePrint := { ethTransactionNonceOverridePrintTask.value },
+    ethTransactionNonceOverrideSet in Test := { ethTransactionNonceOverrideSetTask( Test ).evaluated },
+
+    ethTransactionNonceOverrideDrop in Compile := { ethTransactionNonceOverrideDropTask( Compile ).value },
+
+    ethTransactionNonceOverrideDrop in Test := { ethTransactionNonceOverrideDropTask( Test ).value },
+
+    ethTransactionNonceOverridePrint in Compile := { ethTransactionNonceOverridePrintTask( Compile ).value },
+
+    ethTransactionNonceOverridePrint in Test := { ethTransactionNonceOverridePrintTask( Test ).value },
 
     ethTransactionRaw in Compile := { ethTransactionRawTask( Compile ).evaluated },
 
@@ -3724,7 +3730,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val nonceOverride = {
-        unwrapNonceOverride( Some( log ) ) match {
+        unwrapNonceOverride( Some( log ), chainId ) match {
           case noverride @ Some( _ ) if (quartets.length <= 1) => {
             noverride
           }
@@ -3875,7 +3881,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val caller = findAddressSenderTask(warn=true)(config).value.assert
-      val nonceOverride = unwrapNonceOverride( Some( log ) )
+      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
 
@@ -3929,24 +3935,33 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionViewMockTask( restrictToConstants = false )( config )
   }
 
-  private def ethTransactionNonceOverrideDropTask : Initialize[Task[Unit]] = Def.task {
+  private def ethTransactionNonceOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    Mutables.NonceOverride.set( None )
-    log.info("Any nonce override has been unset. The nonces for any new transactions will be automatically computed.")
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    Mutables.NonceOverrides.drop( chainId )
+    log.info( s"Any nonce override for chain with ID ${chainId} has been unset. The nonces for any new transactions will be automatically computed." )
   }
 
-  private def ethTransactionNonceOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
+  private def ethTransactionNonceOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val amount = bigIntParser("<nonce override>").parsed
-    Mutables.NonceOverride.set( Some( amount ) )
-    log.info( s"Nonce override set to ${amount}. Future transactions will use this value as a fixed nonce, until this override is explcitly unset with 'ethTransactionNonceOverrideDrop'." )
+    Mutables.NonceOverrides.set( chainId, amount )
+    log.info( s"Nonce override set to ${amount} for chain with ID ${chainId}." )
+    log.info(  "Future transactions will use this value as a fixed nonce, until this override is explcitly unset with 'ethTransactionNonceOverrideDrop'." )
   }
 
-  private def ethTransactionNonceOverridePrintTask : Initialize[Task[Unit]] = Def.task {
+  private def ethTransactionNonceOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    Mutables.NonceOverride.get match {
-      case Some( value ) => log.info( s"A nonce override is set, with value ${value}. Future transactions will use this value as a fixed nonce, until this override is explcitly unset with 'ethTransactionNonceOverrideDrop'." )
-      case None          => log.info( "No nonce override is currently set. The nonces for any new transactions will be automatically computed." )
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    Mutables.NonceOverrides.get( chainId ) match {
+      case Some( value ) => {
+        log.info( s"A nonce override is set, with value ${value}, on chain with ID ${chainId}." )
+        log.info(  "Future transactions will use this value as a fixed nonce, until this override is explcitly unset with 'ethTransactionNonceOverrideDrop'." )
+      }
+      case None => {
+        log.info( s"No nonce override is currently set for chain with ID ${chainId}. The nonces for any new transactions will be automatically computed." )
+      }
     }
   }
 
@@ -4004,7 +4019,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val from = findAddressSenderTask(warn=true)(config).value.assert
       val (to, data, amount) = parser.parsed
-      val nonceOverride = unwrapNonceOverride( Some( log ) )
+      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
 
@@ -4030,7 +4045,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val from = findAddressSenderTask(warn=true)(config).value.assert
       val (to, amount) = parser.parsed
-      val nonceOverride = unwrapNonceOverride( Some( log ) )
+      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
 

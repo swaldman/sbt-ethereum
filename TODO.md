@@ -109,6 +109,8 @@ Other
 
 * Adopt consistent policy re handling of overrides across chain switches
 
+* Include information about overrides in transaction approver messages?
+
 
 
 
