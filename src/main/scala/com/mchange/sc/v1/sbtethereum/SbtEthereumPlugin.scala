@@ -113,7 +113,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val GasLimitOverride = new AtomicReference[Option[BigInt]]( None )
 
-    val GasPriceOverride = new AtomicReference[Option[BigInt]]( None )
+    val GasPriceOverrides = new ChainIdMutable[BigInt]
 
     // MT: internally thread-safe
     val NonceOverrides = new ChainIdMutable[BigInt]
@@ -141,7 +141,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       CurrentSolidityCompiler.set( None )
       ChainIdOverride.set( None )
       GasLimitOverride.set( None )
-      GasPriceOverride.set( None )
+      GasPriceOverrides.reset()
       NonceOverrides.reset()
       OneTimeWarner.resetAll()
       AbiOverrides.reset()
@@ -920,13 +920,21 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethTransactionGasLimitOverridePrint := { ethTransactionGasLimitOverridePrintTask.value },
 
-    ethTransactionGasPriceOverrideSet := { ethTransactionGasPriceOverrideSetTask.evaluated },
+    ethTransactionGasPriceOverrideSet in Compile := { ethTransactionGasPriceOverrideSetTask( Compile ).evaluated },
 
-    ethTransactionGasPriceOverride := { ethTransactionGasPriceOverrideSetTask.evaluated },
+    ethTransactionGasPriceOverrideSet in Test := { ethTransactionGasPriceOverrideSetTask( Test ).evaluated },
 
-    ethTransactionGasPriceOverrideDrop := { ethTransactionGasPriceOverrideDropTask.value },
+    ethTransactionGasPriceOverride in Compile := { ethTransactionGasPriceOverrideSetTask( Compile ).evaluated },
 
-    ethTransactionGasPriceOverridePrint := { ethTransactionGasPriceOverridePrintTask.value },
+    ethTransactionGasPriceOverride in Test := { ethTransactionGasPriceOverrideSetTask( Test ).evaluated },
+
+    ethTransactionGasPriceOverrideDrop in Compile := { ethTransactionGasPriceOverrideDropTask( Compile ).value },
+
+    ethTransactionGasPriceOverrideDrop in Test := { ethTransactionGasPriceOverrideDropTask( Test ).value },
+
+    ethTransactionGasPriceOverridePrint in Compile := { ethTransactionGasPriceOverridePrintTask( Compile ).value },
+
+    ethTransactionGasPriceOverridePrint in Test := { ethTransactionGasPriceOverridePrintTask( Test ).value },
 
     ethTransactionInvoke in Compile := { ethTransactionInvokeTask( Compile ).evaluated },
 
@@ -3851,25 +3859,29 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethTransactionGasPriceOverrideDropTask : Initialize[Task[Unit]] = Def.task {
+  private def ethTransactionGasPriceOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    Mutables.GasPriceOverride.set( None )
-    log.info("No gas price override is now set. Gas price will be automatically marked-up from your ethereum node's current default value.")
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    Mutables.GasPriceOverrides.drop( chainId )
+    log.info( s"No gas price override is now set for chain with ID ${chainId}." )
+    log.info(  "Gas price will be automatically marked-up from your ethereum node's current default value." )
   }
 
-  private def ethTransactionGasPriceOverridePrintTask : Initialize[Task[Unit]] = Def.task {
+  private def ethTransactionGasPriceOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    Mutables.GasPriceOverride.get match {
-      case Some( value ) => log.info( s"A gas price override is set, with value ${value}." )
-      case None          => log.info( "No gas price override is currently set." )
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    Mutables.GasPriceOverrides.get( chainId ) match {
+      case Some( value ) => log.info( s"A gas price override is set, with value ${value}, for chain with ID ${chainId}." )
+      case None          => log.info( s"No gas price override is currently set for chain with ID ${chainId}." )
     }
   }
 
-  private def ethTransactionGasPriceOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
+  private def ethTransactionGasPriceOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val amount = valueInWeiParser("<gas price override>").parsed
-    Mutables.GasPriceOverride.set( Some( amount ) )
-    log.info( s"Gas price override set to ${amount}." )
+    Mutables.GasPriceOverrides.set( chainId, amount )
+    log.info( s"Gas price override set to ${amount} for chain with ID ${chainId}." )
   }
 
   private def ethTransactionInvokeTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
@@ -4215,12 +4227,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
     val log        = streams.value.log
+    val chainId    = findNodeChainIdTask(warn=true)(config).value
     val jsonRpcUrl = findNodeUrlTask(warn=true)(config).value
 
     val markup          = ethcfgGasPriceMarkup.value
     val defaultGasPrice = (xethDefaultGasPrice in config).value
 
-    Mutables.GasPriceOverride.get match {
+    Mutables.GasPriceOverrides.get( chainId ) match {
       case Some( gasPriceOverride ) => gasPriceOverride
       case None                     => rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) )
     }
@@ -4393,7 +4406,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val rawChainId = findNodeChainIdTask(warn=true)(config).value
 
-    val chainId = {
+    val eip155ChainId = {
       if ( isEphemeralChain( rawChainId ) || !useReplayAttackProtection ) None else Some( EthChainId( rawChainId ) )
     }
 
@@ -4409,7 +4422,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
     val gasPriceTweak = {
-      Mutables.GasPriceOverride.get match {
+      Mutables.GasPriceOverrides.get( rawChainId ) match {
         case Some( overrideValue ) => {
           log.info( s"Gas price override set: ${overrideValue}")
           Invoker.Override( overrideValue )
@@ -4426,7 +4439,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Invoker.Context.fromUrl(
       jsonRpcUrl = jsonRpcUrl,
-      chainId = chainId,
+      chainId = eip155ChainId,
       gasPriceTweak = gasPriceTweak,
       gasLimitTweak = gasLimitTweak,
       pollPeriod = pollPeriod,
