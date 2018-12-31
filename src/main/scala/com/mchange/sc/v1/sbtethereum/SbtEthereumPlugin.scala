@@ -111,8 +111,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     // MT: protected by ChainIdOverride' lock
     val ChainIdOverride = new AtomicReference[Option[Int]]( None ) // Only supported for Compile config
 
-    val GasLimitOverride = new AtomicReference[Option[BigInt]]( None )
+    // MT: internally thread-safe
+    val GasLimitOverrides = new ChainIdMutable[BigInt]
 
+    // MT: internally thread-safe
     val GasPriceOverrides = new ChainIdMutable[BigInt]
 
     // MT: internally thread-safe
@@ -140,7 +142,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       SessionSolidityCompilers.set( None )
       CurrentSolidityCompiler.set( None )
       ChainIdOverride.set( None )
-      GasLimitOverride.set( None )
+      GasLimitOverrides.reset()
       GasPriceOverrides.reset()
       NonceOverrides.reset()
       OneTimeWarner.resetAll()
@@ -909,16 +911,21 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethTransactionDeploy in Test := { ethTransactionDeployTask( Test ).evaluated },
 
-    // we don't scope the gas override tasks for now
-    // since any gas override gets used in tests as well as other contexts
-    // we may bifurcate and scope this in the future
-    ethTransactionGasLimitOverrideSet := { ethTransactionGasLimitOverrideSetTask.evaluated },
+    ethTransactionGasLimitOverrideSet in Compile := { ethTransactionGasLimitOverrideSetTask( Compile ).evaluated },
 
-    ethTransactionGasLimitOverride := { ethTransactionGasLimitOverrideSetTask.evaluated },
+    ethTransactionGasLimitOverrideSet in Test := { ethTransactionGasLimitOverrideSetTask( Test ).evaluated },
 
-    ethTransactionGasLimitOverrideDrop := { ethTransactionGasLimitOverrideDropTask.value },
+    ethTransactionGasLimitOverride in Compile := { ethTransactionGasLimitOverrideSetTask( Compile ).evaluated },
 
-    ethTransactionGasLimitOverridePrint := { ethTransactionGasLimitOverridePrintTask.value },
+    ethTransactionGasLimitOverride in Test := { ethTransactionGasLimitOverrideSetTask( Test ).evaluated },
+
+    ethTransactionGasLimitOverrideDrop in Compile := { ethTransactionGasLimitOverrideDropTask( Compile ).value },
+
+    ethTransactionGasLimitOverrideDrop in Test := { ethTransactionGasLimitOverrideDropTask( Test ).value },
+
+    ethTransactionGasLimitOverridePrint in Compile := { ethTransactionGasLimitOverridePrintTask( Compile ).value },
+
+    ethTransactionGasLimitOverridePrint in Test := { ethTransactionGasLimitOverridePrintTask( Test ).value },
 
     ethTransactionGasPriceOverrideSet in Compile := { ethTransactionGasPriceOverrideSetTask( Compile ).evaluated },
 
@@ -3838,24 +3845,27 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethTransactionGasLimitOverrideDropTask : Initialize[Task[Unit]] = Def.task {
+  private def ethTransactionGasLimitOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    Mutables.GasLimitOverride.set( None )
-    log.info("No gas override is now set. Quantities of gas will be automatically computed.")
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    Mutables.GasLimitOverrides.drop( chainId )
+    log.info( s"No gas override is now set for chain with ID ${chainId}. Quantities of gas will be automatically computed." )
   }
 
-  private def ethTransactionGasLimitOverrideSetTask : Initialize[InputTask[Unit]] = Def.inputTask {
+  private def ethTransactionGasLimitOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
+    val chainId = findNodeChainIdTask(warn=true)(config).value
     val amount = bigIntParser("<gas override>").parsed
-    Mutables.GasLimitOverride.set( Some( amount ) )
-    log.info( s"Gas override set to ${amount}." )
+    Mutables.GasLimitOverrides.set( chainId, amount )
+    log.info( s"Gas override set to ${amount} on chain with ID ${chainId}." )
   }
 
-  private def ethTransactionGasLimitOverridePrintTask : Initialize[Task[Unit]] = Def.task {
+  private def ethTransactionGasLimitOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    Mutables.GasLimitOverride.get match {
-      case Some( value ) => log.info( s"A gas override is set, with value ${value}." )
-      case None          => log.info( "No gas override is currently set." )
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    Mutables.GasLimitOverrides.get( chainId ) match {
+      case Some( value ) => log.info( s"A gas override is set, with value ${value}, for chain with ID ${chainId}." )
+      case None          => log.info( s"No gas override is currently set for chain with ID ${chainId}." )
     }
   }
 
@@ -4411,7 +4421,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     val gasLimitTweak = {
-      Mutables.GasLimitOverride.get match {
+      Mutables.GasLimitOverrides.get( rawChainId ) match {
         case Some( overrideValue ) => {
           log.info( s"Gas limit override set: ${overrideValue}")
           Invoker.Override( overrideValue )
