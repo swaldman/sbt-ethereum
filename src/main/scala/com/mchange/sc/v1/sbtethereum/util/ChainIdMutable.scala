@@ -2,6 +2,10 @@ package com.mchange.sc.v1.sbtethereum.util
 
 import scala.collection._
 
+object ChainIdMutable {
+  final case class Modified[T]( pre : Option[T], post : Option[T] )  
+}
+
 // MT: protected by this' lock
 class ChainIdMutable[T] {
   private val storage = mutable.Map.empty[Int,T]
@@ -20,6 +24,16 @@ class ChainIdMutable[T] {
     val out = storage.get( chainId )
     storage -= chainId
     out
+  }
+
+  def modify( chainId : Int )( op : Option[T] => Option[T] ) : ChainIdMutable.Modified[T] = this.synchronized {
+    val pre = storage.get( chainId )
+    val post = op( pre )
+    post match {
+      case Some( elem ) => storage += Tuple2( chainId, elem )
+      case None         => storage -= chainId
+    }
+    ChainIdMutable.Modified( pre, post )
   }
 
   def reset() : Unit = this.synchronized( storage.clear() )

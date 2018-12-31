@@ -117,8 +117,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val NonceOverride = new AtomicReference[Option[BigInt]]( None )
 
-    // MT: protected by AbiOverride's lock
-    val AbiOverrides = new AtomicReference[immutable.Map[Int,immutable.Map[EthAddress,Abi]]]( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
+    // MT: internally thread-safe
+    val AbiOverrides = new ChainIdMutable[immutable.Map[EthAddress,Abi]]
 
     // MT: internally thread-safe
     val SenderOverride = new ChainIdMutable[EthAddress]
@@ -143,9 +143,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       GasPriceOverride.set( None )
       NonceOverride.set( None )
       OneTimeWarner.resetAll()
-      AbiOverrides synchronized {
-        AbiOverrides.set( immutable.Map.empty[Int,immutable.Map[EthAddress,Abi]] )
-      }
+      AbiOverrides.reset()
       SenderOverride.reset()
       NodeUrlOverride.reset()
       LocalGanache synchronized {
@@ -171,44 +169,29 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def abiOverridesForChain( chainId : Int ) : immutable.Map[EthAddress,Abi] = {
-    Mutables.AbiOverrides.synchronized {
-      val outerMap = Mutables.AbiOverrides.get
-      outerMap.getOrElse( chainId, immutable.Map.empty[EthAddress,Abi] )
-    }
+    Mutables.AbiOverrides.get( chainId ).getOrElse( immutable.Map.empty[EthAddress,Abi] )
   }
 
   private def addAbiOverrideForChain( chainId : Int, address : EthAddress, abi : Abi ) : Unit = {
-    Mutables.AbiOverrides.synchronized {
-      val oldOuterMap = Mutables.AbiOverrides.get
-      val priorForChain = oldOuterMap.getOrElse( chainId, immutable.Map.empty[EthAddress,Abi] )
-      val nextForChain = priorForChain + Tuple2( address, abi )
-      val newOuterMap = oldOuterMap + Tuple2( chainId, nextForChain )
-      Mutables.AbiOverrides.set( newOuterMap )
+    Mutables.AbiOverrides.modify( chainId ) { pre =>
+      Some( pre.getOrElse( immutable.Map.empty[EthAddress,Abi] ) + Tuple2( address, abi ) )
     }
   }
 
   private def removeAbiOverrideForChain( chainId : Int, address : EthAddress ) : Boolean = {
-    Mutables.AbiOverrides.synchronized {
-      val oldOuterMap = Mutables.AbiOverrides.get
-      val priorForChain = oldOuterMap.getOrElse( chainId, immutable.Map.empty[EthAddress,Abi] )
-      val out = priorForChain.keySet( address )
-      val nextForChain = priorForChain - address
-      val newOuterMap = oldOuterMap + Tuple2( chainId, nextForChain )
-      Mutables.AbiOverrides.set( newOuterMap )
-      out
+    val modified = {
+      Mutables.AbiOverrides.modify( chainId ) { pre =>
+        pre match {
+          case Some( mapping ) => Some(mapping - address)
+          case None            => None
+        }
+      }
     }
+    modified.pre != modified.post
   }
 
   private def clearAbiOverrideForChain( chainId : Int ) : Boolean = {
-    Mutables.AbiOverrides.synchronized {
-      val oldOuterMap = Mutables.AbiOverrides.get
-      val out = oldOuterMap.get( chainId ).nonEmpty
-      if ( out ) {
-        val newOuterMap = oldOuterMap - chainId
-        Mutables.AbiOverrides.set( newOuterMap )
-      }
-      out
-    }
+    Mutables.AbiOverrides.getDrop( chainId ) != None
   }
 
   private val BufferSize = 4096
@@ -367,6 +350,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
     val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
     val ethContractAbiMatch           = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address")
+    val ethContractAbiOverride        = inputKey[Unit] ("Basically an alias to 'ethContractAbiOverrideAdd'.")
     val ethContractAbiOverrideAdd     = inputKey[Unit] ("Sets a temporary (just this session) association between an ABI an address, that overrides any persistent association")
     val ethContractAbiOverrideClear   = taskKey[Unit]  ("Clears all temporary associations (on the current chain) between an ABI an address")
     val ethContractAbiOverrideList    = taskKey[Unit]  ("Show all addresses (on the current chain) for which a temporary association between an ABI an address has been set")
@@ -773,6 +757,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethContractAbiImport in Compile := { ethContractAbiImportTask( Compile ).evaluated },
 
     ethContractAbiImport in Test := { ethContractAbiImportTask( Test ).evaluated },
+
+    ethContractAbiOverride in Compile := { ethContractAbiOverrideAddTask( Compile ).evaluated },
+
+    ethContractAbiOverride in Test := { ethContractAbiOverrideAddTask( Test ).evaluated },
 
     ethContractAbiOverrideAdd in Compile := { ethContractAbiOverrideAddTask( Compile ).evaluated },
 
