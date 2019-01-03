@@ -478,3 +478,7 @@ div.optional-replace-control-parent {
     margin-top: 0.5em;
     margin-bottom: 0.5em;
 }
+
+.centered {
+    text-align: center;
+}
