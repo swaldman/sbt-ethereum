@@ -335,7 +335,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressAliasList           = taskKey [Unit]       ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
     val ethAddressAliasSet            = inputKey[Unit]       ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
     val ethAddressBalance             = inputKey[BigDecimal] ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
-    val ethAddressSenderPrint         = taskKey [Unit]       ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
     val ethAddressSenderDefaultDrop   = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderDefaultSet    = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderDefaultPrint  = taskKey [Unit]       ("Displays any sender override, if set.")
@@ -343,6 +342,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressSenderOverrideDrop  = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderOverrideSet   = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderOverridePrint = taskKey [Unit]       ("Displays any sender override, if set.")
+    val ethAddressSenderPrint         = taskKey [Unit]       ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
 
     val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops for an ABI.")
     val ethContractAbiAliasList       = taskKey [Unit] ("Lists aliased ABIs and their hashes.")
@@ -368,7 +368,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractCompilationList    = taskKey [Unit] ("Lists summary information about compilations known in the shoebox")
 
     val ethDebugGanacheStart = taskKey[Unit] (s"Starts a local ganache environment (if the command '${testing.Default.Ganache.Executable}' is in your PATH)")
-    val ethDebugGanacheStop  = taskKey[Unit] ("Stops any local ganache environment that may have been started previously")
+    val ethDebugGanacheHalt  = taskKey[Unit] ("Stops any local ganache environment that may have been started previously")
 
     val ethKeystoreList                         = taskKey[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
     val ethKeystorePrivateKeyReveal             = inputKey[Unit]      ("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
@@ -495,11 +495,11 @@ object SbtEthereumPlugin extends AutoPlugin {
   // could i replace some or all of these with addCommandAlias(...)? hasn't worked so far. how should it be done?
 
   private val ethDebugGanacheRestartCommand = Command.command( "ethDebugGanacheRestart" ) { state =>
-    "ethDebugGanacheStop" :: "ethDebugGanacheStart" :: state
+    "ethDebugGanacheHalt" :: "ethDebugGanacheStart" :: state
   }
 
   private val ethDebugGanacheTestCommand = Command.command( "ethDebugGanacheTest" ) { state =>
-    "Test/compile" :: "ethDebugGanacheStop" :: "ethDebugGanacheStart" :: "Test/ethTransactionDeploy" :: "test" :: "ethDebugGanacheStop" :: state
+    "Test/compile" :: "ethDebugGanacheHalt" :: "ethDebugGanacheStart" :: "Test/ethTransactionDeploy" :: "test" :: "ethDebugGanacheHalt" :: state
   }
 
   // definitions
@@ -807,7 +807,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethDebugGanacheStart in Test := { ethDebugGanacheStartTask.value },
 
-    ethDebugGanacheStop in Test := { ethDebugGanacheStopTask.value },
+    ethDebugGanacheHalt in Test := { ethDebugGanacheHaltTask.value },
 
     ethKeystoreList in Compile := { ethKeystoreListTask( Compile ).value },
 
@@ -2776,7 +2776,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info("Testing jsonrpc interface found.")
   }
 
-  private def ethDebugGanacheStopTask : Initialize[Task[Unit]] = Def.task {
+  private def ethDebugGanacheHaltTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
 
     Mutables.LocalGanache synchronized {
