@@ -5424,29 +5424,31 @@ object SbtEthereumPlugin extends AutoPlugin {
         println( s"""==>   Data:  ${if (msg.data.length > 0) hexString(msg.data) else "None"}""" )
         println( s"""==>   Value: ${EthValue(msg.value.widen, Denominations.Ether).denominated} Ether""" )
 
-        try {
-          val abiLookup = abiLookupForAddress( chainId, msg.to, abiOverrides )
-          abiLookup.resolveAbi(Some(log)) match {
-            case Some(abi) => {
-              val ( fcn, values ) = ethabi.decodeFunctionCall( abi, msg.data ).assert
-              println(  "==>" )
-              println( s"==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call..." )
-              println( s"==>   Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
-                (values.zip( Stream.from(1) )).foreach { case (value, index) =>
-                  println( s"==>     Arg ${index} [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
-                }
-            }
-            case None => {
-              println(  "==>" )
-              println( s"==> !!! Any ABI is associated with the destination address is currently unknown, so we cannot decode the message data as a method call !!!" )
+        if (msg.data.nonEmpty) { // don't try to interpret pure ETH trasfers as ABI calls
+          try {
+            val abiLookup = abiLookupForAddress( chainId, msg.to, abiOverrides )
+            abiLookup.resolveAbi(Some(log)) match {
+              case Some(abi) => {
+                val ( fcn, values ) = ethabi.decodeFunctionCall( abi, msg.data ).assert
+                println(  "==>" )
+                println( s"==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call..." )
+                println( s"==>   Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
+                  (values.zip( Stream.from(1) )).foreach { case (value, index) =>
+                    println( s"==>     Arg ${index} [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
+                  }
+              }
+              case None => {
+                println(  "==>" )
+                println( s"==> !!! Any ABI is associated with the destination address is currently unknown, so we cannot decode the message data as a method call !!!" )
+              }
             }
           }
-        }
-        catch {
-          case e : Exception => {
-            val msg = s"An Exception occurred while trying to interpret this method with an ABI as a function call. Skipping: ${e}"
-            log.warn( msg )
-            DEBUG.log( msg, e )
+          catch {
+            case e : Exception => {
+              val msg = s"An Exception occurred while trying to interpret this method with an ABI as a function call. Skipping: ${e}"
+              log.warn( msg )
+              DEBUG.log( msg, e )
+            }
           }
         }
       }
