@@ -5,7 +5,7 @@
     <link href="https://fonts.googleapis.com/css?family=Ubuntu+Mono|Source+Sans+Pro:400,400i,700,700i" rel="stylesheet"/>
     <script src="$page.base$js/docs.js"></script>
   </head>
-  <body>
+  <body onload="init()">
     <div id="navigationColumn">
       <div id="navTitle">
       	 <div id="navHomeLink" $if(page.home.active)$class="active"$endif$>$page.home.html$</div>

@@ -13,7 +13,7 @@
 * [ethLanguage*](eth/language/index.md)
 * [ethNode*](eth/node/index.md)
 * [ethShoebox*](eth/shoebox/index.md)
-* [ethTransaction](eth/transaction/index.md)
+* [ethTransaction...](eth/transaction/index.md)
 * [ens*](ens.md)
 * [etherscan*](etherscan.md)
 

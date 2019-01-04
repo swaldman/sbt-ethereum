@@ -482,3 +482,21 @@ div.optional-replace-control-parent {
 .centered {
     text-align: center;
 }
+
+.no-display {
+    display: none;
+}
+
+.embedded-toc-list {
+    margin-top:  0.5em;
+    padding-left:  1em;
+    font-size: smaller;
+}
+
+/* We use javascript to turn on display of blocks with nested lists */
+/*
+.inner-only > .toc > ul > li {
+    display: none;
+}
+*/
+
