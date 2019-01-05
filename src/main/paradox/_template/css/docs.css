@@ -124,6 +124,15 @@ a:visited:hover {
     content: " >>>";
 }
 
+#navigation ul > li > ul > li > a.page + ul {
+    display: none;
+}
+
+#navigation ul > li > ul > li > a.page.active + ul {
+    display: block;
+}
+
+
 #navTitle {
     text-align: center;
     font-weight: normal;
@@ -488,10 +497,25 @@ div.optional-replace-control-parent {
 }
 
 .embedded-toc-list {
-    margin-top:  0.5em;
-    padding-left:  1em;
-    font-size: smaller;
 }
+
+.embedded-toc-list ul {
+    margin-top:   0.375em;
+    padding-left:   1.5em;
+    font-size:    smaller;
+}
+
+.embedded-toc-list ul li {
+    list-style-type: none;
+    margin-top:    0.25em;
+    line-height:     110%;
+}
+
+.embedded-toc-list ul li:before {
+    content: "\261B\2002";
+}
+
+
 
 /* We use javascript to turn on display of blocks with nested lists */
 /*

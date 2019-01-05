@@ -93,7 +93,24 @@ function copyTocSecondLevelList( tocParentId, index, targetDivId ) {
     if ( targetDiv !== null ) {
 	const secondLevelList = findTocSecondLevelList( tocParentId, index );
 	if ( secondLevelList !== null ) {
-	    targetDiv.innerHTML = secondLevelList.innerHTML;
+	    targetDiv.innerHTML = "<ul>" + secondLevelList.innerHTML + "</ul>";
+	}
+    }
+}
+function showNavigationParentListOfActive() {
+    const active = document.getElementById( "navigation" ).querySelectorAll( "ul a.page.active" );
+    if ( active !== null && active.length > 0) { // should always be 0 or 1
+	var list = Array.from( active )[0];
+	while ( list !== null ) {
+	    const nname = list.nodeName.toUpperCase();
+	    // console.log( nname );
+	    if ( nname === "UL" ) {
+		list.style.display = "block";
+	    }
+	    else if ( nname === "DIV" ) {
+		break;
+	    }
+	    list = list.parentElement;
 	}
     }
 }
@@ -102,6 +119,9 @@ function init() {
     copyTocSecondLevelList( "ethAddressToc", 0, "addressAliasList" );
     copyTocSecondLevelList( "ethAddressToc", 1, "senderList" );
     
+    copyTocSecondLevelList( "ethContractToc", 0, "abiList" );
+    copyTocSecondLevelList( "ethContractToc", 1, "compilationList" );
+    
     copyTocSecondLevelList( "ethLanguageToc", 0, "solidityList" );
 
     copyTocSecondLevelList( "ethNodeToc", 0, "chainIdList" );
@@ -109,6 +129,8 @@ function init() {
     
     copyTocSecondLevelList( "ethTransactionToc", 0, "gasList" );
     copyTocSecondLevelList( "ethTransactionToc", 1, "nonceList" );
+
+    showNavigationParentListOfActive()
 }
 
 /* Detailed tab completion tutorial? <a id="uasc_optional_1_triangle" class="optional-triangle" href="javascript:toggleVisibilityWithTriangle('uasc_optional_1', 'uasc_optional_1_triangle')">&#x25B6;</a> */

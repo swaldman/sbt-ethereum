@@ -2,6 +2,8 @@ val nexus = "https://oss.sonatype.org/"
 val nexusSnapshots = nexus + "content/repositories/snapshots"
 val nexusReleases = nexus + "service/local/staging/deploy/maven2"
 
+val updateSite = taskKey[Unit]("Updates the project website on tickle")
+
 ThisBuild / organization := "com.mchange"
 ThisBuild / version := "0.1.7-SNAPSHOT"
 
@@ -20,7 +22,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-Xlog-implicits" */
 )
 
-val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.11-SNAPSHOT" changing()
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.0.11"
 
 lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   name := "sbt-ethereum",
@@ -31,7 +33,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
     "com.mchange"    %% "mlog-scala"            % "0.3.10",
     "com.mchange"    %% "literal"               % "0.0.2",
     "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
-    "com.mchange"    %% "ens-scala"             % "0.0.8-SNAPSHOT" changing(),
+    "com.mchange"    %% "ens-scala"             % "0.0.8",
     "com.mchange"    %% "texttable"             % "0.0.2",
     "com.mchange"    %  "c3p0"                  % "0.9.5.2",
     "com.h2database" %  "h2"                    % "1.4.192",
@@ -40,6 +42,17 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   sourceGenerators in Compile += generateBuildInfoSourceGeneratorTask,
   paradoxTheme := None,
   paradoxNavigationDepth := 3,
+  updateSite := {
+    import scala.sys.process._
+
+    val dummy = (Compile / paradox).value // force a build of the site
+
+    val localDir = target.value / "paradox" / "site" / "main"
+
+    val local = localDir.listFiles.map( _.getPath ).mkString(" ")
+    val remote = s"tickle.mchange.com:/home/web/public/www.sbt-ethereum.io/"
+    s"rsync -avz ${local} ${remote}"!
+  },
   pomExtra := pomExtraForProjectName( name.value )
 )
 
