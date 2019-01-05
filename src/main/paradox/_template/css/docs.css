@@ -496,11 +496,23 @@ div.optional-replace-control-parent {
     display: none;
 }
 
+.smaller {
+    font-size: smaller;
+}
+
+.bolder {
+    font-weight: bold;
+}
+
+.bolder code {
+    font-weight: normal;
+}
+
 .embedded-toc-list {
 }
 
 .embedded-toc-list ul {
-    margin-top:   0.375em;
+    margin-top:     0.5em;
     padding-left:   1.5em;
     font-size:    smaller;
 }
@@ -523,4 +535,20 @@ div.optional-replace-control-parent {
     display: none;
 }
 */
+
+a.anchor {
+    text-decoration: none;
+    display: block;
+    float: right;
+}
+
+span.anchor-link:before {
+    text-decoration: none;
+    content: "\1F517";
+    font-size: 9pt;
+}
+
+div.keydesc {
+    font-size: smaller;
+}
 

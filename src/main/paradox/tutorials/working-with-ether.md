@@ -100,8 +100,8 @@ sbt:eth-command-line> ethAddressSenderDefaultPrint
 [success] Total time: 0 s, completed Dec 16, 2018 10:28:40 PM
 
 ```
-Before sending money to your address, you may want to verify that you remember the passcode that unlocks it.
-(If you don't remember the passcode, the address will receive your funds just fine, but no one will ever, _ever_, be able to access them.
+Before sending money to your address, you may want to verify that you remember the passphrase that unlocks it.
+(If you don't remember the passphrase, the address will receive your funds just fine, but no one will ever, _ever_, be able to access them.
 Let's verify, using the command `ethKeystoreWalletV3Validate`:
 ```
 sbt:eth-command-line> ethKeystoreWalletV3Validate 0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2
@@ -254,6 +254,19 @@ sbt:eth-command-line> ethAddressAliasSet secondary-address 0x13e3d8d785cdeb1d18f
 [info] Refreshing caches.
 [success] Total time: 0 s, completed Jan 3, 2019 12:32:52 AM
 ```
+@@@ warning
+
+If you forget the passphrase you've just set for this new address, _or_ if you lose the wallet file
+_sbt-ethereum_ has just generated, __you will permanently lose access to all value held by your
+new account__.
+
+If you intend to let the new address manage significant value, __be sure to store your passphrase
+safely__.
+
+Also, __consider backing up the _sbt-ethereum_ "shoebox" now__, which contains (among other things)
+the wallet files _sbt-ethereum_ manages. The command would be `ethShoeboxBackup`.
+
+@@@
 
 ### Checking the Current Sender
 

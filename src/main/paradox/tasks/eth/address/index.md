@@ -13,9 +13,11 @@
 
 # ethAddress*
 
+_sbt-ethereum_ commands related to addresses, including managing address aliases and the current sender address.
+
 ### ethAddressAlias*
 
-See @ref:[address alias commands page](alias.md), or choose a command below:
+See the @ref:[address alias commands page](alias.md), or choose a command below:
 
 @@@ div { #addressAliasList .embedded-toc-list }
 
@@ -25,9 +27,35 @@ See @ref:[address alias commands page](alias.md), or choose a command below:
 
 ### ethAddressBalance
 
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ethAddressBalance [optional-address]
+```
+
+Finds the Ether balance of any Ethereum address. The address can be formatted as an full hex address, as an _sbt-ethereum_ address alias, or as an ENS address. If no address is provided,
+the current sender address of the current sbt-ethereum session is queried.
+
+**Examples:**
+```
+> ethAddressBalance default-sender
+> ethAddressBalance 0x465e79b940bc2157e4259ff6b2d92f454497f1e4
+> ethAddressBalance stevewaldman.eth
+> ethAddressBalance
+```
+**Example response:**
+```
+1.25024244606611496 ether (as of the latest incorporated block, address 0x465e79b940bc2157e4259ff6b2d92f454497f1e4)
+This corresponds to approximately 195.21 USD (at a rate of 156.135 USD per ETH, retrieved at 10:41 PM from Coinbase)
+[success] Total time: 0 s, completed Jan 4, 2019 10:44:46 PM
+```
+
+@@@
+
 ### ethAddressSender*
 
-See @ref:[sender commands page](sender.md), or choose a command below:
+See the @ref:[sender commands page](sender.md), or choose a command below:
 
 @@@ div { #senderList .embedded-toc-list }
 
