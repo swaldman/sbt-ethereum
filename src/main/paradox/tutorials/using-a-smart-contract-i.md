@@ -14,15 +14,15 @@ This is not my address or your address. It is the public address of the applicat
 
 As you can see, an Ethereum address is a long stupid string of "hex" digits that would be very annoying
 and error prone to type. _So try never to type one!_ When absolutely you need to, copy and paste the address, and then double
-check that you didn't drop any digits at the beginning or the end. But much better yet, _sbt-ethereum_ permits you to define
+check that you didn't drop any digits. But much better yet, _sbt-ethereum_ permits you to define
 easy to use, tab-completable names as "address aliases". So, let's do it.
 
 The command we'll need is `ethAddressAliasSet`.
 But we might not remember that! We can check the @ref:[ethAddress* docs](../tasks/eth/address/index.md), or use tab completion to help us find our command, and figure out what arguments it needs.
 
-<script>writeOptionalReplaceControl("uasc_optional_1", "uasc_optional_1_replace_control", "show optional tab completion tutorial?", "hide optional tab completion tutorial")</script>
+<script>writeOptionalReplaceControl("tut_uasc1_optional_1", "tut_uasc1_optional_1_replace_control", "show optional tab completion tutorial?", "hide optional tab completion tutorial")</script>
 
-@@@ div { #uasc_optional_1 .optional }
+@@@ div { #tut_uasc1_optional_1 .optional }
 
 **Figuring out our command via tab completion**
 
@@ -125,7 +125,7 @@ But before we do that, we need to find the ABI. Sometimes, you may get an ABI di
 smart contract. If you come to develop your own smart contracts, _sbt-ethereum_ will automatically generate
 and retain ABIs for you. But often, we need to find an ABI that has been published somewhere.
 
-At this writing, a very useful repository of ABIs is [Etherscan](http://etherscan.io/). _Etherscan_ only stores
+At this writing, a very useful repository of ABIs is [_Etherscan_](http://etherscan.io/). _Etherscan_ only stores
 ABIs which the site itself has verified, which offers an extra level of confidence (although of course, we are
 trusting _Etherscan_ and its verification process if we use them as a source).
 
@@ -472,7 +472,7 @@ A transaction with hash '0xa7d785cec2da4b415958e80bb9bbe131a4c39622da4ef064ae1e5
 ```
 An ugly-looking error has occurred. The key piece of information in that mess is `insufficient funds for gas * price + value`.
 
-Our transaction might only have required a few cents worth of ETH to execute, but we don't have a few cents of ETH in our account.
+Our transaction might only have required a few cents worth of ETH to execute, but we don't have a few cents of ETH in our account!
 
 To see that, let's try the command `ethAddressBalance`:
 ```

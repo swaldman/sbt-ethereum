@@ -21,7 +21,7 @@ function toggleVisibilityWithReplaceControl(idTarget, idReplaceControl, openCont
     var target = document.getElementById(idTarget);
     var replaceControl = document.getElementById(idReplaceControl);
     var replaceControlTriangle = document.getElementById(idReplaceControl + "-triangle");
-    if (target.style.display === "none") {
+    if (target.style.display === "none" || !(target.style.display)) { // at the first click , target.style.display is undefined despite its existence in the css
 	target.style.display = "block";
 	replaceControl.text = closeControlContents
 	replaceControlTriangle.text = "\u25BC";

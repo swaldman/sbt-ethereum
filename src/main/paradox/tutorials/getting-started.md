@@ -149,12 +149,26 @@ When we generated our new address, you may have noticed the message
 ```
 [info] Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2'.
 ```
-Let's try that. You could just copy and paste the (very long!) command, but please don't. _sbt-ethereum_ by design
-relies up _tab completion_ to make typing long but descriptive commands easy. Writing out a "tutorial" in tab completion
-will make it seem long and cumbersome, but it's not. It becomes muscle memory, second nature, very quickle.
+Let's try that!
+
+You could just copy and paste the (very long!) command, but please don't! _sbt-ethereum_ by design
+relies up _tab completion_ to make typing long but descriptive commands easy. If you are familiar with tab completion,
+you should be able to enter this long command very quickly. Start with `ethK<tab>` and go from there. For the address
+part, remember that the address alias `defailt-sender` was defined for this address, so instead of copying and pasting
+the long hex address, consider just typing `d<tab>`. _sbt-ethereum_ tab-completes address aliases!
+
+
+<script>writeOptionalReplaceControl("tut_gs_optional_1", "tut_gs_optional_1_replace_control", "show very detailed, optional tab completion tutorial?", "hide very detailed, optional tab completion tutorial")</script>
+
+@@@ div { #tut_gs_optional_1 .optional }
+
+**Detailed tab completion tutorial**
+
+In "tutorial" form, tab completion
+seems long and cumbersome, but it's not. It becomes muscle memory, second nature, very quickly.
 **(TL; DR: When in doubt, type `<tab><tab>`.)**
 
-Start by typing `eth` and then hitting the tab key. (We'll write that from now on as `eth<tab>`, where the angle-braced `<tab>`
+Start by typing `eth` and then hitting the tab key. (We'll write that from now on as `eth<tab>`. The angle-braced `<tab>`
 does not mean you should type out `<`, `t`, etc. &mdash; _don't do that!_ &mdash; but instead means "hit the tab key".)
 
 When you type `eth<tab>` you should see a rather useless and intimidatingly long list, something like...
@@ -241,6 +255,10 @@ The first two items are telling you that you could type out (or really paste) th
 that is bound to an address. Or, you could literally write `default-sender`, which you will note is _not_ in angle braces.
 
 But don't type `default-sender`. Stay foolish, be lazy. Just type `d<tab>` and let `sbt-ethereum` do the typing for you!
+
+@@@
+
+Hopefully we've tab-completed our way to this command:
 ```
 sbt:eth-command-line> ethKeystoreWalletV3Validate default-sender
 ```
