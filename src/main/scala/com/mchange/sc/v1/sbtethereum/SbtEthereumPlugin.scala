@@ -1822,7 +1822,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           case Some( differentAddress ) => {
             val replace = queryYN( is, s"The alias '${alias}' currently points to address '${hexString(differentAddress)}' (for chain with ID ${chainId}). Replace? [y/n] " )
             if (! replace ) {
-              throw new OperationAbortedByUserException( "User chose not to replace previously defined alias '${alias}' (for chain with ID ${chainId}). It continues to point to '${hexString(differentAddress)}'." )
+              throw new OperationAbortedByUserException( s"User chose not to replace previously defined alias '${alias}' (for chain with ID ${chainId}). It continues to point to '${hexString(differentAddress)}'." )
             }
             else {
               val didDrop = shoebox.AddressAliasManager.dropAddressAlias( chainId, alias ).assert
@@ -1987,7 +1987,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           shoebox.Database.dropDefaultSenderAddress( chainId ).assert
         }
         else {
-          throw new OperationAbortedByUserException( "User chose not to replace previously set default sender address for chain with ID ${chainId}, which remains '${hexString(address)}'." )
+          throw new OperationAbortedByUserException( s"User chose not to replace previously set default sender address for chain with ID ${chainId}, which remains '${hexString(address)}'." )
         }
       }
       shoebox.Database.setDefaultSenderAddress( chainId, newAddress ).assert
@@ -2218,7 +2218,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), Some( `abi` ), _ ) => {
           val deleteMemorized = queryYN( is, s"The ABI you have tried to link is the origial compilation ABI associated with ${hexString(toLinkAddress)}. Remove shadowing ABI to restore? [y/n] " )
           if (! deleteMemorized ) {
-            throw new OperationAbortedByUserException( "User chose not to delete a currently associated ABI which shadows an original compilation-derived ABI)." )
+            throw new OperationAbortedByUserException( "User chose not to delete a currently associated ABI, which shadows an original compilation-derived ABI." )
           }
           else {
             shoebox.Database.deleteMemorizedContractAbi( chainId, toLinkAddress ).assert // throw an Exception if there's a database issue
@@ -3237,7 +3237,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         shoebox.Database.dropDefaultJsonRpcUrl( chainId ).assert
       }
       else {
-        throw new OperationAbortedByUserException( "User chose not to replace previously set default node json-rpc URL for chain with ID ${chainId}, which remains '${url}'." )
+        throw new OperationAbortedByUserException( s"User chose not to replace previously set default node json-rpc URL for chain with ID ${chainId}, which remains '${url}'." )
       }
     }
     shoebox.Database.setDefaultJsonRpcUrl( chainId, newUrl ).assert
