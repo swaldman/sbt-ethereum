@@ -141,6 +141,18 @@ Displays any sender override that may have been set for the current session and 
 
 @@@
 
+### ethAddressSenderOverride
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethAddressSenderOverride <address-as-hex-ens-or-alias>
+```
+This is a shorthand for @ref:[`ethAddressSenderOverride`](#ethAddressSenderOverrideSet). Please see that command for more information.
+
+@@@
+
 ### ethAddressSenderOverrideSet
 
 @@@ div { .keydesc }
@@ -179,7 +191,6 @@ and explains how that value has been determined.
 
 **Example:**
 ```
-> ethAddressSenderPrint
 > ethAddressSenderPrint
 [info] The current effective sender address is '0x13e3d8d785cdeb1d18f298dcf07ea35a659e157d' (with aliases ['secondary-address'] on chain with ID 1).
 [info]  + This value has been explicitly set as a session override via 'ethAddressSenderOverrideSet'.

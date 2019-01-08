@@ -436,7 +436,7 @@ ul li {
 }
 
 #githubBox a, #githubBox a:visited {
-		  color: blue;
+		  color: rgb(0,0,180);
 }
 
 .optional {
