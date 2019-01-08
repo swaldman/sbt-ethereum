@@ -4,9 +4,11 @@ _Address aliases_ are mappings between easy to type (and tab complete!) names an
 frequently, you should very rarely have to copy and paste long, error-prone hex addresses.
 
 Address alias mappings are defined within, and so scoped to, an _sbt-ethereum shoebox database_. Typically, this means a user has access to all
-address aliases she has defined from any _sbt-ethereum_ project she works with on a single machine (and from a single user's account). Address aliases
-are also scoped to [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
+address aliases she has defined from any _sbt-ethereum_ project she works with on a single machine (and from a single user's account).
+
+Address aliases are scoped to [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain IDs.
 So an address alias defined in a mainnet session (Chain ID 1) will not be available in a Ropsten session (Chain ID 3).
+See @ref:[`ethNodeChainId*`](../node/chain_id.md) for information on how to manage which chain your session addresses.
 
 ### ethAddressAliasCheck
 

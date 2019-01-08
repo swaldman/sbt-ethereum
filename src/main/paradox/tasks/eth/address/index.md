@@ -13,7 +13,7 @@
 
 # ethAddress*
 
-_sbt-ethereum_ commands related to addresses, including managing address aliases and the current sender address.
+_sbt-ethereum_ tasks related to addresses, including @ref:[checking address balances](#ethaddressbalance), @ref:[managing address aliases](alias.md) and @ref:[configuring the current sender address](sender.md).
 
 ### ethAddressAlias*
 

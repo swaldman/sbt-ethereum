@@ -47,20 +47,20 @@ h4:before {
 }
 
 a {
-    color: black;
+    color: rgb(0,0,180);
 }
 
 a:hover {
-    color: blue;
+    color: rgb(200, 136, 0);
 }
 
 
 a:visited {
-    color: gray;
+    color: rgb(0,0,180); /* rgb(200, 136, 0); */
 }
 
 a:visited:hover {
-    color: blue;
+    color: rgb(200, 136, 0);
 }
 
 #navigationColumn {

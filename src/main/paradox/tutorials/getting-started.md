@@ -166,7 +166,7 @@ the long hex address, consider just typing `d<tab>`. _sbt-ethereum_ tab-complete
 
 In "tutorial" form, tab completion
 seems long and cumbersome, but it's not. It becomes muscle memory, second nature, very quickly.
-**(TL; DR: When in doubt, type `<tab><tab>`.)**
+**(TL; DR: When in doubt, press `<tab><tab>`.)**
 
 Start by typing `eth` and then hitting the tab key. (We'll write that from now on as `eth<tab>`. The angle-braced `<tab>`
 does not mean you should type out `<`, `t`, etc. &mdash; _don't do that!_ &mdash; but instead means "hit the tab key".)

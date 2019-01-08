@@ -1193,8 +1193,8 @@ object SbtEthereumPlugin extends AutoPlugin {
                     mbDbAddressSender.map ( dbAddressSender =>
                       Seq (
                         s"'${pfx}ethcfgAddressSender' has been explicitly set to '${hexString(address)}' in the build or as a global setting in the .sbt directory.",
-                        s" + This value will be used in preference to the value set in the sbt-ethereum shoebox via '${pfx}ethAddressSenderDefaultSet' (currently '${hexString(dbAddressSender)}').",
-                        s" + However, you can temporarily override the hard-coded value for a single session using '${pfx}ethAddressSenderOverrideSet'."
+                        s" + This value will be used in preference to the default sender defined in the sbt-ethereum shoebox via '${pfx}ethAddressSenderDefaultSet' (currently '${hexString(dbAddressSender)}').",
+                        s" + However, you can temporarily override this hard-coded value for the current session using '${pfx}ethAddressSenderOverrideSet'."
                       )
                     )
                   }
@@ -1262,8 +1262,8 @@ object SbtEthereumPlugin extends AutoPlugin {
                   mbDbNodeChainId.map ( dbNodeChainId =>
                     Seq (
                       s"'${pfx}ethcfgNodeChainId' has been explicitly set to ${explicitId} in the build or as a global setting in the .sbt directory.",
-                      s" + This value will be used in preference to the value set in the sbt-ethereum shoebox via '${pfx}ethNodeChainIdDefaultSet' (currently ${dbNodeChainId}).",
-                      s" + However, you can temporarily override the hard-coded value for a single session using '${pfx}ethNodeChainIdOverrideSet'."
+                      s" + This value will be used in preference to the default chain ID defined in the sbt-ethereum shoebox via '${pfx}ethNodeChainIdDefaultSet' (currently ${dbNodeChainId}).",
+                      s" + However, you can temporarily override this hard-coded value for the current session using '${pfx}ethNodeChainIdOverrideSet'."
                     )
                   )
                 }
@@ -1313,8 +1313,8 @@ object SbtEthereumPlugin extends AutoPlugin {
                   mbDbNodeUrl.map ( dbNodeUrl =>
                     Seq (
                       s"'${pfx}ethcfgNodeUrl' has been explicitly set to '${url}' in the build or as a global setting in the .sbt directory.",
-                      s" + This value will be used in preference to the value set in the sbt-ethereum shoebox via '${pfx}ethNodeUrlDefaultSet' (currently '${dbNodeUrl}').",
-                      s" + However, you can temporarily override the hard-coded value for a single session using '${pfx}ethNodeUrlOverrideSet'."
+                      s" + This value will be used in preference to the default node URL defined in the sbt-ethereum shoebox via '${pfx}ethNodeUrlDefaultSet' (currently '${dbNodeUrl}').",
+                      s" + However, you can temporarily override this hard-coded value for the current session using '${pfx}ethNodeUrlOverrideSet'."
                     )
                   )
                 }
