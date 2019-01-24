@@ -17,7 +17,7 @@ _sbt-ethereum_ tasks related to addresses, including @ref:[managing and working 
 
 ### ethContractAbi*
 
-See @ref:[contract abi commands page](abi.md), or choose a command below:
+See the @ref:[contract abi commands page](abi.md), or choose a command below:
 
 @@@ div { #abiList .embedded-toc-list }
 &nbsp;

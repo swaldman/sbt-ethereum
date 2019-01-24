@@ -20,15 +20,15 @@
 
 ### ethContractAbiOverride
 
-### ethContractAbiOverrideAdd
+### ethContractAbiOverrideSet
 
-### ethContractAbiOverrideClear
+### ethContractAbiOverrideDrop
+
+### ethContractAbiOverrideDropAll
 
 ### ethContractAbiOverrideList
 
 ### ethContractAbiOverridePrint
-
-### ethContractAbiOverrideRemove
 
 ### ethContractAbiPrint
 

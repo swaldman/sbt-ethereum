@@ -344,7 +344,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressSenderOverridePrint = taskKey [Unit]       ("Displays any sender override, if set.")
     val ethAddressSenderPrint         = taskKey [Unit]       ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
 
-    val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops for an ABI.")
+    val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops an alias for an ABI.")
     val ethContractAbiAliasList       = taskKey [Unit] ("Lists aliased ABIs and their hashes.")
     val ethContractAbiAliasSet        = inputKey[Unit] ("Defines a new alias for an ABI, taken from any ABI source.")
     val ethContractAbiDecode          = inputKey[Unit] ("Takes an ABI and arguments hex-encoded with that ABI, and decodes them.")
@@ -353,12 +353,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
     val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
     val ethContractAbiMatch           = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address")
-    val ethContractAbiOverride        = inputKey[Unit] ("Basically an alias to 'ethContractAbiOverrideAdd'.")
-    val ethContractAbiOverrideAdd     = inputKey[Unit] ("Sets a temporary (just this session) association between an ABI an address, that overrides any persistent association")
-    val ethContractAbiOverrideClear   = taskKey[Unit]  ("Clears all temporary associations (on the current chain) between an ABI an address")
+    val ethContractAbiOverride        = inputKey[Unit] ("Basically an alias to 'ethContractAbiOverrideSet'.")
+    val ethContractAbiOverrideSet     = inputKey[Unit] ("Sets a temporary (just this session) association between an ABI an address, that overrides any persistent association")
+    val ethContractAbiOverrideDropAll = taskKey[Unit]  ("Clears all temporary associations (on the current chain) between an ABI an address")
     val ethContractAbiOverrideList    = taskKey[Unit]  ("Show all addresses (on the current chain) for which a temporary association between an ABI an address has been set")
     val ethContractAbiOverridePrint   = inputKey[Unit] ("Pretty prints any ABI a temporarily associated with an address as an ABI override")
-    val ethContractAbiOverrideRemove  = inputKey[Unit] ("Removes a temporary (just this session) association between an ABI an address that may have ben set with 'ethContractAbiOverrideAdd'")
+    val ethContractAbiOverrideDrop    = inputKey[Unit] ("Drops a temporary (just this session) association between an ABI an address that may have ben set with 'ethContractAbiOverrideSet'")
     val ethContractAbiPrint           = inputKey[Unit] ("Prints the contract ABI associated with a provided address, if known.")
     val ethContractAbiPrintPretty     = inputKey[Unit] ("Pretty prints the contract ABI associated with a provided address, if known.")
     val ethContractAbiPrintCompact    = inputKey[Unit] ("Compactly prints the contract ABI associated with a provided address, if known.")
@@ -761,17 +761,17 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractAbiImport in Test := { ethContractAbiImportTask( Test ).evaluated },
 
-    ethContractAbiOverride in Compile := { ethContractAbiOverrideAddTask( Compile ).evaluated },
+    ethContractAbiOverride in Compile := { ethContractAbiOverrideSetTask( Compile ).evaluated },
 
-    ethContractAbiOverride in Test := { ethContractAbiOverrideAddTask( Test ).evaluated },
+    ethContractAbiOverride in Test := { ethContractAbiOverrideSetTask( Test ).evaluated },
 
-    ethContractAbiOverrideAdd in Compile := { ethContractAbiOverrideAddTask( Compile ).evaluated },
+    ethContractAbiOverrideSet in Compile := { ethContractAbiOverrideSetTask( Compile ).evaluated },
 
-    ethContractAbiOverrideAdd in Test := { ethContractAbiOverrideAddTask( Test ).evaluated },
+    ethContractAbiOverrideSet in Test := { ethContractAbiOverrideSetTask( Test ).evaluated },
 
-    ethContractAbiOverrideClear in Compile := { ethContractAbiOverrideClearTask( Compile ).value },
+    ethContractAbiOverrideDropAll in Compile := { ethContractAbiOverrideDropAllTask( Compile ).value },
 
-    ethContractAbiOverrideClear in Test := { ethContractAbiOverrideClearTask( Test ).value },
+    ethContractAbiOverrideDropAll in Test := { ethContractAbiOverrideDropAllTask( Test ).value },
 
     ethContractAbiOverrideList in Compile := { ethContractAbiOverrideListTask( Compile ).value },
 
@@ -781,9 +781,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractAbiOverridePrint in Test := { ethContractAbiOverridePrintTask( Test ).evaluated },
 
-    ethContractAbiOverrideRemove in Compile := { ethContractAbiOverrideRemoveTask( Compile ).evaluated },
+    ethContractAbiOverrideDrop in Compile := { ethContractAbiOverrideDropTask( Compile ).evaluated },
 
-    ethContractAbiOverrideRemove in Test := { ethContractAbiOverrideRemoveTask( Test ).evaluated },
+    ethContractAbiOverrideDrop in Test := { ethContractAbiOverrideDropTask( Test ).evaluated },
 
     ethContractAbiPrint in Compile := { ethContractAbiPrintTask( Compile ).evaluated },
 
@@ -2268,7 +2268,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethContractAbiOverrideAddTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethContractAbiOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAnyAbiSourceParser )
 
     Def.inputTaskDyn {
@@ -2279,7 +2279,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ( abi, mbLookup ) = abiFromAbiSource( abiSource ).getOrElse( throw nst( new AbiUnknownException( s"Can't find ABI for ${abiSource.sourceDesc}" ) ) )
       mbLookup.foreach( _.logGenericShadowWarning( log ) )
       addAbiOverrideForChain( chainId, toLinkAddress, abi )
-      log.info( s"ABI override successfully added." )
+      log.info( s"ABI override successfully set." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
       }
@@ -2297,13 +2297,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     texttable.printTable( columns, extract )( currentAbiOverrides.keySet.toSeq.map( addr => texttable.Row(addr, leftwardAliasesArrowOrEmpty(chainId, addr).assert) ) )
   }
 
-  private def ethContractAbiOverrideClearTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
+  private def ethContractAbiOverrideDropAllTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val s = state.value
     val log = streams.value.log
     val out = clearAbiOverrideForChain( chainId )
     if ( out ) {
-      log.info( s"ABI overrides on chain with ID ${chainId} successfully cleared." )
+      log.info( s"ABI overrides on chain with ID ${chainId} successfully dropped." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
       }
@@ -2336,7 +2336,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethContractAbiOverrideRemoveTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethContractAbiOverrideDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTaskDyn {
@@ -2346,7 +2346,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val address = parser.parsed
       val out = removeAbiOverrideForChain( chainId, address )
       if ( out ) {
-        log.info( s"ABI override successfully removed." )
+        log.info( s"ABI override successfully dropped." )
         Def.taskDyn {
           xethTriggerDirtyAliasCache
         }
