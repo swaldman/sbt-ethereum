@@ -6,9 +6,9 @@
 
 ### ethContractAbiAliasSet
 
-### ethContractAbiDecode
+### ethContractAbiCallDecode
 
-### ethContractAbiEncode
+### ethContractAbiCallEncode
 
 ### ethContractAbiForget
 

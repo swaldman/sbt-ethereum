@@ -347,8 +347,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops an alias for an ABI.")
     val ethContractAbiAliasList       = taskKey [Unit] ("Lists aliased ABIs and their hashes.")
     val ethContractAbiAliasSet        = inputKey[Unit] ("Defines a new alias for an ABI, taken from any ABI source.")
-    val ethContractAbiDecode          = inputKey[Unit] ("Takes an ABI and arguments hex-encoded with that ABI, and decodes them.")
-    val ethContractAbiEncode          = inputKey[Unit] ("Takes an ABI, a function name, and arguments and geneated the hex-encoded data that would invoke the function.")
+    val ethContractAbiCallDecode          = inputKey[Unit] ("Takes an ABI and a function call hex-encoded with that ABI, and decodes them.")
+    val ethContractAbiCallEncode          = inputKey[Unit] ("Takes an ABI, a function name, and arguments and geneated the hex-encoded data that would invoke the function.")
     val ethContractAbiForget          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
     val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
     val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
@@ -737,13 +737,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractAbiAliasSet in Test := { ethContractAbiAliasSetTask( Test ).evaluated },
 
-    ethContractAbiDecode in Compile := { ethContractAbiDecodeTask( Compile ).evaluated },
+    ethContractAbiCallDecode in Compile := { ethContractAbiCallDecodeTask( Compile ).evaluated },
 
-    ethContractAbiDecode in Test := { ethContractAbiDecodeTask( Test ).evaluated },
+    ethContractAbiCallDecode in Test := { ethContractAbiCallDecodeTask( Test ).evaluated },
 
-    ethContractAbiEncode in Compile := { ethContractAbiEncodeTask( Compile ).evaluated },
+    ethContractAbiCallEncode in Compile := { ethContractAbiCallEncodeTask( Compile ).evaluated },
 
-    ethContractAbiEncode in Test := { ethContractAbiEncodeTask( Test ).evaluated },
+    ethContractAbiCallEncode in Test := { ethContractAbiCallEncodeTask( Test ).evaluated },
 
     ethContractAbiForget in Compile := { ethContractAbiForgetTask( Compile ).evaluated },
 
@@ -2098,7 +2098,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethContractAbiDecodeTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethContractAbiCallDecodeTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAnyAbiSourceHexBytesParser )
 
     Def.inputTask {
@@ -2115,7 +2115,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethContractAbiEncodeTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethContractAbiCallEncodeTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAbiMaybeWarningFunctionInputsParser( restrictedToConstants = false ) )
 
     Def.inputTask {
