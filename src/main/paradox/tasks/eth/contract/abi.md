@@ -10,13 +10,13 @@
 
 ### ethContractAbiCallEncode
 
-### ethContractAbiForget
+### ethContractAbiDefaultDrop
 
-### ethContractAbiList
+### ethContractAbiDefaultList
 
-### ethContractAbiImport
+### ethContractAbiDefaultImport
 
-### ethContractAbiMatch
+### ethContractAbiDefaultSet
 
 ### ethContractAbiOverride
 

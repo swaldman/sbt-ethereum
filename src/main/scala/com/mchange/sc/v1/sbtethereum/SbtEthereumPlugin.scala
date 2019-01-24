@@ -347,12 +347,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops an alias for an ABI.")
     val ethContractAbiAliasList       = taskKey [Unit] ("Lists aliased ABIs and their hashes.")
     val ethContractAbiAliasSet        = inputKey[Unit] ("Defines a new alias for an ABI, taken from any ABI source.")
-    val ethContractAbiCallDecode          = inputKey[Unit] ("Takes an ABI and a function call hex-encoded with that ABI, and decodes them.")
-    val ethContractAbiCallEncode          = inputKey[Unit] ("Takes an ABI, a function name, and arguments and geneated the hex-encoded data that would invoke the function.")
-    val ethContractAbiForget          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via ethContractAbiImport")
-    val ethContractAbiList            = inputKey[Unit] ("Lists the addresses for which ABI definitions have been memorized. (Does not include our own deployed compilations, see 'ethContractCompilationList'")
-    val ethContractAbiImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
-    val ethContractAbiMatch           = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address")
+    val ethContractAbiCallDecode      = inputKey[Unit] ("Takes an ABI and a function call hex-encoded with that ABI, and decodes them.")
+    val ethContractAbiCallEncode      = inputKey[Unit] ("Takes an ABI, a function name, and arguments and geneated the hex-encoded data that would invoke the function.")
+    val ethContractAbiDefaultDrop          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via 'ethContractAbiDefaultSet' or 'ethContractAbiDefaultImport'")
+    val ethContractAbiDefaultList            = inputKey[Unit] ("Lists the addresses for which default ABI definitions have been defined. (Includes explicitly set deaults and our own deployed compilations.)")
+    val ethContractAbiDefaultImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
+    val ethContractAbiDefaultSet           = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address")
     val ethContractAbiOverride        = inputKey[Unit] ("Basically an alias to 'ethContractAbiOverrideSet'.")
     val ethContractAbiOverrideSet     = inputKey[Unit] ("Sets a temporary (just this session) association between an ABI an address, that overrides any persistent association")
     val ethContractAbiOverrideDropAll = taskKey[Unit]  ("Clears all temporary associations (on the current chain) between an ABI an address")
@@ -745,21 +745,21 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractAbiCallEncode in Test := { ethContractAbiCallEncodeTask( Test ).evaluated },
 
-    ethContractAbiForget in Compile := { ethContractAbiForgetTask( Compile ).evaluated },
+    ethContractAbiDefaultDrop in Compile := { ethContractAbiDefaultDropTask( Compile ).evaluated },
 
-    ethContractAbiForget in Test := { ethContractAbiForgetTask( Test ).evaluated },
+    ethContractAbiDefaultDrop in Test := { ethContractAbiDefaultDropTask( Test ).evaluated },
 
-    ethContractAbiList in Compile := { ethContractAbiListTask( Compile ).evaluated },
+    ethContractAbiDefaultList in Compile := { ethContractAbiDefaultListTask( Compile ).evaluated },
 
-    ethContractAbiList in Test := { ethContractAbiListTask( Test ).evaluated },
+    ethContractAbiDefaultList in Test := { ethContractAbiDefaultListTask( Test ).evaluated },
 
-    ethContractAbiMatch in Compile := { ethContractAbiMatchTask( Compile ).evaluated },
+    ethContractAbiDefaultSet in Compile := { ethContractAbiDefaultSetTask( Compile ).evaluated },
 
-    ethContractAbiMatch in Test := { ethContractAbiMatchTask( Test ).evaluated },
+    ethContractAbiDefaultSet in Test := { ethContractAbiDefaultSetTask( Test ).evaluated },
 
-    ethContractAbiImport in Compile := { ethContractAbiImportTask( Compile ).evaluated },
+    ethContractAbiDefaultImport in Compile := { ethContractAbiDefaultImportTask( Compile ).evaluated },
 
-    ethContractAbiImport in Test := { ethContractAbiImportTask( Test ).evaluated },
+    ethContractAbiDefaultImport in Test := { ethContractAbiDefaultImportTask( Test ).evaluated },
 
     ethContractAbiOverride in Compile := { ethContractAbiOverrideSetTask( Compile ).evaluated },
 
@@ -2129,7 +2129,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethContractAbiForgetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethContractAbiDefaultDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
@@ -2138,12 +2138,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       val address = parser.parsed
       val found = shoebox.Database.deleteMemorizedContractAbi( chainId, address ).get // throw an Exception if there's a database issue
       if ( found ) {
-        log.info( s"Previously imported or matched ABI for contract with address '0x${address.hex}' (on chain with ID ${chainId}) has been forgotten." )
+        log.info( s"Previously imported or set ABI for contract with address '0x${address.hex}' (on chain with ID ${chainId}) has been dropped." )
       } else {
         val mbDeployment = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get  // throw an Exception if there's a database issue
         mbDeployment match {
           case Some( _ ) => throw new SbtEthereumException( s"Contract at address '0x${address.hex}' (on chain with ID ${chainId}) is not an imported ABI but our own deployment. Cannot drop." )
-          case None      => throw new SbtEthereumException( s"We have not memorized an ABI for the contract at address '0x${address.hex}' (on chain with ID ${chainId})." )
+          case None      => throw new SbtEthereumException( s"We have not set or imported an ABI for the contract at address '0x${address.hex}' (on chain with ID ${chainId})." )
         }
       }
     }
@@ -2159,7 +2159,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethContractAbiMatchTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethContractAbiDefaultSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAnyAbiSourceParser )
 
     Def.inputTaskDyn {
@@ -2194,7 +2194,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       currentAbiOverrides.get( toLinkAddress ).foreach { currentOverride =>
         if ( currentOverride.withStandardSort != abi /* already sorted */ ) {
           val ignoreOverride = queryYN( is, s"An ABI override is set in the present session that differs from the ABI you wish to associate with '${hexString(toLinkAddress)}'. Continue? [y/n] " )
-          if (! ignoreOverride ) throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch due to discrepancy between linked ABI and current override." )
+          if (! ignoreOverride ) throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet due to discrepancy between linked ABI and current override." )
         }
       }
 
@@ -2232,7 +2232,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), Some( compilationAbi ), _ ) => {
           val overwriteShadow = queryYN( is, s"This operation would overwrite an existing ABI associated with '${hexString(toLinkAddress)}' (which itself shadowed an original compilation-derived ABI). Continue? [y/n] " )
           if (! overwriteShadow ) {
-            throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch in order not to replace an existing association (which itself shadowed an original compilation-derived ABI)." )
+            throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association (which itself shadowed an original compilation-derived ABI)." )
           }
           else {
             shoebox.Database.resetMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
@@ -2242,7 +2242,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), None, _ ) => {
           val overwrite = queryYN( is, s"This operation would overwrite an existing ABI associated with '${hexString(toLinkAddress)}'. Continue? [y/n] " )
           if (! overwrite ) {
-            throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch in order not to replace an existing association." )
+            throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association." )
           }
           else {
             shoebox.Database.resetMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
@@ -2252,7 +2252,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         case AbiLookup( toLinkAddress, _, None, Some( compilationAbi_ ), _ ) => {
           val shadow = queryYN( is, "This operation would shadow an original compilation-derived ABI. Continue? [y/n] " )
           if (! shadow ) {
-            throw new OperationAbortedByUserException( "User aborted ethContractAbiMatch in order not to replace an existing association (which itself overrode an original compilation-derived ABI)." )
+            throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association (which itself overrode an original compilation-derived ABI)." )
           }
           else {
             shoebox.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
@@ -2396,7 +2396,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethContractAbiListTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+  private def ethContractAbiDefaultListTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val log = streams.value.log
 
@@ -2513,7 +2513,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     doFetchNum
   }
 
-  private def ethContractAbiImportTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ethContractAbiDefaultImportTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTaskDyn {
