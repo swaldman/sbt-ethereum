@@ -175,33 +175,47 @@ When you type `eth<tab>` you should see a rather useless and intimidatingly long
 
 ```
 sbt:eth-command-line> eth
-Display all 103 possibilities? (y or n) 
-eth-command-line/                         ethAddressAliasCheck                      ethAddressAliasDrop                       ethAddressAliasList                       
-ethAddressAliasSet                        ethAddressBalance                         ethAddressSenderDefaultDrop               ethAddressSenderDefaultPrint              
-ethAddressSenderDefaultSet                ethAddressSenderOverrideDrop              ethAddressSenderOverridePrint             ethAddressSenderOverrideSet               
-ethAddressSenderPrint                     ethContractAbiAliasDrop                   ethContractAbiAliasList                   ethContractAbiAliasSet                    
-ethContractAbiDecode                      ethContractAbiEncode                      ethContractAbiForget                      ethContractAbiImport                      
-ethContractAbiList                        ethContractAbiMatch                       ethContractAbiOverrideAdd                 ethContractAbiOverrideClear               
-ethContractAbiOverrideList                ethContractAbiOverridePrint               ethContractAbiOverrideRemove              ethContractAbiPrint                       
-ethContractAbiPrintCompact                ethContractAbiPrintPretty                 ethContractCompilationCull                ethContractCompilationInspect             
-ethContractCompilationList                ethDebugGanacheRestart                    ethDebugGanacheStart                      ethDebugGanacheStop                       
-ethDebugGanacheTest                       ethKeystoreList                           ethKeystorePrivateKeyReveal               ethKeystoreWalletV3Create                 
-ethKeystoreWalletV3FromJsonImport         ethKeystoreWalletV3FromPrivateKeyImport   ethKeystoreWalletV3Print                  ethKeystoreWalletV3Validate               
-ethLanguageSolidityCompilerInstall        ethLanguageSolidityCompilerPrint          ethLanguageSolidityCompilerSelect         ethNodeBlockNumberPrint                   
-ethNodeUrlDefaultDrop                     ethNodeUrlDefaultPrint                    ethNodeUrlDefaultSet                      ethNodeUrlOverrideDrop                    
-ethNodeUrlOverridePrint                   ethNodeUrlOverrideSet                     ethNodeUrlPrint                           ethShoeboxBackup                          
-ethShoeboxDatabaseDumpCreate              ethShoeboxDatabaseDumpRestore             ethShoeboxRestore                         ethTransactionDeploy                      
-ethTransactionGasLimitOverrideDrop        ethTransactionGasLimitOverridePrint       ethTransactionGasLimitOverrideSet         ethTransactionGasPriceOverrideDrop        
-ethTransactionGasPriceOverridePrint       ethTransactionGasPriceOverrideSet         ethTransactionInvoke                      ethTransactionLookup                      
-ethTransactionNonceOverrideDrop           ethTransactionNonceOverridePrint          ethTransactionNonceOverrideSet            ethTransactionPing                        
-ethTransactionRaw                         ethTransactionSend                        ethTransactionView                        ethcfgAddressSender                       
-ethcfgAutoDeployContracts                 ethcfgBaseCurrencyCode                    ethcfgChainId                             ethcfgEntropySource                       
-ethcfgGasLimitCap                         ethcfgGasLimitFloor                       ethcfgGasLimitMarkup                      ethcfgGasPriceCap                         
-ethcfgGasPriceFloor                       ethcfgGasPriceMarkup                      ethcfgIncludeLocations                    ethcfgKeystoreAutoImportLocationsV3       
-ethcfgKeystoreAutoRelockSeconds           ethcfgNetcompileUrl                       ethcfgNodeUrl                             ethcfgScalaStubsPackage                   
-ethcfgSolidityCompilerOptimize            ethcfgSolidityCompilerOptimizerRuns       ethcfgSolidityDestination                 ethcfgSoliditySource                      
-ethcfgTargetDir                           ethcfgTransactionReceiptPollPeriod        ethcfgTransactionReceiptTimeout           ethcfgUseReplayAttackProtection           
-etherscanApiKeyDrop                       etherscanApiKeyImport                     etherscanApiKeyReveal                     
+Display all 119 possibilities? (y or n) 
+ethAddressAliasCheck                      ethAddressAliasDrop                       ethAddressAliasList                       
+ethAddressAliasSet                        ethAddressBalance                         ethAddressSenderDefaultDrop               
+ethAddressSenderDefaultPrint              ethAddressSenderDefaultSet                ethAddressSenderOverride                  
+ethAddressSenderOverrideDrop              ethAddressSenderOverridePrint             ethAddressSenderOverrideSet               
+ethAddressSenderPrint                     ethContractAbiAliasDrop                   ethContractAbiAliasList                   
+ethContractAbiAliasSet                    ethContractAbiCallDecode                  ethContractAbiCallEncode                  
+ethContractAbiDefaultDrop                 ethContractAbiDefaultImport               ethContractAbiDefaultList                 
+ethContractAbiDefaultSet                  ethContractAbiOverride                    ethContractAbiOverrideDrop                
+ethContractAbiOverrideDropAll             ethContractAbiOverrideList                ethContractAbiOverridePrint               
+ethContractAbiOverrideSet                 ethContractAbiPrint                       ethContractAbiPrintCompact                
+ethContractAbiPrintPretty                 ethContractCompilationCull                ethContractCompilationInspect             
+ethContractCompilationList                ethDebugGanacheHalt                       ethDebugGanacheRestart                    
+ethDebugGanacheStart                      ethDebugGanacheTest                       ethKeystoreList                           
+ethKeystorePrivateKeyReveal               ethKeystoreWalletV3Create                 ethKeystoreWalletV3FromJsonImport         
+ethKeystoreWalletV3FromPrivateKeyImport   ethKeystoreWalletV3Print                  ethKeystoreWalletV3Validate               
+ethLanguageSolidityCompilerInstall        ethLanguageSolidityCompilerPrint          ethLanguageSolidityCompilerSelect         
+ethNodeBlockNumberPrint                   ethNodeChainId                            ethNodeChainIdDefaultDrop                 
+ethNodeChainIdDefaultPrint                ethNodeChainIdDefaultSet                  ethNodeChainIdOverride                    
+ethNodeChainIdOverrideDrop                ethNodeChainIdOverridePrint               ethNodeChainIdOverrideSet                 
+ethNodeChainIdPrint                       ethNodeUrl                                ethNodeUrlDefaultDrop                     
+ethNodeUrlDefaultPrint                    ethNodeUrlDefaultSet                      ethNodeUrlOverride                        
+ethNodeUrlOverrideDrop                    ethNodeUrlOverridePrint                   ethNodeUrlOverrideSet                     
+ethNodeUrlPrint                           ethShoeboxBackup                          ethShoeboxDatabaseDumpCreate              
+ethShoeboxDatabaseDumpRestore             ethShoeboxRestore                         ethTransactionDeploy                      
+ethTransactionGasLimitOverride            ethTransactionGasLimitOverrideDrop        ethTransactionGasLimitOverridePrint       
+ethTransactionGasLimitOverrideSet         ethTransactionGasPriceOverride            ethTransactionGasPriceOverrideDrop        
+ethTransactionGasPriceOverridePrint       ethTransactionGasPriceOverrideSet         ethTransactionInvoke                      
+ethTransactionLookup                      ethTransactionMock                        ethTransactionNonceOverride               
+ethTransactionNonceOverrideDrop           ethTransactionNonceOverridePrint          ethTransactionNonceOverrideSet            
+ethTransactionPing                        ethTransactionRaw                         ethTransactionSend                        
+ethTransactionView                        ethcfgAddressSender                       ethcfgAutoDeployContracts                 
+ethcfgBaseCurrencyCode                    ethcfgEntropySource                       ethcfgGasLimitCap                         
+ethcfgGasLimitFloor                       ethcfgGasLimitMarkup                      ethcfgGasPriceCap                         
+ethcfgGasPriceFloor                       ethcfgGasPriceMarkup                      ethcfgIncludeLocations                    
+ethcfgKeystoreAutoImportLocationsV3       ethcfgKeystoreAutoRelockSeconds           ethcfgNetcompileUrl                       
+ethcfgNodeChainId                         ethcfgNodeUrl                             ethcfgScalaStubsPackage                   
+ethcfgSolidityCompilerOptimize            ethcfgSolidityCompilerOptimizerRuns       ethcfgSolidityDestination                 
+ethcfgSoliditySource                      ethcfgTargetDir                           ethcfgTransactionReceiptPollPeriod        
+ethcfgTransactionReceiptTimeout           ethcfgUseReplayAttackProtection           etherscanApiKeyDrop                       
+etherscanApiKeyPrint                      etherscanApiKeySet                        
 ```
 Wow. That's a lot. That's a list of (almost) all of the ethereum-related commands
 available to you. But it's too much information to be useful.

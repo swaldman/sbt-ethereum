@@ -2541,11 +2541,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         case None => {
           val abiLookup = abiLookupForAddress( chainId, address, abiOverrides )
           if ( abiLookup.memorizedAbi.nonEmpty ) { 
-            val overwrite = queryYN( is, s"An ABI for '${hexString(address)}' on chain with ID ${chainId} has already been memorized. Overwrite? [y/n] " )
-            if (! overwrite) throw new OperationAbortedByUserException( "User chose not to overwrite already memorized contract ABI." )
+            val overwrite = queryYN( is, s"A default ABI for '${hexString(address)}' on chain with ID ${chainId} has already been set. Overwrite? [y/n] " )
+            if (! overwrite) throw new OperationAbortedByUserException( "User chose not to overwrite already defined default contract ABI." )
           }
           else if ( abiLookup.compilationAbi.nonEmpty ) {
-            val shadow = queryYN( is, s"A compilation deployed at '${hexString(address)}' on chain with ID ${chainId} has a built-in ABI. Do you wish to shadow it? [y/n] " )
+            val shadow = queryYN( is, s"A compilation deployed at '${hexString(address)}' on chain with ID ${chainId} has a known, built-in ABI. Do you wish to shadow it? [y/n] " )
             if (! shadow) throw new OperationAbortedByUserException( "User chose not to shadow built-in compilation ABI." )
           }
         }
@@ -2600,9 +2600,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
       shoebox.Database.resetMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
-      log.info( s"ABI is now known for the contract at address ${hexString(address)}" )
+      log.info( s"A default ABI is now known for the contract at address ${hexString(address)}" )
       if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, address ).assert ) {
-        interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported ABI", address )
+        interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported default ABI", address )
       }
       Def.taskDyn {
         xethTriggerDirtyAliasCache

@@ -141,24 +141,24 @@ First, let's manually copy and paste our contract's ABI from _Etherscan_. Let's 
 
 Now that we have access to the ABI, we can import it into our _sbt-ethereum_ shoebox database:
 ```
-sbt:eth-command-line> ethContractAbiImport fortune
+sbt:eth-command-line> ethContractAbiDefaultImport fortune
 [warn] No Etherscan API key has been set, so you will have to directly paste the ABI.
 [warn] Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeyImport'.
 Contract ABI: 
 ```
-The `ethContractAbiImport` command requires the address we want to associate the ABI with as an argument. We could have
+The `ethContractAbiDefaultImport` command requires the address we want to associate the ABI with as an argument. We could have
 supplied the long hex address but why? We've defined an easy to use alias `fortune`. (Remember, always, to use tab
 completion so _sbt-ethereum_'s long names don't drive you nuts. Typing `ethC<tab>A<tab>I<tab> f<tab>` would get us there!)
 
-`ethContractAbiImport` is an _interactive command_. It is prompting us for what it needs, in this case the cotract ABI.
+`ethContractAbiDefaultImport` is an _interactive command_. It is prompting us for what it needs, in this case the cotract ABI.
 We copy and paste that from the _Etherscan_ page. Yes it is long (any are much longer). Copy the while thing, or use the "Copy"
 button on the upper right of the ABI on the _Etherscan_ page. After you have pasted it in, hit `<return>`.
 ```
-sbt:eth-command-line> ethContractAbiImport fortune
+sbt:eth-command-line> ethContractAbiDefaultImport fortune
 [warn] No Etherscan API key has been set, so you will have to directly paste the ABI.
 [warn] Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeyImport'.
 Contract ABI: [{"constant":false,"inputs":[{"name":"fortune","type":"string"}],"name":"addFortune","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[{"name":"","type":"uint256"}],"name":"fortunes","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"drawFortune","outputs":[{"name":"fortune","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"countFortunes","outputs":[{"name":"count","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"inputs":[{"name":"initialFortune","type":"string"}],"payable":false,"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"name":"author","type":"address"},{"indexed":false,"name":"fortune","type":"string"}],"name":"FortuneAdded","type":"event"}]
-[info] ABI is now known for the contract at address 0x82ea8ab1e836272322f376a5f71d5a34a71688f1
+[info] A default ABI is now known for the contract at address 0x82ea8ab1e836272322f376a5f71d5a34a71688f1
 [info] Refreshing caches.
 [success] Total time: 176 s, completed Dec 12, 2018 5:00:48 PM
 ```
@@ -199,13 +199,13 @@ Etherscan API key successfully set.
 Now we can run the same command that we did before, but it will go more easily:
 ```
 sbt:eth-command-line> ethContractAbiImport fortune
-An ABI for '0x82ea8ab1e836272322f376a5f71d5a34a71688f1' on chain with ID 1 has already been memorized. Overwrite? [y/n] y
+An ABI for '0x82ea8ab1e836272322f376a5f71d5a34a71688f1' on chain with ID 1 has already been set. Overwrite? [y/n] y
 An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] y
 Attempting to fetch ABI for address '0x82ea8ab1e836272322f376a5f71d5a34a71688f1' from Etherscan.
 ABI found:
 [{"name":"addFortune","inputs":[{"name":"fortune","type":"string"}],"outputs":[],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"fortunes","inputs":[{"name":"","type":"uint256"}],"outputs":[{"name":"","type":"string"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"drawFortune","inputs":[],"outputs":[{"name":"fortune","type":"string"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"countFortunes","inputs":[],"outputs":[{"name":"count","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"FortuneAdded","inputs":[{"name":"author","type":"address","indexed":false},{"name":"fortune","type":"string","indexed":false}],"anonymous":false,"type":"event"},{"inputs":[{"name":"initialFortune","type":"string"}],"payable":false,"stateMutability":"nonpayable","type":"constructor"}]
 Use this ABI? [y/n] y
-[info] ABI is now known for the contract at address 0x82ea8ab1e836272322f376a5f71d5a34a71688f1
+[info] A default ABI is now known for the contract at address 0x82ea8ab1e836272322f376a5f71d5a34a71688f1
 [info] Refreshing caches.
 [success] Total time: 13 s, completed Dec 12, 2018 5:19:41 PM
 ```
