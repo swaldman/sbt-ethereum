@@ -13,7 +13,7 @@
 
 # ethContract*
 
-_sbt-ethereum_ tasks related to addresses, including @ref:[managing and working with contract ABIs](#contract_abi.md) and @ref:[keeping track of past compilations and deployments of smart contracts](compilation.md).
+_sbt-ethereum_ tasks related to addresses, including @ref:[managing and working with contract ABIs](abi.md) and @ref:[keeping track of past compilations and deployments of smart contracts](compilation.md).
 
 ### ethContractAbi*
 
