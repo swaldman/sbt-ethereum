@@ -2141,7 +2141,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val address = parser.parsed
-      val found = shoebox.Database.deleteMemorizedContractAbi( chainId, address ).get // throw an Exception if there's a database issue
+      val found = shoebox.Database.deleteImportedContractAbi( chainId, address ).get // throw an Exception if there's a database issue
       if ( found ) {
         log.info( s"Previously imported or set ABI for contract with address '0x${address.hex}' (on chain with ID ${chainId}) has been dropped." )
       } else {
@@ -2221,12 +2221,12 @@ object SbtEthereumPlugin extends AutoPlugin {
           noop
         }
         case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), Some( `abi` ), _ ) => {
-          val deleteMemorized = queryYN( is, s"The ABI you have tried to link is the origial compilation ABI associated with ${hexString(toLinkAddress)}. Remove shadowing ABI to restore? [y/n] " )
-          if (! deleteMemorized ) {
+          val deleteImported = queryYN( is, s"The ABI you have tried to link is the origial compilation ABI associated with ${hexString(toLinkAddress)}. Remove shadowing ABI to restore? [y/n] " )
+          if (! deleteImported ) {
             throw new OperationAbortedByUserException( "User chose not to delete a currently associated ABI, which shadows an original compilation-derived ABI." )
           }
           else {
-            shoebox.Database.deleteMemorizedContractAbi( chainId, toLinkAddress ).assert // throw an Exception if there's a database issue
+            shoebox.Database.deleteImportedContractAbi( chainId, toLinkAddress ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
@@ -2240,7 +2240,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association (which itself shadowed an original compilation-derived ABI)." )
           }
           else {
-            shoebox.Database.resetMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            shoebox.Database.resetImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
@@ -2250,7 +2250,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association." )
           }
           else {
-            shoebox.Database.resetMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            shoebox.Database.resetImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
@@ -2260,12 +2260,12 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association (which itself overrode an original compilation-derived ABI)." )
           }
           else {
-            shoebox.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            shoebox.Database.setImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
         case AbiLookup( toLinkAddress, _, None, None, _ ) => {
-          shoebox.Database.setMemorizedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+          shoebox.Database.setImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
           finishUpdate
         }
         case unexpected => throw new SbtEthereumException( s"Unexpected AbiLookup: ${unexpected}" )
@@ -2390,12 +2390,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private final object AbiListRecord {
     trait Source
-    case object Memorized extends Source
+    case object Imported extends Source
     case class Deployed( mbContractName : Option[String] ) extends Source
   }
-  private final case class AbiListRecord( address : EthAddress, source : AbiListRecord.Source, aliases : immutable.Seq[String] ) {
+  private final case class AbiListRecord( address : EthAddress, source : AbiListRecord.Source, addressAliases : immutable.Seq[String] ) {
     def matches( regex : Regex ) = {
-      aliases.exists( alias => regex.findFirstIn( alias ) != None ) ||
+      addressAliases.exists( alias => regex.findFirstIn( alias ) != None ) ||
       regex.findFirstIn( s"0x${address.hex}" ) != None ||
       ( source.isInstanceOf[AbiListRecord.Deployed] && source.asInstanceOf[AbiListRecord.Deployed].mbContractName.exists( contractName => regex.findFirstIn( contractName ) != None ) )
     }
@@ -2407,11 +2407,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val mbRegex = regexParser( defaultToCaseInsensitive = true ).parsed
 
-    val memorizedAddresses = shoebox.Database.getMemorizedContractAbiAddresses( chainId ).get
+    val memorizedAddresses = shoebox.Database.getImportedContractAbiAddresses( chainId ).get
     val deployedContracts = shoebox.Database.allDeployedContractInfosForChainId( chainId ).get
 
     val allRecords = {
-      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Memorized, shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).get ) )
+      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Imported, shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).get ) )
       val deployedRecords  = {
         deployedContracts
           .filter( _.mbAbi.nonEmpty )
@@ -2430,24 +2430,24 @@ object SbtEthereumPlugin extends AutoPlugin {
     println( cap )
     filteredRecords.foreach { record =>
       val ka = s"0x${record.address.hex}"
-      val source = if ( record.source == AbiListRecord.Memorized ) "Memorized" else "Deployed"
-      val aliasesPart = {
-        record.aliases match {
-          case Seq( alias ) => s"""alias "${alias}""""
+      val source = if ( record.source == AbiListRecord.Imported ) "Imported" else "Deployed"
+      val addressAliasesPart = {
+        record.addressAliases match {
+          case Seq( alias ) => s"""address alias "${alias}""""
           case Seq()        => ""
-          case aliases      => {
-            val quoted = aliases.map( "\"" + _ + "\"" )
-            s"""aliases ${quoted.mkString(", ")}"""
+          case addressAliases      => {
+            val quoted = addressAliases.map( "\"" + _ + "\"" )
+            s"""address aliases ${quoted.mkString(", ")}"""
           }
         }
       }
       val annotation = record match {
-        case AbiListRecord( address, AbiListRecord.Memorized, aliases ) if aliases.isEmpty                => ""
-        case AbiListRecord( address, AbiListRecord.Memorized, aliases )                                   => s""" <-- ${aliasesPart}"""
-        case AbiListRecord( address, AbiListRecord.Deployed( None ), aliases ) if aliases.isEmpty         => ""
-        case AbiListRecord( address, AbiListRecord.Deployed( None ), aliases )                            => s""" <-- ${aliasesPart}"""
-        case AbiListRecord( address, AbiListRecord.Deployed( Some( name ) ), aliases ) if aliases.isEmpty => s""" <-- contract name "${name}""""
-        case AbiListRecord( address, AbiListRecord.Deployed( Some( name ) ), aliases )                    => s""" <-- contract name "${name}", ${aliasesPart}"""
+        case AbiListRecord( address, AbiListRecord.Imported, addressAliases ) if addressAliases.isEmpty                => ""
+        case AbiListRecord( address, AbiListRecord.Imported, addressAliases )                                   => s""" <-- ${addressAliasesPart}"""
+        case AbiListRecord( address, AbiListRecord.Deployed( None ), addressAliases ) if addressAliases.isEmpty         => ""
+        case AbiListRecord( address, AbiListRecord.Deployed( None ), addressAliases )                            => s""" <-- ${addressAliasesPart}"""
+        case AbiListRecord( address, AbiListRecord.Deployed( Some( name ) ), addressAliases ) if addressAliases.isEmpty => s""" <-- contract name "${name}""""
+        case AbiListRecord( address, AbiListRecord.Deployed( Some( name ) ), addressAliases )                    => s""" <-- contract name "${name}", ${addressAliasesPart}"""
       }
       println( f"| $ka%-42s | $source%-9s |" +  annotation )
     }
@@ -2604,7 +2604,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           case None                 => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
         }
       }
-      shoebox.Database.resetMemorizedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
+      shoebox.Database.resetImportedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
       log.info( s"A default ABI is now known for the contract at address ${hexString(address)}" )
       if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, address ).assert ) {
         interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported default ABI", address )

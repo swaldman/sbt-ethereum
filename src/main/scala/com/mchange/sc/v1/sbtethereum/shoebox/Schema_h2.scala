@@ -50,7 +50,7 @@ private [sbtethereum] object Schema_h2 {
         stmt.executeUpdate( Table.NormalizedAbis.CreateSql )
         stmt.executeUpdate( Table.KnownCompilations.CreateSql )
         stmt.executeUpdate( Table.DeployedCompilations.CreateSql )
-        stmt.executeUpdate( Table.MemorizedAbis.CreateSql )
+        stmt.executeUpdate( Table.MemorizedAbis.CreateSql ) // externally we now refer to "memorized ABIs" as "imported ABIs", but we're not gonna change the schema for that
         stmt.executeUpdate( Table.AddressAliases.CreateSql )
         stmt.executeUpdate( Table.AddressAliases.CreateIndex )
         stmt.executeUpdate( Table.EnsBidStore.CreateSql )
@@ -831,6 +831,7 @@ private [sbtethereum] object Schema_h2 {
       }
     }
 
+    // externally we now refer to "memorized ABIs" as "imported ABIs", but we're not gonna change the schema for that
     final object MemorizedAbis {
       final object V1 {
         final val CreateSql = {

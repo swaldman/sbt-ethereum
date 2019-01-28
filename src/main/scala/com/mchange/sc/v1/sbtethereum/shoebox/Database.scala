@@ -115,7 +115,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def setMemorizedContractAbi( chainId : Int, contractAddress : EthAddress, abi : Abi ) : Failable[Unit] = {
+  def setImportedContractAbi( chainId : Int, contractAddress : EthAddress, abi : Abi ) : Failable[Unit] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
@@ -127,7 +127,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def resetMemorizedContractAbi( chainId : Int, contractAddress : EthAddress, abi : Abi ) : Failable[Unit] = {
+  def resetImportedContractAbi( chainId : Int, contractAddress : EthAddress, abi : Abi ) : Failable[Unit] = {
     DataSource.flatMap { ds =>
       Failable {
         borrowTransact( ds.getConnection() ){ conn =>
@@ -141,7 +141,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
 
   private [sbtethereum]
-  def deleteMemorizedContractAbi( chainId : Int, contractAddress : EthAddress ) : Failable[Boolean] = {
+  def deleteImportedContractAbi( chainId : Int, contractAddress : EthAddress ) : Failable[Boolean] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
@@ -152,7 +152,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def getMemorizedContractAbiAddresses( chainId : Int ) : Failable[immutable.Seq[EthAddress]] = {
+  def getImportedContractAbiAddresses( chainId : Int ) : Failable[immutable.Seq[EthAddress]] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>
@@ -163,7 +163,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  def getMemorizedContractAbi( chainId : Int, contractAddress : EthAddress ) : Failable[Option[Abi]] = {
+  def getImportedContractAbi( chainId : Int, contractAddress : EthAddress ) : Failable[Option[Abi]] = {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection() ){ conn =>

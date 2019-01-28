@@ -90,7 +90,7 @@ private [sbtethereum] object Abi {
     AbiLookup(
       address,
       abiOverrides.get(address),
-      shoebox.Database.getMemorizedContractAbi( chainId, address ).assert,        // throw an Exception if there's a database problem
+      shoebox.Database.getImportedContractAbi( chainId, address ).assert,        // throw an Exception if there's a database problem
       shoebox.Database.deployedContractInfoForAddress( chainId, address ).assert.flatMap( _.mbAbi ), // again, throw if database problem
       defaultBuilder
     )
