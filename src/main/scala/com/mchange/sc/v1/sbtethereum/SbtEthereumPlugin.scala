@@ -2061,17 +2061,22 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val dropMeAbiAlias = parser.parsed
-      shoebox.Database.dropAbiAlias( chainId, dropMeAbiAlias )
-      log.info( s"Abi alias 'abi:${dropMeAbiAlias}' successfully dropped." )
-      Def.taskDyn {
-        xethTriggerDirtyAliasCache
+      if ( !isStandardAbiAlias( dropMeAbiAlias ) ) {
+        shoebox.Database.dropAbiAlias( chainId, dropMeAbiAlias )
+        log.info( s"Abi alias 'abi:${dropMeAbiAlias}' successfully dropped." )
+        Def.taskDyn {
+          xethTriggerDirtyAliasCache
+        }
+      }
+      else {
+        throw nst( new SbtEthereumException(s"Standard ABI alias 'abi:${dropMeAbiAlias}' cannot be dropped.") )
       }
     }
   }
 
   private def ethContractAbiAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val abiAliases = shoebox.Database.findAllAbiAliases( chainId ).assert
+    val abiAliases = shoebox.Database.findAllAbiAliases( chainId ).assert ++ StandardPrefixedStandardAbiHashes
     val columns = immutable.Vector( "ABI Alias", "ABI Hash" ).map( texttable.Column.apply( _ ) )
 
     def extract( tup : Tuple2[String,EthHash] ) : Seq[String] = {

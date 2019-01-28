@@ -536,12 +536,13 @@ object Parsers {
     token(Space.*) ~> (newAbiAliasParser ~ (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi )))
   }
 
+  // yields the parsed alias without the "abi:" prefix!
   private [sbtethereum] def genExistingAbiAliasParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[String] = {
     mbRpi.fold( failure( "Could not find RichParserInfo for abiAliases." ) : Parser[String] ) { rpi =>
-      token(Space.*) ~> (literal("abi:") ~> token( ID)).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) )
+      token(Space.*) ~> (literal("abi:") ~> token(ID|(literal("standard:")~ID).map(tup => tup._1 + tup._2)).examples( (rpi.abiAliases.keySet ++ StandardPrefixedStandardAbiHashes.keySet).map( "abi:" + _ ) ) )
     }
   }
   

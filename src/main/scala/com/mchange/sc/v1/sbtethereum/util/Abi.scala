@@ -7,12 +7,19 @@ import play.api.libs.json.Json
 private [sbtethereum] object Abi {
   val EmptyAbi: jsonrpc.Abi = jsonrpc.Abi.empty
 
-  val Erc20Abi = jsonrpc.Abi( """[{"name":"approve","inputs":[{"name":"spender","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"totalSupply","inputs":[],"outputs":[{"name":"","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"transferFrom","inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"balanceOf","inputs":[{"name":"tokenOwner","type":"address"}],"outputs":[{"name":"balance","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"transfer","inputs":[{"name":"to","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"allowance","inputs":[{"name":"tokenOwner","type":"address"},{"name":"spender","type":"address"}],"outputs":[{"name":"remaining","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"Transfer","inputs":[{"name":"from","type":"address","indexed":true},{"name":"to","type":"address","indexed":true},{"name":"tokens","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"Approval","inputs":[{"name":"tokenOwner","type":"address","indexed":true},{"name":"spender","type":"address","indexed":true},{"name":"tokens","type":"uint256","indexed":false}],"anonymous":false,"type":"event"}]""")
+  val Erc20Abi = jsonrpc.Abi( """[{"name":"approve","inputs":[{"name":"spender","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"totalSupply","inputs":[],"outputs":[{"name":"","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"transferFrom","inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"balanceOf","inputs":[{"name":"tokenOwner","type":"address"}],"outputs":[{"name":"balance","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"transfer","inputs":[{"name":"to","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"allowance","inputs":[{"name":"tokenOwner","type":"address"},{"name":"spender","type":"address"}],"outputs":[{"name":"remaining","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"Transfer","inputs":[{"name":"from","type":"address","indexed":true},{"name":"to","type":"address","indexed":true},{"name":"tokens","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"Approval","inputs":[{"name":"tokenOwner","type":"address","indexed":true},{"name":"spender","type":"address","indexed":true},{"name":"tokens","type":"uint256","indexed":false}],"anonymous":false,"type":"event"}]""").withStandardSort
 
   // use all lower-case keys
-  val StandardAbis = Map (
+  val StandardAbis : Map[String,jsonrpc.Abi] = Map (
     "erc20" -> Erc20Abi
   )
+  lazy val StandardAbiHashes : Map[String,EthHash] = StandardAbis.map { case ( alias, abi ) => (alias, abiHash(abi)) }
+
+  lazy val StandardPrefixedStandardAbiHashes = StandardAbiHashes.map { case ( unprefixed, hash ) => ( s"standard:${unprefixed}", hash ) }
+
+  lazy val StandardAbisByHash : Map[EthHash,jsonrpc.Abi] = StandardAbis.map { case ( _, abi ) => ( abiHash(abi), abi ) }
+
+  def isStandardAbiAlias( noAbiPrefixAlias : String ) = noAbiPrefixAlias.startsWith( "standard:" )
 
   case class StandardSource( name : String ) extends AbiSource {
     def sourceDesc = s"standard ABI definition '${name}'"
@@ -39,7 +46,7 @@ private [sbtethereum] object Abi {
         lookup.resolveAbi( None ).map( abi => ( abi, Some( lookup ) ) )
       }
       case HashSource( hash ) => {
-        (shoebox.Database.findAbiByAbiHash( hash ).assert orElse shoebox.Database.compilationInfoForCodeHash( hash ).assert.flatMap( _.mbAbi )).map( abi => ( abi, None ) )
+        (shoebox.Database.findAbiByAbiHash( hash ).assert orElse shoebox.Database.compilationInfoForCodeHash( hash ).assert.flatMap( _.mbAbi ) orElse StandardAbisByHash.get( hash )).map( abi => ( abi, None ) )
       }
     }
   }
