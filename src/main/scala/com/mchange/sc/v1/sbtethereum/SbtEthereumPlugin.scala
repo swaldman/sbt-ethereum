@@ -2291,10 +2291,30 @@ object SbtEthereumPlugin extends AutoPlugin {
     val s = state.value
     val log = streams.value.log
     val currentAbiOverrides = abiOverridesForChain( chainId )
+    val addressesToAbiHashes = currentAbiOverrides.map { case (k,v) => (k, abiHash(v)) }
 
-    val columns = immutable.Vector( "ABI Override Addresses" ).map( texttable.Column.apply( _ ) )
-    def extract( address : EthAddress ) : Seq[String] = hexString(address) :: Nil
-    texttable.printTable( columns, extract )( currentAbiOverrides.keySet.toSeq.map( addr => texttable.Row(addr, leftwardAliasesArrowOrEmpty(chainId, addr).assert) ) )
+    val columns = immutable.Vector( "ABI Override Addresses", "ABI Hash" ).map( texttable.Column.apply( _ ) )
+    def extract( tup : Tuple2[EthAddress,EthHash] ) : Seq[String] = hexString( tup._1 ) :: hexString( tup._2 ) :: Nil
+    def aliasesPartForTup( tup : Tuple2[EthAddress,EthHash] ) : String = {
+      val ( address, hash ) = tup
+      val addressAliases = shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).assert
+      val abiAliases = shoebox.AbiAliasHashManager.findAbiAliasesByAbiHash( chainId, hash ).assert
+      def aliasList( s : Seq[String] ) : String = s.mkString("['","','","']")
+      def pAbi( abiAlias : String ) : String = "abi:" + abiAlias
+      def abiAliasList( s : Seq[String] ) : String = aliasList( s.map( pAbi ) )
+      ( addressAliases, abiAliases ) match {
+        case ( Seq(),          Seq() )           =>  ""
+        case ( Seq( alias ),   Seq() )           => s"<-- address alias: '${alias}'"
+        case ( addressAliases, Seq() )           => s"<-- address aliases: ${aliasList(addressAliases)}"
+        case ( Seq(),          Seq( abiAlias ) ) => s"<-- abi alias: '${pAbi(abiAlias)}'"
+        case ( Seq( alias ),   Seq( abiAlias ) ) => s"<-- address alias: '${alias}', abi alias: '${pAbi(abiAlias)}'"
+        case ( addressAliases, Seq( abiAlias ) ) => s"<-- address aliases: ${aliasList(addressAliases)}, abi alias: '${pAbi(abiAlias)}'"
+        case ( Seq(),          abiAliases )      => s"<-- abi aliases: ${abiAliasList(abiAliases)}"
+        case ( Seq( alias ),   abiAliases )      => s"<-- address alias: '${alias}', abi aliases: ${abiAliasList(abiAliases)}"
+        case ( addressAliases, abiAliases )      => s"<-- address aliases: ${aliasList(addressAliases)}, abi aliases: ${abiAliasList(abiAliases)}"
+      }
+    }
+    texttable.printTable( columns, extract )( addressesToAbiHashes.map( tup => texttable.Row(tup, aliasesPartForTup( tup ) ) ) )
   }
 
   private def ethContractAbiOverrideDropAllTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
