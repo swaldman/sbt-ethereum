@@ -1047,7 +1047,7 @@ private [sbtethereum] object Schema_h2 {
         }
       }
       def selectByAbiHash( conn : Connection, chainId : Int, abiHash : EthHash ) : immutable.Seq[String] = {
-        borrow( conn.prepareStatement( "SELECT alias FROM abi_aliases WHERE chain_id = ? AND abiHash = ? ORDER BY alias DESC" ) ) { ps =>
+        borrow( conn.prepareStatement( "SELECT alias FROM abi_aliases WHERE chain_id = ? AND abi_hash = ? ORDER BY alias DESC" ) ) { ps =>
           ps.setInt(1, chainId)
           ps.setString(2, abiHash.hex)
           borrow( ps.executeQuery() ){ rs =>
