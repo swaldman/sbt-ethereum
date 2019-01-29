@@ -2393,13 +2393,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     case object Imported extends Source
     case class Deployed( mbContractName : Option[String] ) extends Source
   }
-  private final case class AbiListRecord( address : EthAddress, source : AbiListRecord.Source, addressAliases : immutable.Seq[String] ) {
-    def matches( regex : Regex ) = {
-      addressAliases.exists( alias => regex.findFirstIn( alias ) != None ) ||
-      regex.findFirstIn( s"0x${address.hex}" ) != None ||
-      ( source.isInstanceOf[AbiListRecord.Deployed] && source.asInstanceOf[AbiListRecord.Deployed].mbContractName.exists( contractName => regex.findFirstIn( contractName ) != None ) )
-    }
-  }
+  private final case class AbiListRecord( address : EthAddress, abiHash : EthHash, source : AbiListRecord.Source, addressAliases : immutable.Seq[String] )
 
   private def ethContractAbiDefaultListTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val chainId = findNodeChainIdTask(warn=true)(config).value
@@ -2407,30 +2401,53 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val mbRegex = regexParser( defaultToCaseInsensitive = true ).parsed
 
-    val memorizedAddresses = shoebox.Database.getImportedContractAbiAddresses( chainId ).get
+    val importedAddresses = shoebox.Database.getImportedContractAbiAddresses( chainId ).get
     val deployedContracts = shoebox.Database.allDeployedContractInfosForChainId( chainId ).get
 
     val allRecords = {
-      val memorizedRecords = memorizedAddresses.map( address => AbiListRecord( address, AbiListRecord.Imported, shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).get ) )
+      val importedRecords = {
+        val tups = importedAddresses.map( address => Tuple2( address, shoebox.Database.getImportedContractAbiHash( chainId, address ).assert ) )
+        def checkTup( tup : Tuple2[EthAddress,Option[EthHash]] ) : Boolean = {
+          val out = tup._2.nonEmpty
+          if (!out) log.warn( s"No ABI hash associated with imported ABI for address ${hexString(tup._1)}?!?" )
+          out
+        }
+        val goodTups = tups.filter( checkTup )
+        goodTups.map { case ( address, checkedHash ) =>
+          val addressAliases = shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).assert
+          Tuple2( address, AbiListRecord( address, checkedHash.get, AbiListRecord.Imported, addressAliases ) )
+        }.toMap
+      }
       val deployedRecords  = {
         deployedContracts
-          .filter( _.mbAbi.nonEmpty )
-          .map( dci => AbiListRecord( dci.contractAddress, AbiListRecord.Deployed( dci.mbName ), shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, dci.contractAddress ).get ) )
+          .filter( _.mbAbiHash.nonEmpty )
+          .map (dci=>Tuple2(dci.contractAddress,AbiListRecord(dci.contractAddress,dci.mbAbiHash.get,AbiListRecord.Deployed(dci.mbName),shoebox.AddressAliasManager.findAddressAliasesByAddress(chainId,dci.contractAddress).get)))
+          .toMap
       }
-      memorizedRecords ++ deployedRecords
+      (deployedRecords ++ importedRecords).values.toSeq // imported records shadow deployed, ordering of the ++ is important
     }
 
-    val filteredRecords = mbRegex.fold( allRecords )( regex => allRecords.filter( _.matches( regex ) ) )
+    val rowFilter : String => Boolean = {
+      mbRegex match {
+        case Some( regex ) => {
+          ( s : String ) => regex.findFirstIn( s ) != None
+        }
+        case None => {
+          ( s : String ) => true
+        }
+      }
+    }
 
-    val cap = "+" + span(44) + "+" + span(11) + "+"
-    val addressHeader = "Address"
-    val sourceHeader = "Source"
-    println( cap )
-    println( f"| $addressHeader%-42s | $sourceHeader%-9s |" )
-    println( cap )
-    filteredRecords.foreach { record =>
-      val ka = s"0x${record.address.hex}"
-      val source = if ( record.source == AbiListRecord.Imported ) "Imported" else "Deployed"
+    val columns = immutable.Vector("Address", "ABI Hash", "Source").map( texttable.Column.apply )
+
+    def extract( record : AbiListRecord ) : Seq[String] = {
+      val addrStr    = hexString( record.address )
+      val abiHashStr = hexString( record.abiHash )
+      val sourceStr  = if ( record.source == AbiListRecord.Imported ) "Imported" else "Deployed"
+      immutable.Vector( addrStr, abiHashStr, sourceStr )
+    }
+
+    def annotation( record : AbiListRecord ) : String = {
       val addressAliasesPart = {
         record.addressAliases match {
           case Seq( alias ) => s"""address alias "${alias}""""
@@ -2441,18 +2458,17 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
       }
-      val annotation = record match {
-        case AbiListRecord( address, AbiListRecord.Imported, addressAliases ) if addressAliases.isEmpty                => ""
-        case AbiListRecord( address, AbiListRecord.Imported, addressAliases )                                   => s""" <-- ${addressAliasesPart}"""
-        case AbiListRecord( address, AbiListRecord.Deployed( None ), addressAliases ) if addressAliases.isEmpty         => ""
-        case AbiListRecord( address, AbiListRecord.Deployed( None ), addressAliases )                            => s""" <-- ${addressAliasesPart}"""
-        case AbiListRecord( address, AbiListRecord.Deployed( Some( name ) ), addressAliases ) if addressAliases.isEmpty => s""" <-- contract name "${name}""""
-        case AbiListRecord( address, AbiListRecord.Deployed( Some( name ) ), addressAliases )                    => s""" <-- contract name "${name}", ${addressAliasesPart}"""
+      record match {
+        case AbiListRecord( address, abiHash, AbiListRecord.Imported, addressAliases ) if addressAliases.isEmpty                 => ""
+        case AbiListRecord( address, abiHash, AbiListRecord.Imported, addressAliases )                                           => s""" <-- ${addressAliasesPart}"""
+        case AbiListRecord( address, abiHash, AbiListRecord.Deployed( None ), addressAliases ) if addressAliases.isEmpty         => ""
+        case AbiListRecord( address, abiHash, AbiListRecord.Deployed( None ), addressAliases )                                   => s""" <-- ${addressAliasesPart}"""
+        case AbiListRecord( address, abiHash, AbiListRecord.Deployed( Some( name ) ), addressAliases ) if addressAliases.isEmpty => s""" <-- contract name "${name}""""
+        case AbiListRecord( address, abiHash, AbiListRecord.Deployed( Some( name ) ), addressAliases )                           => s""" <-- contract name "${name}", ${addressAliasesPart}"""
       }
-      println( f"| $ka%-42s | $source%-9s |" +  annotation )
     }
-    println( cap )
 
+    texttable.printTable( columns, extract, rowFilter )( allRecords.map( r => texttable.Row(r, annotation(r)) ) )
   }
 
   private def queryYN( is : InteractionService, query : String ) : Boolean = {

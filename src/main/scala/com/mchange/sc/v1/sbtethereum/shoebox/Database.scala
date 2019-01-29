@@ -163,6 +163,18 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
+  def getImportedContractAbiHash( chainId : Int, contractAddress : EthAddress ) : Failable[Option[EthHash]] = {
+    DataSource.flatMap { ds =>
+      Failable {
+        borrow( ds.getConnection() ){ conn =>
+          Table.MemorizedAbis.select( conn, chainId, contractAddress )
+        }
+      }
+    }
+  }
+
+  // we don't just start from getImportedContractAbiHash(...) because we are gonna need the Database connection
+  private [sbtethereum]
   def getImportedContractAbi( chainId : Int, contractAddress : EthAddress ) : Failable[Option[Abi]] = {
     DataSource.flatMap { ds =>
       Failable {
