@@ -480,15 +480,15 @@ object Parsers {
     Space.* ~> token( mbLiterals.fold( failure("Failed to load acceptable values") : Parser[String] )( _.foldLeft( failure("No acceptable values") : Parser[String] )( ( nascent, next ) => nascent | literal(next) ) ) )
   }
 
-  private def _genStandardOrAliasAbiSourceParser(
+  private def _genAliasAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[AbiSource] = {
+    def deAbiPrefix( abiAlias : String ) = {
+      if (abiAlias.startsWith("abi:")) abiAlias.drop(4) else abiAlias
+    }
     mbRpi.fold( failure("ABI aliases not available!" ) : Parser[AbiSource] ) { rpi =>
-      token( literal("abi:") ).flatMap { _ =>
-        ( ( token( literal("standard:") ) ~> token( ID ).examples( StandardAbis.keySet, true ) ).map( StandardSource.apply ) |
-          ( token( ID ).examples( rpi.abiAliases.keySet, true ).map( str => AliasSource( rpi.chainId, str ) ) ) )
-      }
+      ( token( NotSpace ).examples( rpi.abiAliases.keySet.map( "abi:" + _ ), true ).map( str => AliasSource( rpi.chainId, deAbiPrefix(str) ) ) )
     }
   }
 
@@ -499,7 +499,7 @@ object Parsers {
     mbRpi.fold( failure("ABI aliases not available!" ) : Parser[AbiSource] ) { rpi =>
       ( ethHashParser( s"<contract-code-or-abi-hash>" ).map( HashSource.apply ) |
         createAddressParser( s"<contract-address-hex-or-alias>", mbRpi ).map( addr => AddressSource( rpi.chainId, addr, rpi.abiOverrides ) ) |
-        _genStandardOrAliasAbiSourceParser(state, mbRpi) )
+        _genAliasAbiSourceParser(state, mbRpi) )
     }
   }
 
@@ -542,7 +542,7 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[String] = {
     mbRpi.fold( failure( "Could not find RichParserInfo for abiAliases." ) : Parser[String] ) { rpi =>
-      token(Space.*) ~> (literal("abi:") ~> token(ID|(literal("standard:")~ID).map(tup => tup._1 + tup._2)).examples( (rpi.abiAliases.keySet ++ StandardPrefixedStandardAbiHashes.keySet).map( "abi:" + _ ) ) )
+      token(Space.*) ~> (literal("abi:") ~> token(NotSpace).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) ) )
     }
   }
   

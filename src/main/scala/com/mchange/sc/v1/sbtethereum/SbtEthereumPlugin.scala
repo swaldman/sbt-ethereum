@@ -2061,22 +2061,17 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val dropMeAbiAlias = parser.parsed
-      if ( !isStandardAbiAlias( dropMeAbiAlias ) ) {
-        shoebox.Database.dropAbiAlias( chainId, dropMeAbiAlias )
-        log.info( s"Abi alias 'abi:${dropMeAbiAlias}' successfully dropped." )
-        Def.taskDyn {
-          xethTriggerDirtyAliasCache
-        }
-      }
-      else {
-        throw nst( new SbtEthereumException(s"Standard ABI alias 'abi:${dropMeAbiAlias}' cannot be dropped.") )
+      shoebox.AbiAliasHashManager.dropAbiAlias( chainId, dropMeAbiAlias )
+      log.info( s"Abi alias 'abi:${dropMeAbiAlias}' successfully dropped." )
+      Def.taskDyn {
+        xethTriggerDirtyAliasCache
       }
     }
   }
 
   private def ethContractAbiAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val abiAliases = shoebox.Database.findAllAbiAliases( chainId ).assert ++ StandardPrefixedStandardAbiHashes
+    val abiAliases = shoebox.AbiAliasHashManager.findAllAbiAliases( chainId ).assert
     val columns = immutable.Vector( "ABI Alias", "ABI Hash" ).map( texttable.Column.apply( _ ) )
 
     def extract( tup : Tuple2[String,EthHash] ) : Seq[String] = {
@@ -2095,7 +2090,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val ( newAbiAlias, abiSource ) = parser.parsed
       val ( abi : Abi, sourceDesc : String) = standardSortAbiAndSourceDesc( log, abiSource )
-      shoebox.Database.createUpdateAbiAlias( chainId, newAbiAlias, abi )
+      shoebox.AbiAliasHashManager.createUpdateAbiAlias( chainId, newAbiAlias, abi )
       log.info( s"Abi alias 'abi:${newAbiAlias}' successfully bound to ABI found via ${sourceDesc}." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -4214,7 +4209,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId            = findNodeChainIdTask(warn=false)(config).value
     val mbJsonRpcUrl       = maybeFindNodeUrlTask(warn=false)(config).value
     val addressAliases     = shoebox.AddressAliasManager.findAllAddressAliases( chainId ).assert
-    val abiAliases         = shoebox.Database.findAllAbiAliases( chainId ).assert
+    val abiAliases         = shoebox.AbiAliasHashManager.findAllAbiAliases( chainId ).assert
     val abiOverrides       = abiOverridesForChain( chainId )
     val nameServiceAddress = (config / enscfgNameServiceAddress).value
     val tld                = (config / enscfgNameServiceTld).value

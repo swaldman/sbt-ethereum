@@ -54,6 +54,12 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   def userReadOnlyFiles  : immutable.Set[File] = h2.userReadOnlyFiles
   def userExecutableFiles : immutable.Set[File] = h2.userExecutableFiles
 
+  private val GoodAliasRegex = """^[A-Za-z][A-Za-z0-9_\055]*$""".r // \055 is the '-' character (and is provided as \055 to the regex due to """), note a match means the whole String matches due to the ^...$ construction
+
+  private def isGoodAlias( alias : String ) : Boolean = GoodAliasRegex.findFirstIn( alias ) != None
+
+  private def requireGoodAlias( alias : String ) = require( isGoodAlias( alias ), s"'${alias}' is not a valid alias. Should begin with ascii alphabetic, then contain ascii alphanumeric, underscore (_) or dash (-)." )
+
   private [sbtethereum]
   def insertCompilation(
     code              : String,
@@ -452,11 +458,13 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
   private [shoebox] // external clients use AddressAliasManager
   def createUpdateAddressAlias( chainId : Int, alias : String, address : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
+    requireGoodAlias( alias )
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.upsert( _, chainId, alias, address ) ) )
   }
 
   private [shoebox] // external clients use AddressAliasManager
   def insertAddressAlias( chainId : Int, alias : String, address : EthAddress ) : Failable[Unit] = DataSource.flatMap { ds =>
+    requireGoodAlias( alias )
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.insert( _, chainId, alias, address ) ) )
   }
 
@@ -480,25 +488,26 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     Failable( borrow( ds.getConnection() )( Table.AddressAliases.delete( _, chainId, alias ) ) )
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def createUpdateAbiAlias( chainId : Int, alias : String, abiHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
+    requireGoodAlias( alias )
     Failable( borrow( ds.getConnection() )( Table.AbiAliases.upsert( _, chainId, alias, abiHash ) ) )
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def createUpdateAbiAlias( chainId : Int, alias : String, abi : Abi ) : Failable[Unit] = createUpdateAbiAlias( chainId, alias, abiHash( abi ) )
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def findAllAbiAliases( chainId : Int ) : Failable[immutable.SortedMap[String,EthHash]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AbiAliases.selectAllForChainId( _, chainId ) ) )
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def findAbiHashByAbiAlias( chainId : Int, alias : String ) : Failable[Option[EthHash]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AbiAliases.selectByAlias( _, chainId, alias ) ) )
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def findAbiByAbiAlias( chainId : Int, alias : String ) : Failable[Option[Abi]] = DataSource.flatMap { ds =>
     Failable {
       borrow( ds.getConnection() ) { conn =>
@@ -508,26 +517,26 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     }
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def findAbiAliasesByAbiHash( chainId : Int, abiHash : EthHash ) : Failable[immutable.Seq[String]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AbiAliases.selectByAbiHash( _, chainId, abiHash ) ) )
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def findAbiAliasesByAbi( chainId : Int, abi : Abi ) : Failable[immutable.Seq[String]] = findAbiAliasesByAbiHash( chainId, abiHash( abi ) )
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def hasAbiAliases( chainId : Int, abiHash : EthHash ) : Failable[Boolean] = findAbiAliasesByAbiHash( chainId, abiHash ).map( _.nonEmpty )
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def hasAbiAliases( chainId : Int, abi : Abi ) : Failable[Boolean] = hasAbiAliases( chainId, abiHash( abi ) )
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def dropAbiAlias( chainId : Int, alias : String ) : Failable[Boolean] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.AbiAliases.delete( _, chainId, alias ) ) )
   }
 
-  private [sbtethereum]
+  private [shoebox] // external clients use AbiAliasHashManager
   def findAbiByAbiHash( abiHash : EthHash ) : Failable[Option[jsonrpc.Abi]] = DataSource.flatMap { ds =>
     Failable( borrow( ds.getConnection() )( Table.NormalizedAbis.select( _, abiHash ) ) )
   }
