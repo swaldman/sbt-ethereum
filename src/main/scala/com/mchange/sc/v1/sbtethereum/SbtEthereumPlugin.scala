@@ -2297,21 +2297,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     def extract( tup : Tuple2[EthAddress,EthHash] ) : Seq[String] = hexString( tup._1 ) :: hexString( tup._2 ) :: Nil
     def aliasesPartForTup( tup : Tuple2[EthAddress,EthHash] ) : String = {
       val ( address, hash ) = tup
-      val addressAliases = shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).assert
-      val abiAliases = shoebox.AbiAliasHashManager.findAbiAliasesByAbiHash( chainId, hash ).assert
-      def aliasList( s : Seq[String] ) : String = s.mkString("['","','","']")
-      def pAbi( abiAlias : String ) : String = "abi:" + abiAlias
-      def abiAliasList( s : Seq[String] ) : String = aliasList( s.map( pAbi ) )
-      ( addressAliases, abiAliases ) match {
-        case ( Seq(),          Seq() )           =>  ""
-        case ( Seq( alias ),   Seq() )           => s"<-- address alias: '${alias}'"
-        case ( addressAliases, Seq() )           => s"<-- address aliases: ${aliasList(addressAliases)}"
-        case ( Seq(),          Seq( abiAlias ) ) => s"<-- abi alias: '${pAbi(abiAlias)}'"
-        case ( Seq( alias ),   Seq( abiAlias ) ) => s"<-- address alias: '${alias}', abi alias: '${pAbi(abiAlias)}'"
-        case ( addressAliases, Seq( abiAlias ) ) => s"<-- address aliases: ${aliasList(addressAliases)}, abi alias: '${pAbi(abiAlias)}'"
-        case ( Seq(),          abiAliases )      => s"<-- abi aliases: ${abiAliasList(abiAliases)}"
-        case ( Seq( alias ),   abiAliases )      => s"<-- address alias: '${alias}', abi aliases: ${abiAliasList(abiAliases)}"
-        case ( addressAliases, abiAliases )      => s"<-- address aliases: ${aliasList(addressAliases)}, abi aliases: ${abiAliasList(abiAliases)}"
+      jointAliasesPartAddressAbi( chainId, address, hash ) match {
+        case Some( part ) => s" <-- ${part}"
+        case None         =>  ""
       }
     }
     texttable.printTable( columns, extract )( addressesToAbiHashes.map( tup => texttable.Row(tup, aliasesPartForTup( tup ) ) ) )
@@ -2404,11 +2392,25 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethContractAbiPrintCompactTask( config : Configuration ) : Initialize[InputTask[Unit]] = ethContractAbiAnyPrintTask( pretty = false )( config )
 
   private final object AbiListRecord {
-    trait Source
+    sealed trait Source
     case object Imported extends Source
     case class Deployed( mbContractName : Option[String] ) extends Source
+
+    implicit final object SourceOrdering extends Ordering[Source] {
+      def compare( x : Source, y : Source ) : Int = {
+        (x, y) match {
+          case ( Imported, Imported )                   =>  0
+          case ( Deployed(_), Imported )                =>  1
+          case ( Imported, Deployed(_) )                => -1
+          case ( Deployed(None), Deployed(None) )       =>  0
+          case ( Deployed(Some(_)), Deployed(None) )    =>  1
+          case ( Deployed(None), Deployed(Some(_)) )    => -1
+          case ( Deployed(Some(a)), Deployed(Some(b)) ) => String.CASE_INSENSITIVE_ORDER.compare( a, b )
+        }
+      }
+    }
   }
-  private final case class AbiListRecord( address : EthAddress, abiHash : EthHash, source : AbiListRecord.Source, addressAliases : immutable.Seq[String] )
+  private final case class AbiListRecord( address : EthAddress, abiHash : EthHash, source : AbiListRecord.Source )
 
   private def ethContractAbiDefaultListTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val chainId = findNodeChainIdTask(warn=true)(config).value
@@ -2429,17 +2431,17 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         val goodTups = tups.filter( checkTup )
         goodTups.map { case ( address, checkedHash ) =>
-          val addressAliases = shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).assert
-          Tuple2( address, AbiListRecord( address, checkedHash.get, AbiListRecord.Imported, addressAliases ) )
+          Tuple2( address, AbiListRecord( address, checkedHash.get, AbiListRecord.Imported ) )
         }.toMap
       }
       val deployedRecords  = {
         deployedContracts
           .filter( _.mbAbiHash.nonEmpty )
-          .map (dci=>Tuple2(dci.contractAddress,AbiListRecord(dci.contractAddress,dci.mbAbiHash.get,AbiListRecord.Deployed(dci.mbName),shoebox.AddressAliasManager.findAddressAliasesByAddress(chainId,dci.contractAddress).get)))
+          .map (dci=>Tuple2(dci.contractAddress,AbiListRecord(dci.contractAddress,dci.mbAbiHash.get,AbiListRecord.Deployed(dci.mbName))))
           .toMap
       }
-      (deployedRecords ++ importedRecords).values.toSeq // imported records shadow deployed, ordering of the ++ is important
+      val fullAddressMap = deployedRecords ++ importedRecords // imported records shadow deployed, ordering of the ++ is important
+      (immutable.SortedSet.empty[AbiListRecord]( Ordering.by( r => (r.source, r.address.hex, r.abiHash.hex) ) ) ++ fullAddressMap.values).toSeq 
     }
 
     val rowFilter : String => Boolean = {
@@ -2463,23 +2465,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     def annotation( record : AbiListRecord ) : String = {
-      val addressAliasesPart = {
-        record.addressAliases match {
-          case Seq( alias ) => s"""address alias "${alias}""""
-          case Seq()        => ""
-          case addressAliases      => {
-            val quoted = addressAliases.map( "\"" + _ + "\"" )
-            s"""address aliases ${quoted.mkString(", ")}"""
-          }
-        }
-      }
-      record match {
-        case AbiListRecord( address, abiHash, AbiListRecord.Imported, addressAliases ) if addressAliases.isEmpty                 => ""
-        case AbiListRecord( address, abiHash, AbiListRecord.Imported, addressAliases )                                           => s""" <-- ${addressAliasesPart}"""
-        case AbiListRecord( address, abiHash, AbiListRecord.Deployed( None ), addressAliases ) if addressAliases.isEmpty         => ""
-        case AbiListRecord( address, abiHash, AbiListRecord.Deployed( None ), addressAliases )                                   => s""" <-- ${addressAliasesPart}"""
-        case AbiListRecord( address, abiHash, AbiListRecord.Deployed( Some( name ) ), addressAliases ) if addressAliases.isEmpty => s""" <-- contract name "${name}""""
-        case AbiListRecord( address, abiHash, AbiListRecord.Deployed( Some( name ) ), addressAliases )                           => s""" <-- contract name "${name}", ${addressAliasesPart}"""
+      val mbAliasesPart = jointAliasesPartAddressAbi( chainId, record.address, record.abiHash )
+      ( record, mbAliasesPart ) match {
+        case ( AbiListRecord( address, abiHash, AbiListRecord.Imported ), None )                                =>  ""
+        case ( AbiListRecord( address, abiHash, AbiListRecord.Imported ), Some( aliasesPart ) )                 => s" <-- ${aliasesPart}"
+        case ( AbiListRecord( address, abiHash, AbiListRecord.Deployed( None ) ), None )                        =>  ""
+        case ( AbiListRecord( address, abiHash, AbiListRecord.Deployed( None ) ), Some( aliasesPart ) )         => s" <-- ${aliasesPart}"
+        case ( AbiListRecord( address, abiHash, AbiListRecord.Deployed( Some( name ) ) ), None )                => s" <-- contract name: '${name}'"
+        case ( AbiListRecord( address, abiHash, AbiListRecord.Deployed( Some( name ) ) ), Some( aliasesPart ) ) => s" <-- contract name: '${name}', ${aliasesPart}"
       }
     }
 
@@ -5614,6 +5607,24 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
   private def leftwardAliasesArrowOrEmpty( chainId : Int, address : EthAddress ) : Failable[String] = {
     commaSepAliasesForAddress( chainId, address ).map( _.fold("")( aliasesStr => s" <-- ${aliasesStr}" ) )
+  }
+  private def jointAliasesPartAddressAbi( chainId : Int, address : EthAddress, abiHash : EthHash ) : Option[String] = {
+    val addressAliases = shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).assert
+    val abiAliases = shoebox.AbiAliasHashManager.findAbiAliasesByAbiHash( chainId, abiHash ).assert
+    def aliasList( s : Seq[String] ) : String = s.mkString("['","','","']")
+    def pAbi( abiAlias : String ) : String = "abi:" + abiAlias
+    def abiAliasList( s : Seq[String] ) : String = aliasList( s.map( pAbi ) )
+      ( addressAliases, abiAliases ) match {
+      case ( Seq(),          Seq() )           => None
+      case ( Seq( alias ),   Seq() )           => Some( s"address alias: '${alias}'" )
+      case ( addressAliases, Seq() )           => Some( s"address aliases: ${aliasList(addressAliases)}" )
+      case ( Seq(),          Seq( abiAlias ) ) => Some( s"abi alias: '${pAbi(abiAlias)}'" )
+      case ( Seq( alias ),   Seq( abiAlias ) ) => Some( s"address alias: '${alias}', abi alias: '${pAbi(abiAlias)}'" )
+      case ( addressAliases, Seq( abiAlias ) ) => Some( s"address aliases: ${aliasList(addressAliases)}, abi alias: '${pAbi(abiAlias)}'" )
+      case ( Seq(),          abiAliases )      => Some( s"abi aliases: ${abiAliasList(abiAliases)}" )
+      case ( Seq( alias ),   abiAliases )      => Some( s"address alias: '${alias}', abi aliases: ${abiAliasList(abiAliases)}" )
+      case ( addressAliases, abiAliases )      => Some( s"address aliases: ${aliasList(addressAliases)}, abi aliases: ${abiAliasList(abiAliases)}" )
+    }
   }
 
   private def verboseAddress( chainId : Int, address : EthAddress ) : String = {
