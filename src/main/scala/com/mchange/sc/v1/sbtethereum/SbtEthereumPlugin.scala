@@ -2333,7 +2333,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val currentAbiOverrides = abiOverridesForChain( chainId )
       currentAbiOverrides.get( address ) match {
         case Some( abi ) => {
-          println( s"Contract ABI for address '0x${address.hex}':" )
+          println( s"Session override of contract ABI for address '0x${address.hex}':" )
           val json = Json.toJson( abi )
           println( Json.prettyPrint( json ) )
         }
