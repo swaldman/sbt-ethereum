@@ -149,7 +149,7 @@ Displays any sender override that may have been set for the current session and 
 ```
 > ethAddressSenderOverride <address-as-hex-or-ens-or-alias>
 ```
-This is a shorthand for @ref:[`ethAddressSenderOverride`](#ethAddressSenderOverrideSet). Please see that command for more information.
+This is a shorthand for @ref:[`ethAddressSenderOverrideSet`](#ethAddressSenderOverrideSet). Please see that command for more information.
 
 @@@
 
@@ -161,7 +161,9 @@ This is a shorthand for @ref:[`ethAddressSenderOverride`](#ethAddressSenderOverr
 ```
 > ethAddressSenderOverrideSet <address-as-hex-or-ens-or-alias>
 ```
-Defines a sender overrde for the current session and [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
+Defines a sender override for the current session and [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
+
+The sender override address will take precedence over any default sender that may have been defined, but will not persist beyond a single _sbt-ethereum_ session.
 
 **Examples:**
 ```

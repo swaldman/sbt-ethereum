@@ -250,18 +250,325 @@ Enter an optional alias for the address '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756
 
 ### ethContractAbiOverride
 
-### ethContractAbiOverrideSet
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiOverride <address-as-hex-or-ens-or-alias> <abi-as-hex-address-or-address-alias-or-ens-address-or-abi-hash-or-abi-alias>
+```
+This is a shorthand for @ref:[`ethContractAbiOverrideSet`](#ethContractAbiOverrideSet). Please see that command for more information.
+
+@@@
 
 ### ethContractAbiOverrideDrop
 
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiOverrideDrop <address-as-hex-or-ens-or-alias>
+```
+Drops any session override of the association between an address and a contract ABI that may have been set (for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID).
+
+**Example:**
+```
+> ethContractAbiOverrideDrop fortune
+[info] ABI override successfully dropped.
+[info] Refreshing caches.
+[success] Total time: 0 s, completed Feb 16, 2019 12:31:00 PM
+```
+
+@@@
+
 ### ethContractAbiOverrideDropAll
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiOverrideDropAll
+```
+Drops _all_ session overrides of associations between an address and a contract ABI that may have been set (for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID).
+
+**Example:**
+```
+> ethContractAbiOverrideDropAll
+[info] ABI overrides on chain with ID 1 successfully dropped.
+[info] Refreshing caches.
+[success] Total time: 0 s, completed Feb 16, 2019 12:35:46 PM
+```
+
+@@@
 
 ### ethContractAbiOverrideList
 
-### ethContractAbiOverridePrint
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiOverrideDropList
+```
+Lists any session overrides of associations between an address and a contract ABI that may have been set (for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID).
+
+**Example:**
+```
+> ethContractAbiOverrideList
++--------------------------------------------+--------------------------------------------------------------------+
+| ABI Override Addresses                     | ABI Hash                                                           |
++--------------------------------------------+--------------------------------------------------------------------+
+| 0x82ea8ab1e836272322f376a5f71d5a34a71688f1 | 0x1c40488a3a264071e539f1a36abe69e4ade3751b15d839af83e015fc2dc6be12 | <-- address aliases: ['fortune','fortune3'], abi alias: 'abi:oracle'
++--------------------------------------------+--------------------------------------------------------------------+
+[success] Total time: 0 s, completed Feb 16, 2019 12:36:27 PM
+```
+
+@@@
+
+### ethContractAbiOverridePrint <address-as-hex-or-ens-or-alias>
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiOverridePrint fortune
+```
+Pretty-prints the JSON of the session override of the contract ABI associated with an ABI (if any).
+
+**Example:**
+```
+> ethContractAbiOverridePrint fortune
+Session override of contract ABI for address '0x82ea8ab1e836272322f376a5f71d5a34a71688f1':
+[ {
+  "name" : "drawFortune",
+  "inputs" : [ ],
+  "outputs" : [ {
+    "name" : "fortune",
+    "type" : "string"
+  } ],
+  "constant" : true,
+  "payable" : false,
+  "stateMutability" : "view",
+  "type" : "function"
+} ]
+[success] Total time: 0 s, completed Feb 16, 2019 12:44:19 PM
+```
+
+@@@
+
+### ethContractAbiOverrideSet
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiOverrideSet <address-as-hex-or-ens-or-alias> <abi-as-hex-address-or-address-alias-or-ens-address-or-abi-hash-or-abi-alias>
+```
+Creates an association between an address and a contract ABI that will override any default association that may have been set, but only for the current session (and [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID).
+
+**Example:**
+```
+> ethContractAbiOverrideSet 0x82ea8ab1e836272322f376a5f71d5a34a71688f1 abi:oracle
+[info] ABI override successfully set.
+[info] Refreshing caches.
+[success] Total time: 0 s, completed Feb 16, 2019 12:21:23 PM
+```
+
+@@@
 
 ### ethContractAbiPrint
 
-### ethContractAbiPrintPretty
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiPrint <address-as-hex-or-ens-or-alias>
+```
+This is a shorthand for @ref:[`ethContractAbiPrintCompact`](#ethContractAbiPrintCompact). Please see that command for more information.
+
+@@@
+
 
 ### ethContractAbiPrintCompact
+
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiPrintCompact <address-as-hex-or-ens-or-alias>
+```
+
+Compactly prints the ABI currently effective and associated with an address (for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID).
+
+If there is a session override set (see @ref:[`ethContractAbiOverrideSet`](#ethContractAbiOverrideSet)), it will be the override ABI.
+
+If there is no session override set, it will be the default contract ABI, either defines at deployment time or explicitly imported.
+
+If neither a session override nor default ABI is defined for the address, it will let you know that.
+
+**Example:**
+```
+> ethContractAbiPrintCompact WETH
+Contract ABI for ABI associated with contract address '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2' on chain with ID 1:
+[{"name":"allowance","inputs":[{"name":"tokenOwner","type":"address"},{"name":"spender","type":"address"}],"outputs":[{"name":"remaining","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"approve","inputs":[{"name":"spender","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"balanceOf","inputs":[{"name":"tokenOwner","type":"address"}],"outputs":[{"name":"balance","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"totalSupply","inputs":[],"outputs":[{"name":"","type":"uint256"}],"constant":true,"payable":false,"stateMutability":"view","type":"function"},{"name":"transfer","inputs":[{"name":"to","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"transferFrom","inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"tokens","type":"uint256"}],"outputs":[{"name":"success","type":"bool"}],"constant":false,"payable":false,"stateMutability":"nonpayable","type":"function"},{"name":"Approval","inputs":[{"name":"tokenOwner","type":"address","indexed":true},{"name":"spender","type":"address","indexed":true},{"name":"tokens","type":"uint256","indexed":false}],"anonymous":false,"type":"event"},{"name":"Transfer","inputs":[{"name":"from","type":"address","indexed":true},{"name":"to","type":"address","indexed":true},{"name":"tokens","type":"uint256","indexed":false}],"anonymous":false,"type":"event"}]
+[success] Total time: 0 s, completed Feb 16, 2019 1:01:05 PM
+```
+
+@@@
+
+### ethContractAbiPrintPretty
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiPrintPretty <address-as-hex-or-ens-or-alias>
+```
+
+Pretty-prints the ABI currently effective and associated with an address (for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID).
+
+If there is a session override set (see @ref:[`ethContractAbiOverrideSet`](#ethContractAbiOverrideSet)), it will be the override ABI.
+
+If there is no session override set, it will be the default contract ABI, either defines at deployment time or explicitly imported.
+
+If neither a session override nor default ABI is defined for the address, it will let you know that.
+
+**Example:**
+```
+> ethContractAbiPrintPretty WETH
+Contract ABI for ABI associated with contract address '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2' on chain with ID 1:
+[ {
+  "name" : "allowance",
+  "inputs" : [ {
+    "name" : "tokenOwner",
+    "type" : "address"
+  }, {
+    "name" : "spender",
+    "type" : "address"
+  } ],
+  "outputs" : [ {
+    "name" : "remaining",
+    "type" : "uint256"
+  } ],
+  "constant" : true,
+  "payable" : false,
+  "stateMutability" : "view",
+  "type" : "function"
+}, {
+  "name" : "approve",
+  "inputs" : [ {
+    "name" : "spender",
+    "type" : "address"
+  }, {
+    "name" : "tokens",
+    "type" : "uint256"
+  } ],
+  "outputs" : [ {
+    "name" : "success",
+    "type" : "bool"
+  } ],
+  "constant" : false,
+  "payable" : false,
+  "stateMutability" : "nonpayable",
+  "type" : "function"
+}, {
+  "name" : "balanceOf",
+  "inputs" : [ {
+    "name" : "tokenOwner",
+    "type" : "address"
+  } ],
+  "outputs" : [ {
+    "name" : "balance",
+    "type" : "uint256"
+  } ],
+  "constant" : true,
+  "payable" : false,
+  "stateMutability" : "view",
+  "type" : "function"
+}, {
+  "name" : "totalSupply",
+  "inputs" : [ ],
+  "outputs" : [ {
+    "name" : "",
+    "type" : "uint256"
+  } ],
+  "constant" : true,
+  "payable" : false,
+  "stateMutability" : "view",
+  "type" : "function"
+}, {
+  "name" : "transfer",
+  "inputs" : [ {
+    "name" : "to",
+    "type" : "address"
+  }, {
+    "name" : "tokens",
+    "type" : "uint256"
+  } ],
+  "outputs" : [ {
+    "name" : "success",
+    "type" : "bool"
+  } ],
+  "constant" : false,
+  "payable" : false,
+  "stateMutability" : "nonpayable",
+  "type" : "function"
+}, {
+  "name" : "transferFrom",
+  "inputs" : [ {
+    "name" : "from",
+    "type" : "address"
+  }, {
+    "name" : "to",
+    "type" : "address"
+  }, {
+    "name" : "tokens",
+    "type" : "uint256"
+  } ],
+  "outputs" : [ {
+    "name" : "success",
+    "type" : "bool"
+  } ],
+  "constant" : false,
+  "payable" : false,
+  "stateMutability" : "nonpayable",
+  "type" : "function"
+}, {
+  "name" : "Approval",
+  "inputs" : [ {
+    "name" : "tokenOwner",
+    "type" : "address",
+    "indexed" : true
+  }, {
+    "name" : "spender",
+    "type" : "address",
+    "indexed" : true
+  }, {
+    "name" : "tokens",
+    "type" : "uint256",
+    "indexed" : false
+  } ],
+  "anonymous" : false,
+  "type" : "event"
+}, {
+  "name" : "Transfer",
+  "inputs" : [ {
+    "name" : "from",
+    "type" : "address",
+    "indexed" : true
+  }, {
+    "name" : "to",
+    "type" : "address",
+    "indexed" : true
+  }, {
+    "name" : "tokens",
+    "type" : "uint256",
+    "indexed" : false
+  } ],
+  "anonymous" : false,
+  "type" : "event"
+} ]
+[success] Total time: 0 s, completed Feb 16, 2019 12:58:44 PM
+```
+
+@@@
+
