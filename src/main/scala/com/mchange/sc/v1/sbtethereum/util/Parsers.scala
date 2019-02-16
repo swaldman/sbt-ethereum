@@ -542,7 +542,7 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[String] = {
     mbRpi.fold( failure( "Could not find RichParserInfo for abiAliases." ) : Parser[String] ) { rpi =>
-      token(Space.*) ~> (literal("abi:") ~> token(NotSpace).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) ) )
+      token(Space.*) ~> (literal("abi:") ~> token(NotSpace)).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) )
     }
   }
   
