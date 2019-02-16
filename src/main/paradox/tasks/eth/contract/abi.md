@@ -159,11 +159,94 @@ Encoded data:
 
 ### ethContractAbiDefaultDrop
 
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiDefaultDrop <address-as-hex-or-ens-or-alias>
+```
+Removes any default contract ABI that may have been associated with an address for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
+
+**Examples:**
+```
+> ethContractAbiDefaultDrop 0x82ea8ab1e836272322f376a5f71d5a34a71688f1
+> ethContractAbiDefaultDrop fortune
+> ethContractAbiDefaultDrop some-address.eth
+```
+
+**Example response:**
+```
+[info] Previously imported or set ABI for contract with address '0x82ea8ab1e836272322f376a5f71d5a34a71688f1' (on chain with ID 1) has been dropped.
+[success] Total time: 0 s, completed Feb 15, 2019 4:28:47 PM
+```
+
+@@@
+
 ### ethContractAbiDefaultList
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiDefaultList [optional-regex-to-filter-rows]
+```
+Lists all addresses and contract ABIs for which a default association has been defined, either explicitly or automatically upon deployment,
+for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
+
+**Example:**
+```
+> ethContractAbiDefaultList
++--------------------------------------------+--------------------------------------------------------------------+----------+
+| Address                                    | ABI Hash                                                           | Source   |
++--------------------------------------------+--------------------------------------------------------------------+----------+
+| 0x82ea8ab1e836272322f376a5f71d5a34a71688f1 | 0x1c40488a3a264071e539f1a36abe69e4ade3751b15d839af83e015fc2dc6be12 | Imported | <-- address aliases: ['fortune','fortune3']
++--------------------------------------------+--------------------------------------------------------------------+----------+
+[success] Total time: 0 s, completed Feb 15, 2019 4:36:10 PM
+```
+
+@@@
 
 ### ethContractAbiDefaultImport
 
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiDefaultImport <address-as-hex-or-ens-or-alias>
+```
+Imports an ABI into the _sbt-ethereum_ shoebox database, and associates it as the default ABI for the given address for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
+
+ABIs can be imported manually by cut-and-paste. They can also be imported automatically from _Etherscan_, if @ref:[an _Etherscan_ API key has been set](../../etherscan.md).
+
+_For examples, please see the tutorial section @ref["Acquiring an ABI for a smart contract"](../../../tutorials/using-a-smart-contract-i.md#acquiring-an-abi-for-a-smart-contract)._
+
+@@@
+
 ### ethContractAbiDefaultSet
+
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethContractAbiDefaultSet <address-as-hex-or-ens-or-alias> <abi-as-hex-address-or-address-alias-or-ens-address-or-abi-hash-or-abi-alias>
+```
+
+Creates a default association between an address and an ABI for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
+
+Addresses may be specified as _sbt-ethereum_ aliases, ENS addresses, or raw hex. ABIs may be specified by explicit ABI aliases, hex ABI hashes, via any address currently associated with the same ABI.
+
+**Example:**
+```
+> ethContractAbiDefaultSet 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2 abi:standard:erc20
+[info] The ABI previously associated with ABI alias 'abi:standard:erc20' (on chain with ID 1) ABI has been associated with address 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2.
+Enter an optional alias for the address '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', now associated with the newly matched ABI (or [return] for none): WETH
+[info] Alias 'WETH' now points to address '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2' (for chain with ID 1).
+[info] Refreshing caches.
+[success] Total time: 8 s, completed Feb 15, 2019 5:14:34 PM
+```
+
+@@@
 
 ### ethContractAbiOverride
 

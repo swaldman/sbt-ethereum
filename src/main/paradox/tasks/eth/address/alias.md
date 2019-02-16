@@ -86,7 +86,7 @@ secondary-address -> 0x13e3d8d785cdeb1d18f298dcf07ea35a659e157d
 
 **Usage:**
 ```
-> ethAddressAliasSet <new-alias> <address-as-hex-ens-or-alias>
+> ethAddressAliasSet <new-alias> <address-as-hex-or-ens-or-alias>
 ```
 
 Defines a new alias and point it to an address, which may be specified as a hex Ethereum address, via an ENS name, or an already existing address alias.

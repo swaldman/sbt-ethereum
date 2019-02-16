@@ -17,7 +17,7 @@ _sbt-ethereum_ tasks related to addresses, including @ref:[checking address bala
 
 ### ethAddressAlias*
 
-See the @ref:[address alias commands page](alias.md), or choose a command below:
+Manage human-friendly aliases to Ethereum addresses. See the @ref:[address alias commands page](alias.md), or choose a command below:
 
 @@@ div { #addressAliasList .embedded-toc-list }
 
@@ -55,7 +55,7 @@ This corresponds to approximately 195.21 USD (at a rate of 156.135 USD per ETH, 
 
 ### ethAddressSender*
 
-See the @ref:[sender commands page](sender.md), or choose a command below:
+Manage the current sender associated with your sbt-ethereum sessions. See the @ref:[sender commands page](sender.md), or choose a command below:
 
 @@@ div { #senderList .embedded-toc-list }
 

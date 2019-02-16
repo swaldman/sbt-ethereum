@@ -44,7 +44,7 @@ The commands below allow you to manage the default sender and the sender overrid
 ```
 > ethAddressSenderDefaultDrop
 ```
-Removes the any default sender that may have been set for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
+Removes any default sender that may have been set for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
 
 **Example:**
 ```
@@ -81,7 +81,7 @@ Displays any default sender that may have been set for the current [EIP-155](htt
 
 **Usage:**
 ```
-> ethAddressSenderDefaultSet <address-as-hex-ens-or-alias>
+> ethAddressSenderDefaultSet <address-as-hex-or-ens-or-alias>
 ```
 Defines a default sender for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
 
@@ -147,7 +147,7 @@ Displays any sender override that may have been set for the current session and 
 
 **Usage:**
 ```
-> ethAddressSenderOverride <address-as-hex-ens-or-alias>
+> ethAddressSenderOverride <address-as-hex-or-ens-or-alias>
 ```
 This is a shorthand for @ref:[`ethAddressSenderOverride`](#ethAddressSenderOverrideSet). Please see that command for more information.
 
@@ -159,7 +159,7 @@ This is a shorthand for @ref:[`ethAddressSenderOverride`](#ethAddressSenderOverr
 
 **Usage:**
 ```
-> ethAddressSenderOverrideSet <address-as-hex-ens-or-alias>
+> ethAddressSenderOverrideSet <address-as-hex-or-ens-or-alias>
 ```
 Defines a sender overrde for the current session and [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
 
