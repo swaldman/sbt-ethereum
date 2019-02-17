@@ -50,7 +50,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
     val localDir = target.value / "paradox" / "site" / "main"
 
     val local = localDir.listFiles.map( _.getPath ).mkString(" ")
-    val remote = s"tickle.mchange.com:/home/web/public/www.sbt-ethereum.io/"
+    val remote = s"tickle.mchange.com:/home/web/public/www.sbt-ethereum.io/version/${version.value}/"
     s"rsync -avz ${local} ${remote}"!
   },
   pomExtra := pomExtraForProjectName( name.value )
