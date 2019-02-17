@@ -34,7 +34,7 @@ If you lose _either one of_ a wallet file or its passcode, **all of the value st
 
 @@@ warning
 
-**Any third party who gains access to both a wallet file and the passcode who unlocks it gains full, irrevocable control of the wallet's account,
+**Any third party who gains access to both a wallet file and the passcode that unlocks it gains full, irrevocable control of the wallet's account,
   and any value or credentials attached to that!**
 
 Keep your wallet files and passcodes secret.

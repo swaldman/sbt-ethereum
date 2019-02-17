@@ -261,7 +261,7 @@ ul li {
     margin-bottom: 0;
 }
 
-.toc ul li, #navigation ul li {
+.toc ul li, #navigation ul li, .tight ul li {
     margin-top: 0;  
     margin-bottom: 0;
 }
@@ -552,3 +552,6 @@ div.keydesc {
     font-size: smaller;
 }
 
+div.padding_half_em {
+    padding: 0.5em;
+}

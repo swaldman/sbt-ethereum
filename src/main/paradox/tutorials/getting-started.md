@@ -47,6 +47,8 @@ Alternatively, if you already have `sbt` installed on your machine, you can just
 $ ./sbtw
 ```
 If this is the first time you are running the script, expect it to take a few minutes and print a lot of stuff.
+
+(While it is all downloading, consider read @ref:[_Method to the Madness_](../method_to_the_madness.md), if you have not!)
 ```
 Downloading sbt launcher for 1.2.7:
   From  http://repo.scala-sbt.org/scalasbt/maven-releases/org/scala-sbt/sbt-launch/1.2.7/sbt-launch.jar
