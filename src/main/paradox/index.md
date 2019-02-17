@@ -11,6 +11,7 @@
 * [Method to the Madness](method_to_the_madness.md)
 * [Tutorials](tutorials/index.md)
 * [Tasks](tasks/index.md)
+* [Settings](settings/index.md)
 * [Appendix](appendix/index.md)
 
 @@@
