@@ -19,7 +19,7 @@ DB schema updates
 
 Other
 
-* etherscanApiKey to set/drop/print convention
+* Eliminate potentially ambiguous use of `parseOneByteCharQuotedString( str )` in Encode.Bytes.parse. Check for other similar issues.
 
 * let repositories suggest ABIs <--> addresses <--> aliases ???
 
