@@ -294,13 +294,25 @@ object Parsers {
     abi.constructors.length match {
       case 0 => jsonrpc.Abi.Constructor.noArgNoEffect
       case 1 => abi.constructors.head
-      case _ => throw new Exception( s"""Constructor overloading not supprted (or legal in solidity). Found multiple constructors: ${abi.constructors.mkString(", ")}""" )
+      case _ => throw new Exception( s"""Constructor overloading not supprted (nor legal in solidity). Found multiple constructors: ${abi.constructors.mkString(", ")}""" )
     }
   }
 
-  private def fullFromSeed( contractName : String, seed : MaybeSpawnable.Seed ) : Parser[SpawnInstruction.Full] = {
+  // note that this function is used directly in createAutoQuintets() in SbtEthereumPlugin!
+  private [sbtethereum] def ctorArgsMaybeValueInWeiParser( seed : MaybeSpawnable.Seed ) : Parser[SpawnInstruction.Full] = {
     val ctor = constructorFromAbi( seed.abi )
-    inputsParser( ctor.inputs, None ).map( seq => SpawnInstruction.Full( contractName, seq, seed ) )
+    val simpleInputsParser = inputsParser( ctor.inputs, None )
+    val withMaybeValueParser = simpleInputsParser.flatMap { seq =>
+      if ( ctor.payable ) {
+        valueInWeiParser("[ETH to pay, optional]").?.flatMap( mbv => success(  ( seq, mbv ) ) ) // useless flatmap rather than map
+      } else {
+        success( ( seq, None ) )
+      }
+    }
+
+    withMaybeValueParser.map { case ( seq, mbv ) =>
+      SpawnInstruction.Full( seed.contractName, seq, mbv.getOrElse(0), seed )
+    }
   }
 
   private [sbtethereum] def genContractSpawnParser(
@@ -313,7 +325,7 @@ object Parsers {
     val argsParser = token( NotSpace examples exSet ).flatMap { name =>
       seeds.get( name ) match {
         case None         => success( SpawnInstruction.UncompiledName( name ) )
-        case Some( seed ) => fullFromSeed( name, seed )
+        case Some( seed ) => ctorArgsMaybeValueInWeiParser( seed )
       }
     }
     val autoParser = Space.* map { _ => SpawnInstruction.Auto }

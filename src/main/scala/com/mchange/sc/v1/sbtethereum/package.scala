@@ -68,7 +68,7 @@ package object sbtethereum {
   final object SpawnInstruction {
     final case object Auto                                                                                       extends SpawnInstruction
     final case class  UncompiledName( name : String )                                                            extends SpawnInstruction
-    final case class  Full( deploymentAlias : String, args : immutable.Seq[String], seed : MaybeSpawnable.Seed ) extends SpawnInstruction
+    final case class  Full( deploymentAlias : String, args : immutable.Seq[String], valueInWei : BigInt, seed : MaybeSpawnable.Seed ) extends SpawnInstruction
   }
   sealed trait SpawnInstruction
 

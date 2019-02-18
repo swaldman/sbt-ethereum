@@ -3734,27 +3734,27 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val mbAutoNameInputs = (ethcfgAutoDeployContracts in config).?.value
 
-      def createQuartetFull( full : SpawnInstruction.Full ) : (String, String, immutable.Seq[String], Abi ) = {
+      def createQuintetFull( full : SpawnInstruction.Full ) : (String, String, immutable.Seq[String], Unsigned256, Abi ) = {
         if ( full.seed.currentCompilation ) {
           assert(
             full.deploymentAlias == full.seed.contractName,
             s"For current compilations, we expect deployment aliases and contract names to be identical! [deployment alias: ${full.deploymentAlias}, contract name: ${full.seed.contractName}]"
           )
           val compilation = currentCompilationsMap( full.seed.contractName ) // use the most recent compilation, in case source changed after the seed was cached
-          ( full.deploymentAlias, compilation.code, full.args, compilation.info.mbAbi.get ) // asserts that we've generated an ABI, but note that args may not be consistent with this latest ABI
+          ( full.deploymentAlias, compilation.code, full.args, Unsigned256(full.valueInWei), compilation.info.mbAbi.get ) // asserts that we've generated an ABI, but note that args may not be consistent with this latest ABI
         }
         else {
-          ( full.deploymentAlias, full.seed.codeHex, full.args, full.seed.abi )
+          ( full.deploymentAlias, full.seed.codeHex, full.args, Unsigned256(full.valueInWei), full.seed.abi )
         }
       }
 
-      def createQuartetUncompiled( uncompiledName : SpawnInstruction.UncompiledName ) : (String, String, immutable.Seq[String], Abi ) = {
+      def createQuintetUncompiled( uncompiledName : SpawnInstruction.UncompiledName ) : (String, String, immutable.Seq[String], Unsigned256, Abi ) = {
         val deploymentAlias = uncompiledName.name
         val seed = anySourceFreshSeed( deploymentAlias ) // use the most recent compilation, in case source changed after the seed was cached
-        ( deploymentAlias, seed.codeHex, Nil, seed.abi ) // we can only handle uncompiled names if there are no constructor inputs
+        ( deploymentAlias, seed.codeHex, Nil, Zero256, seed.abi ) // we can only handle uncompiled names if there are no constructor inputs
       }
 
-      def createAutoQuartets() : immutable.Seq[(String, String, immutable.Seq[String], Abi )] = {
+      def createAutoQuintets() : immutable.Seq[(String, String, immutable.Seq[String], Unsigned256, Abi )] = {
         mbAutoNameInputs match {
           case None => {
             log.warn("No contract name or compilation alias provided. No 'ethcfgAutoDeployContracts' set, so no automatic contracts to deploy.")
@@ -3762,23 +3762,33 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
           case Some ( autoNameInputs ) => {
             autoNameInputs.toList.map { nameAndArgs =>
-              val words = nameAndArgs.split("""\s+""")
+              val trimmedNameAndArgs = nameAndArgs.trim()
+              val words = trimmedNameAndArgs.split("""\s+""")
               require( words.length >= 1, s"Each element of 'ethcfgAutoDeployContracts' must contain at least a contract name! [word length: ${words.length}")
               val deploymentAlias = words.head
-              val args = words.tail.toList
               val seed = anySourceFreshSeed( deploymentAlias )
-              ( deploymentAlias, seed.codeHex, args, seed.abi )
+              val argsAndMaybeValue = trimmedNameAndArgs.drop( deploymentAlias.length ) // don't trim this, because our parser expects leading whitespace!
+              if ( argsAndMaybeValue.trim.nonEmpty ) {
+                val cmvwParser = ctorArgsMaybeValueInWeiParser( seed )
+                sbt.complete.Parser.parse( argsAndMaybeValue, cmvwParser ) match {
+                  case Left( errorMessage )          => throw new SbtEthereumException( s"Failed to parse constructor arguments and value from autodeployment item '${deploymentAlias}'. Error Message: '${errorMessage}'" )
+                  case Right( fullSpawnInstruction ) => ( deploymentAlias, seed.codeHex, fullSpawnInstruction.args, Unsigned256( fullSpawnInstruction.valueInWei ), seed.abi ) 
+                }
+              }
+              else {
+                ( deploymentAlias, seed.codeHex, Nil, Zero256, seed.abi )
+              }
             }
           }
         }
       }
 
       val instruction = parser.parsed
-      val quartets = {
+      val quintets = {
         instruction match {
-          case SpawnInstruction.Auto                        => createAutoQuartets()
-          case uncompiled : SpawnInstruction.UncompiledName => immutable.Seq( createQuartetUncompiled( uncompiled ) )
-          case full : SpawnInstruction.Full                 => immutable.Seq( createQuartetFull( full ) )
+          case SpawnInstruction.Auto                        => createAutoQuintets()
+          case uncompiled : SpawnInstruction.UncompiledName => immutable.Seq( createQuintetUncompiled( uncompiled ) )
+          case full : SpawnInstruction.Full                 => immutable.Seq( createQuintetFull( full ) )
         }
       }
 
@@ -3788,11 +3798,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val nonceOverride = {
         unwrapNonceOverride( Some( log ), chainId ) match {
-          case noverride @ Some( _ ) if (quartets.length <= 1) => {
+          case noverride @ Some( _ ) if (quintets.length <= 1) => {
             noverride
           }
           case Some( u256 ) => {
-            throw new SbtEthereumException( s"""Cannot create multiple contracts with a fixed nonce override ${u256.widen} set. Contract creations requested: ${quartets.map( _._1 ).mkString(", ")}""" )
+            throw new SbtEthereumException( s"""Cannot create multiple contracts with a fixed nonce override ${u256.widen} set. Contract creations requested: ${quintets.map( _._1 ).mkString(", ")}""" )
           }
           case None => {
             None
@@ -3800,7 +3810,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
 
-      def doSpawn( deploymentAlias : String, codeHex : String, inputs : immutable.Seq[String], abi : Abi ) : ( String, Either[EthHash,Client.TransactionReceipt] ) = {
+      def doSpawn( deploymentAlias : String, codeHex : String, inputs : immutable.Seq[String], valueInWei : Unsigned256, abi : Abi ) : ( String, Either[EthHash,Client.TransactionReceipt] ) = {
 
         val inputsBytes = ethabi.constructorCallData( inputs, abi ).get // asserts that we've found a meaningful ABI, and can parse the constructor inputs
         val inputsHex = inputsBytes.hex
@@ -3810,7 +3820,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.debug( s"Contract constructor inputs encoded to the following hex: '${inputsHex}'" )
         }
 
-        val f_txnHash = Invoker.transaction.createContract( privateKey, Zero256, dataHex.decodeHexAsSeq, nonceOverride )
+        val f_txnHash = Invoker.transaction.createContract( privateKey, valueInWei, dataHex.decodeHexAsSeq, nonceOverride )
 
         log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
         val f_out = {
@@ -3876,7 +3886,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         ( deploymentAlias, out )
       }
 
-      val result = quartets.map( (doSpawn _).tupled )
+      val result = quintets.map( (doSpawn _).tupled )
 
       Def.taskDyn {
         Def.task {
