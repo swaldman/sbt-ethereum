@@ -44,4 +44,18 @@ _Managing cryptocurrency credentials is **hard**. You need to be sure to back th
 
 @@@
 
+### Keep your account private
+
+@@@ warning
+
+**Your _sbt-ethereum_ shoebox contains data that, if corrupted by an adversary, could result in loss or theft.**
+
+_sbt-ethereum_ should be used only via secure, unshared user accounts.
+
+If an adversary gains access to your account, they could, for example, replace and therefore redirect @ref:[address aliases](tasks/eth/address/alias.md),
+leading you to send value to their own address rather than to the address you intend.
+
+@@@
+
+
 
