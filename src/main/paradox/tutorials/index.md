@@ -10,6 +10,7 @@
 * [Using a Smart Contract (Part I)](using-a-smart-contract-i.md)
 * [Working with Ether & Multiple Addresses](working-with-ether.md)
 * [Using a Smart Contract (Part II)](using-a-smart-contract-ii.md)
+* [Creating a Smart Contract](creating-a-smart-contract.md)
 
 @@@
 
