@@ -100,29 +100,141 @@ _Usually this should not be set! To control the gas limit precisely, you can use
 **Default:** `0.20`
 
 To set the transaction gas limit, _sbt-ethereum_ estimates the transaction's cost using its node's [`eth_estimateGas`](https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_estimategas) function,
-and then adds a markup, 0.2 or 20% by default. Then any [cap](#ethcfggaslimitcap) or [floor](#ethcfggaslimitcap) is applied.
+and then adds a markup, 0.2 or 20% by default. Then any @ref:[cap](#ethcfggaslimitcap) or @ref:[floor](#ethcfggaslimitfloor) is applied.
 
 If you'd like a higher markup (to reduce the possibility of running out of gas) or a lower one (to more tightly limit transaction cost), you can define your own value for this setting.
+
+This value can be negative, in which case it reflects a discount rather than a markup. However, it's a bad idea &mdash; you'll almost certainly just exhaust your gas and have to pay for failed transactions.
 
 @@@
 
 ### ethcfgGasPriceCap                   
 
+@@@ div { .keydesc }
+
+**Type:** `BigInt`
+
+**Default:** _Unset_
+
+If set, this defines the _maximum_ gas price in wei _sbt-ethereum_ will allow in a transaction, regardless of its estimated prevailing gas price.
+
+_Usually this should not be set! To control the gas price precisely, you can use @ref:[`ethTransactionGasPriceOverrideSet`](../tasks/eth/transaction/gas.md#ethtransactiongaspriceoverrideset) in your session._
+
 ### ethcfgGasPriceFloor                 
+
+@@@ div { .keydesc }
+
+**Type:** `BigInt`
+
+**Default:** _Unset_
+
+If set, this defines the _minimum_ gas price in wei _sbt-ethereum_ will provide in a transaction, regardless of its estimated prevailing gas price.
+
+_Usually this should not be set! To control the gas price precisely, you can use @ref:[`ethTransactionGasPriceOverrideSet`](../tasks/eth/transaction/gas.md#ethtransactiongaspriceoverrideset) in your session._
+
+@@@
 
 ### ethcfgGasPriceMarkup                
 
-### ethcfgIncludeLocations              
+@@@ div { .keydesc }
+
+**Type:** `Double`
+
+**Default:** `0.00`
+
+To set the transaction gas price, _sbt-ethereum_ estimates the prevailing gas price using its node's [`eth_gasPrice`](https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_gasprice) function,
+and then adds a markup, of 0.00 or 0% by default. Then any @ref:[cap](#ethcfggaspricecap) or @ref:[floor](#ethcfggaspricefloor) is applied.
+
+If you'd like a higher markup (to reduce the possibility of running out of gas) or a lower one (to require a discount to the prevailing cost), you can define your own value for this setting.
+
+This value can be negative, in which case it reflects a discount rather than a markup.
+
+@@@
+
+### ethcfgIncludeLocations
+
+@@@ div { .keydesc }
+
+**Type:** `Seq[String]`
+
+**Default:** `Nil` (an empty `Seq`)
+
+A sequence of directories or URLs that should be searched to resolve import directives, besides the source directory itself.
+
+@@@
 
 ### ethcfgKeystoreAutoImportLocationsV3 
 
+@@@ div { .keydesc }
+
+**Type:** `Seq[File]`
+
+**Default:** _a list containing the default `geth` keystore directory for your platform
+
+A sequence of File objects representing directories containing _Ethereum_ V3 Wallet JSON files that should automatically be imported into the _sbt-ethereum_ keystore.
+
+@@@
+
 ### ethcfgKeystoreAutoRelockSeconds     
+
+@@@ div { .keydesc }
+
+**Type:** `Int`
+
+**Default:** `300`
+
+A number of seconds during which, after a wallet has been unlocked, its private key may remain available without retyping the wallet passcode.
+
+@@@
 
 ### ethcfgNetcompileUrl                 
 
+@@@ div { .keydesc }
+
+**Type:** `String`
+
+**Default:** _Unset_
+
+The URL of a (nonstandard) network-hosted Solidity compiler.
+
+_Networked Solidity compilation using the `eth-netcompile` project is unlikely to be supported going forward. Please consider this setting deprecated._
+
+@@@
+
 ### ethcfgNodeChainId                   
 
+@@@ div { .keydesc }
+
+**Type:** `Int`
+
+**Default:** _Unset_ (except in configuration `Test`, for which the default value is `-1`)
+
+A "hardcoded" [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID that will override any @ref:[default Chain ID](../tasks/eth/node/chain_id.md) set for the project.
+
+_Often you will rely upon the global default (set with @ref:[ethNodeChainIdDefaultSet](../tasks/eth/node/chain_id.md#ethnodechainiddefaultset)) or the session override
+(set with @ref:[ethNodeChainIdOverrideSet](../tasks/eth/node/chain_id.md#ethnodechainidoverrideset)). However, if you want a project to be explicitly associated with a
+particular chain, you can set this. It will override any value set with @ref:[ethNodeChainIdDefaultSet](../tasks/eth/node/chain_id.md#ethnodechainiddefaultset)._
+
+If a negative value is set, the chain will be treated as ephemeral. Deployments won't be saved in the shoebox database, and no
+[EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID will be embedded in signatures.
+
+@@@
+
 ### ethcfgNodeUrl                       
+
+@@@ div { .keydesc }
+
+**Type:** `String`
+
+**Default:** _Unset_ (except in configuration `Test`, for which the default value is `http://localhost:58545/`)
+
+A "hardcoded" [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) _Ethereum_ node URL that will override any @ref:[default Node URL](../tasks/eth/node/chain_id.md) set for the project.
+
+_Often you will rely upon the global default (set with @ref:[ethNodeUrlDefaultSet](../tasks/eth/node/chain_id.md#ethnodeurldefaultset)) or the session override
+(set with @ref:[ethNodeUrlOverrideSet](../tasks/eth/node/chain_id.md#ethnodeurloverrideset)). However, if you want a project to be explicitly associated with a
+particular URL, you can set this. It will override any value set with @ref:[ethNodeUrlDefaultSet](../tasks/eth/node/chain_id.md#ethnodechainiddefaultset)._
+
+@@@
 
 ### ethcfgScalaStubsPackage             
 

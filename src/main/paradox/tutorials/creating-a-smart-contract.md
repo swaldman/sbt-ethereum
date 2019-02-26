@@ -96,30 +96,6 @@ sbt:eth-timelock> compile
 [success] Total time: 1 s, completed Feb 25, 2019 12:16:01 AM
 ```
 
-@@@ note
-
-If when you compile you see something like...
-
-```
-sbt:eth-timelock> compile
-[error] java.lang.Exception: Cannot find a usable solidity compiler. compilerKeys: Set(), sessionCompilers: Map()
-[error] 	at com.mchange.sc.v1.sbtethereum.SbtEthereumPlugin$.$anonfun$xethFindCurrentSolidityCompilerTask$18(SbtEthereumPlugin.scala:4277)
-[error] 	at scala.Option.getOrElse(Option.scala:121)
-                ...
-```
-You do not have a solidity compiler installed. Tyoe
-```
-sbt:eth-timelock> ethLanguageSolidityCompilerInstall
-```
-If you want to control the version of the compiler that gets installed, try
-```
-sbt:eth-timelock> ethLanguageSolidityCompilerInstall <tab>
-0.4.10   0.4.18   0.4.22   0.4.24   0.4.7    0.4.8    
-```
-To see a list of options.
-
-@@@
-
 ### Deploying the contract
 
 Once your smart contract has been compiled, you should be able to deploy it. The command you will want to use is @ref:[`ethTransactionDeploy`](../tasks/eth/transaction/index.md#ethtransactiondeploy)
@@ -195,7 +171,7 @@ Enter an optional alias for the newly deployed 'Timelock' contract at '0x3e24bfe
 It asks us for an alias for our new contract's address. Let's give it one:
 ```
 Enter an optional alias for the newly deployed 'Timelock' contract at '0x3e24bfe40874a2f366ecf05746d6dcbc0cfd6f03' (or [return] for none): timelock
-[info] Alias 'timelock2' now points to address '0x3e24bfe40874a2f366ecf05746d6dcbc0cfd6f03' (for chain with ID 1).
+[info] Alias 'timelock' now points to address '0x3e24bfe40874a2f366ecf05746d6dcbc0cfd6f03' (for chain with ID 1).
 [info] Refreshing caches.
 [success] Total time: 47 s, completed Feb 25, 2019 1:05:40 AM
 ```
@@ -298,5 +274,5 @@ Now we wait a few minutes, until...
 [success] Total time: 102 s, completed Feb 25, 2019 1:30:31 AM
 ```
 Now, if we refresh _Etherscan_, we'll see that the `1 wei` we paid into the contract on construction is gone.
-The contract balance is `0 ether`. To see the transaction in which the `1 wei` was sent back to the contract owner,
+The contract balance is `0 ether`. To see the transaction in which the `1 wei` was sent back to the contract's owner,
 check the `Internal Txns` tab.
