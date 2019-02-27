@@ -211,7 +211,8 @@ _Networked Solidity compilation using the `eth-netcompile` project is unlikely t
 
 A "hardcoded" [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID that will override any @ref:[default Chain ID](../tasks/eth/node/chain_id.md) set for the project.
 
-_Often you will rely upon the global default (set with @ref:[ethNodeChainIdDefaultSet](../tasks/eth/node/chain_id.md#ethnodechainiddefaultset)) or the session override
+_Often you will rely upon the @ref:[shoebox default](../method_to_the_madness.md#defaults-and-session-overrides)
+(set with @ref:[ethNodeChainIdDefaultSet](../tasks/eth/node/chain_id.md#ethnodechainiddefaultset)) or the session override
 (set with @ref:[ethNodeChainIdOverrideSet](../tasks/eth/node/chain_id.md#ethnodechainidoverrideset)). However, if you want a project to be explicitly associated with a
 particular chain, you can set this. It will override any value set with @ref:[ethNodeChainIdDefaultSet](../tasks/eth/node/chain_id.md#ethnodechainiddefaultset)._
 
@@ -230,7 +231,8 @@ If a negative value is set, the chain will be treated as ephemeral. Deployments 
 
 A "hardcoded" [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) _Ethereum_ node URL that will override any @ref:[default Node URL](../tasks/eth/node/chain_id.md) set for the project.
 
-_Often you will rely upon the global default (set with @ref:[ethNodeUrlDefaultSet](../tasks/eth/node/chain_id.md#ethnodeurldefaultset)) or the session override
+_Often you will rely upon the @ref:[shoebox default](../method_to_the_madness.md#defaults-and-session-overrides) for your session's Chain ID
+(set with @ref:[ethNodeUrlDefaultSet](../tasks/eth/node/chain_id.md#ethnodeurldefaultset)) or the session override
 (set with @ref:[ethNodeUrlOverrideSet](../tasks/eth/node/chain_id.md#ethnodeurloverrideset)). However, if you want a project to be explicitly associated with a
 particular URL, you can set this. It will override any value set with @ref:[ethNodeUrlDefaultSet](../tasks/eth/node/chain_id.md#ethnodechainiddefaultset)._
 
@@ -238,18 +240,120 @@ particular URL, you can set this. It will override any value set with @ref:[ethN
 
 ### ethcfgScalaStubsPackage             
 
+@@@ div { .keydesc }
+
+**Type:** `String`
+
+**Default:** _Unset_
+
+The dot-separated fully qualified package name into which Scala stubs for compiled smart contracts should be generated, if you'd like scala stubs for compiled smart contracts!
+If not set, no Scala stubs will be generated.
+
+@@@
+
 ### ethcfgSolidityCompilerOptimize      
+
+@@@ div { .keydesc }
+
+**Type:** `Boolean`
+
+**Default:** `true`
+
+Defines whether compiler optimization should be enabled during compilations of Solidity files.
+
+@@@
 
 ### ethcfgSolidityCompilerOptimizerRuns 
 
+@@@ div { .keydesc }
+
+**Type:** `Boolean`
+
+**Default:** `200`
+
+Defines for how many runs (how exhaustively) the Solidity compiler should try to optimize, if Solidity compiler optimizations are enabled. (See @ref:[ethcfgSolidityCompilerOptimize](#ethcfgsoliditycompileroptimize))
+
+@@@
+
 ### ethcfgSoliditySource                
+
+@@@ div { .keydesc }
+
+**Type:** `File` (a diectory)
+
+**Default:** `src/main/solidity` (or, for the `Test` configuration, `src/test/solidity`)
+
+Defines where sbt-ethereum looks for Solidity files to compile. Defined in terms of the standard `sourceDirectory` key: Unless overridden, this will be a `solidity` subdirectory of `sourceDirectory.value`.
+
+@@@
 
 ### ethcfgSolidityDestination           
 
+@@@ div { .keydesc }
+
+**Type:** `File` (a diectory)
+
+**Default:** `target/ethereum/solidity`
+
+Defines where Solidity compilation artifacts get stored. Defined in terms of the @ref:[`ethcfgTargetDir`](#ethcfgtargetdir) key: Unless overridden, this will be a `solidity` subdirectory of `ethcfgTargetDir.value`.
+
+@@@
+
 ### ethcfgTargetDir                     
+
+@@@ div { .keydesc }
+
+**Type:** `File` (a diectory)
+
+**Default:** `target/ethereum`
+
+Defines where _sbt-ethereum_-related artifacts and compilations get stored. Defined in terms of the standard `target` key: Unless overridden, this will be an `ethereum` subdirectory of `target`.
+
+@@@
 
 ### ethcfgTransactionReceiptPollPeriod  
 
+@@@ div { .keydesc }
+
+**Type:** `Duration`
+
+**Default:** 3 seconds
+
+After a transaction is submitted, _sbt-ethereum_ will "poll" its node for that transaction until it has been mined or [times out](#ethcfgtransactionreceipttimeout).
+
+This setting determines how frequently it will poll.
+
+@@@
+
 ### ethcfgTransactionReceiptTimeout     
 
+@@@ div { .keydesc }
+
+**Type:** `Duration`
+
+**Default:** 5 minutes
+
+After a transaction is submitted, _sbt-ethereum_ will "poll" its node for that transaction until it has been mined or times out.
+
+This setting determines how long _sbt-ethereum_ will wait to see that a transaction has been mined onto a chain before giving up.
+
+@@@
+
 ### ethcfgUseReplayAttackProtection     
+
+@@@ div { .keydesc }
+
+**Type:** `Boolean`
+
+**Default:** `true`
+
+If there is a non-negative Chain ID associated with an _sbt-ethereum_ session, _sbt-ethereum_ can incorporate that in transaction
+signatures to [prevent "replay" attacks](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md), which occur when a valid
+transaction is submitted to an unintended chain.
+
+If replay attack protection is enabled, transactions are only valid for the (hopefully unique) chain that matches the embedded Chain ID.
+
+If replay attack prevention is not enabled, no Chain ID is encoded into the signature and a transaction might be valid for many chains.
+
+@@@
+
