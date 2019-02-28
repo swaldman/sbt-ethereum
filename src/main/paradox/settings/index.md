@@ -23,8 +23,11 @@ It's usually better _not_ to commit to or expose a sender in the repository, and
 
 **Default:** _Unset_
 
-Contracts compiled from this repository that should be autodeployed if no arguments are provided to @ref:[`ethTransactionDeploy`](../tasks/eth/transaction/index.md#ethtransactiondeploy).
-Each element of the `Seq` should be the name of the Contract to deploy, optionally with space separated constructor argument for that contract. If the constructor is payable,
+Contracts compiled from this repository that should be autodeployed if no arguments are provided to @ref:[`ethTransactionDeploy`](../tasks/eth/transaction/index.md#ethtransactiondeploy),
+or (in the `Test` configuration), within @ref:[ethDebugGanacheTest](../tasks/eth/debug/index.md#ethdebugganachetest). Contracts will be deployed in the order specified.
+The same contract can be deployed multiple times (with or without different constructor arguments and/or payments).
+
+Each element of the `Seq` should be the name of the Contract to deploy, optionally with space separated constructor arguments for that contract. If the constructor is payable,
 you may optionally also include an amount following the last constructor argument, in the form of a numeric value and a unit, which should be one of `wei`, `gwei`, `szabo`, `finney`, or `ether`.
 
 **This setting is primarily used for smart-contract testing.** See e.g. [swaldman/quick-and-dirty-token-overview](https://github.com/swaldman/quick-and-dirty-token-overview) for a project that uses it.
