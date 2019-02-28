@@ -116,12 +116,17 @@ A transaction with hash '0x63667255455b20ef381bcb6e5d6a3e50c33025c8f7e0a920b22f2
 Looks up the status of an ENS name.
 
 Status will be one of...
- * Open &mdash; name is available and the auction hasn’t started
- * Auction &mdash; name is available and the auction has been started
- * Owned &mdash; name is taken and currently owned by someone
- * Forbidden &mdash; name is forbidden
- * Reveal &mdash; name is currently in the ‘reveal’ stage of the auction
- * NotYetAvailable &mdash; name is not yet available due to the ‘soft launch’ of names
+
+@@@@ div { .tight }
+
+* `Open` &mdash; name is available and the auction hasn’t started
+* `Auction` &mdash; name is available and the auction has been started
+* `Owned` &mdash; name is taken and currently owned by someone
+* `Forbidden` &mdash; name is forbidden
+* `Reveal` &mdash; name is currently in the 'reveal' stage of the auction
+* `NotYetAvailable` &mdash; name is not yet available due to the 'soft launch' of names
+
+@@@@
 
 _Status definitions lifted from the [ENS docs](https://docs.ens.domains/en/latest/userguide.html#starting-an-auction)._
 
