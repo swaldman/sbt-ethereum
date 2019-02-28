@@ -5527,7 +5527,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     if ( valueInWei != 0 ) {
       val xferInEth = Denominations.Ether.fromWei( valueInWei )
       val maxTotalCostInEth = xferInEth + gasCostInEth
-      print( s"==> You would also send ${xferInEth} ether" )
+      print( s"==> $$$$$$ You would also send ${xferInEth} ether" )
       mbEthPrice match {
         case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
           println( s" (${ xferInEth * ethPrice } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${maxTotalCostInEth * ethPrice} ${currencyCode})." )
