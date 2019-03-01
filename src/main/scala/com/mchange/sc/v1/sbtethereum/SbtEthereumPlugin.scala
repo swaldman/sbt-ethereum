@@ -315,6 +315,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensAddressSet       = inputKey[Unit]              ("Sets the address a given ens name should resolve to.")
     val ensAuctionFinalize  = inputKey[Unit]              ("Finalizes an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
     val ensAuctionStart     = inputKey[Unit]              ("Starts an auction for the given name, in the (optionally-specified) top-level domain of the ENS service.")
+    val ensAuctionBid       = inputKey[Unit]              ("Basically an alias for 'ensAuctionBidPlace'.")
     val ensAuctionBidList   = taskKey[Unit]               ("Places a bid in an currently running auction.")
     val ensAuctionBidPlace  = inputKey[Unit]              ("Places a bid in an currently running auction.")
     val ensAuctionBidReveal = inputKey[Unit]              ("Reveals a bid in an currently running auction.")
@@ -349,10 +350,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiAliasSet        = inputKey[Unit] ("Defines a new alias for an ABI, taken from any ABI source.")
     val ethContractAbiCallDecode      = inputKey[Unit] ("Takes an ABI and a function call hex-encoded with that ABI, and decodes them.")
     val ethContractAbiCallEncode      = inputKey[Unit] ("Takes an ABI, a function name, and arguments and geneated the hex-encoded data that would invoke the function.")
-    val ethContractAbiDefaultDrop          = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via 'ethContractAbiDefaultSet' or 'ethContractAbiDefaultImport'")
-    val ethContractAbiDefaultList            = inputKey[Unit] ("Lists the addresses for which default ABI definitions have been defined. (Includes explicitly set deaults and our own deployed compilations.)")
-    val ethContractAbiDefaultImport          = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
-    val ethContractAbiDefaultSet           = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address")
+    val ethContractAbiDefaultDrop     = inputKey[Unit] ("Removes an ABI definition that was added to the sbt-ethereum database via 'ethContractAbiDefaultSet' or 'ethContractAbiDefaultImport'")
+    val ethContractAbiDefaultList     = inputKey[Unit] ("Lists the addresses for which default ABI definitions have been defined. (Includes explicitly set deaults and our own deployed compilations.)")
+    val ethContractAbiDefaultImport   = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
+    val ethContractAbiDefaultSet      = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address")
     val ethContractAbiOverride        = inputKey[Unit] ("Basically an alias to 'ethContractAbiOverrideSet'.")
     val ethContractAbiOverrideSet     = inputKey[Unit] ("Sets a temporary (just this session) association between an ABI an address, that overrides any persistent association")
     val ethContractAbiOverrideDropAll = taskKey[Unit]  ("Clears all temporary associations (on the current chain) between an ABI an address")
@@ -614,6 +615,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensAddressSet in Compile := { ensAddressSetTask( Compile ).evaluated },
 
     ensAddressSet in Test := { ensAddressSetTask( Test ).evaluated },
+
+    ensAuctionBid in Compile := { ensAuctionBidPlaceTask( Compile ).evaluated },
+
+    ensAuctionBid in Test := { ensAuctionBidPlaceTask( Test ).evaluated },
 
     ensAuctionBidPlace in Compile := { ensAuctionBidPlaceTask( Compile ).evaluated },
 

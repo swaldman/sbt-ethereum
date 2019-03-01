@@ -45,7 +45,7 @@ _Managing cryptocurrency credentials is **hard**. You need to be sure to back th
 
 @@@
 
-### Keep your account private
+### Keep your shoebox private
 
 @@@ warning
 
