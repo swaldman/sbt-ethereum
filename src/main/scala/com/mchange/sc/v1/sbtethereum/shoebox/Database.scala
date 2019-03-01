@@ -56,9 +56,24 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
   private val GoodAliasRegex = """^[A-Za-z][A-Za-z0-9_\055]*$""".r // \055 is the '-' character (and is provided as \055 to the regex due to """), note a match means the whole String matches due to the ^...$ construction
 
-  private def isGoodAlias( alias : String ) : Boolean = GoodAliasRegex.findFirstIn( alias ) != None
+  private def sneakyEthAddressHex( otherwiseGoodAlias : String ) : Boolean = {
+    try {
+      EthAddress( otherwiseGoodAlias )
+      true
+    }
+    catch {
+      case e : Exception => false
+    }
+  }
 
-  private def requireGoodAlias( alias : String ) = require( isGoodAlias( alias ), s"'${alias}' is not a valid alias. Should begin with ascii alphabetic, then contain ascii alphanumeric, underscore (_) or dash (-)." )
+  private def isGoodAlias( alias : String ) : Boolean = (GoodAliasRegex.findFirstIn( alias )) != None && !sneakyEthAddressHex( alias )
+
+  private def requireGoodAlias( alias : String ) = {
+    require(
+      isGoodAlias( alias ),
+      s"'${alias}' is not a valid alias. Should begin with ascii alphabetic, then contain ascii alphanumeric, underscore (_) or dash (-), and must not be interpretable as a valid 20-byte hex address."
+    )
+  }
 
   private [sbtethereum]
   def insertCompilation(
