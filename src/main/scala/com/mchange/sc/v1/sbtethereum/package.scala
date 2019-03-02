@@ -61,6 +61,8 @@ package object sbtethereum {
 
   val LineSep = System.lineSeparator
 
+  final val CantReadInteraction = "InteractionService failed to read"
+
   def rounded( bd : BigDecimal ) : BigInt = bd.setScale( 0, BigDecimal.RoundingMode.HALF_UP ).toBigInt
 
   def aborted( msg : String ) : Nothing = throw new OperationAbortedByUserException( msg )

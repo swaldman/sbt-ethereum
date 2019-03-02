@@ -16,6 +16,7 @@ import util.EthJsonRpc._
 import util.Parsers._
 import util.SJsonNewFormats._
 import util.Abi._
+import util.InteractiveQuery._
 import generated._
 
 import java.io.{BufferedInputStream, File, FileInputStream, FilenameFilter}
@@ -2487,69 +2488,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     texttable.printTable( columns, extract, rowFilter )( allRecords.map( r => texttable.Row(r, annotation(r)) ) )
-  }
-
-  private def queryYN( is : InteractionService, query : String ) : Boolean = {
-    def prompt = is.readLine( query, mask = false ).get
-    def doPrompt : Boolean = {
-      def redo = {
-        println( "Please enter 'y' or 'n'." )
-        doPrompt
-      }
-      prompt.trim().toLowerCase match {
-        case ""          => redo
-        case "y" | "yes" => true
-        case "n" | "no"  => false
-        case _           => redo
-      }
-    }
-    doPrompt
-  }
-
-  private def queryIntOrNone( is : InteractionService, query : String, min : Int, max : Int ) : Option[Int] = {
-    require( min >= 0, "Implementation limitation, only positive numbers are supported for now." )
-    require( max >= min, s"max ${max} cannot be smaller than min ${min}." )
-
-    // -1 could not be interpreted as Int, None means empty String
-    // this is why we don't support negatives, -1 is out-of-band
-    def fetchNum : Option[Int] = { 
-      val line = is.readLine( query, mask = false ).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
-      if ( line.isEmpty ) {
-        None
-      }
-      else {
-        try {
-          Some( line.toInt )
-        }
-        catch {
-          case nfe : NumberFormatException => {
-            println( s"Bad entry... '${line}'. Try again." )
-            Some(-1)
-          }
-        }
-      }
-    }
-
-    def checkRange( num : Int ) = {
-      if ( num < min || num > max ) {
-        println( s"${num} is out of range. Try again." )
-        false
-      }
-      else {
-        true
-      }
-    }
-
-    @tailrec
-    def doFetchNum : Option[Int] = {
-      fetchNum match {
-        case Some(-1)                          => doFetchNum
-        case Some( num ) if !checkRange( num ) => doFetchNum
-        case ok                                => ok
-      }
-    }
-
-    doFetchNum
   }
 
   private def ethContractAbiDefaultImportTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
@@ -5470,8 +5408,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
   }
-
-  private final val CantReadInteraction = "InteractionService failed to read"
 
   private final def notConfirmedByUser  = nst( new Exception("Not confirmed by user. Aborted.") )
 
