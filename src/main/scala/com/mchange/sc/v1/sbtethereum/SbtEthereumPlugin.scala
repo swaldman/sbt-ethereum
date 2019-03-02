@@ -43,6 +43,7 @@ import com.mchange.sc.v1.consuela.ethereum.ethabi.{Decoded, Encoder, abiFunction
 import com.mchange.sc.v1.consuela.ethereum.stub
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker
 import com.mchange.sc.v1.consuela.ethereum.clients
+import com.mchange.sc.v1.consuela.ethereum.encoding.RLP
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.log.MLogger
 import com.mchange.sc.v1.texttable
@@ -436,6 +437,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionNonceOverrideDrop  = taskKey[Unit]("Removes any nonce override that may have been set.")
     val ethTransactionNonceOverridePrint = taskKey[Unit]("Prints any nonce override that may have been set.")
     val ethTransactionNonceOverrideSet   = inputKey[Unit]("Sets a fixed nonce to be used in the transactions, rather than automatically choosing the next nonce. (Remains fixed and set until explicitly dropped.)")
+
+    val ethTransactionOfflineSign = taskKey[Unit]("Load or manually define all fields of a transaction, then sign it, then print or save its hex for future execution.")
 
     val ethTransactionPing   = inputKey[Option[Client.TransactionReceipt]]           ("Sends 0 ether from current sender to an address, by default the sender address itself")
     val ethTransactionRaw    = inputKey[Client.TransactionReceipt]                   ("Sends a transaction with user-specified bytes, amount, and optional nonce")
@@ -975,6 +978,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionNonceOverridePrint in Compile := { ethTransactionNonceOverridePrintTask( Compile ).value },
 
     ethTransactionNonceOverridePrint in Test := { ethTransactionNonceOverridePrintTask( Test ).value },
+
+    ethTransactionOfflineSign := { ethTransactionOfflineSignTask.value },
 
     ethTransactionRaw in Compile := { ethTransactionRawTask( Compile ).evaluated },
 
@@ -4044,6 +4049,150 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ethTransactionOfflineSignTask : Initialize[Task[Unit]] = Def.task {
+    val s = state.value
+    val log = streams.value.log
+    val is = interactionService.value
+
+    def queryEthAmount( query : String, nonfunctionalTabHelp : String ) : BigInt = {
+      val raw = is.readLine( query, mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+      try {
+        BigInt(raw)
+      }
+      catch {
+        case nfe : NumberFormatException => {
+          sbt.complete.Parser.parse( raw, valueInWeiParser( nonfunctionalTabHelp ) ) match {
+            case Left( errorMessage )          => throw new SbtEthereumException( s"Failed to parse amount of ETH to send. Error Message: '${errorMessage}'" )
+            case Right( amount ) => amount
+          }
+        }
+      }
+    }
+
+
+    def queryUnsignedTransactionFile : Option[EthTransaction.Unsigned] = {
+
+      @tailrec
+      def doQuery : Option[File] = {
+        val query = "Enter the path to a file containing a binary unsigned transaction, or just [return] to enter transaction data manually: "
+        val filepath = is.readLine( query, mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+        if ( filepath.nonEmpty ) {
+          val file = new File( filepath ).getAbsoluteFile()
+          if (!file.exists() || !file.canRead()) {
+            println( s"The file '${file} does not exist, or is not readable. Please try again!" )
+            doQuery
+          }
+          else {
+            Some( file )
+          }
+        }
+        else {
+          None
+        }
+      }
+
+      for {
+        file <- doQuery
+      }
+      yield {
+        val bytes = file.contentsAsByteSeq
+        RLP.decodeComplete[EthTransaction]( bytes ).assert match {
+          case signed : EthTransaction.Signed => throw new SbtEthereumException( "The transaction in '${file}' has already been signed. We will not attempt to re-sign it." )
+          case unsigned : EthTransaction.Unsigned => unsigned
+        }
+      }
+    }
+
+    def interactiveQueryUnsignedTransaction : EthTransaction.Unsigned = {
+      val nonce = {
+        val raw = is.readLine( "Nonce: ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+        BigInt(raw)
+      }
+      val gasPrice = queryEthAmount( "Gas price (as wei, or else number and unit): ", "<gas-price>" )
+      val gasLimit = {
+        val raw = is.readLine( "Gas Limit: ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+        BigInt(raw)
+      }
+      val to = {
+        val raw = is.readLine( "To (as hex address): ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+        if ( raw.nonEmpty ) Some( EthAddress( raw ) ) else None
+      }
+      if ( to == None ) log.warn( "No 'To:' address specified. This is a contract creation transaction!" )
+      val amount = queryEthAmount( "ETH to send (as wei, or else number and unit): ", "<eth-to-send>" )
+      val data = {
+        val raw = is.readLine( "Data / Init (as hex string): ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+        raw.decodeHexAsSeq
+      }
+      val unsigned : EthTransaction.Unsigned = {
+        to match {
+          case Some( recipient ) => EthTransaction.Unsigned.Message( nonce=Unsigned256( nonce ), gasPrice=Unsigned256(gasPrice), gasLimit=Unsigned256(gasLimit), to=recipient, value=Unsigned256(amount), data=data )
+          case None              => EthTransaction.Unsigned.ContractCreation( nonce=Unsigned256( nonce ), gasPrice=Unsigned256(gasPrice), gasLimit=Unsigned256(gasLimit), value=Unsigned256(amount), init=data )
+        }
+      }
+      unsigned
+    }
+
+    val signer = {
+      val raw = is.readLine( "Signer (as hex address): ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+      EthAddress( raw )
+    }
+    val unsigned = queryUnsignedTransactionFile.getOrElse( interactiveQueryUnsignedTransaction )
+    val chainId = {
+      val raw = is.readLine( "Enter the Chain ID to sign with (or return for none, no replay protection): ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+      if (raw.nonEmpty) {
+        val asNum = raw.toInt
+        if (asNum < 0) None else Some( asNum )
+      }
+      else {
+        None
+      }
+    }
+    if ( chainId == None ) log.warn("No (non-negative) Chain ID value provided. Will sign with no replay attack prevention!")
+
+    val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
+    val privateKey = findCachePrivateKey( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
+    val signed = {
+      chainId match {
+        case Some( num ) => unsigned.sign( privateKey, EthChainId(num) )
+        case None        => unsigned.sign( privateKey )
+      }
+    }
+    val signedAsBytes = RLP.encode[EthTransaction]( signed )
+
+    @tailrec
+    def querySignedTransactionFile : Option[File] = {
+      val query = "Enter the path to a (not-yet-existing) file in which to write the binary signed transaction, or [return] just to print the signed transaction hex: "
+      val filepath = is.readLine( query, mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+      if ( filepath.nonEmpty ) {
+        val file = new File( filepath ).getAbsoluteFile()
+        if (file.exists() || !file.canWrite()) {
+          println( s"The file '${file} must not yet exist, but must be writable. Please try again!" )
+          querySignedTransactionFile
+        }
+        else {
+          Some( file )
+        }
+      }
+      else {
+        None
+      }
+    }
+
+    querySignedTransactionFile match { 
+      case Some( file ) => {
+        file.replaceContents( signedAsBytes )
+        log.info( s"Signed transaction saved as '${file}'." )
+      }
+      case None => {
+        log.warn( s"Signed transaction bytes not saved. (The signed transaction hex will be printed below.)" )
+      }
+    }
+
+    println()
+    println(  "Full signed transaction:" )
+    println( s"0x${signedAsBytes.hex}" )
+  }
+
   private def ethTransactionPingTask( config : Configuration ) : Initialize[InputTask[Option[Client.TransactionReceipt]]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genOptionalGenericAddressParser )
 
@@ -4171,7 +4320,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val f_out = Invoker.constant.sendMessage( from, contractAddress, Unsigned256(amount), callData ) map { rawResult =>
         log.debug( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
         log.debug( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
-        val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception is we can't get results
+        val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception if we can't get results
         results.length match {
           case 0 => {
             assert( abiFunction.outputs.length == 0 )
