@@ -19,8 +19,6 @@ DB schema updates
 
 Other
 
----> Condense interactive file query methods
-
 * Eliminate potentially ambiguous use of `parseOneByteCharQuotedString( str )` in Encode.Bytes.parse. Check for other similar issues.
 
 * let repositories suggest ABIs <--> addresses <--> aliases ???

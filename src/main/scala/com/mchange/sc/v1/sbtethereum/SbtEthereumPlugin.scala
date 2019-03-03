@@ -4010,24 +4010,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def queryUnsignedTransactionFile : Option[EthTransaction.Unsigned] = {
 
-      @tailrec
-      def doQuery : Option[File] = {
-        val query = "Enter the path to a file containing a binary unsigned transaction, or just [return] to enter transaction data manually: "
-        val filepath = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
-        if ( filepath.nonEmpty ) {
-          val file = new File( filepath ).getAbsoluteFile()
-          if (!file.exists() || !file.canRead()) {
-            println( s"The file '${file} does not exist, or is not readable. Please try again!" )
-            doQuery
-          }
-          else {
-            Some( file )
-          }
-        }
-        else {
-          None
-        }
-      }
+      def doQuery = queryOptionalGoodFile (
+        is = is, 
+        query = "Enter the path to a file containing a binary unsigned transaction, or just [return] to enter transaction data manually: ",
+        goodFile = file => file.exists() && file.canRead(),
+        notGoodFileRetryPrompt = file => s"The file '${file} does not exist, or is not readable. Please try again!"
+      )
 
       for {
         file <- doQuery
@@ -4097,24 +4085,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     val signedAsBytes = RLP.encode[EthTransaction]( signed )
 
-    @tailrec
-    def querySignedTransactionFile : Option[File] = {
-      val query = "Enter the path to a (not-yet-existing) file in which to write the binary signed transaction, or [return] just to print the signed transaction hex: "
-      val filepath = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
-      if ( filepath.nonEmpty ) {
-        val file = new File( filepath ).getAbsoluteFile()
-        if (file.exists() || !file.canWrite()) {
-          println( s"The file '${file} must not yet exist, but must be writable. Please try again!" )
-          querySignedTransactionFile
-        }
-        else {
-          Some( file )
-        }
-      }
-      else {
-        None
-      }
-    }
+    def querySignedTransactionFile : Option[File] = queryOptionalGoodFile (
+      is = is,
+      query = "Enter the path to a (not-yet-existing) file in which to write the binary signed transaction, or [return] just to print the signed transaction hex: ",
+      goodFile = file => !file.exists() && file.canWrite(),
+      notGoodFileRetryPrompt = file => s"The file '${file} must not yet exist, but must be writable. Please try again!"
+    )
 
     querySignedTransactionFile match { 
       case Some( file ) => {
