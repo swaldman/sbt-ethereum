@@ -12,12 +12,12 @@ object InteractiveQuery {
   private type I[T] = T
 
   @tailrec
-  private def _queryGoodFile[F[_]]( is : sbt.InteractionService, wrap : File => F[File] )( query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : String, noEntryDefault : => F[File] ) : F[File] = {
+  private def _queryGoodFile[F[_]]( is : sbt.InteractionService, wrap : File => F[File] )( query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : File => String, noEntryDefault : => F[File] ) : F[File] = {
     val filepath = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
     if ( filepath.nonEmpty ) {
       val file = new File( filepath ).getAbsoluteFile()
-      if (goodFile(file)) {
-        println( notGoodFileRetryPrompt )
+      if (!goodFile(file)) {
+        println( notGoodFileRetryPrompt( file ) )
         _queryGoodFile( is, wrap )( query, goodFile, notGoodFileRetryPrompt, noEntryDefault )
       }
       else {
@@ -30,13 +30,13 @@ object InteractiveQuery {
   }
 
   private [sbtethereum]
-  def queryOptionalGoodFile( is : sbt.InteractionService, query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : String ) : Option[File] = {
+  def queryOptionalGoodFile( is : sbt.InteractionService, query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : File => String ) : Option[File] = {
     _queryGoodFile[Option]( is, Some(_) )( query, goodFile, notGoodFileRetryPrompt, None )
   }
 
 
   private [sbtethereum]
-  def queryMandatoryGoodFile( is : sbt.InteractionService, query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : String ) : File = {
+  def queryMandatoryGoodFile( is : sbt.InteractionService, query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : File => String ) : File = {
     _queryGoodFile[I]( is, identity )( query, goodFile, notGoodFileRetryPrompt, queryMandatoryGoodFile( is, query, goodFile, notGoodFileRetryPrompt ) )
   }
 
