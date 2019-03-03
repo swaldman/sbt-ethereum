@@ -74,6 +74,50 @@ A transaction with hash '0x63667255455b20ef381bcb6e5d6a3e50c33025c8f7e0a920b22f2
 
 ### ensAuctionBidReveal
 
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ensAuctionBidReveal <ens-name.eth-OR-bid-hash>
+```
+
+Reveals a bid for an ENS name, after the @ref:[`Auction`](#ensnamestatus) phase has ended and the @ref:[`Reveal`](#ensnamestatus) phase has begun.
+
+**Example:**
+```
+> ensAuctionBidReveal stochasticism.eth
+[info] Unlocking address '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (on chain with ID 1, aliases ['steve-ens'])
+Enter passphrase or hex private key for address '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c': ************************
+[info] V3 wallet(s) found for '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (aliases ['steve-ens'])
+
+==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T
+==>
+==> The transaction would be a message with...
+==>   To:    0x6090a6e47849629b7245dfa1ca21d94cd15878ef (with aliases ['ens-resolver'] on chain with ID 1)
+==>   From:  0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c (with aliases ['steve-ens'] on chain with ID 1)
+==>   Data:  0x47872b42490eb1ec7c5fdb9a86c6ff3483eb47e53034d15e0d615fb88ee87f027903ed35000000000000000000000000000000000000000000000000002386f26fc1000095865ce04f9cd079b8b108bbf6b37d2414f564e497860820781cc136ee994043
+==>   Value: 0 Ether
+==>
+==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
+==>   Function called: unsealBid(bytes32,uint256,bytes32)
+==>     Arg 1 [name=_hash, type=bytes32]: 0x490eb1ec7c5fdb9a86c6ff3483eb47e53034d15e0d615fb88ee87f027903ed35
+==>     Arg 2 [name=_value, type=uint256]: 10000000000000000
+==>     Arg 3 [name=_salt, type=bytes32]: 0x95865ce04f9cd079b8b108bbf6b37d2414f564e497860820781cc136ee994043
+==>
+==> The nonce of the transaction would be 127.
+==>
+==> $$$ The transaction you have requested could use up to 115339 units of gas.
+==> $$$ You would pay 2.5 gwei for each unit of gas, for a maximum cost of 0.0002883475 ether.
+==> $$$ This is worth 0.0384410469625 USD (according to Coinbase at 7:26 PM).
+
+Would you like to submit this transaction? [y/n] y
+A transaction with hash '0x175a26ec49593f0af853c5eb7bcbde292ca0a7e7fdba21810e3b60a460944cf6' will be submitted. Please wait.
+[info] Bid with name 'stochasticism.eth' was successfully revealed.
+[success] Total time: 34 s, completed Mar 2, 2019 7:26:58 PM
+```
+
+@@@
+
 ### ensAuctionFinalize
 
 ### ensAuctionStart
@@ -116,8 +160,11 @@ Would you like to submit this transaction? [y/n] y
 A transaction with hash '0x63223c2b7ae0a0d5a56c96b5f0d4d45986476dd521e3b16835536394e3804343' will be submitted. Please wait.
 Auction started for name 'stochasticism.eth'.
 [success] Total time: 74 s, completed Feb 27, 2019 4:26:46 PM
+```
 
-### ensNameStatus
+@@@
+
+### ensNameStatusw
 
 @@@ div { .keydesc}
 
