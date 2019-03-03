@@ -301,15 +301,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgTransactionReceiptTimeout     = settingKey[Duration]    ("Length of period after which sbt-ethereum will give up on polling for a Client.TransactionReceipt after a transaction")
     val ethcfgUseReplayAttackProtection     = settingKey[Boolean]     ("Defines whether transactions should be signed with EIP-155 \"simple replay attack protection\", if (and only if) we are on a nonephemeral chain.")
 
-    val xethcfgAsyncOperationTimeout      = settingKey[Duration]("Length of time to wait for asynchronous operations, like HTTP calls and external processes.")
-    val xethcfgNamedAbiSource             = settingKey[File]    ("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
-    val xethcfgTestingResourcesObjectName = settingKey[String]  ("The name of the Scala object that will be automatically generated with resources for tests.")
-    val xethcfgWalletV3ScryptDkLen        = settingKey[Int]     ("The derived key length parameter used when generating Scrypt V3 wallets")
-    val xethcfgWalletV3ScryptN            = settingKey[Int]     ("The value to use for parameter N when generating Scrypt V3 wallets")
-    val xethcfgWalletV3ScryptR            = settingKey[Int]     ("The value to use for parameter R when generating Scrypt V3 wallets")
-    val xethcfgWalletV3ScryptP            = settingKey[Int]     ("The value to use for parameter P when generating Scrypt V3 wallets")
-    val xethcfgWalletV3Pbkdf2DkLen        = settingKey[Int]     ("The derived key length parameter used when generating pbkdf2 V3 wallets")
-    val xethcfgWalletV3Pbkdf2C            = settingKey[Int]     ("The value to use for parameter C when generating pbkdf2 V3 wallets")
+    val xethcfgAsyncOperationTimeout      = settingKey[Duration]      ("Length of time to wait for asynchronous operations, like HTTP calls and external processes.")
+    val xethcfgNamedAbiSource             = settingKey[File]          ("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
+    val xethcfgTestingResourcesObjectName = settingKey[String]        ("The name of the Scala object that will be automatically generated with resources for tests.")
+    val xethcfgTransactionOfflinePrepareTimeout = settingKey[Duration]("How long users might wait while trying to prepare a transaction for offline signing.")
+    val xethcfgWalletV3ScryptDkLen        = settingKey[Int]           ("The derived key length parameter used when generating Scrypt V3 wallets")
+    val xethcfgWalletV3ScryptN            = settingKey[Int]           ("The value to use for parameter N when generating Scrypt V3 wallets")
+    val xethcfgWalletV3ScryptR            = settingKey[Int]           ("The value to use for parameter R when generating Scrypt V3 wallets")
+    val xethcfgWalletV3ScryptP            = settingKey[Int]           ("The value to use for parameter P when generating Scrypt V3 wallets")
+    val xethcfgWalletV3Pbkdf2DkLen        = settingKey[Int]           ("The derived key length parameter used when generating pbkdf2 V3 wallets")
+    val xethcfgWalletV3Pbkdf2C            = settingKey[Int]           ("The value to use for parameter C when generating pbkdf2 V3 wallets")
 
     // tasks
 
@@ -439,7 +440,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionNonceOverridePrint = taskKey[Unit]("Prints any nonce override that may have been set.")
     val ethTransactionNonceOverrideSet   = inputKey[Unit]("Sets a fixed nonce to be used in the transactions, rather than automatically choosing the next nonce. (Remains fixed and set until explicitly dropped.)")
 
-    val ethTransactionOfflineSign = taskKey[Unit]("Load or manually define all fields of a transaction, then sign it, then print or save its hex for future execution.")
+    val ethTransactionOfflinePrepareInvoke = inputKey[EthTransaction.Unsigned]("Prepare a method-invokation transaction to be signed elsewhere.")
+    val ethTransactionOfflinePrepareRaw = inputKey[EthTransaction.Unsigned]("Prepare a raw message transaction to be signed elsewhere.")
+    val ethTransactionOfflinePrepareSend = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
+    val ethTransactionOfflineSign = taskKey[EthTransaction.Signed]("Load or manually define all fields of a transaction, then sign it, then print or save its hex for future execution.")
 
     val ethTransactionPing   = inputKey[Option[Client.TransactionReceipt]]           ("Sends 0 ether from current sender to an address, by default the sender address itself")
     val ethTransactionRaw    = inputKey[Client.TransactionReceipt]                   ("Sends a transaction with user-specified bytes, amount, and optional nonce")
@@ -597,6 +601,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethcfgNamedAbiSource in Test := (sourceDirectory in Test).value / "ethabi",
 
     xethcfgTestingResourcesObjectName in Test := "Testing",
+
+    xethcfgTransactionOfflinePrepareTimeout := Duration.Inf,
 
     xethcfgWalletV3Pbkdf2C := wallet.V3.Default.Pbkdf2.C,
 
@@ -979,6 +985,18 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionNonceOverridePrint in Compile := { ethTransactionNonceOverridePrintTask( Compile ).value },
 
     ethTransactionNonceOverridePrint in Test := { ethTransactionNonceOverridePrintTask( Test ).value },
+
+    ethTransactionOfflinePrepareInvoke in Compile := { ethTransactionOfflinePrepareInvokeTask( Compile ).evaluated },
+
+    ethTransactionOfflinePrepareInvoke in Test := { ethTransactionOfflinePrepareInvokeTask( Test ).evaluated },
+
+    ethTransactionOfflinePrepareRaw in Compile := { ethTransactionOfflinePrepareRawTask( Compile ).evaluated },
+
+    ethTransactionOfflinePrepareRaw in Test := { ethTransactionOfflinePrepareRawTask( Test ).evaluated },
+
+    ethTransactionOfflinePrepareSend in Compile := { ethTransactionOfflinePrepareSendTask( Compile ).evaluated },
+
+    ethTransactionOfflinePrepareSend in Test := { ethTransactionOfflinePrepareSendTask( Test ).evaluated },
 
     ethTransactionOfflineSign := { ethTransactionOfflineSignTask.value },
 
@@ -3987,7 +4005,112 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethTransactionOfflineSignTask : Initialize[Task[Unit]] = Def.task {
+  private def querySaveAndPrintUnsignedTransaction( is : sbt.InteractionService, log : sbt.Logger, transactionBytes : immutable.Seq[Byte] ) : Unit = {
+
+    def queryUnsignedTransactionFileToCreate( is : sbt.InteractionService ) : Option[File] = queryOptionalGoodFile (
+      is = is,
+      query = "Enter the path to a (not-yet-existing) file in which to write the binary unsigned transaction, or [return] just to print the unsigned transaction hex: ",
+      goodFile = file => !file.exists() && file.canWrite(),
+      notGoodFileRetryPrompt = file => s"The file '${file} must not yet exist, but must be writable. Please try again!"
+    )
+
+    queryUnsignedTransactionFileToCreate( is ) match {
+      case Some( file ) => {
+        file.replaceContents( transactionBytes )
+        log.info( s"Unsigned transaction saved as '${file}'." )
+      }
+      case None => {
+        log.warn( s"Unsigned transaction bytes not saved. (The signed transaction hex will be printed below.)" )
+      }
+    }
+
+    println()
+    println(  "Full unsigned transaction:" )
+    println( s"0x${transactionBytes.hex}" )
+  }
+
+  private def ethTransactionOfflinePrepareInvokeTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Unsigned]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
+
+    Def.inputTask {
+      val s = state.value
+      val log = streams.value.log
+      val is = interactionService.value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+      val caller = findAddressSenderTask(warn=true)(config).value.assert
+      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val prepareTimeout = xethcfgTransactionOfflinePrepareTimeout.value
+
+      val ( ( contractAddress, function, args, abi, abiLookup ), mbWei ) = parser.parsed
+      abiLookup.logGenericShadowWarning( log )
+
+      val amount = mbWei.getOrElse( Zero )
+      val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
+      val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
+      log.debug( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
+      log.debug( s"Call data for function call: ${callData.hex}" )
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val unsigned = Await.result( Invoker.transaction.prepareSendMessage( caller, contractAddress, Unsigned256(amount), callData, nonceOverride ), prepareTimeout )
+      val unsignedBytes = RLP.encode[EthTransaction]( unsigned )
+
+      querySaveAndPrintUnsignedTransaction( is, log, unsignedBytes )
+
+      unsigned
+    }
+  }
+
+  private def ethTransactionOfflinePrepareRawTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Unsigned]] = {
+    val parser = Defaults.loadForParser( xethFindCacheRichParserInfo in config )( genToAddressBytesAmountParser )
+
+    Def.inputTask {
+      val s = state.value
+      val log = streams.value.log
+      val is = interactionService.value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+      val from = findAddressSenderTask(warn=true)(config).value.assert
+      val (to, data, amount) = parser.parsed
+      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val prepareTimeout = xethcfgTransactionOfflinePrepareTimeout.value
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val unsigned = Await.result( Invoker.transaction.prepareSendMessage( from, to, Unsigned256(amount), data, nonceOverride ), prepareTimeout )
+      val unsignedBytes = RLP.encode[EthTransaction]( unsigned )
+
+      querySaveAndPrintUnsignedTransaction( is, log, unsignedBytes )
+
+      unsigned
+    }
+  }
+
+
+  private def ethTransactionOfflinePrepareSendTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Unsigned]] = {
+    val parser = Defaults.loadForParser( xethFindCacheRichParserInfo in config )( genEthSendEtherParser )
+
+    Def.inputTask {
+      val s = state.value
+      val log = streams.value.log
+      val is = interactionService.value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+      val from = findAddressSenderTask(warn=true)(config).value.assert
+      val (to, amount) = parser.parsed
+      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val prepareTimeout = xethcfgTransactionOfflinePrepareTimeout.value
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val unsigned = Await.result( Invoker.transaction.prepareSendWei( from, to, Unsigned256(amount), nonceOverride ), prepareTimeout )
+      val unsignedBytes = RLP.encode[EthTransaction]( unsigned )
+
+      querySaveAndPrintUnsignedTransaction( is, log, unsignedBytes )
+
+      unsigned
+    }
+  }
+
+  private def ethTransactionOfflineSignTask : Initialize[Task[EthTransaction.Signed]] = Def.task {
     val s = state.value
     val log = streams.value.log
     val is = interactionService.value
@@ -4105,6 +4228,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     println()
     println(  "Full signed transaction:" )
     println( s"0x${signedAsBytes.hex}" )
+
+    signed
   }
 
   private def ethTransactionPingTask( config : Configuration ) : Initialize[InputTask[Option[Client.TransactionReceipt]]] = {
