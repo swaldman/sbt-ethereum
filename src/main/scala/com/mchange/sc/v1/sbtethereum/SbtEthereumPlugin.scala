@@ -1418,7 +1418,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           val defaultResolver = mbDefaultResolver.getOrElse( throw e )
           val setAndRetry = {
             is.readLine( s"No resolver has been set for '${ensName}'. Do you wish to use the default public resolver '${hexString(defaultResolver)}'? [y/n] ", false )
-              .getOrElse( throw new Exception( CantReadInteraction ) )
+              .getOrElse( throwCantReadInteraction )
               .trim()
               .equalsIgnoreCase("y")
           }
@@ -2573,7 +2573,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         mbEtherscanAbi match {
           case Some( etherscanAbi ) => etherscanAbi
-          case None                 => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ) )
+          case None                 => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throwCantReadInteraction ) )
         }
       }
       shoebox.Database.resetImportedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
@@ -2845,13 +2845,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val entropySource = ethcfgEntropySource.value
 
     val privateKeyStr = {
-      val raw = is.readLine( "Please enter the private key you would like to import (as 32 hex bytes): ", mask = true ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
+      val raw = is.readLine( "Please enter the private key you would like to import (as 32 hex bytes): ", mask = true ).getOrElse( throwCantReadInteraction ).trim()
       if ( raw.startsWith( "0x" ) ) raw.substring(2) else raw
     }
     val privateKey = EthPrivateKey( privateKeyStr )
 
     val confirm = {
-      is.readLine( s"The imported private key corresponds to address '${hexString( privateKey.address )}'. Is this correct? [y/n] ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
+      is.readLine( s"The imported private key corresponds to address '${hexString( privateKey.address )}'. Is this correct? [y/n] ", mask = false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
     }
 
     if (! confirm ) {
@@ -3381,7 +3381,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
     def promptForNewBackupDir( promptToSave : Boolean = true ) : File = {
-      val rawPath = is.readLine( "Enter the path of the directory into which you wish to create a backup: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
+      val rawPath = is.readLine( "Enter the path of the directory into which you wish to create a backup: ", mask = false ).getOrElse( throwCantReadInteraction )
       if ( rawPath.isEmpty ) throw new OperationAbortedByUserException( s"No directory provided. Backup aborted." )
       val checkAbsolute = new File( rawPath )
       val putativeDir = {
@@ -3577,7 +3577,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     def promptViaBackupOrDir() : Option[File] = {
       val rawPath = {
         is.readLine( "Enter the path to a directory containing sbt-ethereum shoebox backup files or a backup file directly (or return to abort): ", mask = false )
-          .getOrElse( throw new Exception( CantReadInteraction ) )
+          .getOrElse( throwCantReadInteraction )
           .trim
       }
       if ( rawPath.isEmpty ) {
@@ -3993,7 +3993,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
 
     def queryEthAmount( query : String, nonfunctionalTabHelp : String ) : BigInt = {
-      val raw = is.readLine( query, mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+      val raw = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
       try {
         BigInt(raw)
       }
@@ -4013,7 +4013,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       @tailrec
       def doQuery : Option[File] = {
         val query = "Enter the path to a file containing a binary unsigned transaction, or just [return] to enter transaction data manually: "
-        val filepath = is.readLine( query, mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+        val filepath = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
         if ( filepath.nonEmpty ) {
           val file = new File( filepath ).getAbsoluteFile()
           if (!file.exists() || !file.canRead()) {
@@ -4043,22 +4043,22 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def interactiveQueryUnsignedTransaction : EthTransaction.Unsigned = {
       val nonce = {
-        val raw = is.readLine( "Nonce: ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+        val raw = is.readLine( "Nonce: ", mask = false).getOrElse( throwCantReadInteraction ).trim
         BigInt(raw)
       }
       val gasPrice = queryEthAmount( "Gas price (as wei, or else number and unit): ", "<gas-price>" )
       val gasLimit = {
-        val raw = is.readLine( "Gas Limit: ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+        val raw = is.readLine( "Gas Limit: ", mask = false).getOrElse( throwCantReadInteraction ).trim
         BigInt(raw)
       }
       val to = {
-        val raw = is.readLine( "To (as hex address): ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+        val raw = is.readLine( "To (as hex address): ", mask = false).getOrElse( throwCantReadInteraction ).trim
         if ( raw.nonEmpty ) Some( EthAddress( raw ) ) else None
       }
       if ( to == None ) log.warn( "No 'To:' address specified. This is a contract creation transaction!" )
       val amount = queryEthAmount( "ETH to send (as wei, or else number and unit): ", "<eth-to-send>" )
       val data = {
-        val raw = is.readLine( "Data / Init (as hex string): ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+        val raw = is.readLine( "Data / Init (as hex string): ", mask = false).getOrElse( throwCantReadInteraction ).trim
         raw.decodeHexAsSeq
       }
       val unsigned : EthTransaction.Unsigned = {
@@ -4071,12 +4071,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     val signer = {
-      val raw = is.readLine( "Signer (as hex address): ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+      val raw = is.readLine( "Signer (as hex address): ", mask = false).getOrElse( throwCantReadInteraction ).trim
       EthAddress( raw )
     }
     val unsigned = queryUnsignedTransactionFile.getOrElse( interactiveQueryUnsignedTransaction )
     val chainId = {
-      val raw = is.readLine( "Enter the Chain ID to sign with (or return for none, no replay protection): ", mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+      val raw = is.readLine( "Enter the Chain ID to sign with (or return for none, no replay protection): ", mask = false).getOrElse( throwCantReadInteraction ).trim
       if (raw.nonEmpty) {
         val asNum = raw.toInt
         if (asNum < 0) None else Some( asNum )
@@ -4100,7 +4100,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     @tailrec
     def querySignedTransactionFile : Option[File] = {
       val query = "Enter the path to a (not-yet-existing) file in which to write the binary signed transaction, or [return] just to print the signed transaction hex: "
-      val filepath = is.readLine( query, mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+      val filepath = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
       if ( filepath.nonEmpty ) {
         val file = new File( filepath ).getAbsoluteFile()
         if (file.exists() || !file.canWrite()) {
@@ -5449,7 +5449,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
           val ok = {
             if ( userValidateIfCached ) {
-              is.readLine( s"Using sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}). OK? [y/n] ", false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim().equalsIgnoreCase("y")
+              is.readLine( s"Using sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}). OK? [y/n] ", false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
             } else {
               true
             }
@@ -5480,8 +5480,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def readConfirmCredential(  log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
     if ( attempt < maxAttempts ) {
-      val credential = is.readLine( readPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
-      val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throw new Exception( CantReadInteraction ) )
+      val credential = is.readLine( readPrompt, mask = true ).getOrElse( throwCantReadInteraction )
+      val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throwCantReadInteraction )
       if ( credential == confirmation ) {
         credential
       } else {
@@ -5633,7 +5633,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
 
   private def interactiveSetAliasForAddress( chainId : Int )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
-    def rawFetch : String = is.readLine( s"Enter an optional alias for ${describedAddress} (or [return] for none): ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) ).trim()
+    def rawFetch : String = is.readLine( s"Enter an optional alias for ${describedAddress} (or [return] for none): ", mask = false ).getOrElse( throwCantReadInteraction ).trim()
     def validate( alias : String ) : Boolean = parsesAsAddressAlias( alias )
     def inUse( alias : String ) : Boolean = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, alias ).assert.nonEmpty
 
@@ -5665,7 +5665,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def readV3Wallet( is : sbt.InteractionService ) : wallet.V3 = {
-    val jsonStr = is.readLine( "V3 Wallet JSON: ", mask = false ).getOrElse( throw new Exception( CantReadInteraction ) )
+    val jsonStr = is.readLine( "V3 Wallet JSON: ", mask = false ).getOrElse( throwCantReadInteraction )
     val jsv = Json.parse( jsonStr )
     wallet.V3( jsv.as[JsObject] )
   }

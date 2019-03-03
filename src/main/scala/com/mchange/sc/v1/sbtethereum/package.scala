@@ -44,6 +44,8 @@ package object sbtethereum {
   final class NotCurrentlyUnderAuctionException( name : String, status : ens.NameStatus ) extends SbtEthereumException( s"ENS name '${name}' is not currently under auction. Its status is '${status}'." )
   final class UnexpectedConfigurationException( config : sbt.Configuration ) extends SbtEthereumException( s"A task was executed with unexpected configuration '${config}'." )
 
+  final class CantReadInteractionException extends SbtEthereumException("Failed to read from sbt.InteractionService! (Perhaps an interactive task was run noninteractively.")
+
 
   final case class EthValue( wei : BigInt, denomination : Denomination ) {
     lazy val denominated : BigDecimal = denomination.fromWei( wei ) 
@@ -61,7 +63,7 @@ package object sbtethereum {
 
   val LineSep = System.lineSeparator
 
-  final val CantReadInteraction = "InteractionService failed to read"
+  def throwCantReadInteraction : Nothing = throw new CantReadInteractionException
 
   def rounded( bd : BigDecimal ) : BigInt = bd.setScale( 0, BigDecimal.RoundingMode.HALF_UP ).toBigInt
 

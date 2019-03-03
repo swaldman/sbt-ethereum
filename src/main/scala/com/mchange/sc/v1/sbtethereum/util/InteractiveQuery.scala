@@ -13,7 +13,7 @@ object InteractiveQuery {
 
   @tailrec
   private def _queryGoodFile[F[_]]( is : sbt.InteractionService, wrap : File => F[File] )( query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : String, noEntryDefault : => F[File] ) : F[File] = {
-    val filepath = is.readLine( query, mask = false).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+    val filepath = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
     if ( filepath.nonEmpty ) {
       val file = new File( filepath ).getAbsoluteFile()
       if (goodFile(file)) {
@@ -66,7 +66,7 @@ object InteractiveQuery {
     // -1 could not be interpreted as Int, None means empty String
     // this is why we don't support negatives, -1 is out-of-band
     def fetchNum : Option[Int] = { 
-      val line = is.readLine( query, mask = false ).getOrElse( throw new SbtEthereumException( CantReadInteraction ) ).trim
+      val line = is.readLine( query, mask = false ).getOrElse( throwCantReadInteraction ).trim
       if ( line.isEmpty ) {
         None
       }
