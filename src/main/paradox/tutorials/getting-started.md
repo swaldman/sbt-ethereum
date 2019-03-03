@@ -42,7 +42,20 @@ LICENSE		README.md	build.sbt	project		sbtw
 ```
 The file `sbtw` is an _sbt wrapper script_. You can run it, and it will download and install @ref:[sbt](../appendix/prerequisites.md#sbt) as needed.
 
-Alternatively, if you already have `sbt` installed on your machine, you can just run that. We'll try the wrapper script:
+Alternatively, if you already have `sbt` installed on your machine, you can just run that.
+However you launch `sbt`, you will need to have a @ref:[Java VM](../appendix/prerequisites.md#java-8-runtime) installed on your machine.
+
+@@@ note
+
+**If you are running on _Windows_, please preinstall `sbt`.**
+
+The wrapper script won't work!
+
+Just `cd` into the `eth-command-line` directory and type `sbt`.
+
+@@@
+
+On Mac or Linux, we'll try the wrapper script.
 ```
 $ ./sbtw
 ```
