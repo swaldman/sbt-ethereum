@@ -35,7 +35,9 @@ object Parsers {
 
   private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
 
-  private val RawBytesAsStringParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 2, 2 ).+ ).map( chars => chars.mkString )
+  private val HexByteAsCharSeq = Parser.repeat( HexDigit, 2, 2 )
+
+  private val RawBytesAsStringParser = ((literal("0x") | HexByteAsCharSeq.map( _.mkString ) ) ~ HexByteAsCharSeq.*).map { case (a, b) => a ++ b.mkString }
 
   def rawFixedLengthByteStringAsStringParser( len : Int ) = {
     val charLen = len * 2
@@ -126,9 +128,9 @@ object Parsers {
 
   private [sbtethereum] val RawAmountParser = ((Digit|literal('.')).+).map( chars => BigDecimal( chars.mkString ) )
 
-  private [sbtethereum] val RawByteParser = Parser.repeat( HexDigit, 2, 2 ).map( _.mkString.decodeHexAsSeq.head )
+  private [sbtethereum] val RawByteParser = HexByteAsCharSeq.map( _.mkString.decodeHexAsSeq.head )
 
-  private [sbtethereum] val RawBytesParser = literal("0x") ~> RawByteParser.*
+  private [sbtethereum] val RawBytesParser = RawBytesAsStringParser.map( _.mkString.decodeHexAsSeq )
 
   private [sbtethereum] val RawUrlParser = NotSpace
 
@@ -141,7 +143,7 @@ object Parsers {
   //private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )
   private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.*) ~> token(RawAmountParser, tabHelp)
 
-  private [sbtethereum] def bytesParser( tabHelp : String ) = token(Space.*) ~> token(literal("0x")) ~> token(RawByteParser.*, tabHelp)
+  private [sbtethereum] def bytesParser( tabHelp : String ) = token(Space.*) ~> token(RawBytesParser, tabHelp)
 
   private [sbtethereum] def urlParser( tabHelp : String ) = token(Space.*) ~> token(RawUrlParser, tabHelp)
 
