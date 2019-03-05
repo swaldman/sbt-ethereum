@@ -37,7 +37,9 @@ object Parsers {
 
   private val HexByteAsCharSeq = Parser.repeat( HexDigit, 2, 2 )
 
-  private val RawBytesAsStringParser = ((literal("0x") | HexByteAsCharSeq.map( _.mkString ) ) ~ HexByteAsCharSeq.*).map { case (a, b) => a ++ b.mkString }
+  private val HexByteAsString = HexByteAsCharSeq.map( _.mkString )
+
+  private val RawBytesAsHexStringParser = ((literal("0x") | HexByteAsString ) ~ HexByteAsString.*).map { case (a, b) => a ++ b.mkString }.map { str => println( s"XXX: ${str}" ); str }
 
   def rawFixedLengthByteStringAsStringParser( len : Int ) = {
     val charLen = len * 2
@@ -130,7 +132,7 @@ object Parsers {
 
   private [sbtethereum] val RawByteParser = HexByteAsCharSeq.map( _.mkString.decodeHexAsSeq.head )
 
-  private [sbtethereum] val RawBytesParser = RawBytesAsStringParser.map( _.mkString.decodeHexAsSeq )
+  private [sbtethereum] val RawBytesParser = RawBytesAsHexStringParser.map( _.mkString.decodeHexAsSeq )
 
   private [sbtethereum] val RawUrlParser = NotSpace
 
@@ -254,7 +256,7 @@ object Parsers {
     input.`type` match {
       case "address" if mbRpi.nonEmpty => createAddressParser( sample, mbRpi ).map( _.hex )
       case BytesN_Regex( len )         => token( rawFixedLengthByteStringAsStringParser( len.toInt ) ).examples( defaultExamples )
-      case "bytes"                     => token( RawBytesAsStringParser ).examples( defaultExamples )
+      case "bytes"                     => token( RawBytesAsHexStringParser ).examples( defaultExamples )
       case _                           => token( (StringEscapable.map( str => s""""${str}"""") | NotQuoted) ).examples( defaultExamples ) 
     }
   }
