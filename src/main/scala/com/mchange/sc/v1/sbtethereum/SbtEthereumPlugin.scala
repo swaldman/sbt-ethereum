@@ -444,7 +444,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionNonceOverridePrint = taskKey[Unit]("Prints any nonce override that may have been set.")
     val ethTransactionNonceOverrideSet   = inputKey[Unit]("Sets a fixed nonce to be used in the transactions, rather than automatically choosing the next nonce. (Remains fixed and set until explicitly dropped.)")
 
-    val ethTransactionSign = taskKey[EthTransaction.Signed]("Load or manually define all fields of a transaction, then sign it, then print or save its hex for future execution.")
+    val ethTransactionSign = inputKey[EthTransaction.Signed]("Loads an unsigned transaction, signs it, then prints and optionally saves its hex for future execution.")
 
     val ethTransactionPing   = inputKey[Option[Client.TransactionReceipt]]           ("Sends 0 ether from current sender to an address, by default the sender address itself")
     val ethTransactionRaw    = inputKey[Client.TransactionReceipt]                   ("Sends a transaction with user-specified bytes, amount, and optional nonce")
@@ -995,9 +995,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethTransactionNonceOverridePrint in Test := { ethTransactionNonceOverridePrintTask( Test ).value },
 
-    ethTransactionSign in Compile := { ethTransactionSignTask( Compile ).value },
+    ethTransactionSign in Compile := { ethTransactionSignTask( Compile ).evaluated },
 
-    ethTransactionSign in Test := { ethTransactionSignTask( Test ).value },
+    ethTransactionSign in Test := { ethTransactionSignTask( Test ).evaluated },
 
     ethTransactionUnsignedInvoke in Compile := { ethTransactionUnsignedInvokeTask( Compile ).evaluated },
 
@@ -4012,14 +4012,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethTransactionSignTask( config : Configuration ) : Initialize[Task[EthTransaction.Signed]] = Def.task {
-    val s = state.value
-    val log = streams.value.log
-    val is = interactionService.value
-    val currencyCode = ethcfgBaseCurrencyCode.value
-
-    val sessionChainId = findNodeChainIdTask(warn=false)(config).value
-
+  def interactiveQueryUnsignedTransaction( is : sbt.InteractionService, log : sbt.Logger ) : EthTransaction.Unsigned = {
     def queryEthAmount( query : String, nonfunctionalTabHelp : String ) : BigInt = {
       val raw = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
       try {
@@ -4034,7 +4027,49 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
     }
+    val nonce = {
+      val raw = is.readLine( "Nonce: ", mask = false).getOrElse( throwCantReadInteraction ).trim
+      BigInt(raw)
+    }
+    val gasPrice = queryEthAmount( "Gas price (as wei, or else number and unit): ", "<gas-price>" )
+    val gasLimit = {
+      val raw = is.readLine( "Gas Limit: ", mask = false).getOrElse( throwCantReadInteraction ).trim
+      BigInt(raw)
+    }
+    val to = {
+      val raw = is.readLine( "To (as hex address): ", mask = false).getOrElse( throwCantReadInteraction ).trim
+      if ( raw.nonEmpty ) Some( EthAddress( raw ) ) else None
+    }
+    if ( to == None ) log.warn( "No 'To:' address specified. This is a contract creation transaction!" )
+    val amount = queryEthAmount( "ETH to send (as wei, or else number and unit): ", "<eth-to-send>" )
+    val data = {
+      val raw = is.readLine( "Data / Init (as hex string): ", mask = false).getOrElse( throwCantReadInteraction ).trim
+      raw.decodeHexAsSeq
+    }
+    to match {
+      case Some( recipient ) => EthTransaction.Unsigned.Message( nonce=Unsigned256( nonce ), gasPrice=Unsigned256(gasPrice), gasLimit=Unsigned256(gasLimit), to=recipient, value=Unsigned256(amount), data=data )
+      case None              => EthTransaction.Unsigned.ContractCreation( nonce=Unsigned256( nonce ), gasPrice=Unsigned256(gasPrice), gasLimit=Unsigned256(gasLimit), value=Unsigned256(amount), init=data )
+    }
+  }
 
+
+  private def ethTransactionSignTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Signed]] = Def.inputTask {
+    val s = state.value
+    val log = streams.value.log
+    val is = interactionService.value
+    val currencyCode = ethcfgBaseCurrencyCode.value
+
+    val sessionChainId = findNodeChainIdTask(warn=false)(config).value
+    val mbDefaultSigner = findAddressSenderTask(warn=false)(config).value.toOption
+
+    val rpi = (config / xethFindCacheRichParserInfo).value
+
+    val mbUnsignedTxnFromCommandLine : Option[EthTransaction.Unsigned] = bytesParser("[optional-signed-transaction-as-hex]").?.parsed.map { bytes =>
+      RLP.decodeComplete[EthTransaction]( bytes ).assert match {
+        case txn : EthTransaction.Unsigned => txn
+        case _   : EthTransaction.Signed   => throw new SbtEthereumException( "The transaction data you provided is already signed. Cannot re-sign." )
+      }
+    }
 
     def queryUnsignedTransactionFile : Option[EthTransaction.Unsigned] = {
 
@@ -4057,47 +4092,36 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def interactiveQueryUnsignedTransaction : EthTransaction.Unsigned = {
-      val nonce = {
-        val raw = is.readLine( "Nonce: ", mask = false).getOrElse( throwCantReadInteraction ).trim
-        BigInt(raw)
-      }
-      val gasPrice = queryEthAmount( "Gas price (as wei, or else number and unit): ", "<gas-price>" )
-      val gasLimit = {
-        val raw = is.readLine( "Gas Limit: ", mask = false).getOrElse( throwCantReadInteraction ).trim
-        BigInt(raw)
-      }
-      val to = {
-        val raw = is.readLine( "To (as hex address): ", mask = false).getOrElse( throwCantReadInteraction ).trim
-        if ( raw.nonEmpty ) Some( EthAddress( raw ) ) else None
-      }
-      if ( to == None ) log.warn( "No 'To:' address specified. This is a contract creation transaction!" )
-      val amount = queryEthAmount( "ETH to send (as wei, or else number and unit): ", "<eth-to-send>" )
-      val data = {
-        val raw = is.readLine( "Data / Init (as hex string): ", mask = false).getOrElse( throwCantReadInteraction ).trim
-        raw.decodeHexAsSeq
-      }
-      val unsigned : EthTransaction.Unsigned = {
-        to match {
-          case Some( recipient ) => EthTransaction.Unsigned.Message( nonce=Unsigned256( nonce ), gasPrice=Unsigned256(gasPrice), gasLimit=Unsigned256(gasLimit), to=recipient, value=Unsigned256(amount), data=data )
-          case None              => EthTransaction.Unsigned.ContractCreation( nonce=Unsigned256( nonce ), gasPrice=Unsigned256(gasPrice), gasLimit=Unsigned256(gasLimit), value=Unsigned256(amount), init=data )
+    val utxn = (mbUnsignedTxnFromCommandLine orElse queryUnsignedTransactionFile).getOrElse( throw new SbtEthereumException( "Could not find unsigned transaction to sign!" ) )
+
+    val signer : EthAddress = {
+      val defaultToMaybeUse = {
+        mbDefaultSigner match {
+          case Some( address ) => {
+            val check = queryYN( is, s"Do you wish to use the sender associated with the current session, ${verboseAddress( sessionChainId, address )}? [y/n] " )
+            if ( check ) Some( address ) else None 
+          }
+          case None => None
         }
       }
-      unsigned
+      if ( defaultToMaybeUse.nonEmpty ) {
+        defaultToMaybeUse.get
+      }
+      else {
+        val raw = is.readLine( "Signer (as hex address, ens-name, or alias): ", mask = false).getOrElse( throwCantReadInteraction ).trim
+        sbt.complete.Parser.parse( raw, createAddressParser( "<hex-address-ens-name-or-alias>", Some( rpi ) ) ) match {
+          case Left( oops ) => throw new SbtEthereumException( s"Attempt to parse failed: ${oops}" )
+          case Right( address ) => address
+        }
+      }
     }
-
-    val signer = {
-      val raw = is.readLine( "Signer (as hex address): ", mask = false).getOrElse( throwCantReadInteraction ).trim
-      EthAddress( raw )
-    }
-    val unsigned = queryUnsignedTransactionFile.getOrElse( interactiveQueryUnsignedTransaction )
     val chainId = {
       val useSessionChainId = {
         if ( isEphemeralChain( sessionChainId ) ) {
           false
         }
         else {
-          queryYN( is, "The Chain ID associated with your current session is ${sessionChainId}. Would you like to sign with this Chain ID? [y/n] " )
+          queryYN( is, s"The Chain ID associated with your current session is ${sessionChainId}. Would you like to sign with this Chain ID? [y/n] " )
         }
       }
       if ( useSessionChainId ) {
@@ -4119,17 +4143,22 @@ object SbtEthereumPlugin extends AutoPlugin {
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
     val privateKey = findCachePrivateKey( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
 
-    displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, unsigned, privateKey.address )
+    displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, utxn, privateKey.address )
     val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
     if ( !check ) aborted( "User chose not to sign the transaction." )
 
     val signed = {
       chainId match {
-        case Some( num ) => unsigned.sign( privateKey, EthChainId(num) )
-        case None        => unsigned.sign( privateKey )
+        case Some( num ) => utxn.sign( privateKey, EthChainId(num) )
+        case None        => utxn.sign( privateKey )
       }
     }
     val signedAsBytes = RLP.encode[EthTransaction]( signed )
+
+    println()
+    println(  "Full signed transaction:" )
+    println( s"0x${signedAsBytes.hex}" )
+    println()
 
     def querySignedTransactionFile : Option[File] = queryOptionalGoodFile (
       is = is,
@@ -4148,10 +4177,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    println()
-    println(  "Full signed transaction:" )
-    println( s"0x${signedAsBytes.hex}" )
-
     signed
   }
 
@@ -4159,10 +4184,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def queryUnsignedTransactionFileToCreate( is : sbt.InteractionService ) : Option[File] = queryOptionalGoodFile (
       is = is,
-      query = "Enter the path to a (not-yet-existing) file in which to write the binary unsigned transaction, or [return] just to print the unsigned transaction hex: ",
+      query = "Enter the path to a (not-yet-existing) file into which to write the binary unsigned transaction, or [return] not to save: ",
       goodFile = file => !file.exists() && file.canWrite(),
       notGoodFileRetryPrompt = file => s"The file '${file} must not yet exist, but must be writable. Please try again!"
     )
+
+    println(  "Full unsigned transaction:" )
+    println( s"0x${transactionBytes.hex}" )
+    println()
 
     queryUnsignedTransactionFileToCreate( is ) match {
       case Some( file ) => {
@@ -4170,13 +4199,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.info( s"Unsigned transaction saved as '${file}'." )
       }
       case None => {
-        log.warn( s"Unsigned transaction bytes not saved. (The signed transaction hex will be printed below.)" )
+        log.warn( s"Unsigned transaction bytes not saved." )
       }
     }
-
-    println()
-    println(  "Full unsigned transaction:" )
-    println( s"0x${transactionBytes.hex}" )
   }
 
   private def ethTransactionUnsignedInvokeTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Unsigned]] = {
@@ -5730,7 +5755,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               case withId : EthSignature.WithChainId => {
                 val sigChainId = withId.chainId.value.widen.toInt // XXX: ugh.. we should probably modify all our ChainId stuff to be in terms of BigInt or UnsignedBigInt, rather than presuming Int...
                 if (chainId == sigChainId ) {
-                  println( s"==> The transaction is signed with Chain ID ${chainId} (correctly matches the current session's 'ethNodeChainId')." )
+                  println( s"==> The transaction is signed with Chain ID ${chainId} (which correctly matches the current session's 'ethNodeChainId')." )
                 }
                 else {
                   println( s"==> WARNING: The transaction is signed with Chain ID ${sigChainId}, which does not match the current session's 'ethNodeChainId' of ${chainId}.")
