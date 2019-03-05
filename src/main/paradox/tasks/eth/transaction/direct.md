@@ -2,6 +2,8 @@
 
 ### ethTransactionDeploy
 
+### ethTransactionEtherSend
+
 ### ethTransactionInvoke
 
 ### ethTransactionLookup
@@ -19,7 +21,5 @@
 ### ethTransactionPing
 
 ### ethTransactionRaw
-
-### ethTransactionSend
 
 ### ethTransactionView

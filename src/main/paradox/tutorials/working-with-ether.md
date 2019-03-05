@@ -309,22 +309,22 @@ Instead of typing out "default-sender" or "secondary-address", you can just type
 
 ### Sending Ether
 
-The command to send Ether is `ethTransactionSend`. Let's tab-complete it:
+The command to send Ether is `ethTransactionEtherSend`. Let's tab-complete it:
 ```
-sbt:eth-command-line> ethTransactionSend 
+sbt:eth-command-line> ethTransactionEtherSend 
 <ens-name>.eth        <recipient-address>   default-sender        fortune               secondary-address     
 ```
 Ether will be sent _from_ the current sender. The command asks for a `<recipient-address>`, the address to which you mean to send.
 
 We want to send to our new address. So, tab-completing again...
 ```
-sbt:eth-command-line> ethTransactionSend secondary-address 
+sbt:eth-command-line> ethTransactionEtherSend secondary-address 
 <amount>   
 ```
 After we specify the address to which we mean to send, we have to specify how much we wish to send. Let's send 0.01 Ether (about $1.50 US at this writing).
 Let's type 0.01 and tab-complete again.
 ```
-sbt:eth-command-line> ethTransactionSend secondary-address 0.01 
+sbt:eth-command-line> ethTransactionEtherSend secondary-address 0.01 
 ether    finney   gwei     szabo    wei      
 ```
 To specify an amount, it's not enough to provide a number, you'll need to provide a unit. Usually we specify amounts in terms of Ether, but one Ether is really 10<sup>18</sup> Wei.
@@ -332,7 +332,7 @@ One Wei is the minimum amount that the Ethereum blockchain tracks, representing 
 
 We wanted to spend 0.01 Ether, so our command will be:
 ```
-sbt:eth-command-line> ethTransactionSend secondary-address 0.01 ether
+sbt:eth-command-line> ethTransactionEtherSend secondary-address 0.01 ether
 [info] Unlocking address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (on chain with ID 1, aliases ['default-sender'])
 Enter passphrase or hex private key for address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2': ***************
 [info] V3 wallet(s) found for '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (aliases ['default-sender'])
@@ -415,7 +415,7 @@ sbt:eth-command-line> ethAddressSenderPrint
 ```
 We can send now, and the Ether will be taken from this new sender address, rather than our default sender. Let's send back some of the Ether we just sent to the secondary address.
 ```
-sbt:eth-command-line> ethTransactionSend default-sender 0.005 ether
+sbt:eth-command-line> ethTransactionEtherSend default-sender 0.005 ether
 [info] Unlocking address '0x13e3d8d785cdeb1d18f298dcf07ea35a659e157d' (on chain with ID 1, aliases ['secondary-address'])
 Enter passphrase or hex private key for address '0x13e3d8d785cdeb1d18f298dcf07ea35a659e157d': ***************
 [info] V3 wallet(s) found for '0x13e3d8d785cdeb1d18f298dcf07ea35a659e157d' (aliases ['secondary-address'])

@@ -15,6 +15,8 @@
 
 ### ethTransactionDeploy
 
+### ethTransactionEtherSend
+
 ### ethTransactionGas*
 
 See @ref:[gas commands page](gas.md), or choose a command below:
@@ -44,8 +46,6 @@ See @ref:[nonce commands page](nonce.md), or choose a command below:
 ### ethTransactionPing
 
 ### ethTransactionRaw
-
-### ethTransactionSend
 
 ### ethTransactionView
 
