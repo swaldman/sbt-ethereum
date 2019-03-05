@@ -995,7 +995,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethTransactionNonceOverridePrint in Test := { ethTransactionNonceOverridePrintTask( Test ).value },
 
-    ethTransactionSign := { ethTransactionSignTask.value },
+    ethTransactionSign in Compile := { ethTransactionSignTask( Compile ).value },
+
+    ethTransactionSign in Test := { ethTransactionSignTask( Test ).value },
 
     ethTransactionUnsignedInvoke in Compile := { ethTransactionUnsignedInvokeTask( Compile ).evaluated },
 
@@ -4010,11 +4012,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethTransactionSignTask : Initialize[Task[EthTransaction.Signed]] = Def.task {
+  private def ethTransactionSignTask( config : Configuration ) : Initialize[Task[EthTransaction.Signed]] = Def.task {
     val s = state.value
     val log = streams.value.log
     val is = interactionService.value
     val currencyCode = ethcfgBaseCurrencyCode.value
+
+    val sessionChainId = findNodeChainIdTask(warn=false)(config).value
 
     def queryEthAmount( query : String, nonfunctionalTabHelp : String ) : BigInt = {
       val raw = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
@@ -4088,13 +4092,26 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     val unsigned = queryUnsignedTransactionFile.getOrElse( interactiveQueryUnsignedTransaction )
     val chainId = {
-      val raw = is.readLine( "Enter the Chain ID to sign with (or return for none, no replay protection): ", mask = false).getOrElse( throwCantReadInteraction ).trim
-      if (raw.nonEmpty) {
-        val asNum = raw.toInt
-        if (asNum < 0) None else Some( asNum )
+      val useSessionChainId = {
+        if ( isEphemeralChain( sessionChainId ) ) {
+          false
+        }
+        else {
+          queryYN( is, "The Chain ID associated with your current session is ${sessionChainId}. Would you like to sign with this Chain ID? [y/n] " )
+        }
+      }
+      if ( useSessionChainId ) {
+        Some( sessionChainId )
       }
       else {
-        None
+        val raw = is.readLine( "Enter the Chain ID to sign with (or return for none, no replay protection): ", mask = false).getOrElse( throwCantReadInteraction ).trim
+        if (raw.nonEmpty) {
+          val asNum = raw.toInt
+          if (asNum < 0) None else Some( asNum )
+        }
+        else {
+          None
+        }
       }
     }
     if ( chainId == None ) log.warn("No (non-negative) Chain ID value provided. Will sign with no replay attack prevention!")
