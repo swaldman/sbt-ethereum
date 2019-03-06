@@ -4393,7 +4393,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           if (! check ) aborted( "Operation aborted by user after mismatched Chain IDs detected." )
         }
       }
-      case noId : EthSignature => {
+      case noId : EthSignature.Basic => {
         if ( replayAttackProtection && !isEphemeralChain( sessionChainId ) ) {
           log.warn( s"The transaction you are submitting is signed without specifying a Chain ID." )
           log.warn(  """It is a valid transaction, but it could be inadvertantly or purposely forwarded to other chains, in a so-called "replay attack".""" )
@@ -5777,7 +5777,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                   println( s"==>          If it is submitted within the current session, the transaction may fail." )
                 }
               }
-              case withoutId : EthSignature => {
+              case withoutId : EthSignature.Basic => {
                 println( s"""==> WARNING: The transaction is signed with no embedded Chain ID. It could be successfully submitted on multiple chains, potentially as a result of "replay attacks".""" )
               }
             }
@@ -6038,14 +6038,14 @@ object SbtEthereumPlugin extends AutoPlugin {
       if (!ok) aborted( "User chose not to sign proposed document hash." )
     }
 
-    override def sign( document : Array[Byte] ) : EthSignature = {
+    override def sign( document : Array[Byte] ) : EthSignature.Basic = {
       this.sign( document.toImmutableSeq )
     }
-    override def sign( document : Seq[Byte] )   : EthSignature = {
+    override def sign( document : Seq[Byte] )   : EthSignature.Basic = {
       doCheckDocument( document, None )
       privateKeyFinder.find().sign( document )
     }
-    override def signPrehashed( documentHash : EthHash ) : EthSignature = {
+    override def signPrehashed( documentHash : EthHash ) : EthSignature.Basic = {
       doCheckHash( documentHash, None )
       privateKeyFinder.find().signPrehashed( documentHash )
     }
