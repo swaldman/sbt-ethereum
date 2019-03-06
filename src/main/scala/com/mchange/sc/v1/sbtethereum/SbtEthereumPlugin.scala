@@ -4127,7 +4127,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     def querySignedTransactionFile : Option[File] = queryOptionalGoodFile (
       is = is,
       query = "Enter the path to a (not-yet-existing) file in which to write the binary signed transaction, or [return] to skip: ",
-      goodFile = file => !file.exists() && file.canWrite(),
+      goodFile = file => !file.exists() && file.getParentFile().canWrite(),
       notGoodFileRetryPrompt = file => s"The file '${file} must not yet exist, but must be writable. Please try again!"
     )
 
@@ -4149,7 +4149,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     def queryUnsignedTransactionFileToCreate( is : sbt.InteractionService ) : Option[File] = queryOptionalGoodFile (
       is = is,
       query = "Enter the path to a (not-yet-existing) file into which to write the binary unsigned transaction, or [return] not to save: ",
-      goodFile = file => !file.exists() && file.canWrite(),
+      goodFile = file => !file.exists() && file.getParentFile().canWrite(),
       notGoodFileRetryPrompt = file => s"The file '${file} must not yet exist, but must be writable. Please try again!"
     )
 
