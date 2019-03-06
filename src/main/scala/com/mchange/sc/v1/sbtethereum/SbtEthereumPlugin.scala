@@ -1145,6 +1145,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       ethcfgScalaStubsPackage.?.value.fold( Nil : Seq[ModuleID] )( _ => Consuela.ModuleID :: Nil )
     },
 
+    resolvers ++= {
+      if (Consuela.ModuleID.revision.endsWith("SNAPSHOT")) {
+        ("snapshots" at "https://oss.sonatype.org/content/repositories/snapshots") :: Nil
+      }
+      else {
+        Nil
+      }
+    },
+
     autoStartServer := false,
 
     Keys.compile in Compile := { (Keys.compile in Compile).dependsOn(compileSolidity in Compile).value },
