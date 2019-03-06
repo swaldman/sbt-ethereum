@@ -4062,7 +4062,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val defaultToMaybeUse = {
         mbDefaultSigner match {
           case Some( address ) => {
-            val check = queryYN( is, s"Do you wish to use the sender associated with the current session, ${verboseAddress( sessionChainId, address )}? [y/n] " )
+            val check = queryYN( is, s"Do you wish to sign for the sender associated with the current session, ${verboseAddress( sessionChainId, address )}? [y/n] " )
             if ( check ) Some( address ) else None 
           }
           case None => None
@@ -4126,7 +4126,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def querySignedTransactionFile : Option[File] = queryOptionalGoodFile (
       is = is,
-      query = "Enter the path to a (not-yet-existing) file in which to write the binary signed transaction, or [return] just to print the signed transaction hex: ",
+      query = "Enter the path to a (not-yet-existing) file in which to write the binary signed transaction, or [return] to skip: ",
       goodFile = file => !file.exists() && file.canWrite(),
       notGoodFileRetryPrompt = file => s"The file '${file} must not yet exist, but must be writable. Please try again!"
     )
@@ -4137,7 +4137,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.info( s"Signed transaction saved as '${file}'." )
       }
       case None => {
-        log.warn( s"Signed transaction bytes not saved. (The signed transaction hex will be printed below.)" )
+        log.warn( s"Signed transaction bytes not saved." )
       }
     }
 
@@ -4352,6 +4352,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val s = state.value
     val log = streams.value.log
     val is = interactionService.value
+    val sessionChainId = findNodeChainIdTask(warn=true)(config).value
+    val nodeUrl = findNodeUrlTask(warn=true)( config ).value
+    val replayAttackProtection = ethcfgUseReplayAttackProtection.value
 
     implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -4376,6 +4379,27 @@ object SbtEthereumPlugin extends AutoPlugin {
       RLP.decodeComplete[EthTransaction]( txnBytes ).assert match {
         case _ : EthTransaction.Unsigned => throw new SbtEthereumException( "The transaction provided is an unsigned, not signed, transaction. It cannot be forwarded to a network." )
         case signed : EthTransaction.Signed   => signed
+      }
+    }
+
+    stxn.signature match {
+      case withId : EthSignature.WithChainId => {
+        val sigChainId = withId.chainId.value.unwrap.toInt
+        if ( sigChainId != sessionChainId ) {
+          log.warn( s"The Chain ID of the transaction you are forwarding (${sigChainId}) does not match the Chain ID associated with your current session (${sessionChainId})." )
+          log.warn( s"If the session Node URL '${nodeUrl}' properly matches the session Chain ID ${sessionChainId}, the signature of the transaction will be invalid and it will fail." )
+          log.warn( s"Consider aborting this transaction and switching to the proper chain via 'ethNodeChainIdOverrideSet'." )
+          val check = queryYN( is, "Do you want to forward the transaction despite the mismatched Chain IDs? [y/n] " )
+          if (! check ) aborted( "Operation aborted by user after mismatched Chain IDs detected." )
+        }
+      }
+      case noId : EthSignature => {
+        if ( replayAttackProtection && !isEphemeralChain( sessionChainId ) ) {
+          log.warn( s"The transaction you are submitting is signed without specifying a Chain ID." )
+          log.warn(  """It is a valid transaction, but it could be inadvertantly or purposely forwarded to other chains, in a so-called "replay attack".""" )
+          val check = queryYN( is, "Are you sure you want to submit this transaction, despite its validity not being restricted with a Chain ID? [y/n] " )
+          if (! check ) aborted( "Operation aborted by user after absence of Chain ID detected." )
+        }
       }
     }
 
