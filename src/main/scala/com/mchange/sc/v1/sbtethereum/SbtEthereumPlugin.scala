@@ -451,9 +451,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
-    val ethTransactionUnsignedInvoke = inputKey[EthTransaction.Unsigned]("Prepare a method-invokation transaction to be signed elsewhere.")
-    val ethTransactionUnsignedRaw    = inputKey[EthTransaction.Unsigned]("Prepare a raw message transaction to be signed elsewhere.")
-    val ethTransactionUnsignedSend   = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
+    val ethTransactionUnsignedInvoke    = inputKey[EthTransaction.Unsigned]("Prepare a method-invokation transaction to be signed elsewhere.")
+    val ethTransactionUnsignedRaw       = inputKey[EthTransaction.Unsigned]("Prepare a raw message transaction to be signed elsewhere.")
+    val ethTransactionUnsignedEtherSend = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
 
     // xens tasks
 
@@ -1011,9 +1011,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethTransactionUnsignedRaw in Test := { ethTransactionUnsignedRawTask( Test ).evaluated },
 
-    ethTransactionUnsignedSend in Compile := { ethTransactionUnsignedSendTask( Compile ).evaluated },
+    ethTransactionUnsignedEtherSend in Compile := { ethTransactionUnsignedEtherSendTask( Compile ).evaluated },
 
-    ethTransactionUnsignedSend in Test := { ethTransactionUnsignedSendTask( Test ).evaluated },
+    ethTransactionUnsignedEtherSend in Test := { ethTransactionUnsignedEtherSendTask( Test ).evaluated },
 
     ethTransactionRaw in Compile := { ethTransactionRawTask( Compile ).evaluated },
 
@@ -4230,7 +4230,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
 
-  private def ethTransactionUnsignedSendTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Unsigned]] = {
+  private def ethTransactionUnsignedEtherSendTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Unsigned]] = {
     val parser = Defaults.loadForParser( xethFindCacheRichParserInfo in config )( genEthSendEtherParser )
 
     Def.inputTask {
