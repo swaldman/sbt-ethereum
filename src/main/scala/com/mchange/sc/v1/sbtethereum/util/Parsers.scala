@@ -39,7 +39,7 @@ object Parsers {
 
   private val HexByteAsString = HexByteAsCharSeq.map( _.mkString )
 
-  private val RawBytesAsHexStringParser = ((literal("0x") | HexByteAsString ) ~ HexByteAsString.*).map { case (a, b) => a ++ b.mkString }.map { str => println( s"XXX: ${str}" ); str }
+  private val RawBytesAsHexStringParser = ((literal("0x") | HexByteAsString ) ~ HexByteAsString.*).map { case (a, b) => a ++ b.mkString }
 
   def rawFixedLengthByteStringAsStringParser( len : Int ) = {
     val charLen = len * 2

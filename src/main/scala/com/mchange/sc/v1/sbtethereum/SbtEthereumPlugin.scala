@@ -452,8 +452,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
     val ethTransactionUnsignedInvoke = inputKey[EthTransaction.Unsigned]("Prepare a method-invokation transaction to be signed elsewhere.")
-    val ethTransactionUnsignedRaw = inputKey[EthTransaction.Unsigned]("Prepare a raw message transaction to be signed elsewhere.")
-    val ethTransactionUnsignedSend = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
+    val ethTransactionUnsignedRaw    = inputKey[EthTransaction.Unsigned]("Prepare a raw message transaction to be signed elsewhere.")
+    val ethTransactionUnsignedSend   = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
 
     // xens tasks
 
@@ -709,10 +709,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethAddressBalance in Test := { ethAddressBalanceTask( Test ).evaluated },
 
-    ethTransactionPing in Compile := { ethTransactionPingTask( Compile ).evaluated },
-
-    ethTransactionPing in Test := { ethTransactionPingTask( Test ).evaluated },
-
     ethAddressSenderPrint in Compile := { ethAddressSenderPrintTask( Compile ).value },
 
     ethAddressSenderPrint in Test := { ethAddressSenderPrintTask( Test ).value },
@@ -935,6 +931,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethTransactionEtherSend in Test := { ethTransactionEtherSendTask( Test ).evaluated },
 
+    ethTransactionForward in Compile := { ethTransactionForwardTask( Compile ).evaluated },
+
+    ethTransactionForward in Test := { ethTransactionForwardTask( Test ).evaluated },
+
     ethTransactionGasLimitOverrideSet in Compile := { ethTransactionGasLimitOverrideSetTask( Compile ).evaluated },
 
     ethTransactionGasLimitOverrideSet in Test := { ethTransactionGasLimitOverrideSetTask( Test ).evaluated },
@@ -994,6 +994,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionNonceOverridePrint in Compile := { ethTransactionNonceOverridePrintTask( Compile ).value },
 
     ethTransactionNonceOverridePrint in Test := { ethTransactionNonceOverridePrintTask( Test ).value },
+
+    ethTransactionPing in Compile := { ethTransactionPingTask( Compile ).evaluated },
+
+    ethTransactionPing in Test := { ethTransactionPingTask( Test ).evaluated },
 
     ethTransactionSign in Compile := { ethTransactionSignTask( Compile ).evaluated },
 
@@ -4180,7 +4184,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     signed
   }
 
-  private def querySaveAndPrintUnsignedTransaction( is : sbt.InteractionService, log : sbt.Logger, transactionBytes : immutable.Seq[Byte] ) : Unit = {
+  private def querySaveAndPrintUnsignedTransaction( is : sbt.InteractionService, log : sbt.Logger, chainId : Int, nonceOverridden : Boolean, autoNonceAddress : EthAddress, unsigned : EthTransaction.Unsigned ) : Unit = {
 
     def queryUnsignedTransactionFileToCreate( is : sbt.InteractionService ) : Option[File] = queryOptionalGoodFile (
       is = is,
@@ -4188,6 +4192,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       goodFile = file => !file.exists() && file.canWrite(),
       notGoodFileRetryPrompt = file => s"The file '${file} must not yet exist, but must be writable. Please try again!"
     )
+
+    if ( !nonceOverridden ) {
+      log.warn( s"The nonce for this transaction (${unsigned.nonce.widen}) was automatically computed for ${verboseAddress( chainId, autoNonceAddress )}." )
+      log.warn(  "The transaction will likely be invalid if signed on behalf of any other address, or if some of transaction is submitted by this address prior to this transaction." )
+    }
+
+    val transactionBytes = RLP.encode[EthTransaction]( unsigned )
 
     println(  "Full unsigned transaction:" )
     println( s"0x${transactionBytes.hex}" )
@@ -4228,9 +4239,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val unsigned = Await.result( Invoker.transaction.prepareSendMessage( caller, contractAddress, Unsigned256(amount), callData, nonceOverride ), prepareTimeout )
-      val unsignedBytes = RLP.encode[EthTransaction]( unsigned )
 
-      querySaveAndPrintUnsignedTransaction( is, log, unsignedBytes )
+      querySaveAndPrintUnsignedTransaction( is, log, chainId, nonceOverride.nonEmpty, caller, unsigned )
 
       unsigned
     }
@@ -4252,9 +4262,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val unsigned = Await.result( Invoker.transaction.prepareSendMessage( from, to, Unsigned256(amount), data, nonceOverride ), prepareTimeout )
-      val unsignedBytes = RLP.encode[EthTransaction]( unsigned )
 
-      querySaveAndPrintUnsignedTransaction( is, log, unsignedBytes )
+      querySaveAndPrintUnsignedTransaction( is, log, chainId, nonceOverride.nonEmpty, from, unsigned )
 
       unsigned
     }
@@ -4277,9 +4286,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val unsigned = Await.result( Invoker.transaction.prepareSendWei( from, to, Unsigned256(amount), nonceOverride ), prepareTimeout )
-      val unsignedBytes = RLP.encode[EthTransaction]( unsigned )
 
-      querySaveAndPrintUnsignedTransaction( is, log, unsignedBytes )
+      querySaveAndPrintUnsignedTransaction( is, log, chainId, nonceOverride.nonEmpty, from, unsigned )
 
       unsigned
     }
@@ -4411,12 +4419,35 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
+    try {
+      val stxnNonce = stxn.nonce.widen
+      val nextNonce = Await.result( Invoker.nextNonce( stxn.sender ), Duration.Inf )
+      if ( stxnNonce != nextNonce ) {
+        val intChainId = {
+          invokerContext.chainId match {
+            case Some( ecid ) => ecid.value.widen.toInt
+            case None         => DefaultEphemeralChainId
+          }
+        }
+        log.warn( s"The signed transaction has a nonce of ${stxnNonce}. The nonce expected for the next transaction by ${verboseAddress( intChainId, stxn.sender )} is ${nextNonce}." )
+        log.warn(  "This is likely due to the sender of the unsigned transaction differing from the signer of the transaction." )
+        log.warn(  "If submitted, the transaction is very likely to fail." )
+
+        val check = queryYN( is, "Do you still wish to submit the transaction? [y/n] " )
+        if (!check) aborted( "Operation aborted by user after mismatched nonce detected." )
+      }
+    }
+    catch {
+      case oae : OperationAbortedByUserException => throw oae
+      case e   : Exception                       => log.warn( s"Failed to check transaction nonce against the nonce expected by the chain: ${e}" ) 
+    }
+
     val f_out = Invoker.transaction.sendSignedTransaction( stxn ) flatMap { txnHash =>
       log.info( s"""Sending signed transaction with transaction hash '0x${txnHash.hex}'.""" )
       Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None, txnHash, invokerContext.pollTimeout, _ ) )
     }
     val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
-      log.info("Transaction mined.")
+    log.info("Transaction mined.")
     out
   }
 
