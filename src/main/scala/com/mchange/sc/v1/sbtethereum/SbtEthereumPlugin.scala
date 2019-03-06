@@ -4016,46 +4016,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  def interactiveQueryUnsignedTransaction( is : sbt.InteractionService, log : sbt.Logger ) : EthTransaction.Unsigned = {
-    def queryEthAmount( query : String, nonfunctionalTabHelp : String ) : BigInt = {
-      val raw = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
-      try {
-        BigInt(raw)
-      }
-      catch {
-        case nfe : NumberFormatException => {
-          sbt.complete.Parser.parse( raw, valueInWeiParser( nonfunctionalTabHelp ) ) match {
-            case Left( errorMessage )          => throw new SbtEthereumException( s"Failed to parse amount of ETH to send. Error Message: '${errorMessage}'" )
-            case Right( amount ) => amount
-          }
-        }
-      }
-    }
-    val nonce = {
-      val raw = is.readLine( "Nonce: ", mask = false).getOrElse( throwCantReadInteraction ).trim
-      BigInt(raw)
-    }
-    val gasPrice = queryEthAmount( "Gas price (as wei, or else number and unit): ", "<gas-price>" )
-    val gasLimit = {
-      val raw = is.readLine( "Gas Limit: ", mask = false).getOrElse( throwCantReadInteraction ).trim
-      BigInt(raw)
-    }
-    val to = {
-      val raw = is.readLine( "To (as hex address): ", mask = false).getOrElse( throwCantReadInteraction ).trim
-      if ( raw.nonEmpty ) Some( EthAddress( raw ) ) else None
-    }
-    if ( to == None ) log.warn( "No 'To:' address specified. This is a contract creation transaction!" )
-    val amount = queryEthAmount( "ETH to send (as wei, or else number and unit): ", "<eth-to-send>" )
-    val data = {
-      val raw = is.readLine( "Data / Init (as hex string): ", mask = false).getOrElse( throwCantReadInteraction ).trim
-      raw.decodeHexAsSeq
-    }
-    to match {
-      case Some( recipient ) => EthTransaction.Unsigned.Message( nonce=Unsigned256( nonce ), gasPrice=Unsigned256(gasPrice), gasLimit=Unsigned256(gasLimit), to=recipient, value=Unsigned256(amount), data=data )
-      case None              => EthTransaction.Unsigned.ContractCreation( nonce=Unsigned256( nonce ), gasPrice=Unsigned256(gasPrice), gasLimit=Unsigned256(gasLimit), value=Unsigned256(amount), init=data )
-    }
-  }
-
 
   private def ethTransactionSignTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Signed]] = Def.inputTask {
     val s = state.value
