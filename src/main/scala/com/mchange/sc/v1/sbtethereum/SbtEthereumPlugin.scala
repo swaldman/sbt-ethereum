@@ -455,6 +455,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionUnsignedRaw       = inputKey[EthTransaction.Unsigned]("Prepare a raw message transaction to be signed elsewhere.")
     val ethTransactionUnsignedEtherSend = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
 
+    // erc20 tasks
+    val erc20Transfer = inputKey[Client.TransactionReceipt]("Transfers ERC20 tokens to a given address.")
+
     // xens tasks
 
     val xensClient = taskKey[ens.Client]("Loads an ENS client instance.")
@@ -5934,6 +5937,26 @@ object SbtEthereumPlugin extends AutoPlugin {
       throw new SenderNotAvailableException( errMsg )
     }
     fsender.fold( onFailed )( Some(_) )
+  }
+
+  private final object Erc20 {
+    private lazy val UInt8Encoder = Encoder.encoderForSolidityType("uint8").get.asInstanceOf[Encoder[BigInt]]
+
+    private val DecimalsCallData = "0x313ce567".decodeHexAsSeq
+
+    private lazy val TransferFunction = ethabi.abiFunctionForFunctionNameAndTypes( "transfer", immutable.Seq( "address", "uint" ), shoebox.StandardAbi.Erc20 ).assert
+
+    private def doTransfer( tokenContractAddress : EthAddress, fromSigner : EthSigner, toAddress : EthAddress, numQuanta : BigInt, forceNonce : Option[Unsigned256] )( implicit ic : Invoker.Context ) : Future[EthHash] = {
+      val f_calldata = Future {
+        val reps = immutable.Seq( toAddress, numQuanta );
+        ethabi.callDataForAbiFunctionFromEncoderRepresentations( reps, TransferFunction ).assert
+      }( ic.econtext )
+      f_calldata.flatMap( calldata => Invoker.transaction.sendMessage( fromSigner, toAddress, Zero256, calldata, forceNonce ) )( ic.econtext )
+    }
+
+    private def lookupDecimalsErc20( tokenContractAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[BigInt] = {
+      Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, DecimalsCallData ).map( UInt8Encoder.decodeComplete(_).assert )( ic.econtext )
+    }
   }
 
   // some formatting functions for ascii tables

@@ -160,6 +160,14 @@ object Parsers {
     (amountParser( tabHelp ) ~ UnitParser).map { case ( amount, unit ) => toValueInWei( amount, unit ) }
   }
 
+  private val Big10 = BigInt(10)
+
+  private [sbtethereum] def toValueInErc20Quanta( numTokens : BigDecimal, decimals : Int ) : BigInt = rounded( numTokens * BigDecimal(Big10.pow( decimals )) )
+
+  private [sbtethereum] def valueInQuantaParser( decimals : Int, tabHelp : String ) : Parser[BigInt] = {
+    amountParser( tabHelp ).map( numTokens => toValueInErc20Quanta( numTokens, decimals ) )
+  }
+
   private [sbtethereum] val SolcJVersionParser : Parser[Option[String]] = {
     val mandatory = compile.SolcJInstaller.SupportedVersions.foldLeft( failure("No supported versions") : Parser[String] )( ( nascent, next ) => nascent | literal(next) )
     token(Space.*) ~> token(mandatory.?)
