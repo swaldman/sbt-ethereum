@@ -160,14 +160,6 @@ object Parsers {
     (amountParser( tabHelp ) ~ UnitParser).map { case ( amount, unit ) => toValueInWei( amount, unit ) }
   }
 
-  private val Big10 = BigInt(10)
-
-  private [sbtethereum] def toValueInErc20Quanta( numTokens : BigDecimal, decimals : Int ) : BigInt = rounded( numTokens * BigDecimal(Big10.pow( decimals )) )
-
-  private [sbtethereum] def valueInQuantaParser( decimals : Int, tabHelp : String ) : Parser[BigInt] = {
-    amountParser( tabHelp ).map( numTokens => toValueInErc20Quanta( numTokens, decimals ) )
-  }
-
   private [sbtethereum] val SolcJVersionParser : Parser[Option[String]] = {
     val mandatory = compile.SolcJInstaller.SupportedVersions.foldLeft( failure("No supported versions") : Parser[String] )( ( nascent, next ) => nascent | literal(next) )
     token(Space.*) ~> token(mandatory.?)
@@ -384,6 +376,16 @@ object Parsers {
 
   private [sbtethereum] def genGenericAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
     createAddressParser( "<address-hex>", mbRpi )
+  }
+
+  private [sbtethereum] def genErc20TokenTransferParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple3[EthAddress, EthAddress, String]] = {
+    createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
+      (Space.+ ~> createAddressParser( "<transfer-to-address>", mbRpi )).flatMap { toAddress =>
+        (Space.+ ~> amountParser( "<number-of-tokens>" ).map( _.toString )).map { numTokensStr =>
+          ( contractAddress, toAddress, numTokensStr )
+        }
+      }
+    }
   }
 
   private [sbtethereum] def genOptionalGenericAddressParser(
