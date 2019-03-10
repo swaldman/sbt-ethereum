@@ -456,11 +456,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionUnsignedEtherSend = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
 
     // erc20 tasks
-    val erc20AllowancePrint = inputKey[Erc20.Balance]("Prints the allowance of an address to operate on ERC20 tokens owned by a different address.")
-    val erc20AllowanceSet   = inputKey[Client.TransactionReceipt]("Approves ability to transfer tokens an account's tokens by a third-party account." )
-    val erc20Balance        = inputKey[Erc20.Balance]("Prints the balance in ERC20 tokens of an address.")
-    val erc20Summary        = inputKey[Unit]("Prints an ERC20 token's (self-reported) name, symbol, decimals, and total supply.")
-    val erc20Transfer       = inputKey[Client.TransactionReceipt]("Transfers ERC20 tokens to a given address.")
+    val erc20AllowancePrint       = inputKey[Erc20.Balance]("Prints the allowance of an address to operate on ERC20 tokens owned by a different address.")
+    val erc20AllowanceSet         = inputKey[Client.TransactionReceipt]("Approves ability to transfer tokens an account's tokens by a third-party account." )
+    val erc20Balance              = inputKey[Erc20.Balance]("Prints the balance in ERC20 tokens of an address.")
+    val erc20ConvertAtomsToTokens = inputKey[Unit]("For a given ERC20 token contract, print the number of tokens a given number of atoms corresponds to.")
+    val erc20ConvertTokensToAtoms = inputKey[Unit]("For a given ERC20 token contract, print the number of atoms a given token amount corresponds to.")
+    val erc20Summary              = inputKey[Unit]("Prints an ERC20 token's (self-reported) name, symbol, decimals, and total supply.")
+    val erc20Transfer             = inputKey[Client.TransactionReceipt]("Transfers ERC20 tokens to a given address.")
 
     // xens tasks
 
@@ -1043,6 +1045,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     erc20Balance in Compile := { erc20BalanceTask( Compile ).evaluated },
 
     erc20Balance in Test := { erc20BalanceTask( Test ).evaluated },
+
+    erc20ConvertAtomsToTokens in Compile := { erc20ConvertAtomsToTokensTask( Compile ).evaluated },
+
+    erc20ConvertAtomsToTokens in Test := { erc20ConvertAtomsToTokensTask( Test ).evaluated },
+
+    erc20ConvertTokensToAtoms in Compile := { erc20ConvertTokensToAtomsTask( Compile ).evaluated },
+
+    erc20ConvertTokensToAtoms in Test := { erc20ConvertTokensToAtomsTask( Test ).evaluated },
 
     erc20Summary in Compile := { erc20SummaryTask( Compile ).evaluated },
 
@@ -4615,6 +4625,52 @@ object SbtEthereumPlugin extends AutoPlugin {
         Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(Erc20.Abi), txnHash, invokerContext.pollTimeout, _ ) )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will throw a TimeoutException internally on time out
+    }
+  }
+
+  private def erc20ConvertAtomsToTokensTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenConvertAtomsToTokensParser )
+
+    Def.inputTask {
+      val log = streams.value.log
+      val is = interactionService.value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val ( tokenContractAddress, numAtoms ) = parser.parsed
+      val f_out = Erc20.lookupDecimals( tokenContractAddress ).recover { case _ : Exception =>
+        throw new SbtEthereumException( s"Failed to read ERC20 'decimals' from ${verboseAddress( chainId, tokenContractAddress )}. Cannot perform conversion." )
+      } map { decimalsUnsigned8 =>
+        val decimals  = decimalsUnsigned8.widen
+        val numTokens = Erc20.toValueInTokens( numAtoms, decimals )
+        log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}, with ${decimals} decimals, ${numAtoms} atoms translates to...")
+        log.info( s"${numTokens} tokens." )
+      }
+      Await.result( f_out, Duration.Inf )
+    }
+  }
+
+  private def erc20ConvertTokensToAtomsTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenConvertTokensToAtomsParser )
+
+    Def.inputTask {
+      val log = streams.value.log
+      val is = interactionService.value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val ( tokenContractAddress, numTokens ) = parser.parsed
+      val f_out = Erc20.lookupDecimals( tokenContractAddress ).recover { case _ : Exception =>
+        throw new SbtEthereumException( s"Failed to read ERC20 'decimals' from ${verboseAddress( chainId, tokenContractAddress )}. Cannot perform conversion." )
+      } map { decimalsUnsigned8 =>
+        val decimals  = decimalsUnsigned8.widen
+        val numAtoms = Erc20.toValueInAtoms( numTokens, decimals )
+        log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}, with ${decimals} decimals, ${numTokens} tokens translates to...")
+        log.info( s"${numAtoms} atoms." )
+      }
+      Await.result( f_out, Duration.Inf )
     }
   }
 

@@ -46,8 +46,6 @@ Other
 
 * Maybe remove stack trace from jsonrpc.Invoker$TransactionDisapprovedExceptions generated from the transaction approver function?
 
-* ethTransactionExportInvoke / ethTransactionExportSend  
-
 * The parser for ethTransactionDeploy should handle aliases / ens-names etc when ctor args are addresses
 
 * make price feeds sensitive to chainId
@@ -72,7 +70,6 @@ Other
 * Prettify output of log items in client transactions
 * Excise jsonrpc.Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
 * ens TTL, and Deed stuff
-* erc20*
 
 * fetch (accessing events bia RPC getLogs(...)) in stub utilities is async by default. Consistent with rest of design, define asyncFetch(...) and fetch(...)
 * Move stub.ScalaParameterHelper somewhere more sensible

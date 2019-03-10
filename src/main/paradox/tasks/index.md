@@ -15,6 +15,7 @@
 * [ethShoebox*](eth/shoebox/index.md)
 * [ethTransaction...](eth/transaction/index.md)
 * [ens*](ens.md)
+* [erc20*](erc20.md)
 * [etherscan*](etherscan.md)
 
 @@@

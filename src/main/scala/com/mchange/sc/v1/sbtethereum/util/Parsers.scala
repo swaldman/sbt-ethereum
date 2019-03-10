@@ -420,6 +420,22 @@ object Parsers {
     }
   }
 
+  private [sbtethereum] def genErc20TokenConvertTokensToAtomsParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple2[EthAddress, BigDecimal]] = {
+    createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
+      (Space.+ ~> amountParser( "<amount-in-tokens>" )).map { numTokens =>
+        ( contractAddress, numTokens )
+      }
+    }
+  }
+
+  private [sbtethereum] def genErc20TokenConvertAtomsToTokensParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple2[EthAddress, BigInt]] = {
+    createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
+      (Space.+ ~> bigIntParser( "<amount-in-atoms>" )).map { numAtoms =>
+        ( contractAddress, numAtoms )
+      }
+    }
+  }
+
   private [sbtethereum] def genOptionalGenericAddressParser(
     state : State,
     mbRpi : Option[RichParserInfo]
