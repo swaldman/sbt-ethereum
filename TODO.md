@@ -19,8 +19,6 @@ DB schema updates
 
 Other
 
-* Eliminate potentially ambiguous use of `parseOneByteCharQuotedString( str )` in Encode.Bytes.parse. Check for other similar issues.
-
 * let repositories suggest ABIs <--> addresses <--> aliases ???
 
 * Tool to derive linearization from AST
