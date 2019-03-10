@@ -4574,25 +4574,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def erc20AllowanceSetTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenApproveParser )
 
-    Def.inputTaskDyn {
-      val log = streams.value.log
-      val is = interactionService.value
-      val chainId = findNodeChainIdTask(warn=true)(config).value
-
-      implicit val invokerContext = (xethInvokerContext in config).value
-
-      val ( tokenContractAddress, approveAddress, rawNumStr ) = parser.parsed
-      val f_out = Erc20.lookupDecimals( tokenContractAddress ).recover( noDecimalsChecker( log, is, chainId, tokenContractAddress, rawNumStr, "approve" ) ).map { decimalsUnsigned8 =>
-        val decimals = decimalsUnsigned8.widen
-        val numAtoms = Erc20.toValueInAtoms( BigDecimal( rawNumStr ), decimals )
-        _erc20AllowanceSetTask( decimals, tokenContractAddress, approveAddress, rawNumStr, numAtoms, config )
-      }
-      Await.result( f_out, Duration.Inf )
-    }
-  }
-
-  private def _erc20AllowanceSetTask( decimals : Int, tokenContractAddress : EthAddress, approveAddress : EthAddress, rawNumStr : String, numAtoms : BigInt, config : Configuration ) : Initialize[Task[Client.TransactionReceipt]] = {
-    Def.task {
+    Def.inputTask {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
@@ -4602,29 +4584,35 @@ object SbtEthereumPlugin extends AutoPlugin {
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
 
-      log.warn( s"For the ERC20 token with contract address ${verboseAddress( chainId, tokenContractAddress )}..." )
-      log.warn( s"  you would approve use of..." )
-      log.warn( s"    Amount:     ${rawNumStr} tokens, which (with ${decimals} decimals) translates to ${numAtoms} atoms." )
-      log.warn( s"    Owned By:   ${verboseAddress( chainId, caller )}" )
-      log.warn( s"    For Use By: ${verboseAddress( chainId, approveAddress )}" )
-      log.warn( s"You are calling the 'approve' function on the contract at ${verboseAddress( chainId, tokenContractAddress )}." )
-      log.warn( s"THIS FUNCTION COULD DO ANYTHING. " )
-      log.warn( s"Make sure that you trust that the token contract does only what you intend, and carefully verify the transaction cost before approving the ultimate transaction." )
-
-      val check = queryYN( is, "Continue? [y/n] " )
-      if (! check) aborted( "User aborted the approval of access to tokens by a third party." )
-
       implicit val invokerContext = (xethInvokerContext in config).value
 
-      val f_out = Erc20.doApprove( tokenContractAddress, privateKey, approveAddress, numAtoms, nonceOverride ) flatMap { txnHash =>
-        log.info( s"ERC20 Allowance Approval, Token Contract ${verboseAddress( chainId, tokenContractAddress )}:")
-        log.info( s"  --> Approved ${rawNumStr} tokens (${numAtoms} atoms)" )
-        log.info( s"  -->   owned by ${verboseAddress( chainId, caller )}" )
-        log.info( s"  -->   for use by ${verboseAddress( chainId, approveAddress )}" )
-        log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
-        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(Erc20.Abi), txnHash, invokerContext.pollTimeout, _ ) )
+      val ( tokenContractAddress, approveAddress, rawNumStr ) = parser.parsed
+      val f_out = Erc20.lookupDecimals( tokenContractAddress ).recover( noDecimalsChecker( log, is, chainId, tokenContractAddress, rawNumStr, "approve" ) ).flatMap { decimalsUnsigned8 =>
+        val decimals = decimalsUnsigned8.widen
+        val numAtoms = Erc20.toValueInAtoms( BigDecimal( rawNumStr ), decimals )
+
+        log.warn( s"For the ERC20 token with contract address ${verboseAddress( chainId, tokenContractAddress )}..." )
+        log.warn( s"  you would approve use of..." )
+        log.warn( s"    Amount:     ${rawNumStr} tokens, which (with ${decimals} decimals) translates to ${numAtoms} atoms." )
+        log.warn( s"    Owned By:   ${verboseAddress( chainId, caller )}" )
+        log.warn( s"    For Use By: ${verboseAddress( chainId, approveAddress )}" )
+        log.warn( s"You are calling the 'approve' function on the contract at ${verboseAddress( chainId, tokenContractAddress )}." )
+        log.warn( s"THIS FUNCTION COULD DO ANYTHING. " )
+        log.warn( s"Make sure that you trust that the token contract does only what you intend, and carefully verify the transaction cost before approving the ultimate transaction." )
+
+        val check = queryYN( is, "Continue? [y/n] " )
+        if (! check) aborted( "User aborted the approval of access to tokens by a third party." )
+
+        Erc20.doApprove( tokenContractAddress, privateKey, approveAddress, numAtoms, nonceOverride ) flatMap { txnHash =>
+          log.info( s"ERC20 Allowance Approval, Token Contract ${verboseAddress( chainId, tokenContractAddress )}:")
+          log.info( s"  --> Approved ${rawNumStr} tokens (${numAtoms} atoms)" )
+          log.info( s"  -->   owned by ${verboseAddress( chainId, caller )}" )
+          log.info( s"  -->   for use by ${verboseAddress( chainId, approveAddress )}" )
+          log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
+          Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(Erc20.Abi), txnHash, invokerContext.pollTimeout, _ ) )
+        }
       }
-      Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will throw a TimeoutException internally on time out
+      Await.result( f_out, Duration.Inf )
     }
   }
 
@@ -4677,25 +4665,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def erc20TransferTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenTransferParser )
 
-    Def.inputTaskDyn {
-      val log = streams.value.log
-      val is = interactionService.value
-      val chainId = findNodeChainIdTask(warn=true)(config).value
-
-      implicit val invokerContext = (xethInvokerContext in config).value
-
-      val ( tokenContractAddress, toAddress, rawNumStr ) = parser.parsed
-      val f_out = Erc20.lookupDecimals( tokenContractAddress ).recover( noDecimalsChecker( log, is, chainId, tokenContractAddress, rawNumStr, "transfer" ) ).map { decimalsUnsigned8 =>
-        val decimals = decimalsUnsigned8.widen
-        val numAtoms = Erc20.toValueInAtoms( BigDecimal( rawNumStr ), decimals )
-        _erc20TransferTask( decimals, tokenContractAddress, toAddress, rawNumStr, numAtoms, config )
-      }
-      Await.result( f_out, Duration.Inf )
-    }
-  }
-
-  private def _erc20TransferTask( decimals : Int, tokenContractAddress : EthAddress, toAddress : EthAddress, rawNumStr : String, numAtoms : BigInt, config : Configuration ) : Initialize[Task[Client.TransactionReceipt]] = {
-    Def.task {
+    Def.inputTask {
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
@@ -4705,36 +4675,42 @@ object SbtEthereumPlugin extends AutoPlugin {
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
 
-      log.warn( s"For the ERC20 token with contract address ${verboseAddress( chainId, tokenContractAddress )}..." )
-      log.warn( s"  you would transfer ${rawNumStr} tokens, which (with ${decimals} decimals) translates to ${numAtoms} atoms." )
-      log.warn( s"The transfer would be " )
-      log.warn( s"  From: ${verboseAddress( chainId, caller )}" )
-      log.warn( s"  To:   ${verboseAddress( chainId, toAddress )}" )
-      log.warn( s"You are calling the 'transfer' function on the contract at ${verboseAddress( chainId, tokenContractAddress )}." )
-      log.warn( s"THIS FUNCTION COULD DO ANYTHING. " )
-      log.warn( s"Make sure that you trust that the token contract does only what you intend, and carefully verify the transaction cost before approving the ultimate transaction." )
-
-      val check = queryYN( is, "Continue? [y/n] " )
-      if (! check) aborted( "User aborted the token transfer." )
-
       implicit val invokerContext = (xethInvokerContext in config).value
 
-      val f_out = Erc20.doTransfer( tokenContractAddress, privateKey, toAddress, numAtoms, nonceOverride ) flatMap { txnHash =>
-        log.info( s"ERC20 Transfer, Token Contract ${verboseAddress( chainId, tokenContractAddress )}:")
-        log.info( s"  --> Sent ${rawNumStr} tokens (${numAtoms} atoms)" )
-        log.info( s"  -->   from ${verboseAddress( chainId, caller )}" )
-        log.info( s"  -->   to ${verboseAddress( chainId, toAddress )}" )
-        log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
-        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(Erc20.Abi), txnHash, invokerContext.pollTimeout, _ ) )
+      val ( tokenContractAddress, toAddress, rawNumStr ) = parser.parsed
+      val f_out = Erc20.lookupDecimals( tokenContractAddress ).recover( noDecimalsChecker( log, is, chainId, tokenContractAddress, rawNumStr, "transfer" ) ).flatMap { decimalsUnsigned8 =>
+        val decimals = decimalsUnsigned8.widen
+        val numAtoms = Erc20.toValueInAtoms( BigDecimal( rawNumStr ), decimals )
+
+        log.warn( s"For the ERC20 token with contract address ${verboseAddress( chainId, tokenContractAddress )}..." )
+        log.warn( s"  you would transfer ${rawNumStr} tokens, which (with ${decimals} decimals) translates to ${numAtoms} atoms." )
+        log.warn( s"The transfer would be " )
+        log.warn( s"  From: ${verboseAddress( chainId, caller )}" )
+        log.warn( s"  To:   ${verboseAddress( chainId, toAddress )}" )
+        log.warn( s"You are calling the 'transfer' function on the contract at ${verboseAddress( chainId, tokenContractAddress )}." )
+        log.warn( s"THIS FUNCTION COULD DO ANYTHING. " )
+        log.warn( s"Make sure that you trust that the token contract does only what you intend, and carefully verify the transaction cost before approving the ultimate transaction." )
+
+        val check = queryYN( is, "Continue? [y/n] " )
+        if (! check) aborted( "User aborted the token transfer." )
+
+        Erc20.doTransfer( tokenContractAddress, privateKey, toAddress, numAtoms, nonceOverride ) flatMap { txnHash =>
+          log.info( s"ERC20 Transfer, Token Contract ${verboseAddress( chainId, tokenContractAddress )}:")
+          log.info( s"  --> Sent ${rawNumStr} tokens (${numAtoms} atoms)" )
+          log.info( s"  -->   from ${verboseAddress( chainId, caller )}" )
+          log.info( s"  -->   to ${verboseAddress( chainId, toAddress )}" )
+          log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
+          Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(Erc20.Abi), txnHash, invokerContext.pollTimeout, _ ) )
+        }
       }
-      Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will throw a TimeoutException internally on time out
+      Await.result( f_out, Duration.Inf )
     }
   }
 
   private def erc20BalanceTask( config : Configuration ) : Initialize[InputTask[Erc20.Balance]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenBalanceParser )
 
-    Def.inputTaskDyn {
+    Def.inputTask {
       val log = streams.value.log
       val is = interactionService.value
       val caller = findAddressSenderTask(warn=false)(config).value.assert
@@ -4743,40 +4719,31 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val ( tokenContractAddress, mbTokenHolderAddress ) = parser.parsed
+      val tokenHolderAddress = mbTokenHolderAddress.getOrElse( caller )
       val f_out = Erc20.lookupDecimals( tokenContractAddress ).map( d => (Some( d.widen : Int ) : Option[Int]) ) recover { case e : Exception =>
         None
-      } map { mbDecimals =>
-        _erc20BalanceTask( mbDecimals, tokenContractAddress, mbTokenHolderAddress.getOrElse( caller ), config )
+      } flatMap { mbDecimals =>
+        Erc20.lookupAtomBalance( tokenContractAddress, tokenHolderAddress ) map { wrappedAtoms =>
+          val balance = Erc20.Balance( wrappedAtoms.widen, mbDecimals )
+          mbDecimals match {
+            case Some( decimals ) => {
+              log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}, with ${decimals} decimals...")
+              log.info( s"  For Address ${verboseAddress( chainId, tokenHolderAddress )})..." )
+              log.info( s"    Balance: ${balance.tokens.get} tokens (which corresponds to ${balance.atoms} atoms)" )
+            }
+            case None => {
+              log.warn( s"Could not read a value for 'decimals' from token contract ${verboseAddress( chainId, tokenContractAddress )}." )
+              log.warn(  "We cannot distinguish convert atoms into standard-denomination token values." )
+              log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}...")
+              log.info( s"  For Address ${verboseAddress( chainId, tokenHolderAddress )})..." )
+              log.info( s"    Balance: ${balance.atoms} ATOMS (it is unclear how these should convert to token values)" )
+            }
+          }
+          balance
+        }
       }
       Await.result( f_out, Duration.Inf )
     }
-  }
-
-  private def _erc20BalanceTask( mbDecimals : Option[Int], tokenContractAddress : EthAddress, tokenHolderAddress : EthAddress, config : Configuration ) : Initialize[Task[Erc20.Balance]] = Def.task {
-    val log = streams.value.log
-    val chainId = findNodeChainIdTask(warn=true)(config).value
-
-    implicit val invokerContext = (xethInvokerContext in config).value
-
-    val f_out = Erc20.lookupAtomBalance( tokenContractAddress, tokenHolderAddress ) map { wrappedAtoms =>
-      val balance = Erc20.Balance( wrappedAtoms.widen, mbDecimals )
-      mbDecimals match {
-        case Some( decimals ) => {
-          log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}, with ${decimals} decimals...")
-          log.info( s"  For Address ${verboseAddress( chainId, tokenHolderAddress )})..." )
-          log.info( s"    Balance: ${balance.tokens.get} tokens (which corresponds to ${balance.atoms} atoms)" )
-        }
-        case None => {
-          log.warn( s"Could not read a value for 'decimals' from token contract ${verboseAddress( chainId, tokenContractAddress )}." )
-          log.warn(  "We cannot distinguish convert atoms into standard-denomination token values." )
-          log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}...")
-          log.info( s"  For Address ${verboseAddress( chainId, tokenHolderAddress )})..." )
-          log.info( s"    Balance: ${balance.atoms} ATOMS (it is unclear how these should convert to token values)" )
-        }
-      }
-      balance
-    }
-    Await.result( f_out, Duration.Inf )
   }
 
   private def erc20SummaryTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
@@ -4835,12 +4802,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  /////////////////////////////////
-
   private def erc20AllowancePrintTask( config : Configuration ) : Initialize[InputTask[Erc20.Balance]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenAllowanceParser )
 
-    Def.inputTaskDyn {
+    Def.inputTask {
       val log = streams.value.log
       val is = interactionService.value
       val caller = findAddressSenderTask(warn=false)(config).value.assert
@@ -4851,46 +4816,31 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ( tokenContractAddress, ownerAddress, allowedAddress ) = parser.parsed
       val f_out = Erc20.lookupDecimals( tokenContractAddress ).map( d => (Some( d.widen : Int ) : Option[Int]) ) recover { case e : Exception =>
         None
-      } map { mbDecimals =>
-        _erc20AllowancePrintTask( mbDecimals, tokenContractAddress, ownerAddress, allowedAddress, config )
+      } flatMap { mbDecimals =>
+        Erc20.lookupAllowanceAtoms( tokenContractAddress, ownerAddress, allowedAddress ) map { wrappedAtoms =>
+          val approved = Erc20.Balance( wrappedAtoms.widen, mbDecimals )
+          mbDecimals match {
+            case Some( decimals ) => {
+              log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}, with ${decimals} decimals...")
+              log.info( s"  Of tokens owned by ${verboseAddress( chainId, ownerAddress )})..." )
+              log.info( s"    For use by ${verboseAddress( chainId, allowedAddress )}..." )
+              log.info( s"      An allowance of ${approved.tokens.get} tokens (which corresponds to ${approved.atoms} atoms) has been approved." )
+            }
+            case None => {
+              log.warn( s"Could not read a value for 'decimals' from token contract ${verboseAddress( chainId, tokenContractAddress )}." )
+              log.warn(  "We cannot distinguish convert atoms into standard-denomination token values." )
+              log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}...")
+              log.info( s"  Of tokens owned by ${verboseAddress( chainId, ownerAddress )})..." )
+              log.info( s"    For use by ${verboseAddress( chainId, allowedAddress )}..." )
+              log.info( s"      An allowance of ${approved.atoms} ATOMS (it is unclear how these should convert to token values) has been approved." )
+            }
+          }
+          approved
+        }
       }
       Await.result( f_out, Duration.Inf )
     }
   }
-
-  private def _erc20AllowancePrintTask( mbDecimals : Option[Int], tokenContractAddress : EthAddress, ownerAddress : EthAddress, allowedAddress : EthAddress, config : Configuration ) : Initialize[Task[Erc20.Balance]] = Def.task {
-    val log = streams.value.log
-    val chainId = findNodeChainIdTask(warn=true)(config).value
-
-    implicit val invokerContext = (xethInvokerContext in config).value
-
-    val f_out = Erc20.lookupAllowanceAtoms( tokenContractAddress, ownerAddress, allowedAddress ) map { wrappedAtoms =>
-      val approved = Erc20.Balance( wrappedAtoms.widen, mbDecimals )
-      mbDecimals match {
-        case Some( decimals ) => {
-          log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}, with ${decimals} decimals...")
-          log.info( s"  Of tokens owned by ${verboseAddress( chainId, ownerAddress )})..." )
-          log.info( s"    For use by ${verboseAddress( chainId, allowedAddress )}..." )
-          log.info( s"      An allowance of ${approved.tokens.get} tokens (which corresponds to ${approved.atoms} atoms) has been approved." )
-        }
-        case None => {
-          log.warn( s"Could not read a value for 'decimals' from token contract ${verboseAddress( chainId, tokenContractAddress )}." )
-          log.warn(  "We cannot distinguish convert atoms into standard-denomination token values." )
-          log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}...")
-          log.info( s"  Of tokens owned by ${verboseAddress( chainId, ownerAddress )})..." )
-          log.info( s"    For use by ${verboseAddress( chainId, allowedAddress )}..." )
-          log.info( s"      An allowance of ${approved.atoms} ATOMS (it is unclear how these should convert to token values) has been approved." )
-        }
-      }
-      approved
-    }
-    Await.result( f_out, Duration.Inf )
-  }
-
-
-
-  /////////////////////////////////
-
 
   // xens task definitions
 
