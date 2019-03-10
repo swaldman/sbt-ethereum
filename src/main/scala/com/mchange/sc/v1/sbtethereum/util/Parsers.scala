@@ -378,12 +378,44 @@ object Parsers {
     createAddressParser( "<address-hex>", mbRpi )
   }
 
+  private [sbtethereum] def genErc20TokenContractAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
+    createAddressParser( "<erc20-token-address-hex>", mbRpi )
+  }
+
   private [sbtethereum] def genErc20TokenTransferParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple3[EthAddress, EthAddress, String]] = {
     createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
       (Space.+ ~> createAddressParser( "<transfer-to-address>", mbRpi )).flatMap { toAddress =>
         (Space.+ ~> amountParser( "<number-of-tokens>" ).map( _.toString )).map { numTokensStr =>
           ( contractAddress, toAddress, numTokensStr )
         }
+      }
+    }
+  }
+
+  private [sbtethereum] def genErc20TokenApproveParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple3[EthAddress, EthAddress, String]] = {
+    createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
+      (Space.+ ~> createAddressParser( "<approved-address>", mbRpi )).flatMap { toAddress =>
+        (Space.+ ~> amountParser( "<number-of-tokens>" ).map( _.toString )).map { numTokensStr =>
+          ( contractAddress, toAddress, numTokensStr )
+        }
+      }
+    }
+  }
+
+  private [sbtethereum] def genErc20TokenAllowanceParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple3[EthAddress, EthAddress, EthAddress]] = {
+    createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
+      (Space.+ ~> createAddressParser( "<token-owner-address>", mbRpi )).flatMap { ownerAddress =>
+        (Space.+ ~> createAddressParser( "<allowed-address>", mbRpi )).map { allowedAddress =>
+          ( contractAddress, ownerAddress, allowedAddress )
+        }
+      }
+    }
+  }
+
+  private [sbtethereum] def genErc20TokenBalanceParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple2[EthAddress, Option[EthAddress]]] = {
+    createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
+      (Space.+ ~> createAddressParser( "[optional-tokenholder-address]", mbRpi )).?.map { mbTokenHolderAddress =>
+        ( contractAddress, mbTokenHolderAddress )
       }
     }
   }

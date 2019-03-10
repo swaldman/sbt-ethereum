@@ -456,7 +456,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionUnsignedEtherSend = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
 
     // erc20 tasks
-    val erc20Transfer = inputKey[Client.TransactionReceipt]("Transfers ERC20 tokens to a given address.")
+    val erc20AllowancePrint = inputKey[Erc20.Balance]("Prints the allowance of an address to operate on ERC20 tokens owned by a different address.")
+    val erc20AllowanceSet   = inputKey[Client.TransactionReceipt]("Approves ability to transfer tokens an account's tokens by a third-party account." )
+    val erc20Balance        = inputKey[Erc20.Balance]("Prints the balance in ERC20 tokens of an address.")
+    val erc20Summary        = inputKey[Unit]("Prints an ERC20 token's (self-reported) name, symbol, decimals, and total supply.")
+    val erc20Transfer       = inputKey[Client.TransactionReceipt]("Transfers ERC20 tokens to a given address.")
 
     // xens tasks
 
@@ -1027,6 +1031,22 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionView in Test := { ethTransactionViewTask( Test ).evaluated },
 
     // erc20 tasks
+
+    erc20AllowancePrint in Compile := { erc20AllowancePrintTask( Compile ).evaluated },
+
+    erc20AllowancePrint in Test := { erc20AllowancePrintTask( Test ).evaluated },
+
+    erc20AllowanceSet in Compile := { erc20AllowanceSetTask( Compile ).evaluated },
+
+    erc20AllowanceSet in Test := { erc20AllowanceSetTask( Test ).evaluated },
+
+    erc20Balance in Compile := { erc20BalanceTask( Compile ).evaluated },
+
+    erc20Balance in Test := { erc20BalanceTask( Test ).evaluated },
+
+    erc20Summary in Compile := { erc20SummaryTask( Compile ).evaluated },
+
+    erc20Summary in Test := { erc20SummaryTask( Test ).evaluated },
 
     erc20Transfer in Compile := { erc20TransferTask( Compile ).evaluated },
 
@@ -4522,6 +4542,82 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   // erc20 task definitions
+
+  private def noDecimalsChecker(
+    log : sbt.Logger,
+    is : InteractionService,
+    chainId : Int,
+    tokenContractAddress : EthAddress,
+    rawNumStr : String,
+    directContractFunction : String
+  ) : PartialFunction[Throwable, Unsigned8] = { case e : Exception =>
+    log.warn( s"Could not lookup 'decimals' on ${verboseAddress( chainId, tokenContractAddress )}!" )
+    log.warn( s"We default to a value of zero, that is rounding (if necessary) ${rawNumStr} and sending that number of atoms." )
+    log.warn( s"This may not be what you want!" )
+    log.warn( s"Use 'ethTransactionInvoke' and call the function '${directContractFunction}' to take complete control of the process." )
+    log.warn( s"(As long as you are sure this is an ERC20 token contract, you can associate the ABI 'abi:standard:erc20' with the token contract address.)" )
+    val check = queryYN( is, s"Continue as if decimals is 0, treating the specified token amount (${rawNumStr}) as the number of atoms to transfer? [y/n] " )
+    if (!check) aborted( "Could not lookup ERC20 decimals, so user chose to abort." )
+    else Zero8
+  }
+
+  private def erc20AllowanceSetTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenApproveParser )
+
+    Def.inputTaskDyn {
+      val log = streams.value.log
+      val is = interactionService.value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val ( tokenContractAddress, approveAddress, rawNumStr ) = parser.parsed
+      val f_out = Erc20.lookupDecimals( tokenContractAddress ).recover( noDecimalsChecker( log, is, chainId, tokenContractAddress, rawNumStr, "approve" ) ).map { decimalsUnsigned8 =>
+        val decimals = decimalsUnsigned8.widen
+        val numAtoms = Erc20.toValueInAtoms( BigDecimal( rawNumStr ), decimals )
+        _erc20AllowanceSetTask( decimals, tokenContractAddress, approveAddress, rawNumStr, numAtoms, config )
+      }
+      Await.result( f_out, Duration.Inf )
+    }
+  }
+
+  private def _erc20AllowanceSetTask( decimals : Int, tokenContractAddress : EthAddress, approveAddress : EthAddress, rawNumStr : String, numAtoms : BigInt, config : Configuration ) : Initialize[Task[Client.TransactionReceipt]] = {
+    Def.task {
+      val s = state.value
+      val log = streams.value.log
+      val is = interactionService.value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+      val caller = findAddressSenderTask(warn=true)(config).value.assert
+      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
+      val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
+
+      log.warn( s"For the ERC20 token with contract address ${verboseAddress( chainId, tokenContractAddress )}..." )
+      log.warn( s"  you would approve use of..." )
+      log.warn( s"    Amount:     ${rawNumStr} tokens, which (with ${decimals} decimals) translates to ${numAtoms} atoms." )
+      log.warn( s"    Owned By:   ${verboseAddress( chainId, caller )}" )
+      log.warn( s"    For Use By: ${verboseAddress( chainId, approveAddress )}" )
+      log.warn( s"You are calling the 'approve' function on the contract at ${verboseAddress( chainId, tokenContractAddress )}." )
+      log.warn( s"THIS FUNCTION COULD DO ANYTHING. " )
+      log.warn( s"Make sure that you trust that the token contract does only what you intend, and carefully verify the transaction cost before approving the ultimate transaction." )
+
+      val check = queryYN( is, "Continue? [y/n] " )
+      if (! check) aborted( "User aborted the approval of access to tokens by a third party." )
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val f_out = Erc20.doApprove( tokenContractAddress, privateKey, approveAddress, numAtoms, nonceOverride ) flatMap { txnHash =>
+        log.info( s"ERC20 Allowance Approval, Token Contract ${verboseAddress( chainId, tokenContractAddress )}:")
+        log.info( s"  --> Approved ${rawNumStr} tokens (${numAtoms} atoms)" )
+        log.info( s"  -->   owned by ${verboseAddress( chainId, caller )}" )
+        log.info( s"  -->   for use by ${verboseAddress( chainId, approveAddress )}" )
+        log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
+        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(Erc20.Abi), txnHash, invokerContext.pollTimeout, _ ) )
+      }
+      Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will throw a TimeoutException internally on time out
+    }
+  }
+
   private def erc20TransferTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenTransferParser )
 
@@ -4533,16 +4629,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val ( tokenContractAddress, toAddress, rawNumStr ) = parser.parsed
-      val f_out = Erc20.lookupDecimals( tokenContractAddress ) recover { case e : Exception =>
-        log.warn( s"Could not lookup 'decimals' on ${verboseAddress( chainId, tokenContractAddress )}!" )
-        log.warn( s"We default to a value of zero, that is rounding (if necessary) ${rawNumStr} and sending that number of atoms." )
-        log.warn( s"This may not be what you want!" )
-        log.warn( s"Use 'ethTransactionInvoke' and call the function 'transfer' to take complete control of the process." )
-        log.warn( s"(As long as you are sure this is an ERC20 token contract, you can associate the ABI 'abi:standard:erc20' with the token contract address.)" )
-        val check = queryYN( is, s"Continue as if decimals is 0, treating the specified token amount (${rawNumStr}) as the number of atoms to transfer? [y/n] " )
-        if (!check) aborted( "Could not lookup ERC20 decimals, so user chose to abort." )
-        else Zero8
-      } map { decimalsUnsigned8 =>
+      val f_out = Erc20.lookupDecimals( tokenContractAddress ).recover( noDecimalsChecker( log, is, chainId, tokenContractAddress, rawNumStr, "transfer" ) ).map { decimalsUnsigned8 =>
         val decimals = decimalsUnsigned8.widen
         val numAtoms = Erc20.toValueInAtoms( BigDecimal( rawNumStr ), decimals )
         _erc20TransferTask( decimals, tokenContractAddress, toAddress, rawNumStr, numAtoms, config )
@@ -4569,7 +4656,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.warn( s"  To:   ${verboseAddress( chainId, toAddress )}" )
       log.warn( s"You are calling the 'transfer' function on the contract at ${verboseAddress( chainId, tokenContractAddress )}." )
       log.warn( s"THIS FUNCTION COULD DO ANYTHING. " )
-      log.warn( s"Make sure that you trust that the token contact will only do what you think it does, and carefully verify the transaction cost before approving the ultimate transaction." )
+      log.warn( s"Make sure that you trust that the token contract does only what you intend, and carefully verify the transaction cost before approving the ultimate transaction." )
 
       val check = queryYN( is, "Continue? [y/n] " )
       if (! check) aborted( "User aborted the token transfer." )
@@ -4587,6 +4674,167 @@ object SbtEthereumPlugin extends AutoPlugin {
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will throw a TimeoutException internally on time out
     }
   }
+
+  private def erc20BalanceTask( config : Configuration ) : Initialize[InputTask[Erc20.Balance]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenBalanceParser )
+
+    Def.inputTaskDyn {
+      val log = streams.value.log
+      val is = interactionService.value
+      val caller = findAddressSenderTask(warn=false)(config).value.assert
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val ( tokenContractAddress, mbTokenHolderAddress ) = parser.parsed
+      val f_out = Erc20.lookupDecimals( tokenContractAddress ).map( d => (Some( d.widen : Int ) : Option[Int]) ) recover { case e : Exception =>
+        None
+      } map { mbDecimals =>
+        _erc20BalanceTask( mbDecimals, tokenContractAddress, mbTokenHolderAddress.getOrElse( caller ), config )
+      }
+      Await.result( f_out, Duration.Inf )
+    }
+  }
+
+  private def _erc20BalanceTask( mbDecimals : Option[Int], tokenContractAddress : EthAddress, tokenHolderAddress : EthAddress, config : Configuration ) : Initialize[Task[Erc20.Balance]] = Def.task {
+    val log = streams.value.log
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+
+    implicit val invokerContext = (xethInvokerContext in config).value
+
+    val f_out = Erc20.lookupAtomBalance( tokenContractAddress, tokenHolderAddress ) map { wrappedAtoms =>
+      val balance = Erc20.Balance( wrappedAtoms.widen, mbDecimals )
+      mbDecimals match {
+        case Some( decimals ) => {
+          log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}, with ${decimals} decimals...")
+          log.info( s"  For Address ${verboseAddress( chainId, tokenHolderAddress )})..." )
+          log.info( s"    Balance: ${balance.tokens.get} tokens (which corresponds to ${balance.atoms} atoms)" )
+        }
+        case None => {
+          log.warn( s"Could not read a value for 'decimals' from token contract ${verboseAddress( chainId, tokenContractAddress )}." )
+          log.warn(  "We cannot distinguish convert atoms into standard-denomination token values." )
+          log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}...")
+          log.info( s"  For Address ${verboseAddress( chainId, tokenHolderAddress )})..." )
+          log.info( s"    Balance: ${balance.atoms} ATOMS (it is unclear how these should convert to token values)" )
+        }
+      }
+      balance
+    }
+    Await.result( f_out, Duration.Inf )
+  }
+
+  private def erc20SummaryTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenContractAddressParser )
+
+    Def.inputTask {
+      val log = streams.value.log
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+
+      val tokenContractAddress = parser.parsed
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      def opt[T]( ft : Future[T] ) : Future[Option[T]] = ft.map( t => (Some(t) : Option[T]) ).recover { case e : Exception => (None : Option[T]) }
+
+      val f_mbName             = opt( Erc20.lookupName( tokenContractAddress ) )
+      val f_mbSymbol           = opt( Erc20.lookupSymbol( tokenContractAddress ) )
+      val f_mbDecimals         = opt( Erc20.lookupDecimals( tokenContractAddress ) )
+      val f_mbTotalSupplyAtoms = opt( Erc20.lookupTotalSupplyAtoms( tokenContractAddress ) )
+
+      val f_out = {
+        for {
+          mbName             <- f_mbName
+          mbSymbol           <- f_mbSymbol
+          mbDecimals         <- f_mbDecimals
+          mbTotalSupplyAtoms <- f_mbTotalSupplyAtoms
+        } yield {
+
+          val totalSupplyStr = {
+            mbTotalSupplyAtoms match {
+              case Some( atoms ) => {
+                val a = atoms.widen
+                mbDecimals match {
+                  case Some( decimals ) => {
+                    val d = decimals.widen
+                    val t = Erc20.toValueInTokens( a, d )
+                    s"${t} tokens (${a} atoms)"
+                  }
+                  case None => {
+                    s"""${a} atoms (since no 'decimals' is defined, we can't definitively quanify that as "tokens")"""
+                  }
+                }
+              }
+              case None => "<total-supply-unknown>"
+            }
+          }
+
+          log.info( s"""ERC20 Summary, token contract at ${verboseAddress( chainId, tokenContractAddress )}:""" )
+          log.info( s"""  Self-Reported Name:   ${mbName.getOrElse("<name-unknown>")}""" )
+          log.info( s"""  Self-Reported Symbol: ${mbSymbol.getOrElse("<symbol-unknown>")}""" )
+          log.info( s"""  Decimals:             ${mbDecimals.map( _.widen.toString ).getOrElse( "<no-reported-decimals>" )}""" )
+          log.info( s"""  Total Supply:         ${totalSupplyStr}""" )
+        }
+      }
+      Await.result( f_out, Duration.Inf )
+    }
+  }
+
+  /////////////////////////////////
+
+  private def erc20AllowancePrintTask( config : Configuration ) : Initialize[InputTask[Erc20.Balance]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenAllowanceParser )
+
+    Def.inputTaskDyn {
+      val log = streams.value.log
+      val is = interactionService.value
+      val caller = findAddressSenderTask(warn=false)(config).value.assert
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val ( tokenContractAddress, ownerAddress, allowedAddress ) = parser.parsed
+      val f_out = Erc20.lookupDecimals( tokenContractAddress ).map( d => (Some( d.widen : Int ) : Option[Int]) ) recover { case e : Exception =>
+        None
+      } map { mbDecimals =>
+        _erc20AllowancePrintTask( mbDecimals, tokenContractAddress, ownerAddress, allowedAddress, config )
+      }
+      Await.result( f_out, Duration.Inf )
+    }
+  }
+
+  private def _erc20AllowancePrintTask( mbDecimals : Option[Int], tokenContractAddress : EthAddress, ownerAddress : EthAddress, allowedAddress : EthAddress, config : Configuration ) : Initialize[Task[Erc20.Balance]] = Def.task {
+    val log = streams.value.log
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+
+    implicit val invokerContext = (xethInvokerContext in config).value
+
+    val f_out = Erc20.lookupAllowanceAtoms( tokenContractAddress, ownerAddress, allowedAddress ) map { wrappedAtoms =>
+      val approved = Erc20.Balance( wrappedAtoms.widen, mbDecimals )
+      mbDecimals match {
+        case Some( decimals ) => {
+          log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}, with ${decimals} decimals...")
+          log.info( s"  Of tokens owned by ${verboseAddress( chainId, ownerAddress )})..." )
+          log.info( s"    For use by ${verboseAddress( chainId, allowedAddress )}..." )
+          log.info( s"      An allowance of ${approved.tokens.get} tokens (which corresponds to ${approved.atoms} atoms) has been approved." )
+        }
+        case None => {
+          log.warn( s"Could not read a value for 'decimals' from token contract ${verboseAddress( chainId, tokenContractAddress )}." )
+          log.warn(  "We cannot distinguish convert atoms into standard-denomination token values." )
+          log.info( s"For ERC20 Token Contract ${verboseAddress( chainId, tokenContractAddress )}...")
+          log.info( s"  Of tokens owned by ${verboseAddress( chainId, ownerAddress )})..." )
+          log.info( s"    For use by ${verboseAddress( chainId, allowedAddress )}..." )
+          log.info( s"      An allowance of ${approved.atoms} ATOMS (it is unclear how these should convert to token values) has been approved." )
+        }
+      }
+      approved
+    }
+    Await.result( f_out, Duration.Inf )
+  }
+
+
+
+  /////////////////////////////////
+
 
   // xens task definitions
 
@@ -6012,19 +6260,47 @@ object SbtEthereumPlugin extends AutoPlugin {
     fsender.fold( onFailed )( Some(_) )
   }
 
-  private final object Erc20 {
+  final object Erc20 {
     private val Big10 = BigInt(10)
 
-    private lazy val UInt8Encoder = Encoder.encoderForSolidityType("uint8").get.asInstanceOf[Encoder[BigInt]]
+    private lazy val StringEncoder  = Encoder.UTF8String
+    private lazy val UInt8Encoder   = Encoder.encoderForSolidityType("uint8").get.asInstanceOf[Encoder[BigInt]]
+    private lazy val UInt256Encoder = Encoder.UInt256
 
-    val Abi = shoebox.StandardAbi.Erc20
+    private val DecimalsCallData    = "0x313ce567".decodeHexAsSeq
+    private val NameCallData        = "0x06fdde03".decodeHexAsSeq
+    private val SymbolCallData      = "0x95d89b41".decodeHexAsSeq
+    private val TotalSupplyCallData = "0x18160ddd".decodeHexAsSeq
 
-    private val DecimalsCallData = "0x313ce567".decodeHexAsSeq
+    // some contracts ( probably due to an overzealous linter https://github.com/protofire/solhint/issues/53 )
+    // use ALL-CAPS versions of NAME / SYMBOL / DECIMALS
+    private val DecimalsAllCapsCallData = "0x2e0f2625".decodeHexAsSeq
+    private val NameAllCapsCallData = "0xa3f4df7e".decodeHexAsSeq
+    private val SymbolAllCapsCallData = "0xf76f8d78".decodeHexAsSeq
 
     private lazy val TransferFunction = ethabi.abiFunctionForFunctionNameAndTypes( "transfer", immutable.Seq( "address", "uint" ), Erc20.Abi ).assert
+    private lazy val ApproveFunction = ethabi.abiFunctionForFunctionNameAndTypes( "approve", immutable.Seq( "address", "uint" ), Erc20.Abi ).assert
 
+    private lazy val DecimalsFunction    = ethabi.abiFunctionForFunctionNameAndTypes( "decimals", Nil, Erc20.Abi ).assert
+    private lazy val NameFunction        = ethabi.abiFunctionForFunctionNameAndTypes( "name", Nil, Erc20.Abi ).assert
+    private lazy val SymbolFunction     = ethabi.abiFunctionForFunctionNameAndTypes( "symbol", Nil, Erc20.Abi ).assert
+    private lazy val TotalSupplyFunction = ethabi.abiFunctionForFunctionNameAndTypes( "totalSupply", Nil, Erc20.Abi ).assert
+
+    private lazy val BalanceOfFunction = ethabi.abiFunctionForFunctionNameAndTypes( "balanceOf", immutable.Seq( "address" ), Erc20.Abi ).assert
+
+    private lazy val AllowanceFunction = ethabi.abiFunctionForFunctionNameAndTypes( "allowance", immutable.Seq( "address", "address" ), Erc20.Abi ).assert
+
+
+    private [sbtethereum]
+    val Abi = shoebox.StandardAbi.Erc20
+
+    private [sbtethereum]
     def toValueInAtoms( numTokens : BigDecimal, decimals : Int ) : BigInt = rounded( numTokens * BigDecimal(Big10.pow( decimals )) )
 
+    private [sbtethereum]
+    def toValueInTokens( numAtoms : BigInt, decimals : Int ) : BigDecimal = BigDecimal( numAtoms ) / BigDecimal(Big10.pow( decimals ))
+
+    private [sbtethereum]
     def doTransfer( tokenContractAddress : EthAddress, fromSigner : EthSigner, toAddress : EthAddress, numAtoms : BigInt, forceNonce : Option[Unsigned256] )( implicit ic : Invoker.Context ) : Future[EthHash] = {
       val f_calldata = Future {
         val reps = immutable.Seq( toAddress, numAtoms );
@@ -6033,8 +6309,83 @@ object SbtEthereumPlugin extends AutoPlugin {
       f_calldata.flatMap( calldata => Invoker.transaction.sendMessage( fromSigner, tokenContractAddress, Zero256, calldata, forceNonce ) )( ic.econtext )
     }
 
+    private [sbtethereum]
+    def doApprove( tokenContractAddress : EthAddress, fromSigner : EthSigner, approvedAddress : EthAddress, numAtoms : BigInt, forceNonce : Option[Unsigned256] )( implicit ic : Invoker.Context ) : Future[EthHash] = {
+      val f_calldata = Future {
+        val reps = immutable.Seq( approvedAddress, numAtoms );
+        ethabi.callDataForAbiFunctionFromEncoderRepresentations( reps, ApproveFunction ).assert
+      }( ic.econtext )
+      f_calldata.flatMap( calldata => Invoker.transaction.sendMessage( fromSigner, tokenContractAddress, Zero256, calldata, forceNonce ) )( ic.econtext )
+    }
+
+    private [sbtethereum]
+    def lookupAtomBalance( tokenContractAddress : EthAddress, tokenHolderAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[Unsigned256] = {
+      val f_calldata = Future {
+        val reps = immutable.Seq( tokenHolderAddress );
+        ethabi.callDataForAbiFunctionFromEncoderRepresentations( reps, BalanceOfFunction ).assert
+      }( ic.econtext )
+      f_calldata.flatMap { calldata =>
+        Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, calldata ).map { ret =>
+          val bigint = ethabi.decodeReturnValuesForFunction( ret, BalanceOfFunction ).assert.head.value.asInstanceOf[BigInt]
+          Unsigned256(bigint)
+        }
+      }( ic.econtext )
+    }
+
+    private [sbtethereum]
+    def lookupAllowanceAtoms( tokenContractAddress : EthAddress, ownerAddress : EthAddress, allowedAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[Unsigned256] = {
+      val f_calldata = Future {
+        val reps = immutable.Seq( ownerAddress, allowedAddress );
+        ethabi.callDataForAbiFunctionFromEncoderRepresentations( reps, AllowanceFunction ).assert
+      }( ic.econtext )
+      f_calldata.flatMap { calldata =>
+        Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, calldata ).map { ret =>
+          val bigint = ethabi.decodeReturnValuesForFunction( ret, AllowanceFunction ).assert.head.value.asInstanceOf[BigInt]
+          Unsigned256(bigint)
+        }
+      }( ic.econtext )
+    }
+
+    private [sbtethereum]
     def lookupDecimals( tokenContractAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[Unsigned8] = {
-      Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, DecimalsCallData ).map( ret => Unsigned8(UInt8Encoder.decodeComplete(ret).assert) )( ic.econtext )
+      Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, DecimalsCallData ).recoverWith { case e : Exception => 
+        Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, DecimalsAllCapsCallData )
+      }.map { ret => 
+          val bigint = ethabi.decodeReturnValuesForFunction( ret, DecimalsFunction ).assert.head.value.asInstanceOf[BigInt]
+          Unsigned8(bigint)
+      }( ic.econtext )
+    }
+
+    private [sbtethereum]
+    def lookupName( tokenContractAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[String] = {
+      Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, NameCallData ).recoverWith { case e : Exception => 
+        Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, NameAllCapsCallData )
+      }.map { ret =>
+        val arr = ethabi.decodeReturnValuesForFunction( ret, NameFunction ).assert.head.value.asInstanceOf[immutable.Seq[Byte]].toArray
+        new String( arr, "UTF8" )
+      }( ic.econtext )
+    }
+
+    private [sbtethereum]
+    def lookupSymbol( tokenContractAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[String] = {
+      Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, SymbolCallData ).recoverWith { case e : Exception => 
+        Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, SymbolAllCapsCallData )
+      }.map { ret =>
+        val arr = ethabi.decodeReturnValuesForFunction( ret, SymbolFunction ).assert.head.value.asInstanceOf[immutable.Seq[Byte]].toArray
+        new String( arr, "UTF8" )
+      }( ic.econtext )
+    }
+
+    private [sbtethereum]
+    def lookupTotalSupplyAtoms( tokenContractAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[Unsigned256] = {
+      Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, TotalSupplyCallData ).map { ret =>
+        val bigint = ethabi.decodeReturnValuesForFunction( ret, TotalSupplyFunction ).assert.head.value.asInstanceOf[BigInt]
+        Unsigned256(bigint)
+      }( ic.econtext )
+    }
+
+    case class Balance( atoms : BigInt, decimals : Option[Int] ) {
+      lazy val tokens : Option[BigDecimal] = decimals.map( d => toValueInTokens( atoms, d ) )
     }
   }
 
