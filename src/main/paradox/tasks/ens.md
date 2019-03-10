@@ -164,7 +164,64 @@ Auction started for name 'stochasticism.eth'.
 
 @@@
 
-### ensNameStatusw
+### ensDeedRelease
+
+_**Note: This task is tentatively implemented, but has not yet been tried or tested at all**_
+
+### ensDeedTransfer
+
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ensDeedTransfer <ens-name>.eth <transferee-address-as-hex-or-ens-or-alias>
+```
+
+Transfers ownership of an ENS name's "deed" (and of the ETH deposit it contains) to the transferee address.
+
+This may only be successfully performed by the current owner of the deed.
+
+_**This represents a permanent and irrevocable change of ownership!**_
+
+**Example:**
+```
+> ensDeedTransfer prognosis.eth steve-ens
+[info] Unlocking address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (on chain with ID 1, aliases ['default-sender','testing0'])
+Enter passphrase or hex private key for address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4': *******************
+[info] V3 wallet(s) found for '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (aliases ['default-sender','testing0'])
+[warn] This will permanently transfer the deed associated with 'prognosis.eth', and any deplosit paid to secure that deed, to '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (with aliases ['steve-ens'] on chain with ID 1).
+Are you sure you want to do this? [y/n] y
+
+==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T
+==>
+==> The transaction would be a message with...
+==>   To:    0x6090a6e47849629b7245dfa1ca21d94cd15878ef (with aliases ['ens-resolver'] on chain with ID 1)
+==>   From:  0x465e79b940bc2157e4259ff6b2d92f454497f1e4 (with aliases ['default-sender','testing0'] on chain with ID 1)
+==>   Data:  0x79ce9facd1a772c558431b7036eaf21a1e0a79d8d43d3b59e323305d2e5b06f32c6c8c88000000000000000000000000f0ed4a1ade1f4bbcc875275a9480c387dcdb185c
+==>   Value: 0 Ether
+==>
+==> The transaction is signed with Chain ID 1 (which correctly matches the current session's 'ethNodeChainId').
+==>
+==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
+==>   Function called: transfer(bytes32,address)
+==>     Arg 1 [name=_hash, type=bytes32]: 0xd1a772c558431b7036eaf21a1e0a79d8d43d3b59e323305d2e5b06f32c6c8c88
+==>     Arg 2 [name=newOwner, type=address]: 0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c
+==>
+==> The nonce of the transaction would be 371.
+==>
+==> $$$ The transaction you have requested could use up to 67561 units of gas.
+==> $$$ You would pay 2 gwei for each unit of gas, for a maximum cost of 0.000135122 ether.
+==> $$$ This is worth 0.018146208990 USD (according to Coinbase at 12:06 AM).
+
+Would you like to submit this transaction? [y/n] y
+A transaction with hash '0x2e577ed585af32b60c6a0b8ea1ff0a434b0f7e49ee9d1cc30fe9d3e8422dfe65' will be submitted. Please wait.
+[info] The deed for 'prognosis.eth' has been permanently transferred to '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (with aliases ['steve-ens'] on chain with ID 1).
+[success] Total time: 87 s, completed Mar 10, 2019 12:08:07 AM
+```
+
+@@@
+
+### ensNameStatus
 
 @@@ div { .keydesc}
 

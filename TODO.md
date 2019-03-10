@@ -19,6 +19,8 @@ DB schema updates
 
 Other
 
+* Generated stubs should permit some way of defining a nonce override
+
 * let repositories suggest ABIs <--> addresses <--> aliases ???
 
 * Tool to derive linearization from AST

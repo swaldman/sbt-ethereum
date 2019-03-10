@@ -322,6 +322,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensAuctionBidList   = taskKey[Unit]               ("Places a bid in an currently running auction.")
     val ensAuctionBidPlace  = inputKey[Unit]              ("Places a bid in an currently running auction.")
     val ensAuctionBidReveal = inputKey[Unit]              ("Reveals a bid in an currently running auction.")
+    val ensDeedRelease      = inputKey[Unit]              ("Permanently releases ownership of a name, and requests that the deposit that secured it be returned.")
+    val ensDeedTransfer     = inputKey[Unit]              ("Permanently transfers ownership of a name, along with the Deed and deposit, associated with a name.")
     val ensNameStatus       = inputKey[ens.NameStatus]    ("Prints the current status of a given name.")
     val ensOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the name has an owner.")
     val ensOwnerSet         = inputKey[Unit]              ("Sets the owner of a given name to an address.")
@@ -663,6 +665,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensAuctionStart in Compile := { ensAuctionStartTask( Compile ).evaluated },
 
     ensAuctionStart in Test := { ensAuctionStartTask( Test ).evaluated },
+
+    ensDeedRelease in Compile := { ensDeedReleaseTask( Compile ).evaluated },
+
+    ensDeedRelease in Test := { ensDeedReleaseTask( Test ).evaluated },
+
+    ensDeedTransfer in Compile := { ensDeedTransferTask( Compile ).evaluated },
+
+    ensDeedTransfer in Test := { ensDeedTransferTask( Test ).evaluated },
 
     ensNameStatus in Compile := { ensNameStatusTask( Compile ).evaluated },
 
@@ -1686,6 +1696,46 @@ object SbtEthereumPlugin extends AutoPlugin {
         ensClient.startAuction( privateKey, name )
         println( s"Auction started for name '${name}'." )
       }
+    }
+  }
+
+  private def ensDeedReleaseTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsNameParser )
+
+    Def.inputTask {
+      val log        = streams.value.log
+      val is         = interactionService.value
+      val privateKey = findPrivateKeyTask( config ).value
+      val chainId    = findNodeChainIdTask(warn=true)(config).value
+      val ensClient  = ( config / xensClient).value
+      val ensName    = parser.parsed
+      log.warn( s"This will permanently release the deed associated with '${ensName}', revoking the caller's ownership of the name.")
+
+      val check = queryYN( is, "Are you sure you want to do this? [y/n] " )
+      if (!check) aborted( "User decided not to permenantly release the deed." )
+
+      ensClient.releaseDeed( privateKey, ensName )
+      log.info( s"The deed for '${ensName}' has been permanently released." )
+    }
+  }
+
+  private def ensDeedTransferTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsNameTransfereeAddressParser )
+
+    Def.inputTask {
+      val log        = streams.value.log
+      val is         = interactionService.value
+      val privateKey = findPrivateKeyTask( config ).value
+      val chainId    = findNodeChainIdTask(warn=true)(config).value
+      val ensClient  = ( config / xensClient).value
+      val ( ensName, transfereeAddress ) = parser.parsed
+      log.warn( s"This will permanently transfer the deed associated with '${ensName}', and any deplosit paid to secure that deed, to ${verboseAddress(chainId, transfereeAddress)}.")
+
+      val check = queryYN( is, "Are you sure you want to do this? [y/n] " )
+      if (!check) aborted( "User decided not to permenantly transfer the deed." )
+
+      ensClient.transferDeed( privateKey, transfereeAddress, ensName )
+      log.info( s"The deed for '${ensName}' has been permanently transferred to ${verboseAddress(chainId, transfereeAddress)}." )
     }
   }
 

@@ -183,6 +183,15 @@ object Parsers {
     token( ID ~ (literal(".") ~> rawEnsNameParser( tld ) ) ).examples( s"<full-subnode-ens-name>.${tld}" )
   }
 
+  private [sbtethereum] def genEnsNameParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[String] = {
+    mbRpi.map { rpi =>
+      token( Space.* ) ~> ensNameParser( rpi.nameServiceTld )
+    }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
+  }
+
   private [sbtethereum] def genEnsSubnodeParser(
     state : State,
     mbRpi : Option[RichParserInfo]
@@ -364,6 +373,10 @@ object Parsers {
 
   private [sbtethereum] def genEnsNameResolverAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
     _genEnsNameXxxAddressParser("<resolver-address-hex>")( state, mbRpi )
+  }
+
+  private [sbtethereum] def genEnsNameTransfereeAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
+    _genEnsNameXxxAddressParser("<transferee-address-hex>")( state, mbRpi )
   }
 
   private def _genEnsNameXxxAddressParser( example : String )( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {

@@ -38,6 +38,9 @@ Source code for _sbt-ethereum_, along with several related projects, is hosted o
    
 @@@
 
+### Acknowledgements
+
+Many thanks to Michal Slinn, who produced an excellent [earlier iteration of _sbt-ethereum_ documentation](https://mslinn.gitbooks.io/sbt-ethereum/content/).
 
 
 
