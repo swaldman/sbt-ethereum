@@ -173,6 +173,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     out
   }
 
+  private def unwrapNonceOverrideBigInt( mbLog : Option[sbt.Logger], chainId : Int ) : Option[BigInt] = {
+    val out = Mutables.NonceOverrides.get( chainId )
+    out.foreach { noverride =>
+      mbLog.foreach { log =>
+        log.info( s"Nonce override set: ${noverride}" )
+      }
+    }
+    out
+  }
+
   private def abiOverridesForChain( chainId : Int ) : immutable.Map[EthAddress,Abi] = {
     Mutables.AbiOverrides.get( chainId ).getOrElse( immutable.Map.empty[EthAddress,Abi] )
   }
@@ -1490,21 +1500,27 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsNameAddressParser )
 
     Def.inputTask {
-      val log               = streams.value.log
-      val privateKey        = findPrivateKeyTask( config ).value
-      val chainId           = findNodeChainIdTask(warn=true)(config).value
-      val ensClient         = ( config / xensClient).value
-      val is                = interactionService.value
-      val mbDefaultResolver = ( config / enscfgNameServicePublicResolver).?.value
+      val log                  = streams.value.log
+      val privateKey           = findPrivateKeyTask( config ).value
+      val chainId              = findNodeChainIdTask(warn=true)(config).value
+      val ensClient            = ( config / xensClient).value
+      val is                   = interactionService.value
+      val mbDefaultResolver    = ( config / enscfgNameServicePublicResolver).?.value
       val ( ensName, address ) = parser.parsed
+      val nonceOverride        = unwrapNonceOverrideBigInt( Some( log ), chainId )
+      
       try {
-        ensClient.setAddress( privateKey, ensName, address )
+        ensClient.setAddress( privateKey, ensName, address, forceNonce = nonceOverride )
       }
       catch {
         case e : ens.NoResolverSetException => {
           val defaultResolver = mbDefaultResolver.getOrElse( throw e )
           val setAndRetry = {
-            is.readLine( s"No resolver has been set for '${ensName}'. Do you wish to use the default public resolver '${hexString(defaultResolver)}'? [y/n] ", false )
+            log.warn( s"No resolver has been set for '${ensName}'. If you wish, you can attach it to the default public resolver and then set the address." )
+            nonceOverride.foreach { nonce =>
+              log.warn( s"Note: The currently set nonce override of ${nonce} will be ignored. To control the nonce, set the resolver separately, then retry." )
+            }
+            is.readLine( s"Do you wish to use the default public resolver '${hexString(defaultResolver)}'? [y/n] ", false )
               .getOrElse( throwCantReadInteraction )
               .trim()
               .equalsIgnoreCase("y")
@@ -1574,6 +1590,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val ensClient = ( config / xensClient ).value
     val privateKey = findPrivateKeyTask( config ).value
+    val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
 
     implicit val bidStore = shoebox.Database.ensBidStore( chainId, ensClient.tld, ensClient.nameServiceAddress )
 
@@ -1590,8 +1607,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val ( bid, transactionInfo ) = {
         mbOverpaymentInWei match {
-          case Some( overpaymentInWei ) => ensClient.placeNewBid( privateKey, name, valueInWei, overpaymentInWei )
-          case None                     => ensClient.placeNewBid( privateKey, name, valueInWei )
+          case Some( overpaymentInWei ) => ensClient.placeNewBid( privateKey, name, valueInWei, overpaymentInWei, forceNonce = nonceOverride )
+          case None                     => ensClient.placeNewBid( privateKey, name, valueInWei, forceNonce = nonceOverride )
         }
       }
 
@@ -1620,15 +1637,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     val tld = ensClient.tld
     val ensAddress = ensClient.nameServiceAddress
     val is = interactionService.value
+    val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
 
     implicit val bidStore = shoebox.Database.ensBidStore( chainId, tld, ensAddress )
 
-    def revealBidForHash( hash : EthHash ) : Unit = {
-      try { ensClient.revealBid( privateKey, hash, force=false ) }
+    def revealBidForHash( hash : EthHash, nov : Option[BigInt] = None ) : Unit = {
+      try { ensClient.revealBidByHash( privateKey, hash, force=false, forceNonce = nov ) }
       catch {
         case e : ens.EnsException => {
           log.info( s"Initial attempt to reveal bid failed: ${e}. Retrying with 'force' flag set." )
-          ensClient.revealBid( privateKey, hash, force=true )
+          ensClient.revealBidByHash( privateKey, hash, force=true, forceNonce = nov )
         }
       }
     }
@@ -1637,7 +1655,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     hashOrName match {
       case Left( hash ) => {
-        revealBidForHash( hash )
+        revealBidForHash( hash, nonceOverride )
         log.info( s"Bid with hash 0x${hash.hex} was successfully revealed." )
       }
       case Right( name ) => {
@@ -1648,7 +1666,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           case 0 => println( s"No bids were found to reveal with name '${name}' from address 0x${bidderAddress.hex}." )
           case 1 => {
             val ( bid, _ ) = bidBidStates.head
-            revealBidForHash( bid.bidHash )
+            revealBidForHash( bid.bidHash, nonceOverride )
             log.info( s"Bid with name '${name}' was successfully revealed." )
           }
           case _ => {
@@ -1656,6 +1674,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             bidBidStates.foreach { case ( bid, bidState ) =>
               log.warn( s"  Bid Hash: 0x${bid.bidHash.hex}, Bid State: ${bidState}" )
             }
+            nonceOverride.foreach( nonce => log.warn( s"The currently set nonce override (${nonce}) will be ignored if you attempt to reveal multiple bids." ) )
             val revealAll = is.readLine(s"Reveal all bids? ", mask = false).getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get an answer
             revealAll.toUpperCase match {
               case "Y"| "YES" => {
@@ -1676,24 +1695,30 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ensAuctionFinalizeTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
-    val privateKey = findPrivateKeyTask( config ).value
-    val name       = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
-    val ensClient  = ( config / xensClient).value
-    ensClient.finalizeAuction( privateKey, name )
+    val log           = streams.value.log
+    val privateKey    = findPrivateKeyTask( config ).value
+    val name          = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
+    val ensClient     = ( config / xensClient).value
+    val chainId       = findNodeChainIdTask(warn=true)(config).value
+    val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+    ensClient.finalizeAuction( privateKey, name, forceNonce = nonceOverride )
   }
 
   private def ensAuctionStartTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
+    val log                       = streams.value.log
     val privateKey                = findPrivateKeyTask( config ).value
     val ( name, mbNumDiversions ) = ensNameNumDiversionParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
     val ensClient                 = ( config / xensClient).value
+    val chainId                   = findNodeChainIdTask(warn=true)(config).value
+    val nonceOverride             = unwrapNonceOverrideBigInt( Some( log ), chainId )
 
     mbNumDiversions match {
       case Some( numDiversions ) => {
-        ensClient.startAuction( privateKey, name, numDiversions )
+        ensClient.startAuction( privateKey, name, numDiversions, forceNonce = nonceOverride )
         println( s"Auction started for name '${name}', along with ${numDiversions} diversion auctions." )
       }
       case None => {
-        ensClient.startAuction( privateKey, name )
+        ensClient.startAuction( privateKey, name, forceNonce = nonceOverride )
         println( s"Auction started for name '${name}'." )
       }
     }
@@ -1703,18 +1728,20 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsNameParser )
 
     Def.inputTask {
-      val log        = streams.value.log
-      val is         = interactionService.value
-      val privateKey = findPrivateKeyTask( config ).value
-      val chainId    = findNodeChainIdTask(warn=true)(config).value
-      val ensClient  = ( config / xensClient).value
-      val ensName    = parser.parsed
+      val log           = streams.value.log
+      val is            = interactionService.value
+      val privateKey    = findPrivateKeyTask( config ).value
+      val chainId       = findNodeChainIdTask(warn=true)(config).value
+      val ensClient     = ( config / xensClient).value
+      val ensName       = parser.parsed
+      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+
       log.warn( s"This will permanently release the deed associated with '${ensName}', revoking the caller's ownership of the name.")
 
       val check = queryYN( is, "Are you sure you want to do this? [y/n] " )
       if (!check) aborted( "User decided not to permenantly release the deed." )
 
-      ensClient.releaseDeed( privateKey, ensName )
+      ensClient.releaseDeed( privateKey, ensName, forceNonce = nonceOverride )
       log.info( s"The deed for '${ensName}' has been permanently released." )
     }
   }
@@ -1723,18 +1750,21 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsNameTransfereeAddressParser )
 
     Def.inputTask {
-      val log        = streams.value.log
-      val is         = interactionService.value
-      val privateKey = findPrivateKeyTask( config ).value
-      val chainId    = findNodeChainIdTask(warn=true)(config).value
-      val ensClient  = ( config / xensClient).value
+      val log           = streams.value.log
+      val is            = interactionService.value
+      val privateKey    = findPrivateKeyTask( config ).value
+      val chainId       = findNodeChainIdTask(warn=true)(config).value
+      val ensClient     = ( config / xensClient).value
+      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+
       val ( ensName, transfereeAddress ) = parser.parsed
+
       log.warn( s"This will permanently transfer the deed associated with '${ensName}', and any deplosit paid to secure that deed, to ${verboseAddress(chainId, transfereeAddress)}.")
 
       val check = queryYN( is, "Are you sure you want to do this? [y/n] " )
       if (!check) aborted( "User decided not to permenantly transfer the deed." )
 
-      ensClient.transferDeed( privateKey, transfereeAddress, ensName )
+      ensClient.transferDeed( privateKey, transfereeAddress, ensName, forceNonce = nonceOverride )
       log.info( s"The deed for '${ensName}' has been permanently transferred to ${verboseAddress(chainId, transfereeAddress)}." )
     }
   }
@@ -1790,12 +1820,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsNameOwnerAddressParser )
 
     Def.inputTask {
-      val log        = streams.value.log
-      val privateKey = findPrivateKeyTask( config ).value
-      val chainId    = findNodeChainIdTask(warn=true)(config).value
-      val ensClient  = ( config / xensClient).value
+      val log           = streams.value.log
+      val privateKey    = findPrivateKeyTask( config ).value
+      val chainId       = findNodeChainIdTask(warn=true)(config).value
+      val ensClient     = ( config / xensClient).value
+      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
       val ( ensName, ownerAddress ) = parser.parsed
-      ensClient.setOwner( privateKey, ensName, ownerAddress )
+      ensClient.setOwner( privateKey, ensName, ownerAddress, forceNonce = nonceOverride )
       log.info( s"The name '${ensName}' is now owned by ${verboseAddress(chainId, ownerAddress)}. (However, this has not affected the Deed owner associated with the name!)" )
     }
   }
@@ -1818,12 +1849,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsNameResolverAddressParser )
 
     Def.inputTask {
-      val log        = streams.value.log
-      val privateKey = findPrivateKeyTask( config ).value
-      val chainId    = findNodeChainIdTask(warn=true)(config).value
-      val ensClient  = ( config / xensClient).value
+      val log            = streams.value.log
+      val privateKey    = findPrivateKeyTask( config ).value
+      val chainId       = findNodeChainIdTask(warn=true)(config).value
+      val ensClient     = ( config / xensClient).value
+      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
       val ( ensName, resolverAddress ) = parser.parsed
-      ensClient.setResolver( privateKey, ensName, resolverAddress )
+      ensClient.setResolver( privateKey, ensName, resolverAddress, forceNonce = nonceOverride )
       log.info( s"The name '${ensName}' is now set to be resolved by a contract at ${verboseAddress(chainId, resolverAddress)}." )
     }
   }
@@ -1842,12 +1874,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsSubnodeOwnerSetParser )
 
     Def.inputTask {
-      val log        = streams.value.log
-      val privateKey = findPrivateKeyTask( config ).value
-      val chainId    = findNodeChainIdTask(warn=true)(config).value
-      val ensClient  = ( config / xensClient).value
+      val log           = streams.value.log
+      val privateKey    = findPrivateKeyTask( config ).value
+      val chainId       = findNodeChainIdTask(warn=true)(config).value
+      val ensClient     = ( config / xensClient).value
+      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
       val ( subname, parentName, newOwnerAddress) = parser.parsed
-      ensClient.setSubnodeOwner( privateKey, parentName, subname, newOwnerAddress )
+      ensClient.setSubnodeOwner( privateKey, parentName, subname, newOwnerAddress, forceNonce = nonceOverride )
       log.info( s"The name '${subname}.${parentName}' now exists, with owner ${verboseAddress(chainId, newOwnerAddress)}." )
     }
   }

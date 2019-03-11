@@ -19,7 +19,14 @@ DB schema updates
 
 Other
 
+* object prepare in stubs, that with functions that yield unsigned transactions
+
+* ensUnsigned*
+
 * Generated stubs should permit some way of defining a nonce override
+
+* Stub generation is going to fail on contracts with overloaded methods, due to the fact that paymentInWei and forceNonce use default arguments.
+  Fix that by eliminating the defaults and overloading the methods.
 
 * let repositories suggest ABIs <--> addresses <--> aliases ???
 
