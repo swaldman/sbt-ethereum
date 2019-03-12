@@ -29,7 +29,6 @@ name [my-solidity-project]: eth-timelock
 version [0.0.1-SNAPSHOT]: 
 sbt_ethereum_version [0.1.7-SNAPSHOT]: 
 sbt_version [1.2.8]: 
-chain_id [1]: 
 
 Template applied in ./eth-timelock
 ```
@@ -184,7 +183,7 @@ Our contract is deployed! We can take a look in [_Etherscan_](http://www.ethersc
 @@@
 
 
-### Testing the contract
+### Trying out the contract
 
 Quickly, quickly, within the 10 minute delay, let's try to see what happens if we attempt an "early withdrawal". Let's
 try the command `ethTransactionMock`, which asks our _Ethereum_ node to simulate, but does not actually, permanently, execute a transaction.

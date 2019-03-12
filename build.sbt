@@ -2,6 +2,7 @@ val nexus = "https://oss.sonatype.org/"
 val nexusSnapshots = nexus + "content/repositories/snapshots"
 val nexusReleases = nexus + "service/local/staging/deploy/maven2"
 
+val consuelaApiBase = settingKey[String]("Base of consuela API docs")
 val updateSite = taskKey[Unit]("Updates the project website on tickle")
 
 ThisBuild / organization := "com.mchange"
@@ -42,6 +43,11 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   sourceGenerators in Compile += generateBuildInfoSourceGeneratorTask,
   paradoxTheme := None,
   paradoxNavigationDepth := 3,
+  consuelaApiBase := {
+    val cVersion = consuelaArtifact.revision
+    s"https://www.mchange.com/projects/consuela/version/${cVersion}/apidocs"
+  },
+  paradoxProperties += ("scaladoc.com.mchange.sc.v1.consuela.base_url" -> consuelaApiBase.value),
   updateSite := {
     import scala.sys.process._
 
