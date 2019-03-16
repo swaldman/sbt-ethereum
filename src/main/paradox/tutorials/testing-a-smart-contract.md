@@ -2,7 +2,7 @@
 
 ### Basic approach
 
-We'll write some simple tests of the smart contract we developed in the @ref:[prior tutoria](creating-a-smart-contract.md).
+We'll write some simple tests of the smart contract we developed in the @ref:[prior tutorial](creating-a-smart-contract.md).
 We will be working in the same `eth-timelock` repository that we created in that tutorial.
 
 Our tests will be written in Scala, and our testing environment will be [ganache](https://truffleframework.com/ganache).
@@ -12,7 +12,7 @@ The command `ganache-cli` must be available on the command line for the tests to
 
 This is an **advanced tutorial**.
 
-In order to understand this tutorial, you'll really need to have some understanding of [Scala](https://www.scala-lang.org).
+In order to really follow this tutorial, you'll really need to have some understanding of [Scala](https://www.scala-lang.org).
 It'll still be a bit weird.
 
 Also, if you want to try this out, you'll have to download and install [ganache](https://truffleframework.com/ganache)
