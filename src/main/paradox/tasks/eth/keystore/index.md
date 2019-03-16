@@ -1,6 +1,6 @@
 # ethKeystore*
 
-_sbt-ethereum_ tasks related to managing keys and wallets of addresses for which this installation of _sbt-ethereum_ may originate transactions.
+_sbt-ethereum_ tasks related to managing keys and wallets of addresses from which this installation of _sbt-ethereum_ may originate transactions.
 
 ### ethKeystoreList
 
@@ -96,6 +96,8 @@ V3 Wallet JSON: {"address":"d78fe1d978ad8cc5a94484725d059bec694f215e","crypto":{
 [info] Consider validating the JSON using 'ethKeystoreWalletV3Validate 0xd78fe1d978ad8cc5a94484725d059bec694f215e'.
 [success] Total time: 3 s, completed Mar 16, 2019 12:35:14 AM
 ```
+
+@@@
 
 ### ethKeystoreWalletV3FromPrivateKeyImport
 
