@@ -2042,10 +2042,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       val result           = doPrintingGetBalance( exchangerConfig, log, timeout, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
       val ethValue         = result.denominated
 
-      priceFeed.ethPriceInCurrency( chainId, baseCurrencyCode ).foreach { datum =>
-        val value = ethValue * datum.price
-        val roundedValue = value.setScale(2, BigDecimal.RoundingMode.HALF_UP )
-        println( s"This corresponds to approximately ${roundedValue} ${baseCurrencyCode} (at a rate of ${datum.price} ${baseCurrencyCode} per ETH, retrieved at ${ formatTime( datum.timestamp ) } from ${priceFeed.source})" )
+      priceFeed.ethPriceInCurrency( chainId, baseCurrencyCode ) match {
+        case Some( datum ) => {
+          val value = ethValue * datum.price
+          val roundedValue = value.setScale(2, BigDecimal.RoundingMode.HALF_UP )
+          println( s"This corresponds to approximately ${roundedValue} ${baseCurrencyCode} (at a rate of ${datum.price} ${baseCurrencyCode} per ETH, retrieved at ${ formatTime( datum.timestamp ) } from ${priceFeed.source})" )
+        }
+        case None => {
+          println( s"(The ${baseCurrencyCode} value of this is unknown, no exchange value is currently available for chain with ID ${chainId} from ${priceFeed.source}.)" )
+        }
       }
 
       ethValue
@@ -3965,21 +3970,26 @@ object SbtEthereumPlugin extends AutoPlugin {
               Right( receipt )
             }
             case Failure( t ) => {
+              def logFailedAbi() = {
+                log.warn(  "Contract ABI For Incomplete or Failed Deployment" )
+                log.warn(  "================================================" )
+                log.warn( Json.stringify( Json.toJson( abi ) ) )
+              }
               t match {
                 case timeout : Poller.TimeoutException => {
                   log.warn( s"Timeout after ${invokerContext.pollTimeout}!!! -- ${timeout}" )
+                  log.warn( s"Failed to retrieve a transaction receipt for the creation of contract '${deploymentAlias}'!" )
+                  log.warn(  "The contract may have been created, but without a receipt, the compilation and ABI could not be associated with an address.")
+                  log.warn( s"You may wish to check sender adddress '0x${sender.hex}' in a blockchain explorer (e.g. etherscan), and manually associate the ABI with the address of the transaction succeeded." )
+                  logFailedAbi()
                 }
                 case whatev => {
-                  log.warn( whatev.toString )
+                  log.warn( s"Deployment of '${deploymentAlias}' did not succeed!" )
+                  logFailedAbi()
+                  log.warn( s"Failure: ${whatev.toString}" )
                   whatev.printStackTrace()
                 }
               }
-              log.warn( s"Failed to retrieve a transaction receipt for the creation of contract '${deploymentAlias}'!" )
-              log.warn(  "The contract may have been created, but without a receipt, the compilation and ABI could not be associated with an address.")
-              log.warn( s"You may wish to check sender adddress '0x${sender.hex}' in a blockchain explorer (e.g. etherscan), and manually associate the ABI with the address of the transaction succeeded." )
-              log.warn(  "Contract ABI" )
-              log.warn(  "============" )
-              log.warn( Json.stringify( Json.toJson( abi ) ) )
               Left( Await.result( f_txnHash, Duration.Inf ) ) // given prior await, should return immediately or else throw the unexpected Exception
             }
           }
@@ -6265,7 +6275,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           sb.append( s"==> $$$$$$ This is worth ${ gasCostInEth * ethPrice } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
         }
         case None => {
-          /* ignore */
+          sb.append( s"==> $$$$$$ (No ${currencyCode} value could be determined for ETH on chain with ID ${chainId} from ${priceFeed.source})." )
         }
       }
       sb.toString

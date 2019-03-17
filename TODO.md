@@ -23,11 +23,6 @@ Other
 
 * ensUnsigned*
 
-* Generated stubs should permit some way of defining a nonce override
-
-* Stub generation is going to fail on contracts with overloaded methods, due to the fact that paymentInWei and forceNonce use default arguments.
-  Fix that by eliminating the defaults and overloading the methods.
-
 * let repositories suggest ABIs <--> addresses <--> aliases ???
 
 * Tool to derive linearization from AST
@@ -54,8 +49,6 @@ Other
 * Maybe remove stack trace from jsonrpc.Invoker$TransactionDisapprovedExceptions generated from the transaction approver function?
 
 * The parser for ethTransactionDeploy should handle aliases / ens-names etc when ctor args are addresses
-
-* make price feeds sensitive to chainId
 
 * better formatting of currency amounts (fewer decimals)
 
