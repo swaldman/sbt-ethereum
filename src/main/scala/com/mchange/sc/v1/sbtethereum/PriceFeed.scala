@@ -50,9 +50,16 @@ object PriceFeed {
 
     private val scheduled = scheduler.scheduleWithFixedDelay( () => updateEthPrices(), 0.seconds, updatePeriod )
 
-    override def ethPriceInCurrency( currencyCode : String, forceRefresh : Boolean = false ) : Option[Datum] = this.synchronized {
-      if (forceRefresh) updateEthPrice( currencyCode )
-      cachedEthPrices.get( currencyCode )
+    override def ethPriceInCurrency( chainId : Int, currencyCode : String, forceRefresh : Boolean = false ) : Option[Datum] = {
+      if ( chainId == 1 ) { // Coinbase ETH prices are mainnet only
+        this.synchronized {
+          if (forceRefresh) updateEthPrice( currencyCode )
+          cachedEthPrices.get( currencyCode )
+        }
+      }
+      else {
+        None
+      }
     }
 
     val source = "Coinbase"
@@ -67,8 +74,8 @@ object PriceFeed {
   }
 }
 trait PriceFeed {
-  def ethPriceInCurrency( currencyCode : String, forceRefresh : Boolean = false ) : Option[PriceFeed.Datum] = None
-  def tokenPriceInCurrency( tokenSymbol : String, tokenAddress : EthAddress, currencyCode : String, forceRefresh : Boolean = false ) : Option[PriceFeed.Datum] = None
+  def ethPriceInCurrency( chainId : Int, currencyCode : String, forceRefresh : Boolean = false ) : Option[PriceFeed.Datum] = None
+  def tokenPriceInCurrency( chainId : Int, tokenSymbol : String, tokenAddress : EthAddress, currencyCode : String, forceRefresh : Boolean = false ) : Option[PriceFeed.Datum] = None
   def source : String
   def close() : Unit
 }

@@ -2029,6 +2029,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+      
       val jsonRpcUrl       = findNodeUrlTask(warn=true)(config).value
       val timeout          = xethcfgAsyncOperationTimeout.value
       val baseCurrencyCode = ethcfgBaseCurrencyCode.value
@@ -2040,7 +2042,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val result           = doPrintingGetBalance( exchangerConfig, log, timeout, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
       val ethValue         = result.denominated
 
-      priceFeed.ethPriceInCurrency( baseCurrencyCode ).foreach { datum =>
+      priceFeed.ethPriceInCurrency( chainId, baseCurrencyCode ).foreach { datum =>
         val value = ethValue * datum.price
         val roundedValue = value.setScale(2, BigDecimal.RoundingMode.HALF_UP )
         println( s"This corresponds to approximately ${roundedValue} ${baseCurrencyCode} (at a rate of ${datum.price} ${baseCurrencyCode} per ETH, retrieved at ${ formatTime( datum.timestamp ) } from ${priceFeed.source})" )
@@ -6250,7 +6252,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     println( s"==> $$$$$$ The transaction you have requested could use up to ${gasLimit} units of gas." )
 
-    val mbEthPrice = priceFeed.ethPriceInCurrency( currencyCode, forceRefresh = true )
+    val mbEthPrice = priceFeed.ethPriceInCurrency( chainId, currencyCode, forceRefresh = true )
 
     val gweiPerGas = Denominations.GWei.fromWei(gasPrice)
     val gasCostInWei = gasLimit * gasPrice
