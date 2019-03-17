@@ -1773,6 +1773,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ensNameStatusTask( config : Configuration ) : Initialize[InputTask[ens.NameStatus]] = Def.inputTask {
     import ens.NameStatus._
 
+    val chainId   = findNodeChainIdTask(warn=true)(config).value
     val ensClient = ( config / xensClient).value
     val name      = ensNameParser( (config / enscfgNameServiceTld).value ).parsed // see https://github.com/sbt/sbt/issues/1993
     val status    = ensClient.nameStatus( name )
@@ -1793,7 +1794,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       case Owned => {
         ensClient.owner( name ) match {
-          case Some( address ) => println( s"The owner is '0x${address.hex}'." )
+          case Some( address ) => println( s"The owner is ${verboseAddress( chainId, address )}." )
           case None            => println(  "However, the completed auction has not yet been finalized, so no owner is set." )
         }
       }
