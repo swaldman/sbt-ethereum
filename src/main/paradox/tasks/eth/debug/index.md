@@ -3,6 +3,7 @@
 _sbt-ethereum_ tasks and commands related to debugging and testing _Ethereum_ smart contract applications.
 
 Many of these commands have to do with managing a [Ganache](https://truffleframework.com/ganache) process as a test environment.
+
 _These commands will only work if the command `ganache-cli` is preinstalled and available in the executable `PATH` of the `sbt` process!_
 
 Usually to test a project, you will define the set of smart contracts to be deployed with @ref:[`Test / ethcfgAutoDeployContracts`](../../../settings/index.md#ethcfgautodeploycontracts),

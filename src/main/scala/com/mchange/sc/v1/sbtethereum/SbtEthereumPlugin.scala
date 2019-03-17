@@ -1702,6 +1702,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId       = findNodeChainIdTask(warn=true)(config).value
     val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
     ensClient.finalizeAuction( privateKey, name, forceNonce = nonceOverride )
+    println( s"Auction for name '${name}' successfully finalized." )
   }
 
   private def ensAuctionStartTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
