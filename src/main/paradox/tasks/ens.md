@@ -82,6 +82,27 @@ This is a shorthand for @ref:[`ensAuctionBidPlace`](#ensauctionbidplace). Please
 
 ### ensAuctionBidList
 
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ensAuctionBidList
+```
+Lists the bids placed and retained in the _sbt-ethereum_ "shoebox" database, and information about the bids' status.
+
+**Example:**
+```
+> ensAuctionBidList
++--------------------------------------------------------------------+-------------+--------------------------------------------+------+--------------------------------------------------------------------+---------------------------------+----------+----------+---------+
+| Bid Hash                                                           | Simple Name | Bidder Address                             | ETH  | Salt                                                               | Timestamp                       | Accepted | Revealed | Removed |
++--------------------------------------------------------------------+-------------+--------------------------------------------+------+--------------------------------------------------------------------+---------------------------------+----------+----------+---------+
+| 0xc07b92e38cea6a00c7d38bd2fbdae25c4da4f299ab799abde93e2652a1cb3772 | octopodes   | 0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2 | 0.01 | 0x30d1107839513e31ba0bfe2001d7a796fdbdd012544e9f198f45daf9ff44ec48 | Sat, 16 Mar 2019 23:21:02 -0700 | true     | false    | false   |
++--------------------------------------------------------------------+-------------+--------------------------------------------+------+--------------------------------------------------------------------+---------------------------------+----------+----------+---------+
+[success] Total time: 0 s, completed Mar 16, 2019 11:22:05 PM
+```
+
+@@@
+
 ### ensAuctionBidPlace
 
 @@@ div { .keydesc}
@@ -229,7 +250,16 @@ Auction started for name 'stochasticism.eth'.
 
 ### ensDeedRelease
 
-_**Note: This task is tentatively implemented, but has not yet been tried or tested at all**_
+**Usage:**
+```
+> ensDeedRelease <ens-name>.eth
+```
+
+Releases the deed that is the ultimate authority of ownership of an auction-allocated ENS name.
+
+The deed can only be released by the current deed owner, and cannot be released until at least a year has passed since the name's auction.
+
+_**This task is tentatively implemented, but has not yet been tried or tested at all**_
 
 ### ensDeedTransfer
 
