@@ -9,7 +9,7 @@ import com.mchange.sc.v1.consuela.ethereum._
 import ethabi._
 import jsonrpc.{Abi,Compilation,Client}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
-import specification.Types.Unsigned256
+import specification.Types.{ByteSeqExact32,Unsigned256}
 import scala.collection._
 import scala.concurrent.duration.Duration
 import scala.util.control.NonFatal
@@ -128,6 +128,47 @@ package object sbtethereum {
       f_seq_events.get
     }
 
+    def indentedData( data : immutable.Seq[Byte], indent : Int ) : String = {
+      val prespaces = " " * indent
+
+      data.grouped(32).map( rowBytes => s"${prespaces}${rowBytes.hex}" ).mkString(s"${LineSep}")
+    }
+
+    def indentedLog( num : Int, log : EthLogEntry, indent : Int ) : String = {
+      val prespaces = " " * indent
+
+      val sb = new StringBuilder()
+      sb.append( prespaces + s"${num} => EthLogEntry(${LineSep}" )
+      sb.append( prespaces + s"            address=${hexString(log.address)},${LineSep}" )
+      sb.append( prespaces + s"            topics=[${LineSep}" )
+
+      def appendTopic( topic : EthLogEntry.Topic, last : Boolean ) = sb.append( prespaces +  s"""              ${hexString(topic)}${if (!last) "," else ""}${LineSep}""" )
+
+      val len = log.topics.length
+      (0 until len).foreach { index =>
+        appendTopic( log.topics(index), index == len - 1 )
+      }
+
+      sb.append( prespaces + s"            ],${LineSep}" )
+      sb.append( prespaces + s"            data=${indentedData(log.data, indent+17).trim}${LineSep}" )
+      sb.append( prespaces + s"          )" )
+
+      sb.toString
+    }
+
+    def indentedLogs( indent : Int ) : String = {
+      val sb = new StringBuilder()
+      val len = ctr.logs.length
+      (0 until len).foreach { i =>
+        sb.append( indentedLog( i, ctr.logs(i), indent ) )
+        if ( i != len-1 ) {
+          sb.append(',')
+          sb.append( LineSep )
+        }
+      }
+      sb.toString
+    }
+
     s"""|Transaction Receipt:
         |       Transaction Hash:    0x${ctr.transactionHash.hex}
         |       Transaction Index:   ${ctr.transactionIndex.widen}
@@ -139,7 +180,7 @@ package object sbtethereum {
         |       Cumulative Gas Used: ${ctr.cumulativeGasUsed.widen}
         |       Gas Used:            ${ctr.gasUsed.widen}
         |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
-        |       Logs:                ${if (ctr.logs.isEmpty) "None" else ctr.logs.mkString("\n                            ")}
+        |       Logs:                ${if (ctr.logs.isEmpty) "None" else indentedLogs(23).trim}
         |       Events:              ${if (events.isEmpty) "None" else events.mkString("\n                            ")}""".stripMargin     
   }
 
@@ -170,10 +211,11 @@ package object sbtethereum {
 
   def formatTime( l : Long ) : String = TimeFormatter.format( Instant.ofEpochMilli( l ) )
 
-  def hexString( bytes : Seq[Byte]    ) = s"0x${bytes.hex}"
-  def hexString( bytes : Array[Byte]  ) = s"0x${bytes.hex}"
-  def hexString( address : EthAddress ) = s"0x${address.hex}"
-  def hexString( hash : EthHash )       = s"0x${hash.hex}"
+  def hexString( bytes : Seq[Byte]    )   = s"0x${bytes.hex}"
+  def hexString( bytes : Array[Byte]  )   = s"0x${bytes.hex}"
+  def hexString( address : EthAddress )   = s"0x${address.hex}"
+  def hexString( hash : EthHash )         = s"0x${hash.hex}"
+  def hexString( bytes : ByteSeqExact32 ) = s"0x${bytes.widen.hex}"
 
   val EmptyStackTrace = Array.empty[StackTraceElement]
 
