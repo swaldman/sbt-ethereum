@@ -17,7 +17,7 @@ _sbt-ethereum_ tasks related to addresses, including @ref:[managing and working 
 
 ### ethContractAbi*
 
-Manage the [ABIs](abi.md) in your database and their associations to _Ethereum_ addresses. See the @ref:[contract abi commands page](abi.md), or choose a command below:
+Manage the @ref:[ABIs](abi.md) in your database and their associations to _Ethereum_ addresses. See the @ref:[contract abi commands page](abi.md), or choose a command below:
 
 @@@ div { #abiList .embedded-toc-list }
 &nbsp;
