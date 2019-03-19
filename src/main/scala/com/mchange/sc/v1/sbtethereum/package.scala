@@ -128,6 +128,61 @@ package object sbtethereum {
       f_seq_events.get
     }
 
+    def decoded( d : Decoded ) : String = {
+      d match {
+        case dv : Decoded.Value => s"${dv.parameter.name} (of type ${dv.parameter.`type`}): ${dv.stringRep}"
+        case dh : Decoded.Hash  => s"${dh.parameter.name} (of type ${dh.parameter.`type`}), whose value hashes to ${hexString(dh.hash)}}"
+      }
+    }
+
+    def indentedNamedSolidityEvent( num : Int, named : SolidityEvent.Named, indent : Int ) : String = {
+      val prespaces = " " * indent
+
+      val numStr = s"${num} => "
+
+      val fullspaces = prespaces + (" " * numStr.length)
+
+      val sb = new StringBuilder()
+
+      sb.append( s"${prespaces}${numStr}${named.name} [source=${hexString(named.address)}] (${LineSep}" )
+      val len = named.inputs.length
+      (0 until len).foreach { i =>
+        sb.append( s"${fullspaces}  ${decoded( named.inputs(i) )}" )
+        if ( i != len - 1 ) sb.append(',')
+        sb.append( LineSep )
+      }
+      sb.append( s"${fullspaces})" )
+
+      sb.toString
+    }
+
+    def indentedAnonymousSolidityEvent( num : Int, anon : SolidityEvent.Anonymous, indent : Int ) : String = {
+      val prespaces = " " * indent
+
+      s"${prespaces}${num} => Anonymous Event [source=${hexString(anon.address)}]"
+    }
+
+    def indentedSolidityEvent( num : Int, evt : SolidityEvent, indent : Int ) : String = {
+      evt match {
+        case named : SolidityEvent.Named => indentedNamedSolidityEvent( num, named, indent ).trim
+        case anon  : SolidityEvent.Anonymous => indentedAnonymousSolidityEvent( num, anon, indent ).trim
+      }
+    }
+
+    def indentedEvents( indent : Int ) : String = {
+      val sb = new StringBuilder()
+      val len = events.length
+      (0 until len).foreach { i =>
+        sb.append( indentedSolidityEvent( i, events(i), indent ) )
+        if ( i != len-1 ) {
+          sb.append(',')
+          sb.append( LineSep )
+        }
+      }
+      sb.toString
+    }
+
+
     def indentedData( data : immutable.Seq[Byte], indent : Int ) : String = {
       val prespaces = " " * indent
 
@@ -138,8 +193,7 @@ package object sbtethereum {
       val prespaces = " " * indent
 
       val sb = new StringBuilder()
-      sb.append( prespaces + s"${num} => EthLogEntry(${LineSep}" )
-      sb.append( prespaces + s"            address=${hexString(log.address)},${LineSep}" )
+      sb.append( prespaces + s"${num} => EthLogEntry [source=${hexString(log.address)}] (${LineSep}" )
       sb.append( prespaces + s"            topics=[${LineSep}" )
 
       def appendTopic( topic : EthLogEntry.Topic, last : Boolean ) = sb.append( prespaces +  s"""              ${hexString(topic)}${if (!last) "," else ""}${LineSep}""" )
@@ -181,7 +235,7 @@ package object sbtethereum {
         |       Gas Used:            ${ctr.gasUsed.widen}
         |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
         |       Logs:                ${if (ctr.logs.isEmpty) "None" else indentedLogs(23).trim}
-        |       Events:              ${if (events.isEmpty) "None" else events.mkString("\n                            ")}""".stripMargin     
+        |       Events:              ${if (events.isEmpty) "None" else indentedEvents(28).trim}""".stripMargin
   }
 
   def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], ctr : Client.TransactionReceipt ) : Client.TransactionReceipt = {
