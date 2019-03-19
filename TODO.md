@@ -19,8 +19,6 @@ DB schema updates
 
 Other
 
-* Make sure seeds don't hardcode chain ID
-* Clean up output of logs / events
 * Use stateless (no filter) API for event subscriptions
 
 * object prepare in stubs, that with functions that yield unsigned transactions

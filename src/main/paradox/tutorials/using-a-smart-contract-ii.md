@@ -46,8 +46,20 @@ A transaction with hash '0xe062f0c49cbb2876b6e8a22beb1c1b57e1fd3b612ed572c0ccb9b
 [info]        Cumulative Gas Used: 7635630
 [info]        Gas Used:            93978
 [info]        Contract Address:    None
-[info]        Logs:                EthLogEntry(EthAddress(ByteSeqExact20(0x82ea8ab1e836272322f376a5f71d5a34a71688f1)),Vector(ByteSeqExact32(0xaf1abf70f2d9f0d04e56242efc047451c912ad8f53a3b6d4391246d92ce889ff)),ImmutableArraySeq.Byte(0x0000000000000000000000001144f4f7aad0c463c667e0f8d73fc13f1e7e86a20000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000002b4d616b6520757020612062657474657220666f7274756e65207468616e20746869732c20706c656173652e000000000000000000000000000000000000000000))
-[info]        Events:              Named(List(Value(Parameter(author,address,false),EthAddress(ByteSeqExact20(0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2)),0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2), Value(Parameter(fortune,string,false),Vector(77, 97, 107, 101, 32, 117, 112, 32, 97, 32, 98, 101, 116, 116, 101, 114, 32, 102, 111, 114, 116, 117, 110, 101, 32, 116, 104, 97, 110, 32, 116, 104, 105, 115, 44, 32, 112, 108, 101, 97, 115, 101, 46),"Make up a better fortune than this, please.")),EthLogEntry(EthAddress(ByteSeqExact20(0x82ea8ab1e836272322f376a5f71d5a34a71688f1)),Vector(ByteSeqExact32(0xaf1abf70f2d9f0d04e56242efc047451c912ad8f53a3b6d4391246d92ce889ff)),ImmutableArraySeq.Byte(0x0000000000000000000000001144f4f7aad0c463c667e0f8d73fc13f1e7e86a20000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000002b4d616b6520757020612062657474657220666f7274756e65207468616e20746869732c20706c656173652e000000000000000000000000000000000000000000)),Event(FortuneAdded,List(Parameter(author,address,false), Parameter(fortune,string,false)),false))
+[info]        Logs:                0 => EthLogEntry [source=0x82ea8ab1e836272322f376a5f71d5a34a71688f1] (
+[info]                                    topics=[
+[info]                                      0xaf1abf70f2d9f0d04e56242efc047451c912ad8f53a3b6d4391246d92ce889ff
+[info]                                    ],
+[info]                                    data=0000000000000000000000001144f4f7aad0c463c667e0f8d73fc13f1e7e86a2
+[info]                                         0000000000000000000000000000000000000000000000000000000000000040
+[info]                                         000000000000000000000000000000000000000000000000000000000000002b
+[info]                                         4d616b6520757020612062657474657220666f7274756e65207468616e207468
+[info]                                         69732c20706c656173652e000000000000000000000000000000000000000000
+[info]                                  )
+[info]        Events:              0 => FortuneAdded [source=0x82ea8ab1e836272322f376a5f71d5a34a71688f1] (
+[info]                                    author (of type address): 0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2,
+[info]                                    fortune (of type string): "Make up a better fortune than this, please."
+[info]                                  )
 [success] Total time: 69 s, completed Jan 4, 2019 10:07:20 PM
 ```
 It seems to have worked!

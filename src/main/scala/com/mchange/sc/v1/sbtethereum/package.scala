@@ -110,22 +110,15 @@ package object sbtethereum {
   }
 
   // TODO: pretty up logs output
-  // XXX: "Events" will show "None" when the ABI is missing, even if there were events. Fix this!
   def prettyClientTransactionReceipt( mbabi : Option[Abi], ctr : Client.TransactionReceipt ) : String = {
-    val events = {
+    val f_events = {
       val seq_f_events = {
         mbabi.fold( immutable.Seq.empty[Failable[SolidityEvent]] ){ abi =>
           val interpretor = SolidityEvent.Interpretor( abi )
           ctr.logs map { interpretor.interpret(_) }
         }
       }
-      val f_seq_events = {
-        Failable.sequence( seq_f_events ) recover { failed =>
-          WARNING.log( s"Failed to interpret events! Failure: $failed" )
-          Nil
-        }
-      }
-      f_seq_events.get
+      Failable.sequence( seq_f_events )
     }
 
     def decoded( d : Decoded ) : String = {
@@ -169,7 +162,7 @@ package object sbtethereum {
       }
     }
 
-    def indentedEvents( indent : Int ) : String = {
+    def indentedEvents( events : immutable.Seq[SolidityEvent], indent : Int ) : String = {
       val sb = new StringBuilder()
       val len = events.length
       (0 until len).foreach { i =>
@@ -223,19 +216,30 @@ package object sbtethereum {
       sb.toString
     }
 
-    s"""|Transaction Receipt:
-        |       Transaction Hash:    0x${ctr.transactionHash.hex}
-        |       Transaction Index:   ${ctr.transactionIndex.widen}
-        |       Transaction Status:  ${ decodeStatus( ctr.status ) }
-        |       Block Hash:          0x${ctr.blockHash.hex}
-        |       Block Number:        ${ctr.blockNumber.widen}
-        |       From:                ${if (ctr.from.isEmpty) "Unknown" else hexString(ctr.from.get)}
-        |       To:                  ${if (ctr.to.isEmpty) "Unknown" else hexString(ctr.to.get)}
-        |       Cumulative Gas Used: ${ctr.cumulativeGasUsed.widen}
-        |       Gas Used:            ${ctr.gasUsed.widen}
-        |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
-        |       Logs:                ${if (ctr.logs.isEmpty) "None" else indentedLogs(23).trim}
-        |       Events:              ${if (events.isEmpty) "None" else indentedEvents(28).trim}""".stripMargin
+    val withoutEventsStr = {
+      s"""|Transaction Receipt:
+          |       Transaction Hash:    0x${ctr.transactionHash.hex}
+          |       Transaction Index:   ${ctr.transactionIndex.widen}
+          |       Transaction Status:  ${ decodeStatus( ctr.status ) }
+          |       Block Hash:          0x${ctr.blockHash.hex}
+          |       Block Number:        ${ctr.blockNumber.widen}
+          |       From:                ${if (ctr.from.isEmpty) "Unknown" else hexString(ctr.from.get)}
+          |       To:                  ${if (ctr.to.isEmpty) "Unknown" else hexString(ctr.to.get)}
+          |       Cumulative Gas Used: ${ctr.cumulativeGasUsed.widen}
+          |       Gas Used:            ${ctr.gasUsed.widen}
+          |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
+          |       Logs:                ${if (ctr.logs.isEmpty) "None" else indentedLogs(23).trim}""".stripMargin
+    }
+
+    f_events match {
+      case Succeeded( events ) => {
+        mbabi match {
+          case Some( abi )  => withoutEventsStr + LineSep + s"""       Events:              ${if (events.isEmpty) "None" else indentedEvents(events, 28).trim}"""
+          case None         => withoutEventsStr + LineSep + s"""       Events:              ${if (events.isEmpty) "None" else "<no abi available to interpret logs as events>"}"""
+        }
+      }
+      case oops : Failed[_] => withoutEventsStr + LineSep + s"""       Events:              Something went wrong interpreting events! ${oops}"""
+    }
   }
 
   def prettyPrintEval( log : sbt.Logger, mbabi : Option[Abi], ctr : Client.TransactionReceipt ) : Client.TransactionReceipt = {

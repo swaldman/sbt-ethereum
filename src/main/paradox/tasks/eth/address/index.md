@@ -17,7 +17,7 @@ _sbt-ethereum_ tasks related to addresses, including @ref:[checking address bala
 
 ### ethAddressAlias*
 
-Manage human-friendly aliases to Ethereum addresses. See the @ref:[address alias commands page](alias.md), or choose a command below:
+Manage human-friendly aliases for _ethereum_ addresses. See the @ref:[address alias commands page](alias.md), or choose a command below:
 
 @@@ div { #addressAliasList .embedded-toc-list }
 
@@ -34,7 +34,7 @@ Manage human-friendly aliases to Ethereum addresses. See the @ref:[address alias
 > ethAddressBalance [optional-address]
 ```
 
-Finds the Ether balance of any Ethereum address. The address can be formatted as an full hex address, as an _sbt-ethereum_ address alias, or as an ENS address. If no address is provided,
+Finds the Ether balance of any _ethereum_ address. The address can be formatted as an full hex address, as an _sbt-ethereum_ address alias, or as an ENS address. If no address is provided,
 the current sender address of the current sbt-ethereum session is queried.
 
 **Examples:**
