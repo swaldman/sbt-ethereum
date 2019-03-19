@@ -15,6 +15,16 @@ __sbt-ethereum__ strives to be several tools in one:
 
 Go ahead and @ref:[get started](tutorials/getting-started.md)!
 
+### Mutual Support
+
+The preferred channel for casual user support is [Stack Overflow](https://stackoverflow.com). Please use the tag `sbt-ethereum` on that site.
+(The tag does not exist at this writing, but hopefully your questions will bring it forth!)
+
+For training or more in-depth support, please contact [Steve Waldman](mailto:swaldman@mchange.com).
+
+If you would like to support the continued development of _sbt-ethereum_, please do! But wait a few days, until the official
+donation address (for Ether and ERC-20 tokens) is made available.
+
 ### Development
 
 Source code for _sbt-ethereum_, along with several related projects, is hosted on github.
@@ -41,6 +51,8 @@ Source code for _sbt-ethereum_, along with several related projects, is hosted o
 ### Acknowledgements
 
 Many thanks to Michal Slinn, who produced an excellent [earlier iteration of _sbt-ethereum_ documentation](https://mslinn.gitbooks.io/sbt-ethereum/content/).
+
+This site uses Google Web Fonts SourceSansPro and UbuntuMono (hosted directly on this site to help protect your privacy).
 
 
 
