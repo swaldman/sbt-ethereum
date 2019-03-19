@@ -123,6 +123,8 @@ If set, this defines the _maximum_ gas price in wei _sbt-ethereum_ will allow in
 
 _Usually this should not be set! To control the gas price precisely, you can use @ref:[`ethTransactionGasPriceOverrideSet`](../tasks/eth/transaction/gas.md#ethtransactiongaspriceoverrideset) in your session._
 
+@@@
+
 ### ethcfgGasPriceFloor                 
 
 @@@ div { .keydesc }
@@ -162,7 +164,7 @@ This value can be negative, in which case it reflects a discount rather than a m
 
 **Default:** `Nil` (an empty `Seq`)
 
-A sequence of directories or URLs that should be searched to resolve import directives, besides the source directory itself.
+A sequence of directories or URLs that should be searched to resolve Solidity import directives, besides the source directory itself.
 
 @@@
 
