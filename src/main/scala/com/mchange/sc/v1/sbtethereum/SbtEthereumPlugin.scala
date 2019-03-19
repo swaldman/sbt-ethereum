@@ -1102,9 +1102,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethFindCacheSeeds in Test := { (xethFindCacheSeedsTask( Test ).storeAs( xethFindCacheSeeds in Test ).triggeredBy( compileSolidity in Test )).value },
 
-    xethFindCacheSessionSolidityCompilerKeys in Compile := {
-      (xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList ).triggeredBy(ethShoeboxRestore)).value
-    },
+    xethFindCacheSessionSolidityCompilerKeys in Compile := { (xethFindCacheSessionSolidityCompilerKeysTask.storeAs( xethFindCacheSessionSolidityCompilerKeys in Compile ).triggeredBy( xethTriggerDirtySolidityCompilerList )).value },
 
     xethFindCurrentSolidityCompiler in Compile := { xethFindCurrentSolidityCompilerTask.value },
 
@@ -3126,9 +3124,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     check.get // throw if a failure occurred
 
-    Def.taskDyn {
-      xethTriggerDirtySolidityCompilerList // causes parse cache and SessionSolidityCompilers to get updated
-    }
+    xethTriggerDirtySolidityCompilerList // causes parse cache and SessionSolidityCompilers to get updated
   }
 
   private def ethLanguageSolidityCompilerPrintTask : Initialize[Task[Unit]] = Def.task {
@@ -3635,7 +3631,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     shoebox.Backup.perform( Some( log ), databaseFailureDetected, dir )
   }
 
-  private def ethShoeboxRestoreTask : Initialize[Task[Unit]] = Def.task {
+  private def ethShoeboxRestoreTask : Initialize[Task[Unit]] = Def.taskDyn {
     val s = state.value
     val is = interactionService.value
     val log = streams.value.log
@@ -3804,6 +3800,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       case None => throw new OperationAbortedByUserException( s"No sbt-ethereum shoebox backup file selected. Restore aborted." )
     }
+
+    xethTriggerDirtySolidityCompilerList // causes parse cache and SessionSolidityCompilers to get updated
   }
 
   private def ethTransactionDeployTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Tuple2[String,Either[EthHash,Client.TransactionReceipt]]]]] = {
