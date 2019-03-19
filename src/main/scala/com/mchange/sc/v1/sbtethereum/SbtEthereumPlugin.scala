@@ -2816,7 +2816,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       source match {
         case Left( address ) => {
           val mbinfo = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get // throw any db problem
-          mbinfo.fold( println( s"Contract with address '$address' not found." ) ) { info =>
+          mbinfo.fold( println( s"Contract with address ${verboseAddress( chainId, address )} not found. Perhaps try a different Chain ID?" ) ) { info =>
             section( s"Contract Address (on blockchain with ID ${info.chainId})", Some( info.contractAddress.hex ), true )
             section( "Deployer Address", info.mbDeployerAddress.map( _.hex ), true )
             section( "Transaction Hash", info.mbTransactionHash.map( _.hex ), true )
