@@ -12,7 +12,7 @@ Now we will need to make our own repository, for our own newly developed smart c
 It's best to @ref:[install the `sbt` command](../appendix/prerequisites.md) on your command line before developing your own smart contracts.
 Once you've done that, we can get started.
 
-The easiest way to create a fresh sbt-ethereum repository is to use the [giter8](http://www.foundweekends.org/giter8/) template `swaldman/solidity-seed.g8`:
+The easiest way to create a fresh _sbt-ethereum_ repository is to use the [giter8](http://www.foundweekends.org/giter8/) template `swaldman/solidity-seed.g8`:
 
 ```
 $ sbt new swaldman/solidity-seed.g8
