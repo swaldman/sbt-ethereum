@@ -15,12 +15,12 @@ __sbt-ethereum__ strives to be several tools in one:
 
 Go ahead and @ref:[get started](tutorials/getting-started.md)!
 
-### Mutual Support
+### Mutual support
 
 The preferred channel for casual user support is [Stack Overflow](https://stackoverflow.com). Please use the tag `sbt-ethereum` on that site.
 _(The tag does not exist at this writing, but hopefully your questions will bring it forth soon!)_
 
-For training or more in-depth support, please contact [Steve Waldman](mailto:swaldman@mchange.com).
+For training or more in-depth support, please [contact us](mailto:support@sbt-ethereum.io).
 
 If you would like to support the continued development of _sbt-ethereum_, please do! But wait a few days, until the official
 donation address (for Ether and ERC-20 tokens) is made available.
