@@ -124,7 +124,7 @@ package object sbtethereum {
     def decoded( d : Decoded ) : String = {
       d match {
         case dv : Decoded.Value => s"${dv.parameter.name} (of type ${dv.parameter.`type`}): ${dv.stringRep}"
-        case dh : Decoded.Hash  => s"${dh.parameter.name} (of type ${dh.parameter.`type`}), whose value hashes to ${hexString(dh.hash)}}"
+        case dh : Decoded.Hash  => s"${dh.parameter.name} (of type ${dh.parameter.`type`}), whose value hashes to ${hexString(dh.hash)}"
       }
     }
 
@@ -157,8 +157,8 @@ package object sbtethereum {
 
     def indentedSolidityEvent( num : Int, evt : SolidityEvent, indent : Int ) : String = {
       evt match {
-        case named : SolidityEvent.Named => indentedNamedSolidityEvent( num, named, indent ).trim
-        case anon  : SolidityEvent.Anonymous => indentedAnonymousSolidityEvent( num, anon, indent ).trim
+        case named : SolidityEvent.Named => indentedNamedSolidityEvent( num, named, indent )
+        case anon  : SolidityEvent.Anonymous => indentedAnonymousSolidityEvent( num, anon, indent )
       }
     }
 
@@ -184,21 +184,24 @@ package object sbtethereum {
 
     def indentedLog( num : Int, log : EthLogEntry, indent : Int ) : String = {
       val prespaces = " " * indent
+      val indent1   = prespaces + (" " * 5) 
+      val indent2   = prespaces + (" " * 7)
+      val indent3   = indent2   + (" " * 2)
 
       val sb = new StringBuilder()
       sb.append( prespaces + s"${num} => EthLogEntry [source=${hexString(log.address)}] (${LineSep}" )
-      sb.append( prespaces + s"            topics=[${LineSep}" )
+      sb.append( indent2 + s"topics=[${LineSep}" )
 
-      def appendTopic( topic : EthLogEntry.Topic, last : Boolean ) = sb.append( prespaces +  s"""              ${hexString(topic)}${if (!last) "," else ""}${LineSep}""" )
+      def appendTopic( topic : EthLogEntry.Topic, last : Boolean ) = sb.append( indent3 +  s"""${hexString(topic)}${if (!last) "," else ""}${LineSep}""" )
 
       val len = log.topics.length
       (0 until len).foreach { index =>
         appendTopic( log.topics(index), index == len - 1 )
       }
 
-      sb.append( prespaces + s"            ],${LineSep}" )
-      sb.append( prespaces + s"            data=${indentedData(log.data, indent+17).trim}${LineSep}" )
-      sb.append( prespaces + s"          )" )
+      sb.append( indent2 + s"],${LineSep}" )
+      sb.append( indent2 + s"data=${indentedData(log.data, indent+12).trim}${LineSep}" )
+      sb.append( indent1 +  ")" )
 
       sb.toString
     }
@@ -228,7 +231,7 @@ package object sbtethereum {
           |       Cumulative Gas Used: ${ctr.cumulativeGasUsed.widen}
           |       Gas Used:            ${ctr.gasUsed.widen}
           |       Contract Address:    ${ctr.contractAddress.fold("None")( ea => "0x" + ea.hex )}
-          |       Logs:                ${if (ctr.logs.isEmpty) "None" else indentedLogs(23).trim}""".stripMargin
+          |       Logs:                ${if (ctr.logs.isEmpty) "None" else indentedLogs(28).trim}""".stripMargin
     }
 
     f_events match {
