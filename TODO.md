@@ -19,6 +19,8 @@ DB schema updates
 
 Other
 
+* Why in Test config no tab-complete compilations?
+
 * Use stateless (no filter) API for event subscriptions
 
 * object prepare in stubs, that with functions that yield unsigned transactions

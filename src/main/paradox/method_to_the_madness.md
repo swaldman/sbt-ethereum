@@ -9,7 +9,7 @@ But there is some method to this madness. Once you master a few tricks and regul
 
 @@@ note
 
-**While working through these docs, use the page tables of contents!**
+**While working with these docs, use the page tables of contents!**
 
 In the _bottom of the left column of these docs_, for every page, there is a page table of contents.
 
@@ -23,7 +23,7 @@ You'll find navigating this documentation much easier if you get into the habit 
 
 @@@
 
-### Tab-completion is essential
+### Tab completion is essential
 
 _sbt-ethereum_ command names are really, really, really long.
 
