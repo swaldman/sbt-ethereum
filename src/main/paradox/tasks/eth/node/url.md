@@ -4,7 +4,31 @@ _sbt-ethereum_ associates (or wants to associate) a _node URL_ with each @ref:[n
 it encounters.
 
 All of these `ethNodeUrl*` tasks manage the association between the current @ref:[effective chain ID](chain_id.md#ethnodechainidprint)
-and a URL. Changing the current effective chain ID will also change the node URL.
+and a URL. Changing the current effective chain ID will also change the node URL:
+
+```
+> ethNodeChainIdPrint
+[info] The current effective node chain ID is '1'.
+[info]  + This is the default chain ID hard-coded into sbt-ethereum. 
+[info]  + It has not been overridden with a session override or by an 'ethcfgNodeChainId' setting in the project build or the '.sbt' folder. 
+[info]  + There is no default node chain ID defined in the sbt-ethereum shoebox.
+[success] Total time: 0 s, completed Mar 21, 2019 10:19:08 PM
+> ethNodeUrlPrint
+[info] The current effective node json-rpc URL for chain with ID 1 is 'https://mainnet.infura.io/v3/353e8352f0782b827d72757dab9cc946'.
+[info]  + This value is the default node json-rpc URL defined in the sbt-ethereum shoebox for chain with ID 1. 
+[info]  + It has not been overridden with a session override or by an 'ethcfgNodeUrl' setting in the project build or the '.sbt' folder.
+[success] Total time: 0 s, completed Mar 21, 2019 10:19:11 PM
+> ethNodeChainIdOverrideSet 99
+[info] The chain ID has been overridden to 99.
+[info] The session is now active on chain with ID 99.
+[info] Refreshing caches.
+[success] Total time: 0 s, completed Mar 21, 2019 10:19:22 PM
+> ethNodeUrlPrint
+[info] The current effective node json-rpc URL for chain with ID 99 is 'https://core.poa.network'.
+[info]  + This value is the default node json-rpc URL defined in the sbt-ethereum shoebox for chain with ID 99. 
+[info]  + It has not been overridden with a session override or by an 'ethcfgNodeUrl' setting in the project build or the '.sbt' folder.
+[success] Total time: 0 s, completed Mar 21, 2019 10:19:24 PM
+```
 
 ### ethNodeUrlDefaultDrop
 
