@@ -3408,7 +3408,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbNodeUrlOverride = Mutables.NodeUrlOverrides.get( chainId )
     mbNodeUrlOverride match {
       case Some( url ) => {
-        log.info( s"The default node json-rpc URL for chain with ID ${chainId} has been overridden. The overridden value '${url}' will be used for all tasks." )
+        log.info( s"The default node json-rpc URL for chain with ID ${chainId} has been overridden." )
+        log.info( s"The overridden value '${url}' will be used for all tasks." )
       }
       case None => {
         log.info( "The default node json-rpc URL for chain with ID ${chainId} has not been overridden, and will be used for all tasks. Try 'ethNodeUrlDefaultPrint' to see that URL." )
