@@ -173,7 +173,6 @@ This is a shorthand for @ref:[`ethNodeChainIdOverrideSet`](#ethnodechainidoverri
 
 ### ethNodeChainIdPrint
 
-
 @@@ div { .keydesc }
 
 **Usage:**
@@ -195,9 +194,11 @@ Displays the currently effective [EIP-155](https://github.com/ethereum/EIPs/blob
 
 ### ethNodeChainId
 
+@@@ div { .keydesc }
+
 _**This task is not indended for direct use on the console**_
 
-Yields the currently effective [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID for use by build tasks and
+Yields the currently effective [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID, for use by build tasks and
 plugins.
 
 **Example:**
@@ -208,3 +209,6 @@ plugins.
 [info] 2
 [success] Total time: 0 s, completed Mar 21, 2019 5:24:55 PM
 ```
+
+@@@
+

@@ -102,6 +102,18 @@ Defines a default sender for the current [EIP-155](https://github.com/ethereum/E
 
 @@@
 
+### ethAddressSenderOverride
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethAddressSenderOverride <address-as-hex-or-ens-or-alias>
+```
+This is a shorthand for @ref:[`ethAddressSenderOverrideSet`](#ethaddresssenderoverrideset). Please see that command for more information.
+
+@@@
+
 ### ethAddressSenderOverrideDrop
 
 @@@ div { .keydesc }
@@ -138,18 +150,6 @@ Displays any sender override that may have been set for the current session and 
 [info] A sender override is set, address '0x13e3d8d785cdeb1d18f298dcf07ea35a659e157d' (on chain with ID 1, aliases ['secondary-address'])).
 [success] Total time: 0 s, completed Jan 7, 2019 2:38:37 PM
 ```
-
-@@@
-
-### ethAddressSenderOverride
-
-@@@ div { .keydesc }
-
-**Usage:**
-```
-> ethAddressSenderOverride <address-as-hex-or-ens-or-alias>
-```
-This is a shorthand for @ref:[`ethAddressSenderOverrideSet`](#ethAddressSenderOverrideSet). Please see that command for more information.
 
 @@@
 
