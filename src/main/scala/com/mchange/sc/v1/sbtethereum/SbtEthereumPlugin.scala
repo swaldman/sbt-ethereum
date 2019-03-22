@@ -3373,7 +3373,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val newUrl = urlParser( "<json-rpc-url>" ).parsed
     val oldValue = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
     oldValue.foreach { url =>
-      println( s"A default node json-rpc URL has already been set for chain with ID ${chainId}: '${url}'." )
+      println( s"A default node json-rpc URL for chain with ID ${chainId} has already been set: '${url}'." )
       val overwrite = queryYN( is, s"Do you wish to replace it? [y/n] " )
       if ( overwrite ) {
         shoebox.Database.dropDefaultJsonRpcUrl( chainId ).assert
@@ -3446,7 +3446,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     mbEffective match {
       case Some( effective ) => {
-        log.info( s"The current effective node json-rpc URL is '${effective}'." )
+        log.info( s"The current effective node json-rpc URL for chain with ID ${chainId} is '${effective}'." )
 
         ( mbOverride, mbBuildSetting, mbShoeboxDefault ) match {
           case ( Some( ov ), _, _) => {
