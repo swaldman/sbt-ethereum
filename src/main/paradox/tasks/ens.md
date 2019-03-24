@@ -204,6 +204,50 @@ A transaction with hash '0x175a26ec49593f0af853c5eb7bcbde292ca0a7e7fdba21810e3b6
 
 ### ensAuctionFinalize
 
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ensAuctionFinalize <ens-name>.eth
+```
+
+Finalizes a completed ENS auction.
+
+**Example:**
+```
+> ensAuctionFinalize octopodes.eth
+[warn] Using hard-coded, backstop node URL 'https://ethjsonrpc.mchange.com/', which may not be reliable.
+[warn] Please use 'ethNodeUrlDefaultSet` to define a node URL (for chain with ID 1) to which you have reliable access.
+[info] Unlocking address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (on chain with ID 1, aliases ['default-sender'])
+Enter passphrase or hex private key for address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2': ***************
+[info] V3 wallet(s) found for '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (aliases ['default-sender'])
+
+==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T
+==>
+==> The transaction would be a message with...
+==>   To:    0x6090a6e47849629b7245dfa1ca21d94cd15878ef (on chain with ID 1)
+==>   From:  0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2 (with aliases ['default-sender'] on chain with ID 1)
+==>   Data:  0x983b94fbb9457af3b7d83d07fc52efe2b4726533586dcab3f74fd9f76a3d9501bc4bf2f7
+==>   Value: 0 Ether
+==>
+==> The transaction is signed with Chain ID 1 (which correctly matches the current session's 'ethNodeChainId').
+==>
+==> !!! Any ABI is associated with the destination address is currently unknown, so we cannot decode the message data as a method call !!!
+==>
+==> The nonce of the transaction would be 14.
+==>
+==> $$$ The transaction you have requested could use up to 111862 units of gas.
+==> $$$ You would pay 6 gwei for each unit of gas, for a maximum cost of 0.000671172 ether.
+==> $$$ This is worth 0.09096394116 USD (according to Coinbase at 1:35 AM).
+
+Would you like to submit this transaction? [y/n] y
+A transaction with hash '0x819e8b4592e090671200876342d113be3fcf306c615e674099780a2f85504285' will be submitted. Please wait.
+Auction for name 'octopodes.eth' successfully finalized.
+[success] Total time: 45 s, completed Mar 24, 2019 1:36:19 AM
+```
+
+@@@
+
 ### ensAuctionStart
 
 @@@ div { .keydesc}
