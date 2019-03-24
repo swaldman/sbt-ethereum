@@ -91,11 +91,11 @@ object Backup {
   def restore( mbLog : Option[sbt.Logger], backupZipFile : File ) : Unit = {
     def info( msg : String ) : Unit = {
       mbLog.foreach( _.info( msg ) )
-      INFO.log( msg )
+      FINE.log( "Logged in sbt at INFO: " + msg )
     }
     def warn( msg : String ) : Unit = {
       mbLog.foreach( _.warn( msg ) )
-      WARNING.log( msg )
+      FINE.log( "Logged in sbt at WARNING: " + msg )
     }
     val shoeboxDir         = shoebox.Directory_ExistenceAndPermissionsUnenforced.assert
     val shoeboxName        = shoeboxDir.getName
