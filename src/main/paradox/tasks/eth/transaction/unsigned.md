@@ -1,5 +1,7 @@
 # Unsigned*
 
+Tasks that generate unsigned transactions that can be separately signed and forwarded to a node.
+
 ### ethTransactionUnsignedEtherSend
 
 @@@ div {.keydesc}

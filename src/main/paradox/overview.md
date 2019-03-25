@@ -52,7 +52,11 @@ Source code for _sbt-ethereum_, along with several related projects, is hosted o
 
 Many thanks to Michal Slinn, who produced an excellent [earlier iteration of _sbt-ethereum_ documentation](https://mslinn.gitbooks.io/sbt-ethereum/content/).
 
-This site uses Google Web Fonts [_Source Sans Pro_](https://fonts.google.com/specimen/Source+Sans+Pro) and [_Ubuntu Mono_](https://fonts.google.com/specimen/Ubuntu+Mono) (hosted locally on this site to help protect your privacy).
+This documentation site is built with [Lightbend Paradox](https://developer.lightbend.com/docs/paradox/current/).
+
+This whole application is built on top of [sbt](https://www.scala-sbt.org).
+
+This site uses Google Web Fonts [_Source Sans Pro_](https://fonts.google.com/specimen/Source+Sans+Pro) and [_Ubuntu Mono_](https://fonts.google.com/specimen/Ubuntu+Mono) (but hosted locally to help protect your privacy).
 
 
 
