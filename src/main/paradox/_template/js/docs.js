@@ -129,6 +129,7 @@ function init() {
     
     copyTocSecondLevelList( "ethTransactionToc", 0, "gasList" );
     copyTocSecondLevelList( "ethTransactionToc", 1, "nonceList" );
+    copyTocSecondLevelList( "ethTransactionToc", 2, "unsignedList" );
 
     showNavigationParentListOfActive()
 }
