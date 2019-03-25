@@ -238,7 +238,7 @@ package object sbtethereum {
       case Succeeded( events ) => {
         mbabi match {
           case Some( abi )  => withoutEventsStr + LineSep + s"""       Events:              ${if (events.isEmpty) "None" else indentedEvents(events, 28).trim}"""
-          case None         => withoutEventsStr + LineSep + s"""       Events:              ${if (events.isEmpty) "None" else "<no abi available to interpret logs as events>"}"""
+          case None         => withoutEventsStr + LineSep + s"""       Events:              ${if (ctr.logs.isEmpty) "None" else "<no abi available to interpret logs as events>"}"""
         }
       }
       case oops : Failed[_] => withoutEventsStr + LineSep + s"""       Events:              Something went wrong interpreting events! ${oops}"""

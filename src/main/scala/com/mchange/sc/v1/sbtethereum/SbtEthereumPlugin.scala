@@ -4448,6 +4448,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val from = findAddressSenderTask(warn=true)(config).value.assert
       val (to, data, amount) = parser.parsed
+      val mbAbi = {
+        val abiLookup = abiLookupForAddress( chainId, to, abiOverridesForChain( chainId ) )
+        abiLookup.resolveAbi( None ) // don't log anything, the ABI here is not necessary, just makes for richer messages
+      }
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
       val privateKey = findCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
@@ -4456,7 +4460,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val f_out = Invoker.transaction.sendMessage( privateKey, to, Unsigned256( amount ), data, nonceOverride ) flatMap { txnHash =>
         log.info( s"""Sending data '0x${data.hex}' with ${amount} wei to address '0x${to.hex}' ${mbWithNonceClause(nonceOverride)}in transaction '0x${txnHash.hex}'.""" )
-        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None, txnHash, invokerContext.pollTimeout, _ ) )
+        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, _ ) )
       }
       val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
       log.info("Transaction mined.")
