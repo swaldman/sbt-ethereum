@@ -224,7 +224,6 @@ _For examples, please see the tutorial section @ref["Acquiring an ABI for a smar
 
 ### ethContractAbiDefaultSet
 
-
 @@@ div { .keydesc }
 
 **Usage:**
@@ -245,6 +244,23 @@ Enter an optional alias for the address '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756
 [info] Refreshing caches.
 [success] Total time: 8 s, completed Feb 15, 2019 5:14:34 PM
 ```
+
+@@@
+
+### ethContractAbiImport
+
+@@@ div { .keydesc }
+
+
+**Usage:**
+```
+> ethContractAbiImport <address-as-hex-or-ens-or-alias>
+```
+For now, this is a shorthand for @ref:[`ethContractAbiImport`](#ethcontractabiimport). Please see that command for more information.
+
+It imports (either via _Etherscan_ or by copy-and-paste) an ABI as the _default ABI_ associated with the given address.
+
+_**Note: In the future, this command may also support imports with no address supplied, simply to bring in an ABI and define an alias for it**_
 
 @@@
 

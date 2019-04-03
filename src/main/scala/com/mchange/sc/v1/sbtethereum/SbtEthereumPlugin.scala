@@ -369,6 +369,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractAbiDefaultList     = inputKey[Unit] ("Lists the addresses for which default ABI definitions have been defined. (Includes explicitly set deaults and our own deployed compilations.)")
     val ethContractAbiDefaultImport   = inputKey[Unit] ("Import an ABI definition for a contract, from an external source or entered directly into a prompt.")
     val ethContractAbiDefaultSet      = inputKey[Unit] ("Uses as the ABI definition for a contract address the ABI of a different contract, specified by codehash or contract address")
+    val ethContractAbiImport          = inputKey[Unit] ("Basically an alias to 'ethContractAbiDefaultImport'.")
     val ethContractAbiOverride        = inputKey[Unit] ("Basically an alias to 'ethContractAbiOverrideSet'.")
     val ethContractAbiOverrideSet     = inputKey[Unit] ("Sets a temporary (just this session) association between an ABI an address, that overrides any persistent association")
     val ethContractAbiOverrideDropAll = taskKey[Unit]  ("Clears all temporary associations (on the current chain) between an ABI an address")
@@ -805,6 +806,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethContractAbiDefaultImport in Compile := { ethContractAbiDefaultImportTask( Compile ).evaluated },
 
     ethContractAbiDefaultImport in Test := { ethContractAbiDefaultImportTask( Test ).evaluated },
+
+    ethContractAbiImport in Compile := { ethContractAbiDefaultImportTask( Compile ).evaluated },
+
+    ethContractAbiImport in Test := { ethContractAbiDefaultImportTask( Test ).evaluated },
 
     ethContractAbiOverride in Compile := { ethContractAbiOverrideSetTask( Compile ).evaluated },
 
