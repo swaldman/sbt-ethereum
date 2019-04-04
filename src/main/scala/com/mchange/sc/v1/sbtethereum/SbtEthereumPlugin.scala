@@ -4145,7 +4145,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethTransactionNonceOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val amount = bigIntParser("<nonce override>").parsed
+    val amount = bigIntParser("<nonce-override>").parsed
     Mutables.NonceOverrides.set( chainId, amount )
     log.info( s"Nonce override set to ${amount} for chain with ID ${chainId}." )
     log.info(  "Future transactions will use this value as a fixed nonce, until this override is explcitly unset with 'ethTransactionNonceOverrideDrop'." )
