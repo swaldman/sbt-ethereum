@@ -199,7 +199,7 @@ Displays on the console any currently set gas price override,
 Sets the _gas price_ for transactions in this session, overriding _sbt-ethereum_'s default automatic computation based on @ref:[`ethcfgGasPriceMarkup`](../../../settings/index.md#ethcfggaspricemarkup),
 @ref:[`ethcfgGasPriceCap`](../../../settings/index.md#ethcfggaspricecap), and @ref:[`ethcfgGasPriceCap`](../../../settings/index.md#ethcfggaspricefloor).
 
-_**Note: Typically, you will want an override to control one particular transaction, not multiple transactions in a session. Be sure to @ref:[drop](#ethtransactiongaslimitoverridedrop) the override when you are done with it. sbt-ethereum warns you when a gas price override will be used.**_
+_**Note: Typically, you will want an override to control one particular transaction, not multiple transactions in a session. Be sure to @ref:[drop](#ethtransactiongaspriceoverridedrop) the override when you are done with it. sbt-ethereum warns you when a gas price override will be used.**_
 
 **Example:**
 ```
