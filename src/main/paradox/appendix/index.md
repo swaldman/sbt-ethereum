@@ -7,6 +7,7 @@
 @@@ index
 
 * [Prerequisites](prerequisites.md)
+* [Known Shortcomings](known_shortcomings.md)
 
 @@@
 
