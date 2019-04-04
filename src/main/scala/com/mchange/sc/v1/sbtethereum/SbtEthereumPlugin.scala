@@ -4033,7 +4033,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethTransactionGasLimitOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val amount = bigIntParser("<gas override>").parsed
+    val amount = bigIntParser("<gas-limit-override>").parsed
     Mutables.GasLimitOverrides.set( chainId, amount )
     log.info( s"Gas override set to ${amount} on chain with ID ${chainId}." )
   }
@@ -4067,7 +4067,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethTransactionGasPriceOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val amount = valueInWeiParser("<gas price override>").parsed
+    val amount = valueInWeiParser("<gas-price-override>").parsed
     Mutables.GasPriceOverrides.set( chainId, amount )
     log.info( s"Gas price override set to ${amount} for chain with ID ${chainId}." )
   }
@@ -5218,7 +5218,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val gasLimitTweak = {
       Mutables.GasLimitOverrides.get( rawChainId ) match {
         case Some( overrideValue ) => {
-          log.info( s"Gas limit override set: ${overrideValue}")
+          log.warn( s"Gas limit override set: ${overrideValue}")
           Invoker.Override( overrideValue )
         }
         case None => {
@@ -5229,7 +5229,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val gasPriceTweak = {
       Mutables.GasPriceOverrides.get( rawChainId ) match {
         case Some( overrideValue ) => {
-          log.info( s"Gas price override set: ${overrideValue}")
+          log.warn( s"Gas price override set: ${overrideValue}")
           Invoker.Override( overrideValue )
         }
         case None => {
