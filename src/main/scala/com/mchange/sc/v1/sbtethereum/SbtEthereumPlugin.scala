@@ -1274,7 +1274,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=false)(config).value
     log.info( s"The session is now active on chain with ID ${chainId}." )
-    Mutables.SenderOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The sender overridden to ${verboseAddress( chainId, ovr )}.") }
+    Mutables.SenderOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The sender has been overridden to ${verboseAddress( chainId, ovr )}.") }
     Mutables.NodeUrlOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The node URL has been overridden to '${ovr}'.") }
     Mutables.AbiOverrides.get( chainId ).foreach { ovr => log.warn( s"""NOTE: ABI overrides are set for the following addresses on this chain: ${ovr.keys.map(hexString).mkString(", ")}""" ) }
     Mutables.GasLimitOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas limit overrides remains set for this chain, ${ovr} wei." ) }
@@ -4888,7 +4888,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                     s"${t} tokens (${a} atoms)"
                   }
                   case None => {
-                    s"""${a} atoms (since no 'decimals' is defined, we can't definitively quanify that as "tokens")"""
+                    s"""${a} atoms (since no 'decimals' is defined, we can't definitively quantify that as "tokens")"""
                   }
                 }
               }
