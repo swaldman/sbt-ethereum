@@ -19,6 +19,8 @@ DB schema updates
 
 Other
 
+* Support multiple shoeboxes and user-definable locations
+
 * Make price feed more robust to scheduler failure. (Why are there sometimes scheduler failures?)
 
 * Why in Test config no tab-complete compilations?
