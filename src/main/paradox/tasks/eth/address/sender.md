@@ -1,6 +1,6 @@
 # Sender*
 
-In any _sbt-ethereum_ session, there should generally be defined a _current sender_, an Ethereum address
+In any _sbt-ethereum_ session, there should generally be defined a _current sender_, an _ethereum_ address
 on whose behalf any interactions with the block chain will be made.
 
 Any time you want, you can define the current sender by setting a _sender override_.

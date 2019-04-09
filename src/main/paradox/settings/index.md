@@ -8,7 +8,7 @@
 
 **Default:** _Unset_
 
-A hex _Ethereum_ address that will become the default sender for sessions started within this repository, overriding any default sender in the database.
+A hex _ethereum_ address that will become the default sender for sessions started within this repository, overriding any default sender in the database.
 
 **This setting hardcodes the default sender address for sessions in the repository that sets it. Defining it results in the default sender address appearing in version control.
 It's usually better _not_ to commit to or expose a sender in the repository, and use @ref:[`ethAddressSender*`](../tasks/eth/address/sender.md) tasks to manage the identity of your senders.**
@@ -176,7 +176,7 @@ A sequence of directories or URLs that should be searched to resolve Solidity im
 
 **Default:** _a list containing the default `geth` keystore directory for your platform
 
-A sequence of File objects representing directories containing _Ethereum_ V3 Wallet JSON files that should automatically be imported into the _sbt-ethereum_ keystore.
+A sequence of File objects representing directories containing _ethereum_ V3 Wallet JSON files that should automatically be imported into the _sbt-ethereum_ keystore.
 
 @@@
 
@@ -234,7 +234,7 @@ If a negative value is set, the chain will be treated as ephemeral. Deployments 
 
 **Default:** _Unset_ (except in configuration `Test`, for which the default value is `http://localhost:58545/`)
 
-A "hardcoded" [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) _Ethereum_ node URL that will override any @ref:[default Node URL](../tasks/eth/node/chain_id.md) set for the project.
+A "hardcoded" [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) _ethereum_ node URL that will override any @ref:[default Node URL](../tasks/eth/node/chain_id.md) set for the project.
 
 _Often you will rely upon the @ref:[shoebox default](../method_to_the_madness.md#defaults-and-session-overrides) for your session's Chain ID
 (set with @ref:[ethNodeUrlDefaultSet](../tasks/eth/node/chain_id.md#ethnodeurldefaultset)) or the session override

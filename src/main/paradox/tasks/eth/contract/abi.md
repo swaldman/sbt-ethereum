@@ -256,7 +256,7 @@ Enter an optional alias for the address '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756
 ```
 > ethContractAbiImport <address-as-hex-or-ens-or-alias>
 ```
-For now, this is a shorthand for @ref:[`ethContractAbiImport`](#ethcontractabiimport). Please see that command for more information.
+For now, this is a shorthand for @ref:[`ethContractAbiDefaultImport`](#ethcontractabidefaultimport). Please see that command for more information.
 
 It imports (either via _Etherscan_ or by copy-and-paste) an ABI as the _default ABI_ associated with the given address.
 
