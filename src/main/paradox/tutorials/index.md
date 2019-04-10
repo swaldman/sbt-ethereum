@@ -12,6 +12,7 @@
 * [Using a Smart Contract (Part II)](using-a-smart-contract-ii.md)
 * [Creating a Smart Contract](creating-a-smart-contract.md)
 * [Testing a Smart Contract](testing-a-smart-contract.md)
+* [Verifying a Smart Contract on Etherscan](verifying-a-smart-contract-on-etherscan.md)
 
 @@@
 
