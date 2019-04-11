@@ -4,7 +4,7 @@
 
 Everything you need is retained by _sbt-ethereum_, and is accessible via the @ref:[`ethContractCompilationInspect`](../tasks/eth/contract/compilation.md#ethcompilationinspect) command.
 Provide the _address_ of the smart contract you'd compiled and deployed to that command. If you've forgotten the address, use
-@ref:[`ethContractCompilationList`](../tasks/eth/contract/compilation.md#ethcompilationlist) to find it. If something goes wrong, checkout @ref:[these gotchas](#gotchas).
+@ref:[`ethContractCompilationList`](../tasks/eth/contract/compilation.md#ethcompilationlist) to find it. If something goes wrong, check out @ref:[these gotchas](#gotchas).
 
 ### Step by step, in absurd detail
 
