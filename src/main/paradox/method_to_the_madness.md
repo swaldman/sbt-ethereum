@@ -25,7 +25,7 @@ You'll find navigating this documentation much easier if you get into the habit 
 
 ### Tab completion is essential
 
-_sbt-ethereum_ command names are really, really, really long.
+_sbt-ethereum_ command names are really, really, really long!
 
 On the bright side, the names are pretty descriptive! You don't need to memorize
 what terse incantations like `jzn` or `kxl` do. Commands in _sbt-ethereum_ look more like `ethContractAbiDefaultSet`, which does give some clue. Kind of. (See below!)

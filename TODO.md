@@ -27,6 +27,8 @@ Other
 
 * Use stateless (no filter) API for event subscriptions
 
+* Define setting etherscancfgApiKey, for users who prefer global-sbt-style configuration
+
 * object prepare in stubs, that with functions that yield unsigned transactions
 
 * ensUnsigned*

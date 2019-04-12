@@ -3,17 +3,22 @@ package com.mchange.sc.v1.sbtethereum
 import scala.collection._
 import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.util.control.NonFatal
 
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.ethereum.EthAddress
 
 import com.mchange.sc.v2.concurrent.Scheduler
 
+import com.mchange.sc.v1.log.MLevel._
+
 import play.api.libs.json._
 
 import java.net.URL
 
 object PriceFeed {
+  private implicit lazy val logger = mlogger( this )
+
   final case class Datum( price : Double, timestamp : Long = System.currentTimeMillis() )
   final object Coinbase {
     val SupportedCurrencies = immutable.Vector( "USD", "EUR" )
@@ -23,15 +28,22 @@ object PriceFeed {
     private val cachedEthPrices = mutable.HashMap.empty[String,Datum]
 
     private def updateEthPrice( currencyCode : String ) : Unit = {
-      val url = new URL( s"https://api.coinbase.com/v2/prices/ETH-${currencyCode}/spot" )
-
-      val jsObj = borrow( url.openStream() )( Json.parse )
-
-      // XXX: Add logging of what-went-wrong
       val mbDatum = {
-        jsObj \ "data" \ "amount" match {
-          case JsDefined( JsString( amountStr ) ) => Some( Datum( amountStr.toDouble ) )
-          case _                                  => None
+        try {
+          val url = new URL( s"https://api.coinbase.com/v2/prices/ETH-${currencyCode}/spot" )
+
+          val jsObj = borrow( url.openStream() )( Json.parse )
+
+          jsObj \ "data" \ "amount" match {
+            case JsDefined( JsString( amountStr ) ) => Some( Datum( amountStr.toDouble ) )
+            case _                                  => None
+          }
+        }
+        catch {
+          case NonFatal( t )=> {
+            DEBUG.log( "An error occurred while trying to read a price feed.", t )
+            None
+          }
         }
       }
 
