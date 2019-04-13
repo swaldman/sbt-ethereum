@@ -1523,6 +1523,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             nonceOverride.foreach { nonce =>
               log.warn( s"Note: The currently set nonce override of ${nonce} will be ignored. To control the nonce, set the resolver separately, then retry." )
             }
+            kludgeySleepForInteraction()
             is.readLine( s"Do you wish to use the default public resolver '${hexString(defaultResolver)}'? [y/n] ", false )
               .getOrElse( throwCantReadInteraction )
               .trim()
@@ -1678,6 +1679,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               log.warn( s"  Bid Hash: 0x${bid.bidHash.hex}, Bid State: ${bidState}" )
             }
             nonceOverride.foreach( nonce => log.warn( s"The currently set nonce override (${nonce}) will be ignored if you attempt to reveal multiple bids." ) )
+            kludgeySleepForInteraction()
             val revealAll = is.readLine(s"Reveal all bids? ", mask = false).getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get an answer
             revealAll.toUpperCase match {
               case "Y"| "YES" => {
@@ -1742,6 +1744,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       log.warn( s"This will permanently release the deed associated with '${ensName}', revoking the caller's ownership of the name.")
 
+      kludgeySleepForInteraction()
       val check = queryYN( is, "Are you sure you want to do this? [y/n] " )
       if (!check) aborted( "User decided not to permenantly release the deed." )
 
@@ -1765,6 +1768,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       log.warn( s"This will permanently transfer the deed associated with '${ensName}', and any deplosit paid to secure that deed, to ${verboseAddress(chainId, transfereeAddress)}.")
 
+      kludgeySleepForInteraction()
       val check = queryYN( is, "Are you sure you want to do this? [y/n] " )
       if (!check) aborted( "User decided not to permenantly transfer the deed." )
 
@@ -1996,6 +2000,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             false
           }
           case Some( differentAddress ) => {
+            kludgeySleepForInteraction()
             val replace = queryYN( is, s"The alias '${alias}' currently points to address '${hexString(differentAddress)}' (for chain with ID ${chainId}). Replace? [y/n] " )
             if (! replace ) {
               throw new OperationAbortedByUserException( s"User chose not to replace previously defined alias '${alias}' (for chain with ID ${chainId}). It continues to point to '${hexString(differentAddress)}'." )
@@ -2361,6 +2366,8 @@ object SbtEthereumPlugin extends AutoPlugin {
           knownCompilation.mbAbiHash match {
             case Some( abiHash ) => {
               log.warn( s"The contract at address '${hexString(toLinkAddress)}' was already associated with a deployed compilation, which has an ABI. A memorized ABI would shadow that." )
+
+              kludgeySleepForInteraction()
               val doIt = queryYN( is, s"Do you still wish to memorize a new ABI for ${sourceDesc}? [y/n] " )
               if (! doIt ) throw new OperationAbortedByUserException( "User chose not shadow ABI of already defined compilation." )
             }
@@ -2376,6 +2383,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val currentAbiOverrides = abiOverridesForChain( chainId )
       currentAbiOverrides.get( toLinkAddress ).foreach { currentOverride =>
         if ( currentOverride.withStandardSort != abi /* already sorted */ ) {
+          kludgeySleepForInteraction()
           val ignoreOverride = queryYN( is, s"An ABI override is set in the present session that differs from the ABI you wish to associate with '${hexString(toLinkAddress)}'. Continue? [y/n] " )
           if (! ignoreOverride ) throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet due to discrepancy between linked ABI and current override." )
         }
@@ -2384,6 +2392,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       def finishUpdate = {
         log.info( s"The ABI previously associated with ${sourceDesc} ABI has been associated with address ${hexString(toLinkAddress)}." )
         if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, toLinkAddress ).assert ) {
+          kludgeySleepForInteraction()
           interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
         }
         Def.taskDyn {
@@ -2679,6 +2688,8 @@ object SbtEthereumPlugin extends AutoPlugin {
           knownCompilation.mbAbiHash match {
             case Some( abiHash ) => {
               log.warn( s"The contract at address '$address' was already associated with a deployed compilation and ABI with hash '${hexString(abiHash)}', which a new ABI would shadow!" )
+
+              kludgeySleepForInteraction()
               val shadow = queryYN( is, s"Are you sure you want to shadow the compilation ABI? [y/n] " )
               if (! shadow) throw new OperationAbortedByUserException( "User chose not to shadow ABI defined in compilation." )
             }
@@ -3194,7 +3205,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTaskDyn {
       val log     = streams.value.log
-      val is      = interactionService.value
       val chainId = parser.parsed
       config match {
         case Compile => {
@@ -4542,6 +4552,8 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.warn( s"The Chain ID of the transaction you are forwarding (${sigChainId}) does not match the Chain ID associated with your current session (${sessionChainId})." )
           log.warn( s"If the session Node URL '${nodeUrl}' properly matches the session Chain ID ${sessionChainId}, the signature of the transaction will be invalid and it will fail." )
           log.warn( s"Consider aborting this transaction and switching to the proper chain via 'ethNodeChainIdOverrideSet'." )
+
+          kludgeySleepForInteraction()
           val check = queryYN( is, "Do you want to forward the transaction despite the mismatched Chain IDs? [y/n] " )
           if (! check ) aborted( "Operation aborted by user after mismatched Chain IDs detected." )
         }
@@ -4550,6 +4562,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         if ( replayAttackProtection && !isEphemeralChain( sessionChainId ) ) {
           log.warn( s"The transaction you are submitting is signed without specifying a Chain ID." )
           log.warn(  """It is a valid transaction, but it could be inadvertantly or purposely forwarded to other chains, in a so-called "replay attack".""" )
+
+          kludgeySleepForInteraction()
           val check = queryYN( is, "Are you sure you want to submit this transaction, despite its validity not being restricted with a Chain ID? [y/n] " )
           if (! check ) aborted( "Operation aborted by user after absence of Chain ID detected." )
         }
@@ -4570,6 +4584,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.warn(  "This is likely due to the sender of the unsigned transaction differing from the signer of the transaction." )
         log.warn(  "If submitted, the transaction is very likely to fail." )
 
+        kludgeySleepForInteraction()
         val check = queryYN( is, "Do you still wish to submit the transaction? [y/n] " )
         if (!check) aborted( "Operation aborted by user after mismatched nonce detected." )
       }
@@ -4671,6 +4686,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.warn( s"This may not be what you want!" )
     log.warn( s"Use 'ethTransactionInvoke' and call the function '${directContractFunction}' to take complete control of the process." )
     log.warn( s"(As long as you are sure this is an ERC20 token contract, you can associate the ABI 'abi:standard:erc20' with the token contract address.)" )
+
+    kludgeySleepForInteraction()
     val check = queryYN( is, s"Continue as if decimals is 0, treating the specified token amount (${rawNumStr}) as the number of atoms to transfer? [y/n] " )
     if (!check) aborted( "Could not lookup ERC20 decimals, so user chose to abort." )
     else Zero8
@@ -4705,6 +4722,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.warn( s"THIS FUNCTION COULD DO ANYTHING. " )
         log.warn( s"Make sure that you trust that the token contract does only what you intend, and carefully verify the transaction cost before approving the ultimate transaction." )
 
+        kludgeySleepForInteraction()
         val check = queryYN( is, "Continue? [y/n] " )
         if (! check) aborted( "User aborted the approval of access to tokens by a third party." )
 
@@ -4726,7 +4744,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
-      val is = interactionService.value
       val chainId = findNodeChainIdTask(warn=true)(config).value
 
       implicit val invokerContext = (xethInvokerContext in config).value
@@ -4749,7 +4766,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
-      val is = interactionService.value
       val chainId = findNodeChainIdTask(warn=true)(config).value
 
       implicit val invokerContext = (xethInvokerContext in config).value
@@ -4796,6 +4812,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.warn( s"THIS FUNCTION COULD DO ANYTHING. " )
         log.warn( s"Make sure that you trust that the token contract does only what you intend, and carefully verify the transaction cost before approving the ultimate transaction." )
 
+        kludgeySleepForInteraction()
         val check = queryYN( is, "Continue? [y/n] " )
         if (! check) aborted( "User aborted the token transfer." )
 
@@ -4817,7 +4834,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
-      val is = interactionService.value
       val caller = findAddressSenderTask(warn=false)(config).value.assert
       val chainId = findNodeChainIdTask(warn=true)(config).value
 
@@ -4912,7 +4928,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log = streams.value.log
-      val is = interactionService.value
       val caller = findAddressSenderTask(warn=false)(config).value.assert
       val chainId = findNodeChainIdTask(warn=true)(config).value
 
@@ -5265,6 +5280,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val entropySource = ethcfgEntropySource.value
 
     log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
+
+    kludgeySleepForInteraction()
     val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
     val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
     val out = shoebox.Keystore.V3.storeWallet( w ).get // asserts success
@@ -5285,6 +5302,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val entropySource = ethcfgEntropySource.value
 
     log.info( s"Generating V3 wallet, alogorithm=scrypt, n=${n}, r=${r}, p=${p}, dklen=${dklen}" )
+
+    kludgeySleepForInteraction()
     val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
     val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
     val out = shoebox.Keystore.V3.storeWallet( w ).get // asserts success
@@ -5564,6 +5583,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         mbLastDump match {
           case Some( dump ) => {
             val dumpTime = formatInstant( dump.timestamp )
+            kludgeySleepForInteraction()
             val recover = queryYN( is, s"The most recent sbt-ethereum shoebox database dump available was taken at ${dumpTime}. Attempt recovery? [y/n] " )
             if ( recover ) {
               val attemptedRecovery = shoebox.Database.restoreFromDump( dump )
@@ -5702,7 +5722,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         if ( mbDefaultSender( nontestChainId ).isEmpty ) {
           val checkSetDefault = queryYN( is, s"Would you like the new address '${hexString(address)}' to be the default sender on chain with ID ${nontestChainId}? [y/n] " )
-
           if ( checkSetDefault ) {
             extract.runInputTask( nontestConfig / ethAddressSenderDefaultSet, address.hex, s )
           }
@@ -6370,6 +6389,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     fsender.fold( onFailed )( Some(_) )
   }
+
+  /*
+   * This is ridiculously kludgey
+   * but gives time for log messages to reach the console prior to interaction prompts,
+   * preventing confusing orderings
+   */ 
+  private def kludgeySleepForInteraction() : Unit = Thread.sleep(100) 
 
   final object Erc20 {
     private val Big10 = BigInt(10)
