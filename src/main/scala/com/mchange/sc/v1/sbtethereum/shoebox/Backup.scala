@@ -79,6 +79,10 @@ object Backup {
       !cf.getPath.startsWith( solcJCanonicalPrefix )
     }
 
+    shoebox.reset()
+    info("Waiting five seconds for shoebox database connections to shut down...")
+    Thread.sleep(5000)
+
     info( s"Backing up sbt-ethereum shoebox. Reinstallable compilers will be excluded." )
     zip( outFile, shoebox.Directory_ExistenceAndPermissionsUnenforced.assert, canonicalFileFilter _ )
     info( s"sbt-ethereum shoebox successfully backed up to '${outFile}'." )
@@ -102,12 +106,22 @@ object Backup {
     val shoeboxParent      = shoeboxDir.getParentFile
     val oldShoeboxRenameTo = shoeboxName + s"-superseded-${timestamp}"
 
+    shoebox.reset()
+    info("Waiting five seconds for shoebox database connections to shut down...")
+    Thread.sleep(5000)
+
     if (! shoeboxDir.exists()) {
       warn( s"Shoebox directory '${shoeboxDir}' does not exist. Restoring." )
     }
     else {
       val renameTo = new File( shoeboxParent, oldShoeboxRenameTo )
-      shoeboxDir.renameTo( renameTo )
+      val renamed  = shoeboxDir.renameTo( renameTo )
+
+      if (! renamed ) {
+        warn( s"Tried but failed to rename existing shoebox directory to '${renameTo}'. Aborting!" )
+        throw new SbtEthereumException( s"Could not rename and preserve superseded shoebox directory to '${renameTo}'. Restore aborted." )
+      }
+
       warn( s"Superseded existing shoebox directory renamed to '${renameTo}'. Consider deleting, eventually." )
     }
     unzip( shoeboxParent, backupZipFile )
@@ -123,6 +137,8 @@ object Backup {
   def zip( dest : File, srcDir : File, canonicalFileFilter : ( File ) => Boolean ) : Unit = {
     require( srcDir.exists(), s"Cannot zip ${srcDir}, which does not exist." )
     require( srcDir.canRead(), s"Cannot zip ${srcDir}, we lack read permissions" )
+    require( !dest.exists(), s"Cannot overwrite existing destination file '${dest}'." )
+
     val srcDirName = {
       val raw = srcDir.getName
       if ( raw.endsWith( fsep ) ) raw.substring(0, raw.length - 1) else raw
@@ -156,11 +172,26 @@ object Backup {
         .map( new File( _ ) )
     }
 
-    zip( dest, srcDirParent, relativeInputFiles )
+    try {
+      zip( dest, srcDirParent, relativeInputFiles )
+    }
+    catch {
+      case t : Throwable => {
+        WARNING.log( s"An Exception '${t}' occurred while creating a zip file of '${srcDir}'." )
+        WARNING.log( s"Please consider backing up '${srcDir}' manually." )
+        if ( dest.exists() ) {
+          WARNING.log( s"Deleting partially constructed zip file '${dest}'." )
+          dest.delete() // delete partially constructed zip file (recall File dest did not exist at the start of this method.)
+        }
+        throw t
+      }
+    }
   }
 
   // modified from https://stackoverflow.com/questions/9985684/how-do-i-archive-multiple-files-into-a-zip-file-using-scala
   // we could use sbt.io.IO.zip(...) too, but it's nice to see how things work here for now
+  //
+  // plus, we have our own logging
   private def zip( dest : File, inputFileParent : File, relativeInputFiles : Iterable[File] ) : Unit = {
     borrow( new ZipOutputStream(new BufferedOutputStream( new FileOutputStream(dest) ) ) ) { zip =>
       relativeInputFiles foreach { f =>
@@ -173,6 +204,12 @@ object Backup {
               zip.write(b)
               b = in.read()
             }
+          }
+        }
+        catch {
+          case t : Throwable => {
+            WARNING.log( s"An Exception occurred while adding '${f}' to zip file '${dest}'." )
+            throw t
           }
         }
         finally {
