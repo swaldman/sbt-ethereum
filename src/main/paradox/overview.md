@@ -22,8 +22,8 @@ _(The tag does not exist at this writing, but hopefully your questions will brin
 
 For training or more in-depth support, please [contact us](mailto:support@sbt-ethereum.io).
 
-If you would like to support the continued development of _sbt-ethereum_, please do! But wait a few days, until the official
-donation address (for Ether and ERC-20 tokens) is made available.
+If you would like to support the continued development of _sbt-ethereum_, please donate to `sbt-ethereum.eth` (or, equivalently, hex address `0x9edDB06e873f62dc14b551316de9EdFaD2DD0741`).
+Donations of Ether or ERC-20 tokens are greatly appreciated.
 
 ### Development
 

@@ -13,6 +13,7 @@
 * [Creating a Smart Contract](creating-a-smart-contract.md)
 * [Testing a Smart Contract](testing-a-smart-contract.md)
 * [Verifying a Smart Contract on Etherscan](verifying-a-smart-contract-on-etherscan.md)
+* [Signing a Transaction with Offline Keys](signing-a-transaction-with-offline-keys.md)
 
 @@@
 

@@ -86,8 +86,9 @@ downloading https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.12.7/s
 There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] y
 ```
 _sbt-ethereum_ presents an interactive, text-based user interface. When it's done bootstrapping itself, it notices that it knows of no "wallets",
-which are a combination of an Ethereum "address" (analogous to a bank account number), and the secret that unlocks it. (Learn about wallets in greater
-detail here **TK**). For now, let's go ahead and make one. _sbt-ethereum_ will ask you to type a passphrase. 
+which are a combination of an Ethereum "address" (analogous to a bank account number), and the secret that unlocks it, encrypted so that only you can access it.
+
+For now, let's go ahead and make one. _sbt-ethereum_ will ask you to type a passphrase. 
 ```
 There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] y
 [info] Generated keypair for address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2'
