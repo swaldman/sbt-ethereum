@@ -19,6 +19,8 @@ DB schema updates
 
 Other
 
+* Maybe prompt should include current sender and overrides?
+
 * Support multiple shoeboxes and user-definable locations
 
 * Make price feed more robust to scheduler failure. (Why are there sometimes scheduler failures?)
@@ -115,6 +117,7 @@ Other
 
 * Include information about overrides in transaction approver messages?
 
+* 'ethAddressSender' as a task silently returning the current sender for tasks and plugins
 
 
 

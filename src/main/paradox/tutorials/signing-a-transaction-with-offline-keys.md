@@ -289,6 +289,22 @@ sbt:eth-command-line> ethKeystoreList
 [success] Total time: 0 s, completed Apr 13, 2019 11:48:51 PM
 ```
 
+@@@ warning
+
+**Don't forget to backup your offline computer's shoebox!**
+
+If you lose the wallet files you have created, you'll lose all value associated with your offline addresses.
+
+You can use `ethShoeboxBackup`, and then copy the resulting file to a thumb drive.
+
+(That will produce a zip file. You might want to be neurotic, unzip it, and verfify that there are JSON files for each address in the `keystore` directory.)
+
+_**But never, ever put that thumb drive into an internet connected computer!**_
+
+Remeber, we don't want to internet to ever touch these files.
+
+@@@
+
 Now you'll want to make your new addresses (but not your private waller files!) accessible from your usual, internet-connected
 machine. We only communicate from the offline laptop via thumb drive, so plug that in. On my device, it comes up as `F:\`.
 
@@ -529,3 +545,37 @@ A transaction with hash '0x809b4f777311c4de61fc590aafa05e8d1b0c7f8105b425474498e
 ```
 
 And we are done! We have successfully sent a transaction without exposing the transactor's private key to the network.
+
+@@@ note
+
+**Consider making old-school paper cold wallets**
+
+---
+
+**Variation #1: Raw Private Keys**
+
+For each of your offline accounts, you can use `ethKeystorePrivateKeyReveal` to display the raw private key associated with your addresses to the console.
+
+_**This is a very sensitive operation that should only be done in private**_
+
+Then print (over a physical USB connection, not over a network!) the transcript of your session, and place that in a very, very secure location.
+
+*(Be careful that you don't accidentally leave your unencrypted private keys lying around in a file. This could happen if you have set your
+terminal or shell to save transcripts of your session, or if you have copied-and-pasted into an editor or word processor that stores autosave files!)*
+
+_**If you don't have a very, very secure location, then DON'T make paper wallets with your raw private keys**_ Use Variation #2.
+
+---
+
+**Variation #2: JSON V3 Wallet Files**
+
+An alternative is to use `ethKeystoreWalletV3Print` to create paper copies of the JSON fies that are encrypted private keys.
+
+The downside of this is it will be much less convenient to recover access to your address from printed JSON objects.
+
+The upside is, even if an unauthorized party finds the printed JSON file, they will be unable to access your accounts withut the associated passcodes.
+
+_**Obviously, do NOT keep the passcodes in the same place as the printed JSON files**_ If you do that, anyone who accesses that place has all they need to reconstruct your private keys.
+
+@@@
+
