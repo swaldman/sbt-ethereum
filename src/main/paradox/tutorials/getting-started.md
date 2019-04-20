@@ -47,11 +47,13 @@ However you launch `sbt`, you will need to have a @ref:[Java VM](../appendix/pre
 
 @@@ note
 
-**If you are running on _Windows_, please preinstall `sbt`.**
+**If you are running on _Windows_, please preinstall _sbt_.**
 
 The wrapper script won't work!
 
-Just `cd` into the `eth-command-line` directory and type `sbt`.
+You can install _sbt_ from [here](https://www.scala-sbt.org).
+
+Once _sbt_ is installed, just `cd` into the `eth-command-line` directory and type `sbt`.
 
 @@@
 
