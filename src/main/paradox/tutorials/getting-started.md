@@ -3,7 +3,7 @@
 ### Download a repository
 
 _sbt-ethereum_ runs in the context of a _repository_, a folder which potentially represents source code for a particular project or application.
-But in order to just interact with the _ethereum_ blockchain, or to manage or create wallets and addresses, no partcular project or
+But in order just to interact with the _ethereum_ blockchain, or to manage or create wallets and addresses, no partcular project or
 application is required.
 
 For this purpose, a simple _sbt-ethereum_ repository called [eth-command-line](https://github.com/swaldman/eth-command-line) is available.

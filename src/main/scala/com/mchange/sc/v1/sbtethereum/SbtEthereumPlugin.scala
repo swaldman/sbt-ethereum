@@ -1766,7 +1766,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val ( ensName, transfereeAddress ) = parser.parsed
 
-      log.warn( s"This will permanently transfer the deed associated with '${ensName}', and any deplosit paid to secure that deed, to ${verboseAddress(chainId, transfereeAddress)}.")
+      log.warn( s"This will permanently transfer the deed associated with '${ensName}', and any deposit paid to secure that deed, to ${verboseAddress(chainId, transfereeAddress)}.")
 
       kludgeySleepForInteraction()
       val check = queryYN( is, "Are you sure you want to do this? [y/n] " )
