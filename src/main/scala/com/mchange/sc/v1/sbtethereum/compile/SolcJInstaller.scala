@@ -27,7 +27,7 @@ object SolcJInstaller {
   private lazy val FileListResource = PlatformDirPrefix + "/file.list"
 
   private val SolcJSupportedVersions = {
-    immutable.TreeSet( /* "0.4.3", "0.4.4", "0.4.6", */ "0.4.7", "0.4.8", "0.4.10" )( Ordering.by( SemanticVersion( _ ) ) ) // only metadata supporting versions
+    immutable.TreeSet( "0.4.7", "0.4.8", "0.4.10", "0.4.25", "0.5.7" )( Ordering.by( SemanticVersion( _ ) ) ) // only metadata supporting versions
   }
 
   private val OtherSolcjCompatibleSupportedVersion = {
@@ -40,7 +40,7 @@ object SolcJInstaller {
 
   val SupportedVersions = SolcJSupportedVersions ++ OtherSolcjCompatibleSupportedVersion.keySet
 
-  val DefaultSolcJVersion = "0.4.24"
+  val DefaultSolcJVersion = "0.5.7"
 
   private def mbVersionUrl( version : String ) : Option[URL] = {
     if ( SolcJSupportedVersions( version ) ) {

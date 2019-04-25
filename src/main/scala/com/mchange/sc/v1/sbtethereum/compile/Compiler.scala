@@ -40,7 +40,7 @@ object Compiler {
     def test( compiler : Compiler.Solidity, timeout : Duration )( implicit ec : ExecutionContext ) : Boolean = {
       try {
         val fcompilation: Future[Compilation] = {
-          compiler.compile( new TestLogger( compiler.toString ), None, "pragma solidity ^0.4.7;\ncontract Test {}", Some( System.currentTimeMillis ) )( ec )
+          compiler.compile( new TestLogger( compiler.toString ), None, "pragma solidity >=0.4.7;\ncontract Test {}", Some( System.currentTimeMillis ) )( ec )
         }
         Await.ready( fcompilation, timeout )
         fcompilation.value.get.isSuccess

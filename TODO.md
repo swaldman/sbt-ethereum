@@ -33,6 +33,9 @@ Other
 
 * object prepare in stubs, that with functions that yield unsigned transactions
 
+* clean up solidity compiler autosetting, let compilers be specified in builds, let there be a settable user-default compiler that persists between sessions.
+  - Current logic in xethFindCurrentSolidityCompilerTask is not so great
+
 * ensUnsigned*
 
 * let repositories suggest ABIs <--> addresses <--> aliases ???
