@@ -35,7 +35,6 @@ We'll hopefully provide a convenience for this shortly.
 
 @@@ div { .tight }
 
-  * _sbt-ethereum_ does not yet support Solidity 0.5.x
   * _sbt-ethereum_ supports "traditional" auction-based ENS. A transition to a new system is expected to begin in May 2019.
   * _sbt-ethereum_ does not yet support Vyper contracts (but hopes to soon!)
 

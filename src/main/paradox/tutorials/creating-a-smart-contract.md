@@ -48,6 +48,21 @@ to initialize the repository and perform an initial commit!
 
 @@@
 
+@@@ note
+
+**Use Solidity 0.5.x!**
+
+These tutorials were written a while ago, against Solidity version 0.4.24.
+
+That compiler remains supported, but Solidity versions 0.5.x are now pretty mature, so we'd recommend you start
+developing against those. In the source code below, where it says `pragma solidity ^0.4.24;`, replace that with `pragma solidity ^0.5.7;`
+
+Nothing else needs to change!
+
+Solidity 0.5.x is now _sbt-ethereum_'s default compiler!
+
+@@@
+
 ### Define your smart contract source code
 
 In your repository, you will find a folder called `src/main/solidity`. Solidity is the most common language for developing
