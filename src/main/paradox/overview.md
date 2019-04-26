@@ -18,7 +18,7 @@ Go ahead and @ref:[get started](tutorials/getting-started.md)!
 ### Mutual support
 
 The preferred channel for casual user support is [ethereum.stackexchange.com](https://ethereum.stackexchange.com). Please use the tag `sbt-ethereum` on that site.
-_(The tag does not exist at this writing, but hopefully your questions will bring it forth soon!)_
+_(The tag does not exist at this writing, but hopefully your questions will bring it forth!)_
 
 For training or more in-depth support, please [contact us](mailto:support@sbt-ethereum.io).
 
@@ -56,7 +56,7 @@ This documentation site is built with [Lightbend Paradox](https://developer.ligh
 
 This whole application is built on top of [sbt](https://www.scala-sbt.org), which is a weird but amazing tool.
 
-This site uses Google Web Fonts [_Source Sans Pro_](https://fonts.google.com/specimen/Source+Sans+Pro) and [_Ubuntu Mono_](https://fonts.google.com/specimen/Ubuntu+Mono) (which hosted locally to protect your privacy).
+This site uses Google Web Fonts [_Source Sans Pro_](https://fonts.google.com/specimen/Source+Sans+Pro) and [_Ubuntu Mono_](https://fonts.google.com/specimen/Ubuntu+Mono) (which are hosted locally to protect your privacy).
 
 
 
