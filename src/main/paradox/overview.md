@@ -22,7 +22,7 @@ _(The tag does not exist at this writing, but hopefully your questions will brin
 
 For training or more in-depth support, please [contact us](mailto:support@sbt-ethereum.io).
 
-If you would like to support the continued development of _sbt-ethereum_, please donate to `sbt-ethereum.eth` (or, equivalently, hex address `0x9edDB06e873f62dc14b551316de9EdFaD2DD0741`).
+If you would like to support the continued development of _sbt-ethereum_, please donate to `sbt-ethereum.eth`.
 Donations of Ether or ERC-20 tokens are greatly appreciated.
 
 ### Development
@@ -54,9 +54,9 @@ Many thanks to Michal Slinn, who produced an excellent [earlier iteration of _sb
 
 This documentation site is built with [Lightbend Paradox](https://developer.lightbend.com/docs/paradox/current/).
 
-This whole application is built on top of [sbt](https://www.scala-sbt.org).
+This whole application is built on top of [sbt](https://www.scala-sbt.org), which is a weird but amazing tool.
 
-This site uses Google Web Fonts [_Source Sans Pro_](https://fonts.google.com/specimen/Source+Sans+Pro) and [_Ubuntu Mono_](https://fonts.google.com/specimen/Ubuntu+Mono) (but hosted locally to help protect your privacy).
+This site uses Google Web Fonts [_Source Sans Pro_](https://fonts.google.com/specimen/Source+Sans+Pro) and [_Ubuntu Mono_](https://fonts.google.com/specimen/Ubuntu+Mono) (which hosted locally to protect your privacy).
 
 
 
