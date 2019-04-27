@@ -109,7 +109,7 @@ if an address has been associated with the name.
 
 But you have to pay for public names, most simple ones are already taken (and they take a few days to acquire).
 
-For internal use, it's often more convenient to use addres aliases.
+For internal use, it's often more convenient to use address aliases.
 
 @@@
 
