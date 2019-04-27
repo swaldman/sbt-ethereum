@@ -150,8 +150,8 @@ The `ethContractAbiDefaultImport` command requires the address we want to associ
 supplied the long hex address but why? We've defined an easy to use alias `fortune`. (Remember, always, to use tab
 completion so _sbt-ethereum_'s long names don't drive you nuts. Typing `ethC<tab>A<tab>I<tab> f<tab>` would get us there!)
 
-`ethContractAbiDefaultImport` is an _interactive command_. It is prompting us for what it needs, in this case the cotract ABI.
-We copy and paste that from the _Etherscan_ page. Yes it is long (any are much longer). Copy the while thing, or use the "Copy"
+`ethContractAbiDefaultImport` is an _interactive command_. It is prompting us for what it needs, in this case the contract ABI.
+We copy and paste that from the _Etherscan_ page. Yes it is long (many are much longer). Copy the whole thing, or use the "Copy"
 button on the upper right of the ABI on the _Etherscan_ page. After you have pasted it in, hit `<return>`.
 ```
 sbt:eth-command-line> ethContractAbiDefaultImport fortune
