@@ -170,7 +170,7 @@ When we generated our new address, you may have noticed the message
 Let's try that!
 
 You could just copy and paste the (very long!) command, but please don't! _sbt-ethereum_ by design
-relies up _tab completion_ to make typing long but descriptive commands easy. If you are familiar with tab completion,
+relies on _tab completion_ to make typing long but descriptive commands easy. If you are familiar with tab completion,
 you should be able to enter this long command very quickly. Start with `ethK<tab>` and go from there. For the address
 part, remember that the address alias `default-sender` was defined for this address, so instead of copying and pasting
 the long hex address, consider just typing `d<tab>`. _sbt-ethereum_ tab-completes address aliases!
