@@ -1,7 +1,7 @@
 # Using a Smart Contract (I)
 
 _Ethereum_ applications are defined as one or more _smart contract_, each of which live at an
-address on the _Ethereum_ blockchain. To interact with one, the first thing we need is it's address.
+address on the _Ethereum_ blockchain. To interact with one, the first thing we need is its address.
 
 We are going to
 work with a brilliant, very exciting, _fortune cookie application_. Finally you will learn the truth
