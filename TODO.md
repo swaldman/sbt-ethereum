@@ -19,6 +19,11 @@ DB schema updates
 
 Other
 
+* Consuela EthSignature.fromXXX factory methods should test V for presence of Chain ID, abd build EthSignature.WithChainId when appropriate.
+  (Now these methods would just fail if asked to decode the hex of a signature with Chain ID.
+
+* Consuela EthSignature should include public support for signatures of raw, unhashed bytes.
+
 * Maybe prompt should include current sender and overrides?
 
 * Support multiple shoeboxes and user-definable locations

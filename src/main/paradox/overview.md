@@ -18,7 +18,6 @@ Go ahead and @ref:[get started](tutorials/getting-started.md)!
 ### Mutual support
 
 The preferred channel for casual user support is [ethereum.stackexchange.com](https://ethereum.stackexchange.com). Please use the tag `sbt-ethereum` on that site.
-_(The tag does not exist at this writing, but hopefully your questions will bring it forth!)_
 
 For training or more in-depth support, please [contact us](mailto:support@sbt-ethereum.io).
 
