@@ -3953,10 +3953,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val f_txnHash = Invoker.transaction.createContract( privateKey, valueInWei, dataHex.decodeHexAsSeq, nonceOverride )
 
-        log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
         val f_out = {
           for {
             txnHash <- f_txnHash
+            _       <- Future.successful( log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." ) )
             receipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
           } yield {
             log.info( s"Contract '${deploymentAlias}' deployed in transaction '0x${txnHash.hex}'." )
@@ -6558,14 +6558,23 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def _verboseAddress( chainId : Int, address : EthAddress, xform : String => String ) : String = {
+    val simple = xform(s"0x${address.hex}")
+    if ( chainId >= 0 ) {
+      val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s"with aliases $str " ) )
+      s"${simple} (${aliasesPart}on chain with ID $chainId)"
+    }
+    else {
+      simple
+    }
+  }
+
   private def verboseAddress( chainId : Int, address : EthAddress ) : String = {
-    val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s"with aliases $str " ) )
-    s"'0x${address.hex}' (${aliasesPart}on chain with ID $chainId)"
+    _verboseAddress( chainId, address, s => s"'${s}'" )
   }
 
   private def ticklessVerboseAddress( chainId : Int, address : EthAddress ) : String = {
-    val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s"with aliases $str " ) )
-    s"0x${address.hex} (${aliasesPart}on chain with ID $chainId)"
+    _verboseAddress( chainId, address, identity )
   }
 
   private def attemptAdvanceStateWithTask[T]( taskKey : Def.ScopedKey[Task[T]], startState : State ) : State = {

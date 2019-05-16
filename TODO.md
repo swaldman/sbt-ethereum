@@ -19,6 +19,18 @@ DB schema updates
 
 Other
 
+* Make EthSignature.Abstract just EthSignature
+
+* Generated events: Event pattern matching should match declared types, put ( val metadata : stub.Event.Metadata, val logEntry : EthLogEntry ) in a separate arglist
+
+* Ensure drop and set commands print what they drop or replace
+
+* Make it possible to specify an optional Chain ID in ethNodeChainIdUrlDefaultSet
+
+* New ENS
+
+* Utilities -- unixtime, denomination conversions, etc
+
 * Consuela EthSignature.fromXXX factory methods should test V for presence of Chain ID, abd build EthSignature.WithChainId when appropriate.
   (Now these methods would just fail if asked to decode the hex of a signature with Chain ID.
 
@@ -31,8 +43,6 @@ Other
 * Make price feed more robust to scheduler failure. (Why are there sometimes scheduler failures?)
 
 * Why in Test config no tab-complete compilations?
-
-* Use stateless (no filter) API for event subscriptions
 
 * Define setting etherscancfgApiKey, for users who prefer global-sbt-style configuration
 
