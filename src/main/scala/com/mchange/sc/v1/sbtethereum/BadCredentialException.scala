@@ -2,6 +2,8 @@ package com.mchange.sc.v1.sbtethereum
 
 import com.mchange.sc.v1.consuela.ethereum.EthAddress
 
+import util.Formatting.hexString
+
 object BadCredentialException {
   private def clause( mbAddress : Option[EthAddress] ) = mbAddress.fold("")( addr => s" for address ${hexString(addr)}" )
 }

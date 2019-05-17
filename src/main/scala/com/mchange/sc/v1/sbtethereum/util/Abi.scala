@@ -1,8 +1,10 @@
 package com.mchange.sc.v1.sbtethereum.util
 
-import com.mchange.sc.v1.sbtethereum.{hexString, nst, shoebox, AbiUnknownException}
+import com.mchange.sc.v1.sbtethereum.{nst, shoebox, AbiUnknownException}
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
 import play.api.libs.json.Json
+
+import Formatting._
 
 private [sbtethereum] object Abi {
   val EmptyAbi: jsonrpc.Abi = jsonrpc.Abi.empty

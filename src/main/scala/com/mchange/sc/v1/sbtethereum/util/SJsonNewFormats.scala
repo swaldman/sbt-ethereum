@@ -5,7 +5,8 @@ import v1.consuela._
 import v1.consuela.ethereum.{EthAddress,EthHash}
 import v1.consuela.ethereum.encoding.{RLP,RLPSerializing}
 import v1.consuela.ethereum.jsonrpc
-import v1.sbtethereum.{MaybeSpawnable,RichParserInfo}
+import v1.sbtethereum.RichParserInfo
+import v1.sbtethereum.util.Spawn.MaybeSpawnable
 
 import sjsonnew._
 import BasicJsonProtocol._

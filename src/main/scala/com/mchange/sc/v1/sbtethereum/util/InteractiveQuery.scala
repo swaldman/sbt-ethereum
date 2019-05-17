@@ -113,7 +113,12 @@ object InteractiveQuery {
   }
 
   private [sbtethereum]
+  def throwCantReadInteraction : Nothing = throw new CantReadInteractionException
+
+  private [sbtethereum]
   def notConfirmedByUser = new OperationAbortedByUserException( "Not confirmed by user." )
+
+  private [sbtethereum] def aborted( msg : String ) : Nothing = throw new OperationAbortedByUserException( msg )
 
   private [sbtethereum]
   def readConfirmCredential( log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {

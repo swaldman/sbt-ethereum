@@ -2,6 +2,7 @@ package com.mchange.sc.v1.sbtethereum.util
 
 import com.mchange.sc.v1.sbtethereum._
 import util.Abi._
+import util.Spawn._
 
 import sbt.State
 

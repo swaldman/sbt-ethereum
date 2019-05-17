@@ -19,6 +19,9 @@ import util.Parsers._
 import util.SJsonNewFormats._
 import util.Abi._
 import util.InteractiveQuery._
+import util.Spawn._
+import util.ClientTransactionReceipt._
+import util.Formatting._
 import generated._
 
 import java.io.{BufferedInputStream, File, FileInputStream, FilenameFilter}
@@ -5152,7 +5155,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                   val fileset = regenerated map { regen =>
                     regen match {
                       case stub.Generator.Regenerated.Updated( srcFile, sourceCode ) => {
-                        srcFile.replaceContents( sourceCode, scala.io.Codec.UTF8 )
+                        srcFile.replaceContents( sourceCode, CodecUTF8 )
                         srcFile
                       }
                       case stub.Generator.Regenerated.Unchanged( srcFile ) => srcFile
@@ -5174,7 +5177,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                   } else {
                     val gensrc = testing.TestingResourcesGenerator.generateTestingResources( testingResourcesObjectName, testingEthNodeUrl, stubPackage )
                     val testingResourcesFile = new File( stubsDir, s"${testingResourcesObjectName}.scala" )
-                    Files.write( testingResourcesFile.toPath, gensrc.getBytes( scala.io.Codec.UTF8.charSet ) )
+                    Files.write( testingResourcesFile.toPath, gensrc.getBytes( CharsetUTF8 ) )
                     immutable.Seq( testingResourcesFile )
                   }
                 } else {
@@ -6481,7 +6484,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       def handleSignUnknown = {
         println( s"""Signature Request: This data does not appear to be a transaction${if (chainId < 0 ) "." else " for chain with ID " + chainId + "."}""" )
         println( s"""Raw data: ${hexString(documentBytes)}""" )
-        val rawString = new String( documentBytes.toArray, "UTF8" )
+        val rawString = new String( documentBytes.toArray, CharsetUTF8 )
         println( s"""Raw data interpreted as as UTF8 String: ${ StringLiteral.formatUnicodePermissiveStringLiteral( rawString ) }""" )
         val ok = queryYN( is, s"Are you sure it is okay to sign this uninterpreted data as ${verboseAddress(chainId, address)}? [y/n] " )
         if (!ok) aborted( "User chose not to sign uninterpreted data." )

@@ -3,7 +3,7 @@ package com.mchange.sc.v1.sbtethereum.util
 import scala.collection._
 import scala.concurrent.Future
 
-import com.mchange.sc.v1.sbtethereum.{rounded, shoebox}
+import com.mchange.sc.v1.sbtethereum.{rounded, shoebox, CharsetUTF8}
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{ethabi, EthAddress, EthHash, EthSigner}
@@ -118,7 +118,7 @@ final object Erc20 {
       Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, NameAllCapsCallData )
     }.map { ret =>
       val arr = ethabi.decodeReturnValuesForFunction( ret, NameFunction ).assert.head.value.asInstanceOf[immutable.Seq[Byte]].toArray
-      new String( arr, "UTF8" )
+      new String( arr, CharsetUTF8 )
     }
   }
 
@@ -129,7 +129,7 @@ final object Erc20 {
       Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, SymbolAllCapsCallData )
     }.map { ret =>
       val arr = ethabi.decodeReturnValuesForFunction( ret, SymbolFunction ).assert.head.value.asInstanceOf[immutable.Seq[Byte]].toArray
-      new String( arr, "UTF8" )
+      new String( arr, CharsetUTF8 )
     }
   }
 
