@@ -8,10 +8,12 @@ import sbt.Def.Initialize
 import sjsonnew._
 import BasicJsonProtocol._
 
+import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstaller, SourceFile}
+
 import util.BaseCodeAndSuffix
 import util.OneTimeWarner
 import util.ChainIdMutable
-import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstaller, SourceFile}
+import util.Erc20
 import util.EthJsonRpc._
 import util.Parsers._
 import util.SJsonNewFormats._
@@ -6083,8 +6085,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private final def notConfirmedByUser  = new OperationAbortedByUserException( "Not confirmed by user." )
-
   private def findCachePrivateKey(
     state                : sbt.State,
     log                  : sbt.Logger,
@@ -6149,21 +6149,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       Mutables.CurrentAddress.synchronized {
         goodCached.getOrElse( updateCached )
       }
-    }
-  }
-
-  private def readConfirmCredential(  log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
-    if ( attempt < maxAttempts ) {
-      val credential = is.readLine( readPrompt, mask = true ).getOrElse( throwCantReadInteraction )
-      val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throwCantReadInteraction )
-      if ( credential == confirmation ) {
-        credential
-      } else {
-        log.warn("Entries did not match! Retrying.")
-        readConfirmCredential( log, is, readPrompt, confirmPrompt, maxAttempts, attempt + 1 )
-      }
-    } else {
-      throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )
     }
   }
 
@@ -6398,134 +6383,6 @@ object SbtEthereumPlugin extends AutoPlugin {
    */ 
   private def kludgeySleepForInteraction() : Unit = Thread.sleep(100) 
 
-  final object Erc20 {
-    private val Big10 = BigInt(10)
-
-    private lazy val StringEncoder  = Encoder.UTF8String
-    private lazy val UInt8Encoder   = Encoder.encoderForSolidityType("uint8").get.asInstanceOf[Encoder[BigInt]]
-    private lazy val UInt256Encoder = Encoder.UInt256
-
-    private val DecimalsCallData    = "0x313ce567".decodeHexAsSeq
-    private val NameCallData        = "0x06fdde03".decodeHexAsSeq
-    private val SymbolCallData      = "0x95d89b41".decodeHexAsSeq
-    private val TotalSupplyCallData = "0x18160ddd".decodeHexAsSeq
-
-    // some contracts ( probably due to an overzealous linter https://github.com/protofire/solhint/issues/53 )
-    // use ALL-CAPS versions of NAME / SYMBOL / DECIMALS
-    private val DecimalsAllCapsCallData = "0x2e0f2625".decodeHexAsSeq
-    private val NameAllCapsCallData = "0xa3f4df7e".decodeHexAsSeq
-    private val SymbolAllCapsCallData = "0xf76f8d78".decodeHexAsSeq
-
-    private lazy val TransferFunction = ethabi.abiFunctionForFunctionNameAndTypes( "transfer", immutable.Seq( "address", "uint" ), Erc20.Abi ).assert
-    private lazy val ApproveFunction = ethabi.abiFunctionForFunctionNameAndTypes( "approve", immutable.Seq( "address", "uint" ), Erc20.Abi ).assert
-
-    private lazy val DecimalsFunction    = ethabi.abiFunctionForFunctionNameAndTypes( "decimals", Nil, Erc20.Abi ).assert
-    private lazy val NameFunction        = ethabi.abiFunctionForFunctionNameAndTypes( "name", Nil, Erc20.Abi ).assert
-    private lazy val SymbolFunction     = ethabi.abiFunctionForFunctionNameAndTypes( "symbol", Nil, Erc20.Abi ).assert
-    private lazy val TotalSupplyFunction = ethabi.abiFunctionForFunctionNameAndTypes( "totalSupply", Nil, Erc20.Abi ).assert
-
-    private lazy val BalanceOfFunction = ethabi.abiFunctionForFunctionNameAndTypes( "balanceOf", immutable.Seq( "address" ), Erc20.Abi ).assert
-
-    private lazy val AllowanceFunction = ethabi.abiFunctionForFunctionNameAndTypes( "allowance", immutable.Seq( "address", "address" ), Erc20.Abi ).assert
-
-
-    private [sbtethereum]
-    val Abi = shoebox.StandardAbi.Erc20
-
-    private [sbtethereum]
-    def toValueInAtoms( numTokens : BigDecimal, decimals : Int ) : BigInt = rounded( numTokens * BigDecimal(Big10.pow( decimals )) )
-
-    private [sbtethereum]
-    def toValueInTokens( numAtoms : BigInt, decimals : Int ) : BigDecimal = BigDecimal( numAtoms ) / BigDecimal(Big10.pow( decimals ))
-
-    private [sbtethereum]
-    def doTransfer( tokenContractAddress : EthAddress, fromSigner : EthSigner, toAddress : EthAddress, numAtoms : BigInt, forceNonce : Option[Unsigned256] )( implicit ic : Invoker.Context ) : Future[EthHash] = {
-      val f_calldata = Future {
-        val reps = immutable.Seq( toAddress, numAtoms );
-        ethabi.callDataForAbiFunctionFromEncoderRepresentations( reps, TransferFunction ).assert
-      }( ic.econtext )
-      f_calldata.flatMap( calldata => Invoker.transaction.sendMessage( fromSigner, tokenContractAddress, Zero256, calldata, forceNonce ) )( ic.econtext )
-    }
-
-    private [sbtethereum]
-    def doApprove( tokenContractAddress : EthAddress, fromSigner : EthSigner, approvedAddress : EthAddress, numAtoms : BigInt, forceNonce : Option[Unsigned256] )( implicit ic : Invoker.Context ) : Future[EthHash] = {
-      val f_calldata = Future {
-        val reps = immutable.Seq( approvedAddress, numAtoms );
-        ethabi.callDataForAbiFunctionFromEncoderRepresentations( reps, ApproveFunction ).assert
-      }( ic.econtext )
-      f_calldata.flatMap( calldata => Invoker.transaction.sendMessage( fromSigner, tokenContractAddress, Zero256, calldata, forceNonce ) )( ic.econtext )
-    }
-
-    private [sbtethereum]
-    def lookupAtomBalance( tokenContractAddress : EthAddress, tokenHolderAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[Unsigned256] = {
-      val f_calldata = Future {
-        val reps = immutable.Seq( tokenHolderAddress );
-        ethabi.callDataForAbiFunctionFromEncoderRepresentations( reps, BalanceOfFunction ).assert
-      }( ic.econtext )
-      f_calldata.flatMap { calldata =>
-        Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, calldata ).map { ret =>
-          val bigint = ethabi.decodeReturnValuesForFunction( ret, BalanceOfFunction ).assert.head.value.asInstanceOf[BigInt]
-          Unsigned256(bigint)
-        }
-      }( ic.econtext )
-    }
-
-    private [sbtethereum]
-    def lookupAllowanceAtoms( tokenContractAddress : EthAddress, ownerAddress : EthAddress, allowedAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[Unsigned256] = {
-      val f_calldata = Future {
-        val reps = immutable.Seq( ownerAddress, allowedAddress );
-        ethabi.callDataForAbiFunctionFromEncoderRepresentations( reps, AllowanceFunction ).assert
-      }( ic.econtext )
-      f_calldata.flatMap { calldata =>
-        Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, calldata ).map { ret =>
-          val bigint = ethabi.decodeReturnValuesForFunction( ret, AllowanceFunction ).assert.head.value.asInstanceOf[BigInt]
-          Unsigned256(bigint)
-        }
-      }( ic.econtext )
-    }
-
-    private [sbtethereum]
-    def lookupDecimals( tokenContractAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[Unsigned8] = {
-      Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, DecimalsCallData ).recoverWith { case e : Exception => 
-        Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, DecimalsAllCapsCallData )
-      }.map { ret => 
-          val bigint = ethabi.decodeReturnValuesForFunction( ret, DecimalsFunction ).assert.head.value.asInstanceOf[BigInt]
-          Unsigned8(bigint)
-      }( ic.econtext )
-    }
-
-    private [sbtethereum]
-    def lookupName( tokenContractAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[String] = {
-      Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, NameCallData ).recoverWith { case e : Exception => 
-        Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, NameAllCapsCallData )
-      }.map { ret =>
-        val arr = ethabi.decodeReturnValuesForFunction( ret, NameFunction ).assert.head.value.asInstanceOf[immutable.Seq[Byte]].toArray
-        new String( arr, "UTF8" )
-      }( ic.econtext )
-    }
-
-    private [sbtethereum]
-    def lookupSymbol( tokenContractAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[String] = {
-      Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, SymbolCallData ).recoverWith { case e : Exception => 
-        Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, SymbolAllCapsCallData )
-      }.map { ret =>
-        val arr = ethabi.decodeReturnValuesForFunction( ret, SymbolFunction ).assert.head.value.asInstanceOf[immutable.Seq[Byte]].toArray
-        new String( arr, "UTF8" )
-      }( ic.econtext )
-    }
-
-    private [sbtethereum]
-    def lookupTotalSupplyAtoms( tokenContractAddress : EthAddress )( implicit ic : Invoker.Context ) : Future[Unsigned256] = {
-      Invoker.constant.sendMessage( EthAddress.Zero, tokenContractAddress, Zero256, TotalSupplyCallData ).map { ret =>
-        val bigint = ethabi.decodeReturnValuesForFunction( ret, TotalSupplyFunction ).assert.head.value.asInstanceOf[BigInt]
-        Unsigned256(bigint)
-      }( ic.econtext )
-    }
-
-    case class Balance( atoms : BigInt, decimals : Option[Int] ) {
-      lazy val tokens : Option[BigDecimal] = decimals.map( d => toValueInTokens( atoms, d ) )
-    }
-  }
 
   // some formatting functions for ascii tables
   private def emptyOrHex( str : String ) = if (str == null) "" else s"0x$str"
@@ -6594,7 +6451,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
   }
-
 
   // plug-in setup
 

@@ -112,7 +112,27 @@ object InteractiveQuery {
     doFetchNum
   }
 
+  private [sbtethereum]
+  def notConfirmedByUser = new OperationAbortedByUserException( "Not confirmed by user." )
+
+  private [sbtethereum]
+  def readConfirmCredential( log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
+    if ( attempt < maxAttempts ) {
+      val credential = is.readLine( readPrompt, mask = true ).getOrElse( throwCantReadInteraction )
+      val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throwCantReadInteraction )
+      if ( credential == confirmation ) {
+        credential
+      } else {
+        log.warn("Entries did not match! Retrying.")
+        readConfirmCredential( log, is, readPrompt, confirmPrompt, maxAttempts, attempt + 1 )
+      }
+    } else {
+      throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )
+    }
+  }
+
   // not currently used
+  private [sbtethereum]
   def interactiveQueryUnsignedTransaction( is : sbt.InteractionService, log : sbt.Logger ) : EthTransaction.Unsigned = {
     def queryEthAmount( query : String, nonfunctionalTabHelp : String ) : BigInt = {
       val raw = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
