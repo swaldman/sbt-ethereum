@@ -41,7 +41,6 @@ object InteractiveQuery {
   }
 
 
-  // not currently used
   private [sbtethereum]
   def queryMandatoryGoodFile( is : sbt.InteractionService, query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : File => String ) : File = {
     _queryGoodFile[I]( is, identity )( query, goodFile, notGoodFileRetryPrompt, queryMandatoryGoodFile( is, query, goodFile, notGoodFileRetryPrompt ) )
@@ -65,9 +64,12 @@ object InteractiveQuery {
     doPrompt
   }
 
+  /**
+    * Empty String aborts, yieldng an int between (inclusive) min and max, otherwise repeatedly prompts for a good value.
+    */ 
   private [sbtethereum]
-  def queryIntOrNone( is : sbt.InteractionService, query : String, min : Int, max : Int ) : Option[Int] = {
-    require( min >= 0, "Implementation limitation, only positive numbers are supported for now." )
+  def queryPositiveIntOrNone( is : sbt.InteractionService, query : String, min : Int, max : Int ) : Option[Int] = {
+    require( min >= 0, "Only positive numbers are supported." )
     require( max >= min, s"max ${max} cannot be smaller than min ${min}." )
 
     // -1 could not be interpreted as Int, None means empty String
@@ -92,7 +94,7 @@ object InteractiveQuery {
 
     def checkRange( num : Int ) = {
       if ( num < min || num > max ) {
-        println( s"${num} is out of range. Try again." )
+        println( s"${num} is out of range [${min},${max}]. Try again." )
         false
       }
       else {
@@ -118,7 +120,13 @@ object InteractiveQuery {
   private [sbtethereum]
   def notConfirmedByUser = new OperationAbortedByUserException( "Not confirmed by user." )
 
-  private [sbtethereum] def aborted( msg : String ) : Nothing = throw new OperationAbortedByUserException( msg )
+  private [sbtethereum]
+  def assertReadLine( is : sbt.InteractionService, prompt : String, mask : Boolean ) : String = {
+    is.readLine( prompt, mask ).getOrElse( throwCantReadInteraction )
+  }
+
+  private [sbtethereum]
+  def aborted( msg : String ) : Nothing = throw new OperationAbortedByUserException( msg )
 
   private [sbtethereum]
   def readConfirmCredential( log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {

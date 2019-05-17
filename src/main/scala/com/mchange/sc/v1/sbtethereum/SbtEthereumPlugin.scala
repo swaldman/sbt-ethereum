@@ -3525,7 +3525,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val numberedFiles = immutable.TreeMap.empty[Int,shoebox.Database.Dump] ++ Stream.from(1).zip( dumps )
       println( "The following sbt-ethereum shoebox database dump files have been found:" )
       numberedFiles.foreach { case ( n, d ) => println( s"\t${n}. ${d.file.getCanonicalPath}" ) }
-      val mbNumber = queryIntOrNone( is, "Which database dump should we restore? (Enter a number, or hit enter to abort) ", 1, dumps.size )
+      val mbNumber = queryPositiveIntOrNone( is, "Which database dump should we restore? (Enter a number, or hit enter to abort) ", 1, dumps.size )
       mbNumber.map( num => numberedFiles(num) )
     }
 
@@ -3667,7 +3667,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val numberedFiles = immutable.TreeMap.empty[Int,shoebox.Backup.BackupFile] ++ Stream.from(1).zip( backupFiles )
         println( "The following sbt-ethereum shoebox backup files have been found:" )
         numberedFiles.foreach { case ( n, bf ) => println( s"\t${n}. ${bf.file.getCanonicalPath}" ) }
-        val mbNumber = queryIntOrNone( is, "Which backup should we restore? (Enter a number, or hit enter to abort) ", 1, backupFiles.size )
+        val mbNumber = queryPositiveIntOrNone( is, "Which backup should we restore? (Enter a number, or hit enter to abort) ", 1, backupFiles.size )
         mbNumber.map( num => numberedFiles(num).file )
       }
     }
@@ -3700,7 +3700,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             println(s"\t1. The most recent backup with a good database dump: ${mostRecentAllGood.file.getCanonicalPath}" )
             println(s"\t2. The most recent backup of all, but with a failed database dump: ${mostRecent.file.getCanonicalPath}" )
             println( "\t3. Some other backup" )
-            val mbNum = queryIntOrNone( is, "Enter a number, or hit return to abort: ", 1, 3 )
+            val mbNum = queryPositiveIntOrNone( is, "Enter a number, or hit return to abort: ", 1, 3 )
             mbNum.flatMap { num =>
               num match {
                 case 1 => Some( mostRecentAllGood.file )
