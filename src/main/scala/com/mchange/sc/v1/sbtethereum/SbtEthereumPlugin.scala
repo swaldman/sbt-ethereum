@@ -48,6 +48,7 @@ import com.mchange.sc.v1.consuela.ethereum.encoding.RLP
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.log.MLogger
 import com.mchange.sc.v1.texttable
+import com.mchange.sc.v2.literal._
 import scala.annotation.tailrec
 import scala.collection._
 import scala.concurrent.{Await,Future}
@@ -6622,8 +6623,10 @@ object SbtEthereumPlugin extends AutoPlugin {
         if (!ok) aborted( "User chose not to sign proposed transaction." )
       }
       def handleSignUnknown = {
-        println( s"""This data does not appear to be a transaction${if (chainId < 0 ) "." else " for chain with ID " + chainId + "."}""" )
+        println( s"""Signature Request: This data does not appear to be a transaction${if (chainId < 0 ) "." else " for chain with ID " + chainId + "."}""" )
         println( s"""Raw data: ${hexString(documentBytes)}""" )
+        val rawString = new String( documentBytes.toArray, "UTF8" )
+        println( s"""Raw data interpreted as as UTF8 String: ${ StringLiteral.formatUnicodePermissiveStringLiteral( rawString ) }""" )
         val ok = queryYN( is, s"Are you sure it is okay to sign this uninterpreted data as ${verboseAddress(chainId, address)}? [y/n] " )
         if (!ok) aborted( "User chose not to sign uninterpreted data." )
       }
