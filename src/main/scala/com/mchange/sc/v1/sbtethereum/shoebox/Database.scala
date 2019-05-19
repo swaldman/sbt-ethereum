@@ -809,6 +809,9 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     val userExecutableFiles : immutable.Set[File] = immutable.Set.empty[File]
 
     def initializeDataSource( ensureSchema : Boolean ) : Failable[ComboPooledDataSource] = {
+      // ensure the h2 database is bound to localhost, not some visible interface
+      System.setProperty("h2.bindAddress", "127.0.0.1")
+
       for {
         dir     <- Directory
         jdbcUrl <- JdbcUrl
