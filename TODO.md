@@ -19,10 +19,6 @@ DB schema updates
 
 Other
 
-* Make EthSignature.Abstract just EthSignature
-
-* Generated events: Event pattern matching should match declared types, put ( val metadata : stub.Event.Metadata, val logEntry : EthLogEntry ) in a separate arglist
-
 * Ensure drop and set commands print what they drop or replace
 
 * Make it possible to specify an optional Chain ID in ethNodeChainIdUrlDefaultSet

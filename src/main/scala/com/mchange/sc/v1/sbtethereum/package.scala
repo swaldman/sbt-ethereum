@@ -39,7 +39,6 @@ package object sbtethereum {
   final class SenderNotAvailableException( msg : String, cause : Throwable = null) extends SbtEthereumException( msg, cause )
   final class CannotReadDirectoryException( msg : String, cause : Throwable = null ) extends SbtEthereumException( msg, cause )
   final class OperationAbortedByUserException( msg : String ) extends SbtEthereumException( s"Aborted by user: ${msg}", null, noStackTrace = true )
-  final class NotCurrentlyUnderAuctionException( name : String, status : ens.NameStatus ) extends SbtEthereumException( s"ENS name '${name}' is not currently under auction. Its status is '${status}'." )
   final class UnexpectedConfigurationException( config : sbt.Configuration ) extends SbtEthereumException( s"A task was executed with unexpected configuration '${config}'." )
 
   final class CantReadInteractionException extends SbtEthereumException("Failed to read from sbt.InteractionService! (Perhaps an interactive task was run noninteractively.")
@@ -74,14 +73,14 @@ package object sbtethereum {
 
   private [sbtethereum]
   case class RichParserInfo(
-    chainId               : Int,
-    mbJsonRpcUrl          : Option[String],
-    addressAliases        : immutable.SortedMap[String,EthAddress],
-    abiAliases            : immutable.SortedMap[String,EthHash],
-    abiOverrides          : immutable.Map[EthAddress,Abi],
-    nameServiceAddress    : EthAddress,
-    nameServiceTld        : String,
-    nameServiceReverseTld : String
+    chainId                      : Int,
+    mbJsonRpcUrl                 : Option[String],
+    addressAliases               : immutable.SortedMap[String,EthAddress],
+    abiAliases                   : immutable.SortedMap[String,EthHash],
+    abiOverrides                 : immutable.Map[EthAddress,Abi],
+    nameServiceAddress           : EthAddress,
+    exampleNameServiceTld        : String,
+    exampleNameServiceReverseTld : String
   )
 
   // due to ClassLoader issues, we have to load the java.util.logging config file manually. grrrr.

@@ -10,7 +10,7 @@ import sbt.complete.{FixedSetExamples,Parser}
 import sbt.complete.DefaultParsers._
 
 import com.mchange.sc.v1.consuela._
-import com.mchange.sc.v1.consuela.ethereum.{jsonrpc,specification,EthAddress,EthHash}
+import com.mchange.sc.v1.consuela.ethereum.{jsonrpc,specification,EthAddress,EthChainId,EthHash}
 import specification.Denominations
 
 import com.mchange.sc.v2.ens
@@ -51,45 +51,53 @@ object Parsers {
     private val TTL     = 300000 // 300 secs, 5 mins, maybe someday make this sensitive to ENS TTLs
     private val MaxSize = 100
 
-    private final case class Key( chainId : Int, jsonRpcUrl : String, nameServiceAddress : EthAddress, nameServiceTld : String, nameServiceReverseTld : String, name : String )
+    private final case class Key( jsonRpcUrl : String, chainId : Int, nameServiceAddress : EthAddress, path : String )
 
     // MT: synchronized on EnsAddressCache's lock
     private val cache = mutable.HashMap.empty[Key,Tuple2[Failable[EthAddress],Long]]
 
-    private def doLookup( key : Key ) : ( Failable[EthAddress], Long ) = {
+    private def doLookup( ensClient : ens.Client, key : Key ) : ( Failable[EthAddress], Long ) = {
       TRACE.log( s"doLookup( $key )" )
-      val ensClient = ens.Client( jsonRpcUrl = key.jsonRpcUrl, nameServiceAddress = key.nameServiceAddress, tld = key.nameServiceTld, reverseTld = key.nameServiceReverseTld )
-      val name = key.name
       val ts = System.currentTimeMillis()
       try {
-        Tuple2( ensClient.address( name ).toFailable( s"No address has been associated with ENS name '${name}'." ), ts )
+        Tuple2( ensClient.address( key.path ).toFailable( s"No address has been associated with ENS name '${key.path}'." ), ts )
       }
       catch {
-        case NonFatal( nfe ) => ( Failable.fail( s"Exception while looking up ENS name '${name}': ${nfe}", includeStackTrace = false ), ts )
+        case NonFatal( nfe ) => ( Failable.fail( s"Exception while looking up ENS name '${key.path}': ${nfe}", includeStackTrace = false ), ts )
       }
     }
 
     // called only from synchronized lookup(...)
     private def update( key : Key ) : Tuple2[Failable[EthAddress],Long] = {
-      val updated = doLookup( key )
+      val chainId = if ( key.chainId >= 0 ) Some( EthChainId( key.chainId )  ) else None
+      val ensClient = ens.Client( jsonRpcUrl = key.jsonRpcUrl, chainId = chainId, nameServiceAddress = key.nameServiceAddress )
+      val updated = doLookup( ensClient, key )
       cache += Tuple2( key, updated )
       updated
     }
 
-    def lookup( rpi : RichParserInfo, name : String ) : Failable[EthAddress] = this.synchronized {
-      rpi.mbJsonRpcUrl.toFailable( "No jsonRpcUrl (node URL) available for ENS lookups." ).flatMap { jsonRpcUrl =>
-        val key = Key( rpi.chainId, jsonRpcUrl, rpi.nameServiceAddress, rpi.nameServiceTld, rpi.nameServiceReverseTld, name )
-        val ( result, timestamp ) = {
-          cache.get( key ) match {
-            case Some( tup ) => if ( System.currentTimeMillis() > tup._2 + TTL ) update( key ) else tup
-            case None        => update( key )
+    def lookup( rpi : RichParserInfo, path : String ) : Failable[EthAddress] = {
+      this.synchronized {
+        Failable.flatCreate {
+          def assertJsonRpcUrl = {
+            rpi.mbJsonRpcUrl.getOrElse( throw new Exception("No jsonRpcUrl available in RichParserInfo: ${rpi}") )
           }
+          val key = Key( assertJsonRpcUrl, rpi.chainId, rpi.nameServiceAddress, path )
+          val ( result, timestamp ) = {
+            val out = {
+              cache.get( key ) match {
+                case Some( tup ) => if ( System.currentTimeMillis() > tup._2 + TTL ) update( key ) else tup
+                case None        => update( key )
+              }
+            }
+            if ( cache.size > MaxSize ) { // an ugly, but easy, way to bound the size of the cache
+              cache.clear()
+              cache += Tuple2( key, out )
+            }
+            out
+          }
+          result
         }
-        if ( cache.size > MaxSize ) { // an ugly, but easy, way to bound the size of th cache
-          cache.clear()
-          cache += Tuple2( key, Tuple2( result, timestamp ) )
-        }
-        result
       }
     }
 
@@ -112,10 +120,10 @@ object Parsers {
     mbRpi match {
       case Some( rpi ) => {
         val aliases = rpi.addressAliases
-        val tld = rpi.nameServiceTld
+        val tld = rpi.exampleNameServiceTld
         //val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
         //token(Space.*) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensNameToAddressParser( rpi ) ).examples( allExamples : _* )
-        token(Space.*) ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensNameToAddressParser( rpi ).examples( s"<ens-name>.${tld}" ) )
+        token(Space.*) ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensPathToAddressParser( rpi ).examples( s"<ens-name>.${tld}" ) )
       }
       case None => {
         createSimpleAddressParser( tabHelp )
@@ -166,30 +174,101 @@ object Parsers {
     token(Space.*) ~> token(mandatory.?)
   }
 
-  private [sbtethereum] def rawEnsNameParser( tld : String ) : Parser[String] = {
-    val suffix = s".${tld}";
-    (NotSpace <~ literal( suffix )).map( _ + suffix )
+  /*
+  private [sbtethereum] val RawEnsPathParser : Parser[String] = {
+    NotSpace flatMap { putativePath =>
+      if ( putativePath.indexOf('.') < 0 ) { // not a multisegment ENS path, could be a tld but that's not what we want
+        failure( s"'${putativePath}' is not a multisegment ENS path." )
+      }
+      else {
+        success( putativePath )
+      }
+    }
   }
 
-  private [sbtethereum] def ensNameParser( tld : String, desc : String = "ens-name" ) : Parser[String] = token( Space.* ) ~> token( rawEnsNameParser( tld ) ).examples( s"<${desc}>.${tld}" )
+  private [sbtethereum] def ensPathParser( exampleTld : String, desc : String = "ens-name" ) : Parser[String] = token( RawEnsPathParser ).examples( s"<${desc}>.${tld}" )
+   */
 
-  private [sbtethereum] def ensNameToAddressParser( rpi : RichParserInfo ) : Parser[EthAddress] = {
-    ensNameParser( rpi.nameServiceTld ).flatMap { name =>
-      val faddress = EnsAddressCache.lookup( rpi, name )
+  private [sbtethereum] val EnsPathClass = charClass( c => isIDChar(c) || c == '.', "valid for ENS paths" )
+
+  private [sbtethereum] val RawEnsPath = {
+    for {
+      firstChar <- IDChar
+      rest <- EnsPathClass.*.map( _.mkString )
+    }
+    yield {
+      "" + firstChar + rest
+    }
+  }
+
+  private [sbtethereum] def ensPathParser( exampleTld : String, desc : String = "ens-name" ) : Parser[ens.ParsedPath] = {
+    token( RawEnsPath ).examples( s"<${desc}>.${exampleTld}", " " ).map( ens.ParsedPath.apply )
+  }
+
+  private [sbtethereum] def ensEnsureForward( epp : ens.ParsedPath ) : Parser[ens.ParsedPath.Forward] = {
+    epp match {
+      case ok : ens.ParsedPath.Forward => success( ok )
+      case _                           => failure( s"${epp} is not a ens.ParsedPath.Forward as required." )
+    }
+  }
+  private [sbtethereum] def ensEnsureTld( epp : ens.ParsedPath ) : Parser[ens.ParsedPath.Tld] = {
+    epp match {
+      case ok : ens.ParsedPath.Tld => success( ok )
+      case _                       => failure( s"${epp} is not a ens.ParsedPath.Tld as required." )
+    }
+  }
+  private [sbtethereum] def ensEnsureBaseNameTld( epp : ens.ParsedPath ) : Parser[ens.ParsedPath.BaseNameTld] = {
+    epp match {
+      case ok : ens.ParsedPath.BaseNameTld => success( ok )
+      case _                               => failure( s"${epp} is not a ens.ParsedPath.BaseNameTld as required." )
+    }
+  }
+  private [sbtethereum] def ensEnsureSubnode( epp : ens.ParsedPath ) : Parser[ens.ParsedPath.Subnode] = {
+    epp match {
+      case ok : ens.ParsedPath.Subnode => success( ok )
+      case _                           => failure( s"${epp} is not a ens.ParsedPath.SubNode as required." )
+    }
+  }
+  private [sbtethereum] def ensEnsureHasBaseName( epp : ens.ParsedPath ) : Parser[ens.ParsedPath.HasBaseName] = {
+    epp match {
+      case ok : ens.ParsedPath.HasBaseName => success( ok )
+      case _                               => failure( s"${epp} is not a ens.ParsedPath.HasBaseName as required." )
+    }
+  }
+  private [sbtethereum] def ensEnsureReverse( epp : ens.ParsedPath ) : Parser[ens.ParsedPath.Reverse] = {
+    epp match {
+      case ok : ens.ParsedPath.Reverse => success( ok )
+      case _                           => failure( s"${epp} is not a ens.ParsedPath.Reverse as required." )
+    }
+  }
+
+  private [sbtethereum] def ensPathToAddressParser( rpi : RichParserInfo ) : Parser[EthAddress] = {
+    ensPathParser( rpi.exampleNameServiceTld ).flatMap { epp =>
+      val faddress = EnsAddressCache.lookup( rpi, epp.fullName )
       if ( faddress.isSucceeded ) success( faddress.get ) else failure( faddress.assertFailed.toString )
     }
   }
 
-  private [sbtethereum] def ensSubnodeParser( tld : String ) : Parser[Tuple2[String,String]] = {
-    token( ID ~ (literal(".") ~> rawEnsNameParser( tld ) ) ).examples( s"<full-subnode-ens-name>.${tld}" )
+//  private [sbtethereum] def ensSubnodeParser( exampleTld : String ) : Parser[Tuple2[String,String]] = {
+//    token( ID ~ (literal(".") ~> RawEnsPathParser) ).examples( s"<full-subnode-ens-name>.${exampleTld}" )
+//  }
+
+  private [sbtethereum] def genEnsPathParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[ens.ParsedPath] = {
+    mbRpi.map { rpi =>
+      token(Space) ~> ensPathParser( rpi.exampleNameServiceTld )
+    }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
-  private [sbtethereum] def genEnsNameParser(
+  /*
+  private [sbtethereum] def genEnsPathOrTldParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[String] = {
     mbRpi.map { rpi =>
-      token( Space.* ) ~> ensNameParser( rpi.nameServiceTld )
+      Space ~> (ensPathParser( rpi.exampleNameServiceTld ) | token(ID).examples("<top-level-domain>"))
     }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
@@ -198,7 +277,7 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[String,String]] = {
     mbRpi.map { rpi =>
-      token( Space.* ) ~> ensSubnodeParser( rpi.nameServiceTld )
+      Space ~> ensSubnodeParser( rpi.exampleNameServiceTld )
     }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
@@ -207,29 +286,47 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple3[String,String,EthAddress]] = {
     mbRpi.map { rpi =>
-      val basic = {
-        val nameParser : Parser[Tuple2[String, String]] = ensSubnodeParser( rpi.nameServiceTld )
-        val ownerAddressParser : Parser[EthAddress] = (token(Space.+) ~> createAddressParser( "<subnode-owner-hex>", mbRpi ) )
-        token( Space.* ) ~> nameParser ~ ownerAddressParser 
+      for {
+        _ <- Space
+        ( subnode, parent ) <- ensSubnodeParser( rpi.exampleNameServiceTld )
+        _ <- Space
+        owner <- createAddressParser( "<subnode-owner-hex>", mbRpi )
       }
-      basic.map { case ( ( sub : String, parent : String ), ownerAddr : EthAddress ) => ( sub, parent, ownerAddr ) }
+      yield {
+        ( subnode, parent, owner )
+      }
     }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
+   */
 
-  private [sbtethereum] def ensNameNumDiversionParser( tld : String ) : Parser[(String, Option[Int])] = {
-    token( Space.* ) ~> token( rawEnsNameParser( tld ) ).examples( s"<ens-name>.${tld}" ) ~ ( token( Space.+ ) ~> token(RawIntParser).examples("[<optional number of diversion auctions>]") ).?
+  private [sbtethereum] def genEnsSubnodeParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[ens.ParsedPath.Subnode] = {
+    for {
+      epp <- genEnsPathParser( state, mbRpi )
+      sn <- ensEnsureSubnode( epp )
+    }
+    yield {
+      sn
+    }
   }
 
-  private [sbtethereum] def ensPlaceNewBidParser( tld : String ) : Parser[(String, BigInt, Option[BigInt])] = {
-    val baseParser = token(Space.*) ~> token( rawEnsNameParser( tld ) ).examples( s"<ens-name>.${tld}" ) ~ ( token(Space.+) ~> valueInWeiParser( "<amount to bid>" ) ) ~ ( token(Space.*) ~> valueInWeiParser( "[<optional-overpayment-amount>]" ).? )
-    baseParser.map { case ( (name, amount), mbOverpayment ) => ( name, amount, mbOverpayment ) }
+  private [sbtethereum] def genEnsSubnodeOwnerSetParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[Tuple2[ens.ParsedPath.Subnode,EthAddress]] = {
+    for {
+      sn <- genEnsSubnodeParser( state, mbRpi )
+      _ <- Space
+      owner <- createAddressParser( "<subnode-owner-hex>", mbRpi )
+    }
+    yield {
+      ( sn, owner )
+    }
   }
 
   private [sbtethereum] def ethHashParser( exampleStr : String ) : Parser[EthHash] = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), exampleStr).map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
-
-  private [sbtethereum] def bidHashOrNameParser( tld : String ) : Parser[Either[EthHash,String]] = {
-    ethHashParser("<bid-hash>").map( hash => (Left(hash) : Either[EthHash,String]) ) | ensNameParser( tld ).map( name => (Right(name) : Either[EthHash,String]) )
-  }
 
   private [sbtethereum] def functionParser( abi : jsonrpc.Abi, restrictToConstants : Boolean ) : Parser[jsonrpc.Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
@@ -364,25 +461,25 @@ object Parsers {
     )
   }
 
-  private [sbtethereum] def genEnsNameOwnerAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
-    _genEnsNameXxxAddressParser("<owner-address-hex>")( state, mbRpi )
+  private [sbtethereum] def genEnsPathOwnerAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,EthAddress)] = {
+    _genEnsPathXxxAddressParser("<owner-address-hex>")( state, mbRpi )
   }
 
-  private [sbtethereum] def genEnsNameAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
-    _genEnsNameXxxAddressParser("<address-hex>")( state, mbRpi )
+  private [sbtethereum] def genEnsPathAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,EthAddress)] = {
+    _genEnsPathXxxAddressParser("<address-hex>")( state, mbRpi )
   }
 
-  private [sbtethereum] def genEnsNameResolverAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
-    _genEnsNameXxxAddressParser("<resolver-address-hex>")( state, mbRpi )
+  private [sbtethereum] def genEnsPathResolverAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,EthAddress)] = {
+    _genEnsPathXxxAddressParser("<resolver-address-hex>")( state, mbRpi )
   }
 
-  private [sbtethereum] def genEnsNameTransfereeAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
-    _genEnsNameXxxAddressParser("<transferee-address-hex>")( state, mbRpi )
+  private [sbtethereum] def genEnsPathTransfereeAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,EthAddress)] = {
+    _genEnsPathXxxAddressParser("<transferee-address-hex>")( state, mbRpi )
   }
 
-  private def _genEnsNameXxxAddressParser( example : String )( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = {
+  private def _genEnsPathXxxAddressParser( example : String )( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,EthAddress)] = {
     mbRpi.map { rpi =>
-      (ensNameParser( rpi.nameServiceTld ) ~ (token(Space.+) ~> createAddressParser( example, mbRpi )))
+      (ensPathParser( rpi.exampleNameServiceTld ) ~ (Space ~> createAddressParser( example, mbRpi )))
     } getOrElse {
       failure( "Failed to retrieve RichParserInfo." )
     }

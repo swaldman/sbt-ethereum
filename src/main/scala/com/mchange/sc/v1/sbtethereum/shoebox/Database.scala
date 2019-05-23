@@ -19,7 +19,6 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
 import jsonrpc.{Abi, Compilation}
-import com.mchange.sc.v2.ens.{Bid,BidStore}
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 import com.mchange.sc.v1.sbtethereum.util.Abi.{abiHash, abiTextHash}
@@ -655,88 +654,6 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
   private [sbtethereum]
   def schemaVersionInconsistentUnchecked : Failable[Boolean] = getSchemaVersionUnchecked().map( _.get == Schema_h2.InconsistentSchemaVersion )
-
-  private [sbtethereum]
-  def ensStoreBid( chainId : Int, tld : String, ensAddress : EthAddress, bid : Bid ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.insert( _, chainId, bid.bidHash, bid.simpleName, bid.bidderAddress, bid.valueInWei, bid.salt, tld, ensAddress ) ) )
-  }
-
-  private [sbtethereum]
-  def ensRemoveBid( chainId : Int, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markRemoved( _, chainId, bidHash ) ) )
-  }
-
-  private [sbtethereum]
-  def ensMarkAccepted( chainId : Int, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markAccepted( _, chainId, bidHash ) ) )
-  }
-
-  private [sbtethereum]
-  def ensMarkRevealed( chainId : Int, bidHash : EthHash ) : Failable[Unit] = DataSource.flatMap { ds =>
-    Failable( borrow( ds.getConnection() )( Table.EnsBidStore.markRevealed( _, chainId, bidHash ) ) )
-  }
-
-  private
-  def ensBidStateFromRawBid( rawBid : Table.EnsBidStore.RawBid ) : BidStore.State = {
-    ( rawBid.accepted, rawBid.revealed ) match {
-      case ( _, true )     => BidStore.State.Revealed
-      case ( true, false ) => BidStore.State.Accepted
-      case _               => BidStore.State.Created
-    }
-  }
-
-  private
-  def ensBidBidStateTupleFromRawBid( rawBid  : Table.EnsBidStore.RawBid ) : Tuple2[ Bid, BidStore.State ] = {
-    Tuple2( Bid( rawBid.bidHash, rawBid.simpleName, rawBid.bidderAddress, rawBid.valueInWei, rawBid.salt ), ensBidStateFromRawBid( rawBid ) )
-  }
-
-  private [sbtethereum]
-  def ensFindByHash( chainId : Int, bidHash : EthHash ) : Failable[( Bid, BidStore.State )] = DataSource.flatMap { ds =>
-    Failable {
-      borrow( ds.getConnection() ) { conn =>
-        val mbRaw = Table.EnsBidStore.selectByBidHash( conn, chainId, bidHash )
-        mbRaw.fold( Failable.fail( s"Bid hash '0x${bidHash.hex} does not exist in the database." ) : Failable[( Bid, BidStore.State )] ) { rawBid =>
-          if ( rawBid.removed ) {
-            Failable.fail( s"Bid hash '0x${bidHash.hex} did exist in the database, but it has been removed.")
-          }
-          else {
-            Failable.succeed( ensBidBidStateTupleFromRawBid( rawBid ) )
-          }
-        }
-      }
-    }.flatten
-  }
-
-  private [sbtethereum]
-  def ensFindByNameBidderAddress( chainId : Int, simpleName : String, bidderAddress : EthAddress ) : Failable[immutable.Seq[(Bid, BidStore.State)]] = DataSource.flatMap { ds =>
-    Failable {
-      borrow( ds.getConnection() ) { conn =>
-        val rawBids = Table.EnsBidStore.selectByNameBidderAddress( conn, chainId, simpleName, bidderAddress )
-        rawBids.filterNot( _.removed ).map( ensBidBidStateTupleFromRawBid )
-      }
-    }
-  }
-
-  private [sbtethereum]
-  def ensAllRawBidsForChainId( chainId : Int ) : Failable[immutable.Seq[Table.EnsBidStore.RawBid]] = DataSource.flatMap { ds =>
-    Failable {
-      borrow( ds.getConnection() ) { conn =>
-        Table.EnsBidStore.selectAllForChainId( conn, chainId )
-      }
-    }
-  }
-
-  private [sbtethereum]
-  def ensBidStore( chainId : Int, tld : String, ensAddress : EthAddress ) = new BidStore {
-    def store( bid : Bid ) : Unit = ensStoreBid( chainId, tld, ensAddress, bid ).get
-    def remove( bid : Bid ) : Unit = ensRemoveBid( chainId, bid.bidHash ).get
-    def markAccepted( bidHash : EthHash ) : Unit = ensMarkAccepted( chainId, bidHash ).get
-    def markRevealed( bidHash : EthHash ) : Unit = ensMarkRevealed( chainId, bidHash ).get
-    def findByHash( bidHash : EthHash ) : ( Bid, BidStore.State ) = ensFindByHash( chainId, bidHash ).get
-    def findByNameBidderAddress( simpleName : String, bidderAddress : EthAddress ) : immutable.Seq[( Bid, BidStore.State )] = {
-      ensFindByNameBidderAddress( chainId, simpleName, bidderAddress ).get
-    }
-  }
 
   final case class Dump( timestamp : Long, schemaVersion : Int, file : File )
 

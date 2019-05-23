@@ -64,8 +64,8 @@ object SJsonNewFormats {
       builder.addField("abiAliases", api.abiAliases)
       builder.addField("abiOverrides", api.abiOverrides)
       builder.addField("nameServiceAddressHex", api.nameServiceAddress.hex)
-      builder.addField("nameServiceTld", api.nameServiceTld)
-      builder.addField("nameServiceReverseTld", api.nameServiceReverseTld)
+      builder.addField("exampleNameServiceTld", api.exampleNameServiceTld)
+      builder.addField("exampleNameServiceReverseTld", api.exampleNameServiceReverseTld)
       builder.endObject()
     }
     def read[J](jsOpt: Option[J], unbuilder: Unbuilder[J]) : RichParserInfo = {
@@ -78,10 +78,10 @@ object SJsonNewFormats {
           val abiAliases = unbuilder.readField[immutable.SortedMap[String,EthHash]]("abiAliases")
           val abiOverrides = unbuilder.readField[immutable.Map[EthAddress,jsonrpc.Abi]]("abiOverrides")
           val nameServiceAddressHex = unbuilder.readField[String]("nameServiceAddressHex")
-          val nameServiceTld = unbuilder.readField[String]("nameServiceTld")
-          val nameServiceReverseTld = unbuilder.readField[String]("nameServiceReverseTld")
+          val exampleNameServiceTld = unbuilder.readField[String]("exampleNameServiceTld")
+          val exampleNameServiceReverseTld = unbuilder.readField[String]("exampleNameServiceReverseTld")
           unbuilder.endObject()
-          RichParserInfo(chainId, jsonRpcUrl, addressAliases, abiAliases, abiOverrides, EthAddress(nameServiceAddressHex), nameServiceTld, nameServiceReverseTld)
+          RichParserInfo(chainId, jsonRpcUrl, addressAliases, abiAliases, abiOverrides, EthAddress(nameServiceAddressHex), exampleNameServiceTld, exampleNameServiceReverseTld)
         case None =>
           deserializationError("Expected JsObject but found None")
       }
