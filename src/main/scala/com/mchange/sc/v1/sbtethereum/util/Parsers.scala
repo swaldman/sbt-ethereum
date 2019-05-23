@@ -107,7 +107,7 @@ object Parsers {
   private [sbtethereum]
   def reset() : Unit = EnsAddressCache.reset()
 
-  private def createSimpleAddressParser( tabHelp : String ) = token(Space.*) ~> token( RawAddressParser, tabHelp )
+  private def createSimpleAddressParser( tabHelp : String ) = token(OptSpace) ~> token( RawAddressParser, tabHelp )
 
   private def rawAddressAliasParser( aliases : SortedMap[String,EthAddress] ) : Parser[String] = {
     aliases.keys.foldLeft( failure("not a known alias") : Parser[String] )( ( nascent, next ) => nascent | literal( next ) )
@@ -123,7 +123,7 @@ object Parsers {
         val tld = rpi.exampleNameServiceTld
         //val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
         //token(Space.*) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensNameToAddressParser( rpi ) ).examples( allExamples : _* )
-        token(Space.*) ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensPathToAddressParser( rpi ).examples( s"<ens-name>.${tld}" ) )
+        token(OptSpace) ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensPathToAddressParser( rpi ).examples( s"<ens-name>.${tld}" ) )
       }
       case None => {
         createSimpleAddressParser( tabHelp )
@@ -135,7 +135,7 @@ object Parsers {
 
   private [sbtethereum] val RawBigIntParser = (Digit.+).map( chars => BigInt( chars.mkString ) )
 
-  private [sbtethereum] def bigIntParser( tabHelp : String ) = token(Space.* ~> RawBigIntParser, tabHelp)
+  private [sbtethereum] def bigIntParser( tabHelp : String ) = token(OptSpace ~> RawBigIntParser, tabHelp)
 
   private [sbtethereum] val RawAmountParser = ((Digit|literal('.')).+).map( chars => BigDecimal( chars.mkString ) )
 
@@ -147,20 +147,20 @@ object Parsers {
 
   private [sbtethereum] val RawEtherscanApiKeyParser = NotSpace
 
-  private [sbtethereum] def intParser( tabHelp : String ) = token(Space.*) ~> token( RawIntParser, tabHelp )
+  private [sbtethereum] def intParser( tabHelp : String ) = token(OptSpace) ~> token( RawIntParser, tabHelp )
 
-  private [sbtethereum] def etherscanApiKeyParser( tabHelp : String ) = token(Space.*) ~> token( RawEtherscanApiKeyParser, tabHelp )
+  private [sbtethereum] def etherscanApiKeyParser( tabHelp : String ) = token(OptSpace) ~> token( RawEtherscanApiKeyParser, tabHelp )
 
   //private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.* ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )
-  private [sbtethereum] def amountParser( tabHelp : String ) = token(Space.*) ~> token(RawAmountParser, tabHelp)
+  private [sbtethereum] def amountParser( tabHelp : String ) = token(OptSpace) ~> token(RawAmountParser, tabHelp)
 
-  private [sbtethereum] def bytesParser( tabHelp : String ) = token(Space.*) ~> token(RawBytesParser, tabHelp)
+  private [sbtethereum] def bytesParser( tabHelp : String ) = token(OptSpace) ~> token(RawBytesParser, tabHelp)
 
-  private [sbtethereum] def urlParser( tabHelp : String ) = token(Space.*) ~> token(RawUrlParser, tabHelp)
+  private [sbtethereum] def urlParser( tabHelp : String ) = token(OptSpace) ~> token(RawUrlParser, tabHelp)
 
   private [sbtethereum] val UnitParser = {
     val ( w, gw, s, f, e ) = ( "wei", "gwei", "szabo", "finney", "ether" );
-    token(Space.*) ~> token( literal(w) | literal(gw) | literal(s) | literal(f) | literal(e) )
+    token(OptSpace) ~> token( literal(w) | literal(gw) | literal(s) | literal(f) | literal(e) )
   }
 
   private [sbtethereum] def toValueInWei( amount : BigDecimal, unit : String ) : BigInt = rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit )))
@@ -171,23 +171,8 @@ object Parsers {
 
   private [sbtethereum] val SolcJVersionParser : Parser[Option[String]] = {
     val mandatory = compile.SolcJInstaller.SupportedVersions.foldLeft( failure("No supported versions") : Parser[String] )( ( nascent, next ) => nascent | literal(next) )
-    token(Space.*) ~> token(mandatory.?)
+    token(OptSpace) ~> token(mandatory.?)
   }
-
-  /*
-  private [sbtethereum] val RawEnsPathParser : Parser[String] = {
-    NotSpace flatMap { putativePath =>
-      if ( putativePath.indexOf('.') < 0 ) { // not a multisegment ENS path, could be a tld but that's not what we want
-        failure( s"'${putativePath}' is not a multisegment ENS path." )
-      }
-      else {
-        success( putativePath )
-      }
-    }
-  }
-
-  private [sbtethereum] def ensPathParser( exampleTld : String, desc : String = "ens-name" ) : Parser[String] = token( RawEnsPathParser ).examples( s"<${desc}>.${tld}" )
-   */
 
   private [sbtethereum] val EnsPathClass = charClass( c => isIDChar(c) || c == '.', "valid for ENS paths" )
 
@@ -249,10 +234,6 @@ object Parsers {
     }
   }
 
-//  private [sbtethereum] def ensSubnodeParser( exampleTld : String ) : Parser[Tuple2[String,String]] = {
-//    token( ID ~ (literal(".") ~> RawEnsPathParser) ).examples( s"<full-subnode-ens-name>.${exampleTld}" )
-//  }
-
   private [sbtethereum] def genEnsPathParser(
     state : State,
     mbRpi : Option[RichParserInfo]
@@ -261,43 +242,6 @@ object Parsers {
       token(Space) ~> ensPathParser( rpi.exampleNameServiceTld )
     }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
-
-  /*
-  private [sbtethereum] def genEnsPathOrTldParser(
-    state : State,
-    mbRpi : Option[RichParserInfo]
-  ) : Parser[String] = {
-    mbRpi.map { rpi =>
-      Space ~> (ensPathParser( rpi.exampleNameServiceTld ) | token(ID).examples("<top-level-domain>"))
-    }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
-  }
-
-  private [sbtethereum] def genEnsSubnodeParser(
-    state : State,
-    mbRpi : Option[RichParserInfo]
-  ) : Parser[Tuple2[String,String]] = {
-    mbRpi.map { rpi =>
-      Space ~> ensSubnodeParser( rpi.exampleNameServiceTld )
-    }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
-  }
-
-  private [sbtethereum] def genEnsSubnodeOwnerSetParser(
-    state : State,
-    mbRpi : Option[RichParserInfo]
-  ) : Parser[Tuple3[String,String,EthAddress]] = {
-    mbRpi.map { rpi =>
-      for {
-        _ <- Space
-        ( subnode, parent ) <- ensSubnodeParser( rpi.exampleNameServiceTld )
-        _ <- Space
-        owner <- createAddressParser( "<subnode-owner-hex>", mbRpi )
-      }
-      yield {
-        ( subnode, parent, owner )
-      }
-    }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
-  }
-   */
 
   private [sbtethereum] def genEnsSubnodeParser(
     state : State,
@@ -326,7 +270,7 @@ object Parsers {
     }
   }
 
-  private [sbtethereum] def ethHashParser( exampleStr : String ) : Parser[EthHash] = token(Space.* ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), exampleStr).map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
+  private [sbtethereum] def ethHashParser( exampleStr : String ) : Parser[EthHash] = token(OptSpace ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), exampleStr).map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
 
   private [sbtethereum] def functionParser( abi : jsonrpc.Abi, restrictToConstants : Boolean ) : Parser[jsonrpc.Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
@@ -439,22 +383,22 @@ object Parsers {
         case Some( seed ) => ctorArgsMaybeValueInWeiParser( seed )
       }
     }
-    val autoParser = Space.* map { _ => SpawnInstruction.Auto }
-    token(Space.*) ~> ( argsParser | autoParser )
+    val autoParser = OptSpace map { _ => SpawnInstruction.Auto }
+    token(OptSpace) ~> ( argsParser | autoParser )
   }
 
   private [sbtethereum] def genAddressAliasParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) = {
-    token(Space.*) ~> mbRpi.map( rpi => token( rawAddressAliasParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
+    token(OptSpace) ~> mbRpi.map( rpi => token( rawAddressAliasParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
   private [sbtethereum] def genPermissiveAddressAliasOrAddressAsStringParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[String] = {
-    token(Space.*) ~> (
+    token(OptSpace) ~> (
       mbRpi.map { rpi =>
         token( ( RawAddressParser.map( _.hex ) | rawAddressAliasParser( rpi.addressAliases ) ) | ID ).examples( rpi.addressAliases.keySet + "<eth-address-hex>", false )
       }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
@@ -560,7 +504,7 @@ object Parsers {
     state : State,
     mbRpi : Option[RichParserInfo]
   ) = {
-    token(Space.*) ~> token(ID, "<alias>") ~ genGenericAddressParser( state, mbRpi )
+    token(OptSpace) ~> token(ID, "<alias>") ~ genGenericAddressParser( state, mbRpi )
   }
 
   private [sbtethereum] def genRecipientAddressParser(
@@ -612,7 +556,7 @@ object Parsers {
         case ( abi, mbWarning ) => token(Space.+) ~> functionAndInputsParser(abi, restrictedToConstants, mbRpi ).map { case ( function, inputs ) => ( abi, mbWarning, function, inputs ) }
       }
     }
-    token(Space.*) ~> rawParser
+    token(OptSpace) ~> rawParser
   }
 
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
@@ -624,7 +568,7 @@ object Parsers {
         genGenericAddressParser( state, mbRpi ).map { a =>
           val abiLookup = abiLookupForAddressDefaultEmpty( rpi.chainId, a, rpi.abiOverrides )
           Tuple3( a, abiLookup, abiLookup.resolveAbi( None ).get )
-        }.flatMap { case ( address, abiLookup, abi ) => ( Space.* ~> functionAndInputsParser( abi, restrictedToConstants, mbRpi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi, abiLookup ) } }
+        }.flatMap { case ( address, abiLookup, abi ) => ( OptSpace ~> functionAndInputsParser( abi, restrictedToConstants, mbRpi ) ).map { case ( function, inputs ) => ( address, function, inputs, abi, abiLookup ) } }
       }
       case None => {
         WARNING.log("Failed to load blockchain ID for address, function, inputs, abi parser")
@@ -662,7 +606,7 @@ object Parsers {
     state : State,
     mbLiterals : Option[immutable.Set[String]]
   ) : Parser[String] = {
-    Space.* ~> token( mbLiterals.fold( failure("Failed to load acceptable values") : Parser[String] )( _.foldLeft( failure("No acceptable values") : Parser[String] )( ( nascent, next ) => nascent | literal(next) ) ) )
+    OptSpace ~> token( mbLiterals.fold( failure("Failed to load acceptable values") : Parser[String] )( _.foldLeft( failure("No acceptable values") : Parser[String] )( ( nascent, next ) => nascent | literal(next) ) ) )
   }
 
   private def _genAliasAbiSourceParser(
@@ -691,7 +635,7 @@ object Parsers {
   private [sbtethereum] def genAnyAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
-  ) : Parser[AbiSource] = token(Space.*) ~> _genAnyAbiSourceParser( state, mbRpi )
+  ) : Parser[AbiSource] = token(OptSpace) ~> _genAnyAbiSourceParser( state, mbRpi )
 
 
   private [sbtethereum] def genAddressAnyAbiSourceParser(
@@ -705,20 +649,20 @@ object Parsers {
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[AbiSource, immutable.Seq[Byte]]] = {
-    token(Space.*) ~> _genAnyAbiSourceParser( state, mbRpi ).flatMap { abiSource =>
+    token(OptSpace) ~> _genAnyAbiSourceParser( state, mbRpi ).flatMap { abiSource =>
       ( (token(Space.+) ~> token( (literal("0x").?) ~> token(HexDigit.*) ) ).map( chars => chars.mkString.decodeHexAsSeq ) ).map( hexSeq => ( abiSource, hexSeq ) )
     }
   }
 
   private [sbtethereum] val newAbiAliasParser : Parser[String] = {
-    token(Space.*) ~> literal("abi:").? ~> token(ID, "<new-abi-alias>")
+    token(OptSpace) ~> literal("abi:").? ~> token(ID, "<new-abi-alias>")
   }
 
   private [sbtethereum] def genNewAbiAliasAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[String, AbiSource]] = {
-    token(Space.*) ~> (newAbiAliasParser ~ (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi )))
+    token(OptSpace) ~> (newAbiAliasParser ~ (token(Space.+) ~> _genAnyAbiSourceParser( state, mbRpi )))
   }
 
   // yields the parsed alias without the "abi:" prefix!
@@ -727,7 +671,7 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[String] = {
     mbRpi.fold( failure( "Could not find RichParserInfo for abiAliases." ) : Parser[String] ) { rpi =>
-      token(Space.*) ~> (literal("abi:") ~> token(NotSpace)).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) )
+      token(OptSpace) ~> (literal("abi:") ~> token(NotSpace)).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) )
     }
   }
   
