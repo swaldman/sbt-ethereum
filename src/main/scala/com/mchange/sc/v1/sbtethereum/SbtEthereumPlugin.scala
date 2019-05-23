@@ -1545,8 +1545,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         case pp_tld : ens.ParsedPath.Tld => {
           val forTldClient = ensClient.forTopLevelDomain( pp_tld.tld )
           forTldClient.maybeDomainRegistrarAddress match {
-            case Some( address ) => log.info( s"ENS name '${pp_tld.tld}' appears to be a valid domain whose registrar has address '${hexString(address)}'." )
-            case None            => log.info( s"ENS name '${pp_tld.tld}' does not appear to be a valid top-level domain." )
+            case Right( address ) => log.info( s"ENS name '${pp_tld.tld}' appears to be a valid top-level domain whose registrar has address '${hexString(address)}'." )
+            case Left ( problem ) => {
+              log.info( s"ENS name '${pp_tld.tld}' does not appear to be a valid top-level domain. (Could not find or contact a registrar. See ebt-ethereum debug logs for more details.)" )
+              DEBUG.log( s"Could not find or contact registrar for putative ENS top-level domain '${pp_tld.tld}'.", problem )
+            }
           }
         }
         case pp_bntld : ens.ParsedPath.BaseNameTld => {
