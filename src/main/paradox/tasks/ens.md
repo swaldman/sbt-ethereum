@@ -68,292 +68,47 @@ A transaction with hash '0x9d9bf7abeb5d9f94d6181c220a60c46c58cab030d07acc7d46986
 
 @@@
 
-### ensAuctionBid
+### ensMigrateRegistrar
 
 @@@ div { .keydesc}
 
 **Usage:**
 ```
-> ensAuctionBid <ens-name>.eth <amount-to-bid> [optional overpayment to obscure amount]
+> ensMigrateRegistrar <ens-name>.eth
 ```
-This is a shorthand for @ref:[`ensAuctionBidPlace`](#ensauctionbidplace). Please see that command for more information.
 
-@@@
-
-### ensAuctionBidList
-
-@@@ div { .keydesc}
-
-**Usage:**
-```
-> ensAuctionBidList
-```
-Lists the bids placed and retained in the _sbt-ethereum_ "shoebox" database, and information about the bids' status.
+Migrate a name registered from an obsoleted registrar (in practice, the [original Vickery Auction registrar](https://medium.com/the-ethereum-name-service/ens-is-upgrading-heres-what-you-need-to-do-f26423339fcf))
+onto the current registrar for its domain (which is usually `eth`).
 
 **Example:**
 ```
-> ensAuctionBidList
-+--------------------------------------------------------------------+-------------+--------------------------------------------+------+--------------------------------------------------------------------+---------------------------------+----------+----------+---------+
-| Bid Hash                                                           | Simple Name | Bidder Address                             | ETH  | Salt                                                               | Timestamp                       | Accepted | Revealed | Removed |
-+--------------------------------------------------------------------+-------------+--------------------------------------------+------+--------------------------------------------------------------------+---------------------------------+----------+----------+---------+
-| 0xc07b92e38cea6a00c7d38bd2fbdae25c4da4f299ab799abde93e2652a1cb3772 | octopodes   | 0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2 | 0.01 | 0x30d1107839513e31ba0bfe2001d7a796fdbdd012544e9f198f45daf9ff44ec48 | Sat, 16 Mar 2019 23:21:02 -0700 | true     | false    | false   |
-+--------------------------------------------------------------------+-------------+--------------------------------------------+------+--------------------------------------------------------------------+---------------------------------+----------+----------+---------+
-[success] Total time: 0 s, completed Mar 16, 2019 11:22:05 PM
-```
-
-@@@
-
-### ensAuctionBidPlace
-
-@@@ div { .keydesc}
-
-**Usage:**
-```
-> ensAuctionBidPlace <ens-name>.eth <amount-to-bid> [optional overpayment to obscure amount]
-```
-For a name in status [`Auction`], adds a bid for the name. The bid amount any any overpayment will be sent to the smart contract managing ENS auctions.
-
-_**A submitted bid must be @ref:[revealed](#ensauctionbidreveal) during the reveal phase of the auction, or you may lose your funds! You can always find when the reveal phase will be via [`ensNameStatus`](#ensnamestatus).**_
-
-**Example:**
-```
-> ensAuctionBidPlace stochasticism.eth 0.01 ether
+> > ensMigrateRegistrar mchange.eth
 Using sender address '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (on chain with ID 1, aliases ['steve-ens']). OK? [y/n] y
 
 ==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T
 ==>
 ==> The transaction would be a message with...
-==>   To:    0x6090a6e47849629b7245dfa1ca21d94cd15878ef (with aliases ['ens-resolver'] on chain with ID 1)
+==>   To:    0x6090a6e47849629b7245dfa1ca21d94cd15878ef (with aliases ['ens-original-registrar','ens-registrar'] on chain with ID 1)
 ==>   From:  0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c (with aliases ['steve-ens'] on chain with ID 1)
-==>   Data:  0xce92dced183d94848d2bfbe42468e71ee7c994059f5247703e4ff1b0916d4bf7d416276d
-==>   Value: 0.01 Ether
-==>
-==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
-==>   Function called: newBid(bytes32)
-==>     Arg 1 [name=sealedBid, type=bytes32]: 0x183d94848d2bfbe42468e71ee7c994059f5247703e4ff1b0916d4bf7d416276d
-==>
-==> The nonce of the transaction would be 126.
-==>
-==> $$$ The transaction you have requested could use up to 502123 units of gas.
-==> $$$ You would pay 5 gwei for each unit of gas, for a maximum cost of 0.002510615 ether.
-==> $$$ This is worth 0.336510281525 USD (according to Coinbase at 4:27 PM).
-==> $$$ You would also send 0.01 ether (1.34035 USD), for a maximum total cost of 0.012510615 ether (1.676860281525 USD).
-
-Would you like to submit this transaction? [y/n] y
-A transaction with hash '0x63667255455b20ef381bcb6e5d6a3e50c33025c8f7e0a920b22f25a53faa8423' will be submitted. Please wait.
-[warn] A bid has been placed on name 'stochasticism.eth' for 10000000000000000 wei.
-[warn] YOU MUST REVEAL THIS BID BETWEEN Sat, 2 Mar 2019 16:26:30 -0800 AND Mon, 4 Mar 2019 16:26:30 -0800. IF YOU DO NOT, YOUR FUNDS WILL BE LOST!
-[warn] Bid details, which are required to reveal, have been automatically stored in the sbt-ethereum shoebox,
-[warn] and will be provided automatically if revealed by this client, configured with chain ID 1.
-[warn] However, it never hurts to be neurotic. You may wish to note:
-[warn]     Simple Name:      stochasticism
-[warn]     Simple Name Hash: 0x490eb1ec7c5fdb9a86c6ff3483eb47e53034d15e0d615fb88ee87f027903ed35
-[warn]     Bidder Address:   0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c
-[warn]     Value In Wei:     10000000000000000
-[warn]     Salt:             0x95865ce04f9cd079b8b108bbf6b37d2414f564e497860820781cc136ee994043
-[warn]     Full Bid Hash:    0x183d94848d2bfbe42468e71ee7c994059f5247703e4ff1b0916d4bf7d416276d
-[success] Total time: 59 s, completed Feb 27, 2019 4:28:23 PM
-```
-@@@
-
-### ensAuctionBidReveal
-
-@@@ div { .keydesc}
-
-**Usage:**
-```
-> ensAuctionBidReveal <ens-name.eth-OR-bid-hash>
-```
-
-Reveals a bid for an ENS name, after the @ref:[`Auction`](#ensnamestatus) phase has ended and the @ref:[`Reveal`](#ensnamestatus) phase has begun.
-
-**Example:**
-```
-> ensAuctionBidReveal stochasticism.eth
-[info] Unlocking address '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (on chain with ID 1, aliases ['steve-ens'])
-Enter passphrase or hex private key for address '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c': ************************
-[info] V3 wallet(s) found for '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (aliases ['steve-ens'])
-
-==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T
-==>
-==> The transaction would be a message with...
-==>   To:    0x6090a6e47849629b7245dfa1ca21d94cd15878ef (with aliases ['ens-resolver'] on chain with ID 1)
-==>   From:  0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c (with aliases ['steve-ens'] on chain with ID 1)
-==>   Data:  0x47872b42490eb1ec7c5fdb9a86c6ff3483eb47e53034d15e0d615fb88ee87f027903ed35000000000000000000000000000000000000000000000000002386f26fc1000095865ce04f9cd079b8b108bbf6b37d2414f564e497860820781cc136ee994043
-==>   Value: 0 Ether
-==>
-==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
-==>   Function called: unsealBid(bytes32,uint256,bytes32)
-==>     Arg 1 [name=_hash, type=bytes32]: 0x490eb1ec7c5fdb9a86c6ff3483eb47e53034d15e0d615fb88ee87f027903ed35
-==>     Arg 2 [name=_value, type=uint256]: 10000000000000000
-==>     Arg 3 [name=_salt, type=bytes32]: 0x95865ce04f9cd079b8b108bbf6b37d2414f564e497860820781cc136ee994043
-==>
-==> The nonce of the transaction would be 127.
-==>
-==> $$$ The transaction you have requested could use up to 115339 units of gas.
-==> $$$ You would pay 2.5 gwei for each unit of gas, for a maximum cost of 0.0002883475 ether.
-==> $$$ This is worth 0.0384410469625 USD (according to Coinbase at 7:26 PM).
-
-Would you like to submit this transaction? [y/n] y
-A transaction with hash '0x175a26ec49593f0af853c5eb7bcbde292ca0a7e7fdba21810e3b60a460944cf6' will be submitted. Please wait.
-[info] Bid with name 'stochasticism.eth' was successfully revealed.
-[success] Total time: 34 s, completed Mar 2, 2019 7:26:58 PM
-```
-
-@@@
-
-### ensAuctionFinalize
-
-@@@ div { .keydesc}
-
-**Usage:**
-```
-> ensAuctionFinalize <ens-name>.eth
-```
-
-Finalizes a completed ENS auction.
-
-**Example:**
-```
-> ensAuctionFinalize octopodes.eth
-[warn] Using hard-coded, backstop node URL 'https://ethjsonrpc.mchange.com/', which may not be reliable.
-[warn] Please use 'ethNodeUrlDefaultSet` to define a node URL (for chain with ID 1) to which you have reliable access.
-[info] Unlocking address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (on chain with ID 1, aliases ['default-sender'])
-Enter passphrase or hex private key for address '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2': ***************
-[info] V3 wallet(s) found for '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (aliases ['default-sender'])
-
-==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T
-==>
-==> The transaction would be a message with...
-==>   To:    0x6090a6e47849629b7245dfa1ca21d94cd15878ef (on chain with ID 1)
-==>   From:  0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2 (with aliases ['default-sender'] on chain with ID 1)
-==>   Data:  0x983b94fbb9457af3b7d83d07fc52efe2b4726533586dcab3f74fd9f76a3d9501bc4bf2f7
-==>   Value: 0 Ether
-==>
-==> The transaction is signed with Chain ID 1 (which correctly matches the current session's 'ethNodeChainId').
-==>
-==> !!! Any ABI is associated with the destination address is currently unknown, so we cannot decode the message data as a method call !!!
-==>
-==> The nonce of the transaction would be 14.
-==>
-==> $$$ The transaction you have requested could use up to 111862 units of gas.
-==> $$$ You would pay 6 gwei for each unit of gas, for a maximum cost of 0.000671172 ether.
-==> $$$ This is worth 0.09096394116 USD (according to Coinbase at 1:35 AM).
-
-Would you like to submit this transaction? [y/n] y
-A transaction with hash '0x819e8b4592e090671200876342d113be3fcf306c615e674099780a2f85504285' will be submitted. Please wait.
-Auction for name 'octopodes.eth' successfully finalized.
-[success] Total time: 45 s, completed Mar 24, 2019 1:36:19 AM
-```
-
-@@@
-
-### ensAuctionStart
-
-@@@ div { .keydesc}
-
-**Usage:**
-```
-> ensAuctionStart <ens-name>.eth
-```
-
-Starts an auction for an @ref:[`Open`](#ensnamestatus) ENS name. (Converts its status to `Auction`.)
-
-**Example:**
-```
-> ensAuctionStart stochasticism.eth
-[info] Unlocking address '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (on chain with ID 1, aliases ['steve-ens'])
-Enter passphrase or hex private key for address '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c': ************************
-[info] V3 wallet(s) found for '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (aliases ['steve-ens'])
-
-==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T
-==>
-==> The transaction would be a message with...
-==>   To:    0x6090a6e47849629b7245dfa1ca21d94cd15878ef (with aliases ['ens-resolver'] on chain with ID 1)
-==>   From:  0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c (with aliases ['steve-ens'] on chain with ID 1)
-==>   Data:  0xe27fe50f00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001490eb1ec7c5fdb9a86c6ff3483eb47e53034d15e0d615fb88ee87f027903ed35
-==>   Value: 0 Ether
-==>
-==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
-==>   Function called: startAuctions(bytes32[])
-==>     Arg 1 [name=_hashes, type=bytes32[]]: [0x490eb1ec7c5fdb9a86c6ff3483eb47e53034d15e0d615fb88ee87f027903ed35]
-==>
-==> The nonce of the transaction would be 125.
-==>
-==> $$$ The transaction you have requested could use up to 72660 units of gas.
-==> $$$ You would pay 5 gwei for each unit of gas, for a maximum cost of 0.0003633 ether.
-==> $$$ This is worth 0.0486912825 USD (according to Coinbase at 4:26 PM).
-
-Would you like to submit this transaction? [y/n] y
-A transaction with hash '0x63223c2b7ae0a0d5a56c96b5f0d4d45986476dd521e3b16835536394e3804343' will be submitted. Please wait.
-Auction started for name 'stochasticism.eth'.
-[success] Total time: 74 s, completed Feb 27, 2019 4:26:46 PM
-```
-
-@@@
-
-### ensDeedRelease
-
-**Usage:**
-```
-> ensDeedRelease <ens-name>.eth
-```
-
-Releases the deed that is the ultimate authority of ownership of an auction-allocated ENS name.
-
-The deed can only be released by the current deed owner, and cannot be released until at least a year has passed since the name's auction.
-
-_**This task is tentatively implemented, but has not yet been tried or tested at all**_
-
-### ensDeedTransfer
-
-@@@ div { .keydesc}
-
-**Usage:**
-```
-> ensDeedTransfer <ens-name>.eth <transferee-address-as-hex-or-ens-or-alias>
-```
-
-Transfers ownership of an ENS name's "deed" (and of the ETH deposit it contains) to the transferee address.
-
-This may only be successfully performed by the current owner of the deed.
-
-_**This represents a permanent and irrevocable change of ownership!**_
-
-**Example:**
-```
-> ensDeedTransfer prognosis.eth steve-ens
-[info] Unlocking address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (on chain with ID 1, aliases ['default-sender','testing0'])
-Enter passphrase or hex private key for address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4': *******************
-[info] V3 wallet(s) found for '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (aliases ['default-sender','testing0'])
-[warn] This will permanently transfer the deed associated with 'prognosis.eth', and any deplosit paid to secure that deed, to '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (with aliases ['steve-ens'] on chain with ID 1).
-Are you sure you want to do this? [y/n] y
-
-==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T
-==>
-==> The transaction would be a message with...
-==>   To:    0x6090a6e47849629b7245dfa1ca21d94cd15878ef (with aliases ['ens-resolver'] on chain with ID 1)
-==>   From:  0x465e79b940bc2157e4259ff6b2d92f454497f1e4 (with aliases ['default-sender','testing0'] on chain with ID 1)
-==>   Data:  0x79ce9facd1a772c558431b7036eaf21a1e0a79d8d43d3b59e323305d2e5b06f32c6c8c88000000000000000000000000f0ed4a1ade1f4bbcc875275a9480c387dcdb185c
+==>   Data:  0x5ddae283df1868dc3e0a593019de98747a6b827efb993b350c8bced78969565947ef962a
 ==>   Value: 0 Ether
 ==>
 ==> The transaction is signed with Chain ID 1 (which correctly matches the current session's 'ethNodeChainId').
 ==>
 ==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
-==>   Function called: transfer(bytes32,address)
-==>     Arg 1 [name=_hash, type=bytes32]: 0xd1a772c558431b7036eaf21a1e0a79d8d43d3b59e323305d2e5b06f32c6c8c88
-==>     Arg 2 [name=newOwner, type=address]: 0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c
+==>   Function called: transferRegistrars(bytes32)
+==>     Arg 1 [name=_hash, type=bytes32]: 0xdf1868dc3e0a593019de98747a6b827efb993b350c8bced78969565947ef962a
 ==>
-==> The nonce of the transaction would be 371.
+==> The nonce of the transaction would be 142.
 ==>
-==> $$$ The transaction you have requested could use up to 67561 units of gas.
-==> $$$ You would pay 2 gwei for each unit of gas, for a maximum cost of 0.000135122 ether.
-==> $$$ This is worth 0.018146208990 USD (according to Coinbase at 12:06 AM).
+==> $$$ The transaction you have requested could use up to 188376 units of gas.
+==> $$$ You would pay 3 gwei for each unit of gas, for a maximum cost of 0.000565128 ether.
+==> $$$ This is worth 0.139114734120 USD (according to Coinbase at 6:35 PM).
 
 Would you like to submit this transaction? [y/n] y
-A transaction with hash '0x2e577ed585af32b60c6a0b8ea1ff0a434b0f7e49ee9d1cc30fe9d3e8422dfe65' will be submitted. Please wait.
-[info] The deed for 'prognosis.eth' has been permanently transferred to '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (with aliases ['steve-ens'] on chain with ID 1).
-[success] Total time: 87 s, completed Mar 10, 2019 12:08:07 AM
+A transaction with hash '0x2abbb5eecb8d54a3587adce387f919dc535cabedd7a87e7aee7126d97d1a62f5' will be submitted. Please wait.
+[info] The name 'mchange.eth' has successfully migrated.
+[success] Total time: 78 s, completed May 23, 2019 6:37:00 PM
 ```
 
 @@@
@@ -368,28 +123,12 @@ A transaction with hash '0x2e577ed585af32b60c6a0b8ea1ff0a434b0f7e49ee9d1cc30fe9d
 ```
 Looks up the status of an ENS name.
 
-Status will be one of...
-
-@@@@ div { .tight }
-
-* `Open` &mdash; name is available and the auction hasn’t started
-* `Auction` &mdash; name is available and the auction has been started
-* `Owned` &mdash; name is taken and currently owned by someone
-* `Forbidden` &mdash; name is forbidden
-* `Reveal` &mdash; name is currently in the 'reveal' stage of the auction
-* `NotYetAvailable` &mdash; name is not yet available due to the 'soft launch' of names
-
-@@@@
-
-_Status definitions lifted from the [ENS docs](https://docs.ens.domains/en/latest/userguide.html#starting-an-auction)._
-
 **Example:**
 ```
-> ensNameStatus stochasticism.eth
-The current status of ENS name 'stochasticism.eth' is 'Auction'.
-Bidding ends, and the reveal phase will begin on Sat, 2 Mar 2019 16:26:30 -0800.
-The reveal phase will end, and the auction can be finalized on Mon, 4 Mar 2019 16:26:30 -0800.
-[success] Total time: 3 s, completed Feb 27, 2019 5:07:12 PM
+> ensNameStatus mchange.eth
+[info] ENS name 'mchange.eth' is currently owned by '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c'.
+[info] This registration will expire at 'Sun, 3 May 2020 17:00:00 -0700'.
+[success] Total time: 3 s, completed May 23, 2019 6:50:29 PM
 ```
 
 @@@
@@ -415,6 +154,51 @@ The name 'thisisadumbname.eth' is owned by address '0x465e79b940bc2157e4259ff6b2
 @@@
 
 ### ensOwnerSet
+
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ensOwnerSet <ens-name>.eth <owner-address-as-hex-or-ens-or-alias>
+```
+
+Sets the owner of an ENS name.
+
+**Example:**
+```
+> ensOwnerSet thisisadumbname.eth steve-ens
+[info] Unlocking address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (on chain with ID 1, aliases ['default-sender','testing0'])
+Enter passphrase or hex private key for address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4': *******************
+[info] V3 wallet(s) found for '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (aliases ['default-sender','testing0'])
+
+==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T
+==>
+==> The transaction would be a message with...
+==>   To:    0x314159265dd8dbb310642f98f50c066173c1259b (with aliases ['ens'] on chain with ID 1)
+==>   From:  0x465e79b940bc2157e4259ff6b2d92f454497f1e4 (with aliases ['default-sender','testing0'] on chain with ID 1)
+==>   Data:  0x5b0fc9c3fe09d7b2a951becd6a6ab7e08c4ec2979ea216ccca363d514998e13479937f83000000000000000000000000f0ed4a1ade1f4bbcc875275a9480c387dcdb185c
+==>   Value: 0 Ether
+==>
+==> The transaction is signed with Chain ID 1 (which correctly matches the current session's 'ethNodeChainId').
+==>
+==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
+==>   Function called: setOwner(bytes32,address)
+==>     Arg 1 [name=node, type=bytes32]: 0xfe09d7b2a951becd6a6ab7e08c4ec2979ea216ccca363d514998e13479937f83
+==>     Arg 2 [name=owner, type=address]: 0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c
+==>
+==> The nonce of the transaction would be 416.
+==>
+==> $$$ The transaction you have requested could use up to 38377 units of gas.
+==> $$$ You would pay 1 gwei for each unit of gas, for a maximum cost of 0.000038377 ether.
+==> $$$ This is worth 0.009403708195 USD (according to Coinbase at 6:58 PM).
+
+Would you like to submit this transaction? [y/n] y
+A transaction with hash '0x44b17aa4c6a9b4ad35ba13911061e72f238b0e3d28e8235f5c834fe0eec82f1c' will be submitted. Please wait.
+[info] The name 'thisisadumbname.eth' is now owned by '0xf0ed4a1ade1f4bbcc875275a9480c387dcdb185c' (with aliases ['steve-ens'] on chain with ID 1).
+[success] Total time: 173 s, completed May 23, 2019 7:00:53 PM
+```
+
+@@@
 
 ### ensResolverLookup
 

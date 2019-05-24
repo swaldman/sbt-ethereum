@@ -1683,7 +1683,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ensName = ensParsedPath.fullName
 
       ensClient.setOwner( privateKey, ensName, ownerAddress, forceNonce = nonceOverride )
-      log.info( s"The name '${ensName}' is now owned by ${verboseAddress(chainId, ownerAddress)}. (However, this has not affected the Deed owner associated with the name!)" )
+      log.info( s"The name '${ensName}' is now owned by ${verboseAddress(chainId, ownerAddress)}." )
     }
   }
 
