@@ -1601,6 +1601,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       val baseCurrencyCode = ethcfgBaseCurrencyCode.value
 
       def doFindRent( name : String, rmd : ensClient.RegistrarManagedDomain ) : Unit = {
+        require( rmd.hasValidRegistrar, s"There is no registrar associated with ENS domain '${rmd.domain}'." )
+
         val DurationParsers.SecondsViaUnit(seconds, unit) = {
           queryDurationInSeconds( log, is, """For how long would you like to rent the name? [Example: "3 years"] """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
         }
