@@ -1,5 +1,7 @@
 package com.mchange.sc.v1.sbtethereum.util
 
+import com.mchange.sc.v1.sbtethereum.SbtEthereumException
+
 import com.mchange.sc.v1.consuela._
 
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress,EthHash}
@@ -12,6 +14,8 @@ private [sbtethereum]
 object Formatting {
   private val InstantFormatter = DateTimeFormatter.RFC_1123_DATE_TIME.withZone( ZoneId.systemDefault() )
   private val TimeFormatter    = DateTimeFormatter.ofLocalizedTime( FormatStyle.SHORT ).withZone( ZoneId.systemDefault() )
+
+  def bail( message : String ) : Nothing = throw new SbtEthereumException( message )
 
   def formatInstant( instant : Instant ) : String = InstantFormatter.format( instant )
 

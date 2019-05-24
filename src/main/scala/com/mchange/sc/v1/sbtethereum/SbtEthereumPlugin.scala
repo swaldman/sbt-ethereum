@@ -330,6 +330,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ensAddressLookup    = inputKey[Option[EthAddress]]("Prints the address given ens name should resolve to, if one has been set.")
     val ensAddressSet       = inputKey[Unit]              ("Sets the address a given ens name should resolve to.")
+    val ensMigrateRegistrar = inputKey[Unit]              ("Migrates a name from a predecessor registar (e.g. the original auction registrar) to any successor registrar.")
     val ensNameStatus       = inputKey[Unit]              ("Prints the current status of a given name.")
     val ensOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the name has an owner.")
     val ensOwnerSet         = inputKey[Unit]              ("Sets the owner of a given name to an address.")
@@ -644,6 +645,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensAddressSet in Compile := { ensAddressSetTask( Compile ).evaluated },
 
     ensAddressSet in Test := { ensAddressSetTask( Test ).evaluated },
+
+    ensMigrateRegistrar in Compile := { ensMigrateRegistrarTask( Compile ).evaluated },
+
+    ensMigrateRegistrar in Test := { ensMigrateRegistrarTask( Test ).evaluated },
 
     ensNameStatus in Compile := { ensNameStatusTask( Compile ).evaluated },
 
@@ -1532,6 +1537,48 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ensMigrateRegistrarTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathParser )
+
+    Def.inputTask {
+      import ens.ParsedPath._
+
+      val log           = streams.value.log
+      val chainId       = findNodeChainIdTask(warn=true)(config).value
+      val privateKey    = findPrivateKeyTask( config ).value
+      val ensClient     = ( config / xensClient ).value
+      val epp           = parser.parsed
+      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+      
+
+      epp match {
+        case bn : BaseNameTld => {
+          val ( baseName, tld ) = bn.baseNameTld
+          val forTldClient = ensClient.forTopLevelDomain( tld )
+          forTldClient.nameExpires( bn.baseName ) match {
+            case Some( instant ) => {
+              log.warn( s"ENS name '${bn.fullPath}' is already known to the current registrar, and is registered until ${formatInstant(instant)}." ) 
+            }
+            case None => {
+              forTldClient.migrateFromPredecessor( privateKey, baseName, forceNonce = nonceOverride )
+              log.info( s"The name '${bn.fullPath}' has successfully migrated." )
+            }
+          }
+        }
+        case _  : Tld => {
+          bail( s"Top-level-domains like '${epp.fullPath}' cannot be migrated." )
+        }
+        case sn : Subnode => {
+          val ( baseName, tld ) = sn.baseNameTld
+          bail( s"Cannot currently migrate subnodes like '${sn.fullPath}', only names directly below the top-level, like '${baseName}.${tld}'." )
+        }
+        case _  : Reverse => {
+          bail( s"Reverse paths ${epp.fullPath} cannot be migrated." )
+        }
+      }
+    }
+  }
+
   private def ensNameStatusTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathParser )
 
@@ -1566,12 +1613,9 @@ object SbtEthereumPlugin extends AutoPlugin {
                   case Some(owner) => log.info( s"ENS name '${path}' is currently owned by '${hexString(owner)}'." )
                   case None        => log.info( s"ENS name '${path}' is not avaiable, but does not have an owner. It is likely in a transitional state" )
                 }
-                val expiry = forTldClient.nameExpires( baseName )
-                if (expiry.getEpochSecond != 0) {
-                  log.info( s"This registration will expire at '${formatInstant(expiry)}'.")
-                }
-                else {
-                  log.info( s"The expiration date of this domain could not be determined. (Perhaps it needs to be migrated to the current registrar.)" )
+                forTldClient.nameExpires( baseName ) match {
+                  case Some( expiry ) => log.info( s"This registration will expire at '${formatInstant(expiry)}'." )
+                  case None           => log.info( s"The expiration date of this domain could not be determined. (Perhaps it needs to be migrated to the current registrar.)" )
                 }
               }
             }

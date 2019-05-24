@@ -28,6 +28,8 @@ import scala.util.control.NonFatal
 
 import play.api.libs.json._
 
+// XXX: This whole mess needs to be reorganized, using readable for-comprehension parsers,
+//      and strict conventions about spaces and tokens
 private [sbtethereum]
 object Parsers {
   private implicit lazy val logger = mlogger( this )
@@ -119,6 +121,8 @@ object Parsers {
 
   private def rawAliasedAddressParser( aliases : SortedMap[String,EthAddress] ) : Parser[EthAddress] = rawAddressAliasParser( aliases ).map( aliases )
 
+  // this is perhaps (much) too permissive,
+  // causing a lot of lookups against potential valid names and very long pauses on tab
   private val CouldBeNonTldEns : String => Boolean = _.indexOf('.') > 0 // ENS paths can't begin with dot, so greater than without equality
 
   private [sbtethereum]
@@ -128,8 +132,10 @@ object Parsers {
         val aliases = rpi.addressAliases
         val tld = rpi.exampleNameServiceTld
         val ensParser = ensPathToAddressParserSelective( pathPredicate = CouldBeNonTldEns )( rpi ).examples( s"<ens-name>.${tld}" )
-        //val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
-        //token(Space.*) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensNameToAddressParser( rpi ) ).examples( allExamples : _* )
+
+        // val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
+        // token(MaybeSpace) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensParser ).examples( allExamples : _* )
+
         token(MaybeSpace) ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensParser )
       }
       case None => {
