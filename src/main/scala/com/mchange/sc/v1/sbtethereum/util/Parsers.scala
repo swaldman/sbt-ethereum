@@ -146,6 +146,8 @@ object Parsers {
 
   private [sbtethereum] val RawIntParser = (Digit.+).map( chars => chars.mkString.toInt )
 
+  private [sbtethereum] val RawLongParser = (Digit.+).map( chars => chars.mkString.toLong )
+
   private [sbtethereum] val RawBigIntParser = (Digit.+).map( chars => BigInt( chars.mkString ) )
 
   private [sbtethereum] def bigIntParser( tabHelp : String ) = token(MaybeSpace ~> RawBigIntParser, tabHelp)
@@ -185,6 +187,51 @@ object Parsers {
   private [sbtethereum] val SolcJVersionParser : Parser[Option[String]] = {
     val mandatory = compile.SolcJInstaller.SupportedVersions.foldLeft( failure("No supported versions") : Parser[String] )( ( nascent, next ) => nascent | literal(next) )
     token(MaybeSpace) ~> token(mandatory.?)
+  }
+
+  private [sbtethereum]
+  final object DurationParsers {
+    import java.time.{Duration => JDuration}
+    import java.time.temporal.ChronoUnit
+
+    val ChronoUnits = {
+      def binding( unit : ChronoUnit ) : Tuple2[String,ChronoUnit] = unit.toString.toLowerCase -> unit
+      immutable.Map[String,ChronoUnit](
+        binding(ChronoUnit.SECONDS),
+        binding(ChronoUnit.MINUTES),
+        binding(ChronoUnit.HOURS),
+        binding(ChronoUnit.DAYS),
+        binding(ChronoUnit.MONTHS),
+        binding(ChronoUnit.YEARS)
+      )
+    }
+
+    val AllUnits = immutable.SortedSet.empty[String] ++ ChronoUnits.keySet ++ ChronoUnits.keySet.map( _.init.mkString )
+
+    def findUnit( unitStr : String ) : Option[ChronoUnit] = {
+      val key = unitStr.toLowerCase
+      ChronoUnits.get( key ) orElse ChronoUnits.get( key + 's' )
+    }
+
+    final case class SecondsViaUnit( seconds : Long, unitProvided : ChronoUnit )
+
+    val JDurationParser = {
+      for {
+        amount  <- RawLongParser
+        _       <- Space
+        unitStr <- ID.examples( AllUnits )
+        unit    <- findUnit( unitStr ).fold( failure( s"Unknown unit: ${unitStr}" ) : Parser[ChronoUnit] )( u => success( u ) )
+      }
+      yield {
+        // XXX: a bit icky
+        // See https://stackoverflow.com/questions/26454129/getting-duration-using-the-new-datetime-api
+
+        //( JDuration.of( amount, unit ), unit )
+        ( unit.getDuration.multipliedBy(amount), unit )
+      }
+    }
+
+    val DurationInSecondsParser = JDurationParser.map { case ( jduration, unit ) => SecondsViaUnit( jduration.getSeconds, unit ) }
   }
 
   private [sbtethereum] val EnsPathClass = charClass( c => isIDChar(c) || c == '.', "valid for ENS paths" )

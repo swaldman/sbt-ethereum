@@ -7,8 +7,9 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress,EthHash}
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.ByteSeqExact32
 
-import java.time.{Instant, ZoneId}
+import java.time.{Duration => JDuration, Instant, ZoneId}
 import java.time.format.{FormatStyle, DateTimeFormatter}
+import java.time.temporal.ChronoUnit
 
 private [sbtethereum]
 object Formatting {
@@ -22,6 +23,13 @@ object Formatting {
   def formatInstant( l : Long ) : String = formatInstant( Instant.ofEpochMilli( l ) )
 
   def formatTime( l : Long ) : String = TimeFormatter.format( Instant.ofEpochMilli( l ) )
+
+  def formatDurationInSeconds( seconds : Long, formatUnit : ChronoUnit ) : String = {
+    val duration = JDuration.ofSeconds( seconds )
+    val amountInUnit = BigDecimal( duration.getSeconds() ) / formatUnit.getDuration().getSeconds()
+    s"${amountInUnit} ${formatUnit.toString.toLowerCase}"
+  }
+
 
   def hexString( bytes : Seq[Byte]    )   = s"0x${bytes.hex}"
   def hexString( bytes : Array[Byte]  )   = s"0x${bytes.hex}"

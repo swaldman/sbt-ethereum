@@ -331,6 +331,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensAddressLookup    = inputKey[Option[EthAddress]]("Prints the address given ens name should resolve to, if one has been set.")
     val ensAddressSet       = inputKey[Unit]              ("Sets the address a given ens name should resolve to.")
     val ensMigrateRegistrar = inputKey[Unit]              ("Migrates a name from a predecessor registar (e.g. the original auction registrar) to any successor registrar.")
+    val ensNamePrice        = inputKey[Unit]              ("Estimate the cost of renting (registering / renewing) a name for a period of time.")
+    val ensNameRegister     = inputKey[Unit]              ("Registers a given ENS name.")
+    val ensNameRenew        = inputKey[Unit]              ("Renews (extends the registration period) of a given ENS name.")
     val ensNameStatus       = inputKey[Unit]              ("Prints the current status of a given name.")
     val ensOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the name has an owner.")
     val ensOwnerSet         = inputKey[Unit]              ("Sets the owner of a given name to an address.")
@@ -649,6 +652,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensMigrateRegistrar in Compile := { ensMigrateRegistrarTask( Compile ).evaluated },
 
     ensMigrateRegistrar in Test := { ensMigrateRegistrarTask( Test ).evaluated },
+
+    ensNamePrice in Compile := { ensNamePriceTask( Compile ).evaluated },
+
+    ensNamePrice in Test := { ensNamePriceTask( Test ).evaluated },
 
     ensNameStatus in Compile := { ensNameStatusTask( Compile ).evaluated },
 
@@ -1579,6 +1586,54 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ensNamePriceTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathParser )
+
+    Def.inputTask {
+      import ens.ParsedPath._
+
+      val is        = interactionService.value
+      val log       = streams.value.log
+      val chainId   = findNodeChainIdTask(warn=true)(config).value
+      val ensClient = ( config / xensClient ).value
+      val epp       = parser.parsed
+
+      val baseCurrencyCode = ethcfgBaseCurrencyCode.value
+
+      def doFindRent( name : String, rmd : ensClient.RegistrarManagedDomain ) : Unit = {
+        val DurationParsers.SecondsViaUnit(seconds, unit) = {
+          queryDurationInSeconds( log, is, """For how long would you like to rent the name? [Example: "3 years"] """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
+        }
+        val minTime = rmd.minRegistrationDurationInSeconds
+        val desiredPeriod = formatDurationInSeconds( seconds, unit )
+        if ( seconds < minTime ) {
+          bail( s"Registration period must be longer than ${formatDurationInSeconds(minTime.toLong, unit)}. Cannot register for just ${desiredPeriod}." )
+        }
+        else {
+          val rentInWei = rmd.rentPriceInWei( name, seconds )
+          val etherValue = EthValue( rentInWei, Denominations.Ether ).denominated
+          log.info( s"In order to rent '${epp.fullPath}' for ${desiredPeriod}, it would cost ${etherValue} ether (${rentInWei} wei)." )
+          printFiatValueForEtherValue( log.info(_) )( chainId, baseCurrencyCode, etherValue )
+        }
+      }
+
+      epp match {
+        case bntld : BaseNameTld => {
+          doFindRent( bntld.baseName, ensClient.forTopLevelDomain( bntld.tld ) )
+        }
+        case sn : Subnode => {
+          doFindRent( sn.label, ensClient.RegistrarManagedDomain( sn.parent.fullName ) )
+        }
+        case tld : Tld => {
+          bail( s"Top-level domain names (like '${tld.fullPath}') are not paid rentals." )
+        }
+        case rev : Reverse => {
+          bail( s"Reverse ENS names (like '${rev.fullPath}') are not paid rentals." )
+        }
+      }
+    }
+  }
+
   private def ensNameStatusTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathParser )
 
@@ -1900,20 +1955,24 @@ object SbtEthereumPlugin extends AutoPlugin {
       val exchangerConfig = findExchangerConfigTask( config ).value
 
       val result           = doPrintingGetBalance( exchangerConfig, log, timeout, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
-      val ethValue         = result.denominated
+      val etherValue       = result.denominated
 
-      priceFeed.ethPriceInCurrency( chainId, baseCurrencyCode ) match {
-        case Some( datum ) => {
-          val value = ethValue * datum.price
-          val roundedValue = value.setScale(2, BigDecimal.RoundingMode.HALF_UP )
-          println( s"This corresponds to approximately ${roundedValue} ${baseCurrencyCode} (at a rate of ${datum.price} ${baseCurrencyCode} per ETH, retrieved at ${ formatTime( datum.timestamp ) } from ${priceFeed.source})" )
-        }
-        case None => {
-          println( s"(The ${baseCurrencyCode} value of this is unknown, no exchange value is currently available for chain with ID ${chainId} from ${priceFeed.source}.)" )
-        }
+      printFiatValueForEtherValue()( chainId, baseCurrencyCode, etherValue )
+
+      etherValue
+    }
+  }
+
+  private def printFiatValueForEtherValue( pfunc : String => Unit = println(_) )( chainId : Int, baseCurrencyCode : String, etherValue : BigDecimal ) : Unit = {
+    priceFeed.ethPriceInCurrency( chainId, baseCurrencyCode ) match {
+      case Some( datum ) => {
+        val value = etherValue * datum.price
+        val roundedValue = value.setScale(2, BigDecimal.RoundingMode.HALF_UP )
+        pfunc( s"This corresponds to approximately ${roundedValue} ${baseCurrencyCode} (at a rate of ${datum.price} ${baseCurrencyCode} per ETH, retrieved at ${ formatTime( datum.timestamp ) } from ${priceFeed.source})" )
       }
-
-      ethValue
+      case None => {
+        pfunc( s"(The ${baseCurrencyCode} value of this is unknown, no exchange value is currently available for chain with ID ${chainId} from ${priceFeed.source}.)" )
+      }
     }
   }
 

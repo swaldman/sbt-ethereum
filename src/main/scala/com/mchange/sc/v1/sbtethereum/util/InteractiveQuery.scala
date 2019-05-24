@@ -1,6 +1,8 @@
 package com.mchange.sc.v1.sbtethereum.util
 
 import java.io.File
+import java.time.{Duration => JDuration}
+import java.time.temporal.ChronoUnit
 
 import com.mchange.sc.v1.sbtethereum._
 
@@ -142,6 +144,31 @@ object InteractiveQuery {
     } else {
       throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )
     }
+  }
+
+  private [sbtethereum]
+  def queryDurationInSeconds( log : sbt.Logger, is : sbt.InteractionService, readPrompt : String ) : Option[DurationParsers.SecondsViaUnit] = {
+
+    @tailrec
+    def doRead : Option[DurationParsers.SecondsViaUnit] = {
+      val entry = assertReadLine( is, readPrompt, mask = false ).trim
+      if ( entry.nonEmpty ) {
+        sbt.complete.Parser.parse( entry, DurationParsers.DurationInSecondsParser ) match {
+          case Left( oops ) => {
+            log.error( s"Parse failure: ${oops}" )
+            println("""Please enter an integral amount, then a space, then a unit. For example, "10 seconds" or "5 years".""")
+            println("""Supported units: """ + DurationParsers.AllUnits.mkString(", ") )
+            doRead
+          }
+          case Right( secondsViaUnit ) => Some( secondsViaUnit )
+        }
+      }
+      else {
+        None
+      }
+    }
+
+    doRead
   }
 
   // not currently used
