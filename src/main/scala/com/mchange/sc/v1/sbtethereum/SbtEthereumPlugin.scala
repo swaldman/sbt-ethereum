@@ -1424,7 +1424,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     def find() = findOp().ensuring( privateKey => address == privateKey.address )
   }
 
-  private def findPrivateKeyFinderTask( config : Configuration ) : Initialize[Task[PrivateKeyFinder]] = Def.task {
+  private def findCurrentSenderPrivateKeyFinderTask( config : Configuration ) : Initialize[Task[PrivateKeyFinder]] = Def.task {
     val s = state.value
     val log = streams.value.log
     val is = interactionService.value
@@ -1435,7 +1435,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def findPrivateKeyTask( config : Configuration ) : Initialize[Task[EthPrivateKey]] = Def.task {
-    val privateKeyFinder = findPrivateKeyFinderTask( config ).value
+    val privateKeyFinder = findCurrentSenderPrivateKeyFinderTask( config ).value
     privateKeyFinder.find()
   }
 
@@ -5726,7 +5726,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val currencyCode = ethcfgBaseCurrencyCode.value
     val icontext = (config / xethInvokerContext).value
-    val privateKeyFinder = findPrivateKeyFinderTask( config ).value
+    val privateKeyFinder = findCurrentSenderPrivateKeyFinderTask( config ).value
 
     val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, stub.Context.Default.Scheduler )
     val signer = new CautiousSigner( log, is, currencyCode )( privateKeyFinder )
@@ -5994,6 +5994,29 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def findNoCachePrivateKey(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int,
+    address              : EthAddress
+  ) : EthPrivateKey = {
+    // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
+    // it also slows down automated attempts to guess passwords, i guess...
+    Thread.sleep(1000)
+
+    val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( commasep => s", aliases $commasep" ) )
+
+    log.info( s"Unlocking address '0x${address.hex}' (on chain with ID ${chainId}$aliasesPart)" )
+
+    val credential = readCredential( is, address )
+
+    val extract = Project.extract(state)
+    val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in Compile, address.hex, state) // the config scope of xethLoadWalletV3For doesn't matter here, since we provide hex, not an alias
+
+    findPrivateKey( log, wallets, credential )
+  }
+
   private def findCachePrivateKey(
     state                : sbt.State,
     log                  : sbt.Logger,
@@ -6005,20 +6028,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   ) : EthPrivateKey = {
 
     def updateCached : EthPrivateKey = {
-      // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
-      // it also slows down automated attempts to guess passwords, i guess...
-      Thread.sleep(1000)
-
-      val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( commasep => s", aliases $commasep" ) )
-
-      log.info( s"Unlocking address '0x${address.hex}' (on chain with ID ${chainId}$aliasesPart)" )
-
-      val credential = readCredential( is, address )
-
-      val extract = Project.extract(state)
-      val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in Compile, address.hex, state) // the config scope of xethLoadWalletV3For doesn't matter here, since we provide hex, not an alias
-
-      val privateKey = findPrivateKey( log, wallets, credential )
+      val privateKey = findNoCachePrivateKey( state, log, is, chainId, address )
       Mutables.CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
       privateKey
     }
