@@ -1430,7 +1430,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     new PrivateKeyFinder( caller, () => findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true ) )
   }
 
-  private def findPrivateKeyTask( config : Configuration ) : Initialize[Task[EthPrivateKey]] = Def.task {
+  private def findCurrentSenderPrivateKeyTask( config : Configuration ) : Initialize[Task[EthPrivateKey]] = Def.task {
     val privateKeyFinder = findCurrentSenderPrivateKeyFinderTask( config ).value
     privateKeyFinder.find()
   }
@@ -1476,7 +1476,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log                  = streams.value.log
-      val privateKey           = findPrivateKeyTask( config ).value
+      val privateKey           = findCurrentSenderPrivateKeyTask( config ).value
       val chainId              = findNodeChainIdTask(warn=true)(config).value
       val ensClient            = ( config / xensClient).value
       val is                   = interactionService.value
@@ -1548,7 +1548,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val log           = streams.value.log
       val chainId       = findNodeChainIdTask(warn=true)(config).value
-      val privateKey    = findPrivateKeyTask( config ).value
+      val privateKey    = findCurrentSenderPrivateKeyTask( config ).value
       val ensClient     = ( config / xensClient ).value
       val epp           = parser.parsed
       val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
@@ -1727,7 +1727,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log           = streams.value.log
-      val privateKey    = findPrivateKeyTask( config ).value
+      val privateKey    = findCurrentSenderPrivateKeyTask( config ).value
       val chainId       = findNodeChainIdTask(warn=true)(config).value
       val ensClient     = ( config / xensClient).value
       val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
@@ -1763,7 +1763,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log           = streams.value.log
-      val privateKey    = findPrivateKeyTask( config ).value
+      val privateKey    = findCurrentSenderPrivateKeyTask( config ).value
       val chainId       = findNodeChainIdTask(warn=true)(config).value
       val ensClient     = ( config / xensClient).value
       val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
@@ -1789,7 +1789,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log           = streams.value.log
-      val privateKey    = findPrivateKeyTask( config ).value
+      val privateKey    = findCurrentSenderPrivateKeyTask( config ).value
       val chainId       = findNodeChainIdTask(warn=true)(config).value
       val ensClient     = ( config / xensClient ).value
       val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
@@ -6000,11 +6000,23 @@ object SbtEthereumPlugin extends AutoPlugin {
     new PrivateKeyFinder( address, () => findNoCachePrivateKey(state, log, is, chainId, address ) )
   }
 
+  private def findArbitraryCautiousSigner(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int, // for alias display only
+    address              : EthAddress,
+    priceFeed            : PriceFeed,
+    currencyCode         : String
+  ) : CautiousSigner = {
+    new CautiousSigner( log, is, priceFeed, currencyCode )( findArbitraryPrivateKeyFinder(state,log,is,chainId,address), abiOverridesForChain )
+  }
+
   private def findNoCachePrivateKey(
     state                : sbt.State,
     log                  : sbt.Logger,
     is                   : sbt.InteractionService,
-    chainId              : Int,
+    chainId              : Int, // for alias display only
     address              : EthAddress
   ) : EthPrivateKey = {
     // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
