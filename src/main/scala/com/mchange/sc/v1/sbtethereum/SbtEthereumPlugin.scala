@@ -13,6 +13,7 @@ import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstalle
 import util.BaseCodeAndSuffix
 import util.OneTimeWarner
 import util.ChainIdMutable
+import util.CautiousSigner
 import util.Erc20
 import util.EthJsonRpc._
 import util.Parsers._
@@ -53,7 +54,6 @@ import com.mchange.sc.v1.consuela.ethereum.encoding.RLP
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.log.MLogger
 import com.mchange.sc.v1.texttable
-import com.mchange.sc.v2.literal._
 import scala.annotation.tailrec
 import scala.collection._
 import scala.concurrent.{Await,Future}
@@ -1418,10 +1418,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbNodeUrl = maybeFindNodeUrlTask( warn )( config ).value
     val chainId = findNodeChainIdTask(warn=true)(config).value
     mbNodeUrl.getOrElse( throw new NodeUrlNotAvailableException( s"No 'ethNodeUrl' for chain with ID '${chainId}' is curretly available." ) )
-  }
-
-  private class PrivateKeyFinder( val address : EthAddress, findOp : () => EthPrivateKey ) {
-    def find() = findOp().ensuring( privateKey => address == privateKey.address )
   }
 
   private def findCurrentSenderPrivateKeyFinderTask( config : Configuration ) : Initialize[Task[PrivateKeyFinder]] = Def.task {
@@ -2877,7 +2873,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).get : _* )
       immutable.TreeMap( combined.map { case ( address : EthAddress, _ ) => ( address, aliasesSet( address ) ) }.toSeq : _* )( Ordering.by( _.hex ) )
     }
-    val cap = "+" + span(44) + "+"
+    val cap = "+" + dashspan(44) + "+"
     val KeystoreAddresses = "Keystore Addresses"
     println( cap )
     println( f"| $KeystoreAddresses%-42s |" )
@@ -5729,7 +5725,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val privateKeyFinder = findCurrentSenderPrivateKeyFinderTask( config ).value
 
     val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, stub.Context.Default.Scheduler )
-    val signer = new CautiousSigner( log, is, currencyCode )( privateKeyFinder )
+    val signer = new CautiousSigner( log, is, priceFeed, currencyCode )( privateKeyFinder, abiOverridesForChain )
     val sender = stub.Sender.Basic( signer )
     (scontext, sender)
   }
@@ -5994,6 +5990,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def findArbitraryPrivateKeyFinder(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int,
+    address              : EthAddress
+  ) : PrivateKeyFinder = {
+    new PrivateKeyFinder( address, () => findNoCachePrivateKey(state, log, is, chainId, address ) )
+  }
+
   private def findNoCachePrivateKey(
     state                : sbt.State,
     log                  : sbt.Logger,
@@ -6101,133 +6107,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     }( ec )
   }
 
-  private def displayTransactionSignatureRequest( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress ) : Unit = {
-    _displayTransactionRequest( "==> T R A N S A C T I O N   S I G N A T U R E   R E Q U E S T" )(log, chainId, currencyCode, txn, proposedSender )
+  private def displayTransactionSignatureRequest( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress) : Unit = {
+    util.Formatting.displayTransactionSignatureRequest( log, chainId, abiOverridesForChain( chainId ), priceFeed, currencyCode, txn, proposedSender )
   }
 
-  private def displayTransactionSubmissionRequest( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress ) : Unit = {
-    _displayTransactionRequest( "==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T" )(log, chainId, currencyCode, txn, proposedSender )
-  }
-
-  private def _displayTransactionRequest( titleLine : String )( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress ) : Unit = {
-
-    val abiOverrides = abiOverridesForChain( chainId )
-
-    val gasPrice   = txn.gasPrice.widen
-    val gasLimit   = txn.gasLimit.widen
-    val valueInWei = txn.value.widen
-
-    val nonce = txn.nonce.widen
-
-    println()
-    println( titleLine )
-    println( "==>" )
-
-    txn match {
-      case msg : EthTransaction.Message => {
-        println(  """==> The transaction would be a message with...""" )
-        println( s"""==>   To:    ${ticklessVerboseAddress(chainId, msg.to)}""" )
-        println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
-        println( s"""==>   Data:  ${if (msg.data.length > 0) hexString(msg.data) else "None"}""" )
-        println( s"""==>   Value: ${EthValue(msg.value.widen, Denominations.Ether).denominated} Ether""" )
-
-        txn match {
-          case signed : EthTransaction.Signed => {
-            println(  "==>" )
-            signed.signature match {
-              case withId : EthSignature.WithChainId => {
-                val sigChainId = withId.chainId.value.widen.toInt // XXX: ugh.. we should probably modify all our ChainId stuff to be in terms of BigInt or UnsignedBigInt, rather than presuming Int...
-                if (chainId == sigChainId ) {
-                  println( s"==> The transaction is signed with Chain ID ${chainId} (which correctly matches the current session's 'ethNodeChainId')." )
-                }
-                else {
-                  println( s"==> WARNING: The transaction is signed with Chain ID ${sigChainId}, which does not match the current session's 'ethNodeChainId' of ${chainId}.")
-                  println( s"==>          If it is submitted within the current session, the transaction may fail." )
-                }
-              }
-              case withoutId : EthSignature.Basic => {
-                println( s"""==> WARNING: The transaction is signed with no embedded Chain ID. It could be successfully submitted on multiple chains, potentially as a result of "replay attacks".""" )
-              }
-            }
-          }
-          case unsigned : EthTransaction.Unsigned => /* skip section */
-        }
-
-        if (msg.data.nonEmpty) { // don't try to interpret pure ETH trasfers as ABI calls
-          try {
-            val abiLookup = abiLookupForAddress( chainId, msg.to, abiOverrides )
-            abiLookup.resolveAbi(Some(log)) match {
-              case Some(abi) => {
-                val ( fcn, values ) = ethabi.decodeFunctionCall( abi, msg.data ).assert
-                println(  "==>" )
-                println( s"==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call..." )
-                println( s"==>   Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
-                  (values.zip( Stream.from(1) )).foreach { case (value, index) =>
-                    println( s"==>     Arg ${index} [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
-                  }
-              }
-              case None => {
-                println(  "==>" )
-                println( s"==> !!! Any ABI is associated with the destination address is currently unknown, so we cannot decode the message data as a method call !!!" )
-              }
-            }
-          }
-          catch {
-            case e : Exception => {
-              val msg = s"An Exception occurred while trying to interpret this method with an ABI as a function call. Skipping: ${e}"
-              log.warn( msg )
-              DEBUG.log( msg, e )
-            }
-          }
-        }
-      }
-      case cc : EthTransaction.ContractCreation => {
-        println(  """==> The transaction would be a contract creation with...""" )
-        println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
-        println( s"""==>   Init:  ${if (cc.init.length > 0) hexString(cc.init) else "None"}""" )
-        println( s"""==>   Value: ${EthValue(cc.value.widen, Denominations.Ether).denominated} Ether""" )
-      }
-    }
-    println("==>")
-    println( s"==> The nonce of the transaction would be ${nonce}." )
-    println("==>")
-
-    println( s"==> $$$$$$ The transaction you have requested could use up to ${gasLimit} units of gas." )
-
-    val mbEthPrice = priceFeed.ethPriceInCurrency( chainId, currencyCode, forceRefresh = true )
-
-    val gweiPerGas = Denominations.GWei.fromWei(gasPrice)
-    val gasCostInWei = gasLimit * gasPrice
-    val gasCostInEth = Denominations.Ether.fromWei( gasCostInWei )
-    val gasCostMessage = {
-      val sb = new StringBuilder
-      sb.append( s"==> $$$$$$ You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether.${LineSep}" )
-      mbEthPrice match {
-        case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-          sb.append( s"==> $$$$$$ This is worth ${ gasCostInEth * ethPrice } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
-        }
-        case None => {
-          sb.append( s"==> $$$$$$ (No ${currencyCode} value could be determined for ETH on chain with ID ${chainId} from ${priceFeed.source})." )
-        }
-      }
-      sb.toString
-    }
-    println( gasCostMessage )
-
-    if ( valueInWei != 0 ) {
-      val xferInEth = Denominations.Ether.fromWei( valueInWei )
-      val maxTotalCostInEth = xferInEth + gasCostInEth
-      print( s"==> $$$$$$ You would also send ${xferInEth} ether" )
-      mbEthPrice match {
-        case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-          println( s" (${ xferInEth * ethPrice } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${maxTotalCostInEth * ethPrice} ${currencyCode})." )
-        }
-        case None => {
-          println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
-        }
-      }
-    }
-    println()
+  private def displayTransactionSubmissionRequest( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress) : Unit = {
+    util.Formatting.displayTransactionSubmissionRequest( log, chainId, abiOverridesForChain( chainId ), priceFeed, currencyCode, txn, proposedSender )
   }
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
@@ -6303,57 +6188,6 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def kludgeySleepForInteraction() : Unit = Thread.sleep(100) 
 
 
-  // some formatting functions for ascii tables
-  private def emptyOrHex( str : String ) = if (str == null) "" else s"0x$str"
-  private def blankNull( str : String ) = if (str == null) "" else str
-  private def span( len : Int ) = (0 until len).map(_ => "-").mkString
-
-  private def mbWithNonceClause( nonceOverride : Option[Unsigned256] ) = nonceOverride.fold("")( n => s"with nonce ${n.widen} " )
-
-  private def commaSepAliasesForAddress( chainId : Int, address : EthAddress ) : Failable[Option[String]] = {
-    shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
-  }
-  private def leftwardAliasesArrowOrEmpty( chainId : Int, address : EthAddress ) : Failable[String] = {
-    commaSepAliasesForAddress( chainId, address ).map( _.fold("")( aliasesStr => s" <-- ${aliasesStr}" ) )
-  }
-  private def jointAliasesPartAddressAbi( chainId : Int, address : EthAddress, abiHash : EthHash ) : Option[String] = {
-    val addressAliases = shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).assert
-    val abiAliases = shoebox.AbiAliasHashManager.findAbiAliasesByAbiHash( chainId, abiHash ).assert
-    def aliasList( s : Seq[String] ) : String = s.mkString("['","','","']")
-    def pAbi( abiAlias : String ) : String = "abi:" + abiAlias
-    def abiAliasList( s : Seq[String] ) : String = aliasList( s.map( pAbi ) )
-      ( addressAliases, abiAliases ) match {
-      case ( Seq(),          Seq() )           => None
-      case ( Seq( alias ),   Seq() )           => Some( s"address alias: '${alias}'" )
-      case ( addressAliases, Seq() )           => Some( s"address aliases: ${aliasList(addressAliases)}" )
-      case ( Seq(),          Seq( abiAlias ) ) => Some( s"abi alias: '${pAbi(abiAlias)}'" )
-      case ( Seq( alias ),   Seq( abiAlias ) ) => Some( s"address alias: '${alias}', abi alias: '${pAbi(abiAlias)}'" )
-      case ( addressAliases, Seq( abiAlias ) ) => Some( s"address aliases: ${aliasList(addressAliases)}, abi alias: '${pAbi(abiAlias)}'" )
-      case ( Seq(),          abiAliases )      => Some( s"abi aliases: ${abiAliasList(abiAliases)}" )
-      case ( Seq( alias ),   abiAliases )      => Some( s"address alias: '${alias}', abi aliases: ${abiAliasList(abiAliases)}" )
-      case ( addressAliases, abiAliases )      => Some( s"address aliases: ${aliasList(addressAliases)}, abi aliases: ${abiAliasList(abiAliases)}" )
-    }
-  }
-
-  private def _verboseAddress( chainId : Int, address : EthAddress, xform : String => String ) : String = {
-    val simple = xform(s"0x${address.hex}")
-    if ( chainId >= 0 ) {
-      val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s"with aliases $str " ) )
-      s"${simple} (${aliasesPart}on chain with ID $chainId)"
-    }
-    else {
-      simple
-    }
-  }
-
-  private def verboseAddress( chainId : Int, address : EthAddress ) : String = {
-    _verboseAddress( chainId, address, s => s"'${s}'" )
-  }
-
-  private def ticklessVerboseAddress( chainId : Int, address : EthAddress ) : String = {
-    _verboseAddress( chainId, address, identity )
-  }
-
   private def attemptAdvanceStateWithTask[T]( taskKey : Def.ScopedKey[Task[T]], startState : State ) : State = {
     Project.runTask( taskKey, startState ) match {
       case None => {
@@ -6380,73 +6214,4 @@ object SbtEthereumPlugin extends AutoPlugin {
   override def trigger = allRequirements
 
   override val projectSettings = ethDefaults
-
-  class CautiousSigner private [SbtEthereumPlugin] ( log : sbt.Logger, is : sbt.InteractionService, currencyCode : String )( privateKeyFinder : PrivateKeyFinder ) extends EthSigner {
-
-    // throws if the check fails
-    private def doCheckDocument( documentBytes : Seq[Byte], mbChainId : Option[EthChainId] ) : Unit = {
-      val address = privateKeyFinder.address
-      val chainId = {
-        mbChainId.fold( DefaultEphemeralChainId ){ ecid =>
-          val bi = ecid.value.widen
-          if ( bi.isValidInt ) bi.toInt else throw new SbtEthereumException( s"Chain IDs outside the range of Ints are not supported. Found ${bi}" )
-        }
-      }
-      def handleSignTransaction( utxn : EthTransaction.Unsigned ) : Unit = {
-        displayTransactionSignatureRequest( log, chainId, currencyCode, utxn, address )
-        val ok = queryYN( is, s"Are you sure it is okay to sign this transaction as ${verboseAddress(chainId, address)}? [y/n] " )
-        if (!ok) aborted( "User chose not to sign proposed transaction." )
-      }
-      def handleSignUnknown = {
-        println( s"""Signature Request: This data does not appear to be a transaction${if (chainId < 0 ) "." else " for chain with ID " + chainId + "."}""" )
-        println( s"""Raw data: ${hexString(documentBytes)}""" )
-        val rawString = new String( documentBytes.toArray, CharsetUTF8 )
-        println( s"""Raw data interpreted as as UTF8 String: ${ StringLiteral.formatUnicodePermissiveStringLiteral( rawString ) }""" )
-        val ok = queryYN( is, s"Are you sure it is okay to sign this uninterpreted data as ${verboseAddress(chainId, address)}? [y/n] " )
-        if (!ok) aborted( "User chose not to sign uninterpreted data." )
-      }
-      EthTransaction.Unsigned.areSignableBytesForChainId( documentBytes, mbChainId ) match {
-        case Some( utxn : EthTransaction.Unsigned ) => handleSignTransaction( utxn )
-        case None                                   => handleSignUnknown
-      }
-    }
-    private def doCheckHash( documentHash : EthHash, mbChainId : Option[EthChainId] ) : Unit = {
-      val chainId = {
-        mbChainId.fold( -1 ){ ecid =>
-          val bi = ecid.value.widen
-          if ( bi.isValidInt ) bi.toInt else throw new SbtEthereumException( s"Chain IDs outside the range of Ints are not supported. Found ${bi}" )
-        }
-      }
-      val address = privateKeyFinder.address
-      println( s"The application is attempting to sign a hash of some document which sbt-ethereum cannot identify, as ${verboseAddress(chainId, address)}." )
-      println( s"Hash bytes: ${hexString( documentHash )}" )
-      val ok = queryYN( is, "Do you understand the document whose hash the application proposes to sign, and trust the application to sign it?" )
-      if (!ok) aborted( "User chose not to sign proposed document hash." )
-    }
-
-    override def sign( document : Array[Byte] ) : EthSignature.Basic = {
-      this.sign( document.toImmutableSeq )
-    }
-    override def sign( document : Seq[Byte] )   : EthSignature.Basic = {
-      doCheckDocument( document, None )
-      privateKeyFinder.find().sign( document )
-    }
-    override def signPrehashed( documentHash : EthHash ) : EthSignature.Basic = {
-      doCheckHash( documentHash, None )
-      privateKeyFinder.find().signPrehashed( documentHash )
-    }
-    override def sign( document : Array[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
-      doCheckDocument( document.toImmutableSeq, Some( chainId ) )
-      privateKeyFinder.find().sign( document, chainId )
-    }
-    override def sign( document : Seq[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
-      doCheckDocument( document, Some( chainId ) )
-      privateKeyFinder.find().sign( document, chainId )
-    }
-    override def signPrehashed( documentHash : EthHash, chainId : EthChainId ) : EthSignature.WithChainId = {
-      doCheckHash( documentHash, Some( chainId ) )
-      signPrehashed( documentHash, chainId )
-    }
-    override def address : EthAddress = privateKeyFinder.address
-  }
 }
