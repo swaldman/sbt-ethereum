@@ -43,13 +43,19 @@ class CautiousSigner private [sbtethereum] (
       if (!ok) aborted( "User chose not to sign proposed transaction." )
     }
     def handleSignUnknown = {
-      println( s"""Signature Request: This data does not appear to be a transaction${if (chainId < 0 ) "." else " for chain with ID " + chainId + "."}""" )
-      println( s"""Raw data: ${hexString(documentBytes)}""" )
+      println(    "==> D O C U M E N T   S I G N A T U R E   R E Q U E S T")
+      println(    "==>")
+      println( s"""==> This data does not appear to be a transaction${if (chainId < 0 ) "." else " for chain with ID " + chainId + "."}""" )
+      println(    "==>")
+      println( s"""==> Raw data: ${hexString(documentBytes)}""" )
+      println(    "==>")
       val rawString = new String( documentBytes.toArray, CharsetUTF8 )
-      println( s"""Raw data interpreted as as UTF8 String: ${ StringLiteral.formatUnicodePermissiveStringLiteral( rawString ) }""" )
+      println( s"""==> Raw data interpreted as as UTF8 String: ${ StringLiteral.formatUnicodePermissiveStringLiteral( rawString ) }""" )
+      println()
       Failable( Json.prettyPrint( Json.parse( documentBytes.toArray ) ) ).foreach { pretty =>
-        println( s"The data can be interpreted as JSON. Pretty printing --> ${pretty}" )
+        println( s"The data can be interpreted as JSON. Pretty printing: ${pretty}" )
       }
+      println()
       val ok = queryYN( is, s"Are you sure it is okay to sign this data as ${verboseAddress(chainId, address)}? [y/n] " )
       if (!ok) aborted( "User chose not to sign the nontransaction data." )
     }
