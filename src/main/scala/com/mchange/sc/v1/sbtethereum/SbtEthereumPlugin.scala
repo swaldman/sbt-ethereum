@@ -508,6 +508,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
     val xethShoeboxRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's shoebox to its required user-only values.")
+    val xethSignerFinder = taskKey[EthAddress => EthSigner]("Finds a (cautious, interactive) signer that applications can use to sign documents for a known, unlockable EthAddress.")
     val xethSqlQueryShoeboxDatabase = inputKey[Unit]("Primarily for debugging. Query the internal shoebox database.")
     val xethSqlUpdateShoeboxDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal shoebox database with arbitrary SQL.")
     val xethStubEnvironment = taskKey[Tuple2[stub.Context, stub.Sender.Signing]]("Offers the elements you need to work with smart-contract stubs from inside an sbt-ethereum build.")
@@ -1149,6 +1150,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethShoeboxRepairPermissions := { xethShoeboxRepairPermissionsTask.value },
 
+    xethSignerFinder in Compile := { xethSignerFinderTask( Compile ).value },
+
+    xethSignerFinder in Test := { xethSignerFinderTask( Test ).value },
+
     xethSqlQueryShoeboxDatabase := { xethSqlQueryShoeboxDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
 
     xethSqlUpdateShoeboxDatabase := { xethSqlUpdateShoeboxDatabaseTask.evaluated }, // we leave this unscoped, just because scoping it to Compile seems weird
@@ -1427,7 +1432,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val caller = findAddressSenderTask(warn=true)(config).value.assert
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-    new PrivateKeyFinder( caller, () => findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true ) )
+    new PrivateKeyFinder( caller, () => findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true ) )
   }
 
   private def findCurrentSenderPrivateKeyTask( config : Configuration ) : Initialize[Task[EthPrivateKey]] = Def.task {
@@ -3743,7 +3748,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
 
       // lazy so if we have nothing to sign, we don't bother to prompt for passcode
-      lazy val privateKey = findCachePrivateKey( s, log, is, chainId, sender, autoRelockSeconds, true )
+      lazy val privateKey = findUpdateCachePrivateKey( s, log, is, chainId, sender, autoRelockSeconds, true )
 
       // at the time of parsing, a compiled contract may not not available.
       // in that case, we force compilation now, but can't accept contructor arguments
@@ -4002,7 +4007,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val caller = findAddressSenderTask(warn=true)(config).value.assert
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
+      val privateKey = findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
 
       val ( ( contractAddress, function, args, abi, abiLookup ), mbWei ) = parser.parsed
       abiLookup.logGenericShadowWarning( log )
@@ -4173,7 +4178,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     if ( chainId == None ) log.warn("No (non-negative) Chain ID value provided. Will sign with no replay attack prevention!")
 
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-    val privateKey = findCachePrivateKey( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
+    val privateKey = findUpdateCachePrivateKey( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
 
     displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, utxn, privateKey.address )
     val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
@@ -4378,7 +4383,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
+      val privateKey = findUpdateCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -4404,7 +4409,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val (to, amount) = parser.parsed
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
+      val privateKey = findUpdateCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -4613,7 +4618,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val caller = findAddressSenderTask(warn=true)(config).value.assert
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
+      val privateKey = findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -4703,7 +4708,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val caller = findAddressSenderTask(warn=true)(config).value.assert
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
+      val privateKey = findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -5651,6 +5656,23 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( "Shoebox permissions repaired." )
   }
 
+  private def xethSignerFinderTask( config : Configuration ) : Initialize[Task[EthAddress => EthSigner]] = Def.task {
+    val s = state.value
+    val log = streams.value.log
+    val is = interactionService.value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    val currentSender = findAddressSenderTask(warn=true)(config).value.assert
+    val currencyCode = ethcfgBaseCurrencyCode.value
+    val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
+
+    ( address : EthAddress ) => {
+      address match {
+        case `currentSender` => findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, autoRelockSeconds )
+        case _               => findCheckCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode )
+      }
+    }
+  }
+
   private def xethSqlQueryShoeboxDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log   = streams.value.log
     val query = DbQueryParser.parsed
@@ -5990,28 +6012,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def findArbitraryPrivateKeyFinder(
-    state                : sbt.State,
-    log                  : sbt.Logger,
-    is                   : sbt.InteractionService,
-    chainId              : Int,
-    address              : EthAddress
-  ) : PrivateKeyFinder = {
-    new PrivateKeyFinder( address, () => findNoCachePrivateKey(state, log, is, chainId, address ) )
-  }
-
-  private def findArbitraryCautiousSigner(
-    state                : sbt.State,
-    log                  : sbt.Logger,
-    is                   : sbt.InteractionService,
-    chainId              : Int, // for alias display only
-    address              : EthAddress,
-    priceFeed            : PriceFeed,
-    currencyCode         : String
-  ) : CautiousSigner = {
-    new CautiousSigner( log, is, priceFeed, currencyCode )( findArbitraryPrivateKeyFinder(state,log,is,chainId,address), abiOverridesForChain )
-  }
-
   private def findNoCachePrivateKey(
     state                : sbt.State,
     log                  : sbt.Logger,
@@ -6035,7 +6035,72 @@ object SbtEthereumPlugin extends AutoPlugin {
     findPrivateKey( log, wallets, credential )
   }
 
-  private def findCachePrivateKey(
+  private def findCheckCachePrivateKey(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int, // for alias display only
+    address              : EthAddress
+  ) : EthPrivateKey = {
+    checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = true, resetOnFailure = false ) getOrElse findNoCachePrivateKey( state, log, is, chainId, address )
+  }
+
+  private def findCheckCachePrivateKeyFinder(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int,
+    address              : EthAddress
+  ) : PrivateKeyFinder = {
+    new PrivateKeyFinder( address, () => findCheckCachePrivateKey(state, log, is, chainId, address ) )
+  }
+
+  private def findCheckCacheCautiousSigner(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int, // for alias display only
+    address              : EthAddress,
+    priceFeed            : PriceFeed,
+    currencyCode         : String
+  ) : CautiousSigner = {
+    new CautiousSigner( log, is, priceFeed, currencyCode )( findCheckCachePrivateKeyFinder(state,log,is,chainId,address), abiOverridesForChain )
+  }
+
+  private def checkForCachedPrivateKey( is : sbt.InteractionService, chainId : Int, address : EthAddress, userValidateIfCached : Boolean = true, resetOnFailure : Boolean = true) : Option[EthPrivateKey] = {
+    // caps for value matches rather than variable names
+    val ChainId = chainId
+    val Address = address
+    val now = System.currentTimeMillis
+    Mutables.CurrentAddress.get match {
+      case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if chainId and/or ethcfgAddressSender has changed, this will no longer match
+        val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
+        val ok = {
+          if ( userValidateIfCached ) {
+            is.readLine( s"Using sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}). OK? [y/n] ", false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
+          } else {
+            true
+          }
+        }
+        if ( ok ) {
+          Some( privateKey )
+        } else {
+          if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
+          aborted( s"Use of sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}) vetoed by user." )
+        }
+      }
+      case _ => { // if we don't match, we reset / forget the cached private key
+        if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
+        None
+      }
+    }
+  }
+
+  /*
+   *  generally we only try to update the cache if the private key
+   *  we are looking up is the current session's chainId and sender
+   */ 
+  private def findUpdateCachePrivateKey(
     state                : sbt.State,
     log                  : sbt.Logger,
     is                   : sbt.InteractionService,
@@ -6045,48 +6110,54 @@ object SbtEthereumPlugin extends AutoPlugin {
     userValidateIfCached : Boolean
   ) : EthPrivateKey = {
 
+    def recache( privateKey : EthPrivateKey ) = Mutables.CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
+
     def updateCached : EthPrivateKey = {
       val privateKey = findNoCachePrivateKey( state, log, is, chainId, address )
-      Mutables.CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
+      recache( privateKey )
       privateKey
     }
-    def goodCached : Option[EthPrivateKey] = {
-      // caps for value matches rather than variable names
-      val ChainId = chainId
-      val Address = address
-      val now = System.currentTimeMillis
-      Mutables.CurrentAddress.get match {
-        case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if chainId and/or ethcfgAddressSender has changed, this will no longer match
-          val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
-          val ok = {
-            if ( userValidateIfCached ) {
-              is.readLine( s"Using sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}). OK? [y/n] ", false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
-            } else {
-              true
-            }
-          }
-          if ( ok ) {
-            Some( privateKey )
-          } else {
-            Mutables.CurrentAddress.set( NoAddress )
-            throw nst(new SenderNotAvailableException( s"Use of sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}) vetoed by user." ))
-          }
-        }
-        case _ => { // if we don't match, we reset / forget the cached private key
-          Mutables.CurrentAddress.set( NoAddress )
-          None
-        }
-      }
-    }
+    def goodCached : Option[EthPrivateKey] = checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = userValidateIfCached, resetOnFailure = true )
 
     // special case for testing...
     if ( address == testing.Default.Faucet.Address ) {
       testing.Default.Faucet.PrivateKey
     } else {
       Mutables.CurrentAddress.synchronized {
-        goodCached.getOrElse( updateCached )
+        goodCached match {
+          case Some( privateKey ) => {
+            recache( privateKey )
+            privateKey
+          }
+          case None => updateCached
+        }
       }
     }
+  }
+
+  private def findUpdateCachePrivateKeyFinder(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int,
+    address              : EthAddress,
+    autoRelockSeconds    : Int,
+    userValidateIfCached : Boolean
+  ) : PrivateKeyFinder = {
+    new PrivateKeyFinder( address, () => findUpdateCachePrivateKey(state, log, is, chainId, address, autoRelockSeconds, userValidateIfCached ) )
+  }
+
+  private def findUpdateCacheCautiousSigner(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int, // for alias display only
+    address              : EthAddress,
+    priceFeed            : PriceFeed,
+    currencyCode         : String,
+    autoRelockSeconds    : Int
+  ) : CautiousSigner = {
+    new CautiousSigner( log, is, priceFeed, currencyCode )( findUpdateCachePrivateKeyFinder(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
   }
 
   private def transactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
