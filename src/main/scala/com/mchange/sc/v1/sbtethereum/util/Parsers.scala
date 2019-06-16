@@ -121,6 +121,8 @@ object Parsers {
 
   private def rawAliasedAddressParser( aliases : SortedMap[String,EthAddress] ) : Parser[EthAddress] = rawAddressAliasParser( aliases ).map( aliases )
 
+  private def rawAliasAndAddressParser( aliases : SortedMap[String,EthAddress] ) : Parser[(String,EthAddress)] = rawAddressAliasParser( aliases ).map( alias => (alias, aliases(alias)) )
+
   // this is perhaps (much) too permissive,
   // causing a lot of lookups against potential valid names and very long pauses on tab
   private val CouldBeNonTldEns : String => Boolean = _.indexOf('.') > 0 // ENS paths can't begin with dot, so greater than without equality
@@ -468,6 +470,13 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) = {
     token(MaybeSpace) ~> mbRpi.map( rpi => token( rawAddressAliasParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
+  }
+
+  private [sbtethereum] def genAliasAndAddressParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) = {
+    token(MaybeSpace) ~> mbRpi.map( rpi => token( rawAliasAndAddressParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
   private [sbtethereum] def genPermissiveAddressAliasOrAddressAsStringParser(
