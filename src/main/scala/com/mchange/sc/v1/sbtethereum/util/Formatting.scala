@@ -106,9 +106,10 @@ object Formatting {
     priceFeed : PriceFeed,
     currencyCode : String,
     txn : EthTransaction,
-    proposedSender : EthAddress
+    proposedSender : EthAddress,
+    signerDescription : Option[String] = None
   ) : Unit = {
-    _displayTransactionRequest( "==> T R A N S A C T I O N   S I G N A T U R E   R E Q U E S T" )(log, chainId, chainAbiOverrides, priceFeed, currencyCode, txn, proposedSender )
+    _displayTransactionRequest( "==> T R A N S A C T I O N   S I G N A T U R E   R E Q U E S T" )(log, chainId, chainAbiOverrides, priceFeed, currencyCode, txn, proposedSender, signerDescription )
   }
 
   def displayTransactionSubmissionRequest(
@@ -118,9 +119,10 @@ object Formatting {
     priceFeed : PriceFeed,
     currencyCode : String,
     txn : EthTransaction,
-    proposedSender : EthAddress
+    proposedSender : EthAddress,
+    signerDescription : Option[String] = None
   ) : Unit = {
-    _displayTransactionRequest( "==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T" )(log, chainId, chainAbiOverrides, priceFeed, currencyCode, txn, proposedSender )
+    _displayTransactionRequest( "==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T" )(log, chainId, chainAbiOverrides, priceFeed, currencyCode, txn, proposedSender, signerDescription )
   }
 
   private def _displayTransactionRequest( titleLine : String )(
@@ -130,7 +132,8 @@ object Formatting {
     priceFeed         : PriceFeed,
     currencyCode      : String,
     txn               : EthTransaction,
-    proposedSender    : EthAddress
+    proposedSender    : EthAddress,
+    signerDescription : Option[String]
   ) : Unit = {
 
     // val abiOverrides = abiOverridesForChain( chainId )
@@ -144,6 +147,11 @@ object Formatting {
     println()
     println( titleLine )
     println( "==>" )
+
+    signerDescription.foreach { desc =>
+      println(   s"==> Signer Description: ${desc}" )
+      println(    "==>")
+    }
 
     txn match {
       case msg : EthTransaction.Message => {

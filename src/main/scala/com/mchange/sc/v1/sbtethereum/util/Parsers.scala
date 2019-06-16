@@ -514,6 +514,10 @@ object Parsers {
     }
   }
 
+  private [sbtethereum] def genAddressParser(tabHelp : String)( state : State, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
+    createAddressParser( tabHelp, mbRpi )
+  }
+
   private [sbtethereum] def genGenericAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
     createAddressParser( "<address-hex>", mbRpi )
   }

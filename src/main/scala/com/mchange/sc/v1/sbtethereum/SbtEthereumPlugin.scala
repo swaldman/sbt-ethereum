@@ -508,7 +508,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
     val xethShoeboxRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's shoebox to its required user-only values.")
-    val xethSignerFinder = taskKey[EthAddress => EthSigner]("Finds a (cautious, interactive) signer that applications can use to sign documents for a known, unlockable EthAddress.")
+    val xethSignerFinder = taskKey[(EthAddress, Option[String]) => EthSigner]("Finds a (cautious, interactive) signer that applications can use to sign documents for a known, unlockable EthAddress.")
     val xethSqlQueryShoeboxDatabase = inputKey[Unit]("Primarily for debugging. Query the internal shoebox database.")
     val xethSqlUpdateShoeboxDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal shoebox database with arbitrary SQL.")
     val xethStubEnvironment = taskKey[Tuple2[stub.Context, stub.Sender.Signing]]("Offers the elements you need to work with smart-contract stubs from inside an sbt-ethereum build.")
@@ -5656,7 +5656,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( "Shoebox permissions repaired." )
   }
 
-  private def xethSignerFinderTask( config : Configuration ) : Initialize[Task[EthAddress => EthSigner]] = Def.task {
+  private def xethSignerFinderTask( config : Configuration ) : Initialize[Task[(EthAddress,Option[String]) => EthSigner]] = Def.task {
     val s = state.value
     val log = streams.value.log
     val is = interactionService.value
@@ -5665,10 +5665,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val currencyCode = ethcfgBaseCurrencyCode.value
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
 
-    ( address : EthAddress ) => {
+    ( address : EthAddress, description : Option[String] ) => {
       address match {
-        case `currentSender` => findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, autoRelockSeconds )
-        case _               => findCheckCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode )
+        case `currentSender` => findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
+        case _               => findCheckCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description )
       }
     }
   }
@@ -5747,7 +5747,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val privateKeyFinder = findCurrentSenderPrivateKeyFinderTask( config ).value
 
     val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, stub.Context.Default.Scheduler )
-    val signer = new CautiousSigner( log, is, priceFeed, currencyCode )( privateKeyFinder, abiOverridesForChain )
+    val signer = new CautiousSigner( log, is, priceFeed, currencyCode, Some("Signer for current session sender") )( privateKeyFinder, abiOverridesForChain )
     val sender = stub.Sender.Basic( signer )
     (scontext, sender)
   }
@@ -6076,9 +6076,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     chainId              : Int, // for alias display only
     address              : EthAddress,
     priceFeed            : PriceFeed,
-    currencyCode         : String
+    currencyCode         : String,
+    description          : Option[String]
   ) : CautiousSigner = {
-    new CautiousSigner( log, is, priceFeed, currencyCode )( findCheckCachePrivateKeyFinder(state,log,is,chainId,address), abiOverridesForChain )
+    new CautiousSigner( log, is, priceFeed, currencyCode, description )( findCheckCachePrivateKeyFinder(state,log,is,chainId,address), abiOverridesForChain )
   }
 
   private def checkForCachedPrivateKey( is : sbt.InteractionService, chainId : Int, address : EthAddress, userValidateIfCached : Boolean = true, resetOnFailure : Boolean = true) : Option[EthPrivateKey] = {
@@ -6169,9 +6170,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     address              : EthAddress,
     priceFeed            : PriceFeed,
     currencyCode         : String,
+    description          : Option[String],
     autoRelockSeconds    : Int
   ) : CautiousSigner = {
-    new CautiousSigner( log, is, priceFeed, currencyCode )( findUpdateCachePrivateKeyFinder(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
+    new CautiousSigner( log, is, priceFeed, currencyCode, description )( findUpdateCachePrivateKeyFinder(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
   }
 
   private def transactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {

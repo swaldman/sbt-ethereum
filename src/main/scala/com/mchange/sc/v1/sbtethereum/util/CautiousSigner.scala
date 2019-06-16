@@ -25,7 +25,8 @@ class CautiousSigner private [sbtethereum] (
   log          : sbt.Logger,
   is           : sbt.InteractionService,
   priceFeed    : PriceFeed,
-  currencyCode : String
+  currencyCode : String,
+  description  : Option[String]
 )( privateKeyFinder : PrivateKeyFinder, abiOverridesForChainId : AbiOverridesForChainIdFinder ) extends EthSigner {
 
   // throws if the check fails
@@ -38,12 +39,20 @@ class CautiousSigner private [sbtethereum] (
       }
     }
     def handleSignTransaction( utxn : EthTransaction.Unsigned ) : Unit = {
-      displayTransactionSignatureRequest( log, chainId, abiOverridesForChainId( chainId ), priceFeed, currencyCode, utxn, address )
+      displayTransactionSignatureRequest( log, chainId, abiOverridesForChainId( chainId ), priceFeed, currencyCode, utxn, address, description )
       val ok = queryYN( is, s"Are you sure it is okay to sign this transaction as ${verboseAddress(chainId, address)}? [y/n] " )
       if (!ok) aborted( "User chose not to sign proposed transaction." )
     }
     def handleSignUnknown = {
       println(    "==> D O C U M E N T   S I G N A T U R E   R E Q U E S T")
+      println(    "==>")
+
+      description.foreach { desc =>
+        println(   s"==> Signer Description: ${desc}" )
+        println(    "==>")
+      }
+
+      println(   s"==> The signing address would be ${verboseAddress(chainId,address)}." )
       println(    "==>")
       println( s"""==> This data does not appear to be a transaction${if (chainId < 0 ) "." else " for chain with ID " + chainId + "."}""" )
       println(    "==>")
