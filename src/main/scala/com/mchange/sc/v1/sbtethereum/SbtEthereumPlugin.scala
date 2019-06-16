@@ -6077,7 +6077,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
         val ok = {
           if ( userValidateIfCached ) {
-            is.readLine( s"Using sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}). OK? [y/n] ", false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
+            is.readLine( s"Using sender address ${verboseAddress( chainId, address)}, which is already unlocked. OK? [y/n] ", false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
           } else {
             true
           }
@@ -6086,7 +6086,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           Some( privateKey )
         } else {
           if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
-          aborted( s"Use of sender address '0x${address.hex}' (on chain with ID ${chainId}${aliasesPart}) vetoed by user." )
+          aborted( s"Use of sender address ${verboseAddress( chainId, address)} vetoed by user." )
         }
       }
       case _ => { // if we don't match, we reset / forget the cached private key
