@@ -50,8 +50,8 @@ class CautiousSigner private [sbtethereum] (
       Failable( Json.prettyPrint( Json.parse( documentBytes.toArray ) ) ).foreach { pretty =>
         println( s"The data can be interpreted as JSON. Pretty printing --> ${pretty}" )
       }
-      val ok = queryYN( is, s"Are you sure it is okay to sign this uninterpreted data as ${verboseAddress(chainId, address)}? [y/n] " )
-      if (!ok) aborted( "User chose not to sign uninterpreted data." )
+      val ok = queryYN( is, s"Are you sure it is okay to sign this data as ${verboseAddress(chainId, address)}? [y/n] " )
+      if (!ok) aborted( "User chose not to sign the nontransaction data." )
     }
     EthTransaction.Unsigned.areSignableBytesForChainId( documentBytes, mbChainId ) match {
       case Some( utxn : EthTransaction.Unsigned ) => handleSignTransaction( utxn )

@@ -2910,7 +2910,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, addressStr, s) // config doesn't really matter here, since we provide hex, not a config dependent alias
 
       val credential = readCredential( is, address )
-      val privateKey = findPrivateKey( log, wallets, credential )
+      val privateKey = findPrivateKey( log, address, wallets, credential )
       val confirmation = {
         is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
           .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
@@ -5963,15 +5963,18 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def allUnitsValue( valueInWei : BigInt ) = s"${valueInWei} wei (${Denominations.Ether.fromWei(valueInWei)} ether, ${Denominations.Finney.fromWei(valueInWei)} finney, ${Denominations.Szabo.fromWei(valueInWei)} szabo)"
 
-  private def findPrivateKey( log : sbt.Logger, gethWallets : immutable.Set[wallet.V3], credential : String ) : EthPrivateKey = {
+  private def findPrivateKey( log : sbt.Logger, address : EthAddress, gethWallets : immutable.Set[wallet.V3], credential : String ) : EthPrivateKey = {
     def forceKey = {
       try {
-        EthPrivateKey( credential )
+        val out = EthPrivateKey( credential )
+        require( out.address == address, "The hex private key provided does not match desired address ${hexString(address)}." )
+        log.info( s"Successfully interpreted the credential supplied as hex private key for '${hexString(address)}'." )
+        out
       }
       catch {
         case NonFatal(e) => {
-          DEBUG.log( s"Converting an Exception that occurred while trying to interpret a credential as hex into a BadCredentialException.", e )
-          throw new BadCredentialException()
+          WARNING.log( s"Converting an Exception that occurred while trying to interpret a credential as hex into a BadCredentialException.", e )
+          throw new BadCredentialException(address)
         }
       }
     }
@@ -5982,16 +5985,27 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     else {
       def tryWallet( gethWallet : wallet.V3 ) : Failable[EthPrivateKey] = Failable {
-        val desiredAddress = gethWallet.address
+        val walletAddress = gethWallet.address
         try {
+          assert( walletAddress == address, s"We should only have pulled wallets for our desired address '${hexString(address)}', but found a wallet for '${hexString(walletAddress)}'." )
           wallet.V3.decodePrivateKey( gethWallet, credential )
          } catch {
           case v3e : wallet.V3.Exception => {
-            DEBUG.log( s"Converting an Exception that occurred while trying to decode the private key of a geth wallet into a BadCredentialException.", v3e )
-            val maybe = forceKey
-            if (maybe.toPublicKey.toAddress != desiredAddress) {
-              throw new BadCredentialException( desiredAddress )
+            val maybe = {
+              try {
+                forceKey
+              }
+              catch {
+                case bce : BadCredentialException => {
+                  bce.initCause( v3e )
+                  throw bce
+                }
+              }
+            }
+            if (maybe.toPublicKey.toAddress != walletAddress) {
+              throw new BadCredentialException( walletAddress )
             } else {
+              log.info("Successfully interpreted the credential supplied as a hex private key for address '${address}'.")
               maybe
             }
           }
@@ -6032,7 +6046,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val extract = Project.extract(state)
     val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in Compile, address.hex, state) // the config scope of xethLoadWalletV3For doesn't matter here, since we provide hex, not an alias
 
-    findPrivateKey( log, wallets, credential )
+    findPrivateKey( log, address, wallets, credential )
   }
 
   private def findCheckCachePrivateKey(
