@@ -8,9 +8,12 @@ import com.mchange.sc.v1.sbtethereum.{CharsetUTF8, DefaultEphemeralChainId, Pric
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
 
+import com.mchange.sc.v3.failable._
 import com.mchange.sc.v2.literal._
 
 import scala.collection._
+
+import play.api.libs.json.Json
 
 object CautiousSigner {
   type AbiOverridesForChainIdFinder = Int => immutable.Map[EthAddress, jsonrpc.Abi]
@@ -44,6 +47,9 @@ class CautiousSigner private [sbtethereum] (
       println( s"""Raw data: ${hexString(documentBytes)}""" )
       val rawString = new String( documentBytes.toArray, CharsetUTF8 )
       println( s"""Raw data interpreted as as UTF8 String: ${ StringLiteral.formatUnicodePermissiveStringLiteral( rawString ) }""" )
+      Failable( Json.prettyPrint( Json.parse( documentBytes.toArray ) ) ).foreach { pretty =>
+        println( s"The data can be interpreted as JSON. Pretty printing --> ${pretty}" )
+      }
       val ok = queryYN( is, s"Are you sure it is okay to sign this uninterpreted data as ${verboseAddress(chainId, address)}? [y/n] " )
       if (!ok) aborted( "User chose not to sign uninterpreted data." )
     }
