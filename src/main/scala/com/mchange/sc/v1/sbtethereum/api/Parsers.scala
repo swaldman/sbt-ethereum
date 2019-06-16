@@ -8,5 +8,5 @@ import com.mchange.sc.v1.consuela.ethereum.EthAddress
 import sbt.complete.Parser
 
 object Parsers {
-  // def genAliasAndAddressParser( state : sbt.State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = UP.genAliasAndAddressParser( state, mbRpi )
+  // def genAliasWithAddressParser( state : sbt.State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = UP.genAliasWithAddressParser( state, mbRpi )
 }

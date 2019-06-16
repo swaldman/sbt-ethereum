@@ -121,7 +121,7 @@ object Parsers {
 
   private def rawAliasedAddressParser( aliases : SortedMap[String,EthAddress] ) : Parser[EthAddress] = rawAddressAliasParser( aliases ).map( aliases )
 
-  private def rawAliasAndAddressParser( aliases : SortedMap[String,EthAddress] ) : Parser[(String,EthAddress)] = rawAddressAliasParser( aliases ).map( alias => (alias, aliases(alias)) )
+  private def rawAliasWithAddressParser( aliases : SortedMap[String,EthAddress] ) : Parser[(String,EthAddress)] = rawAddressAliasParser( aliases ).map( alias => (alias, aliases(alias)) )
 
   // this is perhaps (much) too permissive,
   // causing a lot of lookups against potential valid names and very long pauses on tab
@@ -472,11 +472,11 @@ object Parsers {
     token(MaybeSpace) ~> mbRpi.map( rpi => token( rawAddressAliasParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
-  private [sbtethereum] def genAliasAndAddressParser(
+  private [sbtethereum] def genAliasWithAddressParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) = {
-    token(MaybeSpace) ~> mbRpi.map( rpi => token( rawAliasAndAddressParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
+    token(MaybeSpace) ~> mbRpi.map( rpi => token( rawAliasWithAddressParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
   private [sbtethereum] def genPermissiveAddressAliasOrAddressAsStringParser(
@@ -589,7 +589,15 @@ object Parsers {
     state : State,
     mbRpi : Option[RichParserInfo]
   ) = {
-    token(MaybeSpace) ~> token(ID, "<alias>") ~ genGenericAddressParser( state, mbRpi )
+    for {
+      _       <- token(Space)
+      alias   <- token(ID, "<alias>")
+      _       <- token(Space)
+      address <- genGenericAddressParser( state, mbRpi )
+    }
+    yield {
+      ( alias, address )
+    }
   }
 
   private [sbtethereum] def genRecipientAddressParser(
