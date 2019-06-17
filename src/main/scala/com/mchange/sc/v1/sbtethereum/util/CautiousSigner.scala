@@ -44,6 +44,7 @@ class CautiousSigner private [sbtethereum] (
       if (!ok) aborted( "User chose not to sign proposed transaction." )
     }
     def handleSignUnknown = {
+      println()
       println(    "==> D O C U M E N T   S I G N A T U R E   R E Q U E S T")
       println(    "==>")
 
@@ -82,9 +83,19 @@ class CautiousSigner private [sbtethereum] (
       }
     }
     val address = privateKeyFinder.address
-    description.foreach( desc => println( s"[Signer Description: ${desc}]" ) )
-    println( s"The application is attempting to sign a hash of some document which sbt-ethereum cannot identify, as ${verboseAddress(chainId, address)}." )
-    println( s"Hash bytes: ${hexString( documentHash )}" )
+      println()
+      println(    "==> H A S H   S I G N A T U R E   R E Q U E S T")
+      println(    "==>")
+
+      description.foreach { desc =>
+        println(   s"==> Signer: ${desc}" )
+        println(    "==>")
+      }
+
+    println( s"==> The application is attempting to sign a hash of some document which sbt-ethereum cannot identify, as ${verboseAddress(chainId, address)}." )
+    println(  "==>")
+    println( s"==> Hash bytes: ${hexString( documentHash )}" )
+    println()
     val ok = queryYN( is, "Do you understand the document whose hash the application proposes to sign, and trust the application to sign it?" )
     if (!ok) aborted( "User chose not to sign proposed document hash." )
   }
@@ -96,6 +107,7 @@ class CautiousSigner private [sbtethereum] (
     doCheckDocument( document, None )
     val out = privateKeyFinder.find().sign( document )
     println( "Document successfully signed." )
+    println( "=============================" )
     println()
     println()
     out
@@ -103,7 +115,8 @@ class CautiousSigner private [sbtethereum] (
   override def signPrehashed( documentHash : EthHash ) : EthSignature.Basic = {
     doCheckHash( documentHash, None )
     val out = privateKeyFinder.find().signPrehashed( documentHash )
-    println( "Document successfully signed." )
+    println( "Hash successfully signed." )
+    println( "=========================" )
     println()
     println()
     out
