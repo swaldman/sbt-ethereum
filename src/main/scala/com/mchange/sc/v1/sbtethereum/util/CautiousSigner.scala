@@ -107,8 +107,7 @@ class CautiousSigner private [sbtethereum] (
     doCheckDocument( document, None )
     val out = privateKeyFinder.find().sign( document )
     println( "Document successfully signed." )
-    println( "=============================" )
-    println()
+    println( "----------------------------" )
     println()
     out
   }
@@ -116,8 +115,7 @@ class CautiousSigner private [sbtethereum] (
     doCheckHash( documentHash, None )
     val out = privateKeyFinder.find().signPrehashed( documentHash )
     println( "Hash successfully signed." )
-    println( "=========================" )
-    println()
+    println( "------------------------" )
     println()
     out
   }
