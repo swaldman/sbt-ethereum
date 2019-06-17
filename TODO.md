@@ -19,6 +19,10 @@ DB schema updates
 
 Other
 
+* Make sure autoRelockSeconds <= 0 means that private keys are never ever cached
+
+* Do implement a scheduled task that clears any cached private keys promptly
+
 * Ensure drop and set commands print what they drop or replace
 
 * Make it possible to specify an optional Chain ID in ethNodeChainIdUrlDefaultSet

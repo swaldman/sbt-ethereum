@@ -5747,7 +5747,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val privateKeyFinder = findCurrentSenderPrivateKeyFinderTask( config ).value
 
     val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, stub.Context.Default.Scheduler )
-    val signer = new CautiousSigner( log, is, priceFeed, currencyCode, Some("Signer for current session sender") )( privateKeyFinder, abiOverridesForChain )
+    val signer = new CautiousSigner( log, is, priceFeed, currencyCode, description = None )( privateKeyFinder, abiOverridesForChain )
     val sender = stub.Sender.Basic( signer )
     (scontext, sender)
   }

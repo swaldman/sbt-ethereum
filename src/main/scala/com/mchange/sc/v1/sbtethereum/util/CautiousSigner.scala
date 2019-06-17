@@ -48,7 +48,7 @@ class CautiousSigner private [sbtethereum] (
       println(    "==>")
 
       description.foreach { desc =>
-        println(   s"==> Signer Description: ${desc}" )
+        println(   s"==> Signer: ${desc}" )
         println(    "==>")
       }
 
@@ -65,6 +65,7 @@ class CautiousSigner private [sbtethereum] (
         println( s"The data can be interpreted as JSON. Pretty printing: ${pretty}" )
       }
       println()
+      description.foreach( desc => println( s"Signer: ${desc}]" ) )
       val ok = queryYN( is, s"Are you sure it is okay to sign this data as ${verboseAddress(chainId, address)}? [y/n] " )
       if (!ok) aborted( "User chose not to sign the nontransaction data." )
     }
@@ -81,6 +82,7 @@ class CautiousSigner private [sbtethereum] (
       }
     }
     val address = privateKeyFinder.address
+    description.foreach( desc => println( s"[Signer Description: ${desc}]" ) )
     println( s"The application is attempting to sign a hash of some document which sbt-ethereum cannot identify, as ${verboseAddress(chainId, address)}." )
     println( s"Hash bytes: ${hexString( documentHash )}" )
     val ok = queryYN( is, "Do you understand the document whose hash the application proposes to sign, and trust the application to sign it?" )
@@ -92,11 +94,19 @@ class CautiousSigner private [sbtethereum] (
   }
   override def sign( document : Seq[Byte] )   : EthSignature.Basic = {
     doCheckDocument( document, None )
-    privateKeyFinder.find().sign( document )
+    val out = privateKeyFinder.find().sign( document )
+    println( "Document successfully signed." )
+    println()
+    println()
+    out
   }
   override def signPrehashed( documentHash : EthHash ) : EthSignature.Basic = {
     doCheckHash( documentHash, None )
-    privateKeyFinder.find().signPrehashed( documentHash )
+    val out = privateKeyFinder.find().signPrehashed( documentHash )
+    println( "Document successfully signed." )
+    println()
+    println()
+    out
   }
   override def sign( document : Array[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
     doCheckDocument( document.toImmutableSeq, Some( chainId ) )

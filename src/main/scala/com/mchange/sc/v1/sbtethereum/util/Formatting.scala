@@ -149,7 +149,7 @@ object Formatting {
     println( "==>" )
 
     signerDescription.foreach { desc =>
-      println(   s"==> Signer Description: ${desc}" )
+      println(   s"==> Signer: ${desc}" )
       println(    "==>")
     }
 
@@ -256,6 +256,10 @@ object Formatting {
           println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
         }
       }
+    }
+    signerDescription.foreach { desc =>
+      println(  "==>" )
+      println( s"==> Signer: ${desc}" )
     }
     println()
   }
