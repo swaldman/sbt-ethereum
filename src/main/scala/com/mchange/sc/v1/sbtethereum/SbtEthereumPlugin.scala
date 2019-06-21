@@ -1860,7 +1860,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId  = findNodeChainIdTask(warn=true)(config).value
     val faliases = shoebox.AddressAliasManager.findAllAddressAliases( chainId )
     faliases.fold( _ => log.warn("Could not read aliases from shoebox database.") ) { aliases =>
-      aliases.foreach { case (alias, address) => println( s"${alias} -> 0x${address.hex}" ) }
+      aliases.foreach { case (alias, address) => println( s"${alias} -> ${verboseAddress(chainId, address)}" ) }
     }
   }
 
@@ -1873,17 +1873,20 @@ object SbtEthereumPlugin extends AutoPlugin {
       val aliasOrAddress = parser.parsed
       val mbAddressForAlias = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, aliasOrAddress ).assert
       val mbEntryAsAddress = Failable( EthAddress( aliasOrAddress ) ).toOption
-      val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, addr ).get )
 
-      mbAddressForAlias.foreach( addressForAlias => println( s"The alias '${aliasOrAddress}' points to address '${hexString(addressForAlias)}'." ) )
-
-      ( mbEntryAsAddress, aliasesForAddress ) match {
-        case ( Some( entryAsAddress ),        Seq() ) => println( s"The address '${hexString(entryAsAddress)}' is not associated with any aliases." )
-        case ( Some( entryAsAddress ), Seq( alias ) ) => println( s"The address '${hexString(entryAsAddress)}' is associated with alias '${alias}'." )
-        case ( Some( entryAsAddress ),      aliases ) => println( s"""The address '${hexString(entryAsAddress)}' is associated with aliases ${aliases.mkString( "['","', '", "']" )}.""" )
-        case (                   None,            _ ) => {
-          if (mbAddressForAlias.isEmpty) { // so we'd not have printed any message yet
-            println( s"The alias '${aliasOrAddress}' is not associated with any address." )
+      mbAddressForAlias match {
+        case Some( addressForAlias ) => println( s"The alias '${aliasOrAddress}' points to address ${verboseAddress( chainId, addressForAlias )}." )
+        case None => {
+          val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, addr ).get )
+          ( mbEntryAsAddress, aliasesForAddress ) match {
+            case ( Some( entryAsAddress ),        Seq() ) => println( s"The address '${hexString(entryAsAddress)}' is not associated with any aliases." )
+            case ( Some( entryAsAddress ), Seq( alias ) ) => println( s"The address '${hexString(entryAsAddress)}' is associated with alias '${alias}'." )
+            case ( Some( entryAsAddress ),      aliases ) => println( s"""The address '${hexString(entryAsAddress)}' is associated with aliases ${aliases.mkString( "['","', '", "']" )}.""" )
+            case (                   None,            _ ) => {
+              if (mbAddressForAlias.isEmpty) { // so we'd not have printed any message yet
+                println( s"The alias '${aliasOrAddress}' is not associated with any address." )
+              }
+            }
           }
         }
       }
