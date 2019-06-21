@@ -16,6 +16,8 @@ ThisBuild / publishTo := {
   if (isSnapshot.value) Some("snapshots" at nexusSnapshots ) else Some("releases"  at nexusReleases )
 }
 
+ThisBuild / scalaVersion := "2.12.8"
+
 ThisBuild / scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
