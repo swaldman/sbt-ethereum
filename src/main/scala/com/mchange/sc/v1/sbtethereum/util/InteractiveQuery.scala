@@ -88,7 +88,7 @@ object InteractiveQuery {
         catch {
           case nfe : NumberFormatException => {
             println( s"Bad entry... '${line}'. Try again." )
-            Some(-1)
+            Some(Int.MinValue) // omits the range check warning
           }
         }
       }
@@ -107,8 +107,9 @@ object InteractiveQuery {
     @tailrec
     def doFetchNum : Option[Int] = {
       fetchNum match {
-        case Some(-1)                          => doFetchNum
+        case Some(Int.MinValue)                => doFetchNum // omits the range check warning
         case Some( num ) if !checkRange( num ) => doFetchNum
+        case None                              => None
         case ok                                => ok
       }
     }

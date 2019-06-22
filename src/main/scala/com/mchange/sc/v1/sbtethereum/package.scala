@@ -41,7 +41,7 @@ package object sbtethereum {
   final class OperationAbortedByUserException( msg : String ) extends SbtEthereumException( s"Aborted by user: ${msg}", null, noStackTrace = true )
   final class UnexpectedConfigurationException( config : sbt.Configuration ) extends SbtEthereumException( s"A task was executed with unexpected configuration '${config}'." )
 
-  final class CantReadInteractionException extends SbtEthereumException("Failed to read from sbt.InteractionService! (Perhaps an interactive task was run noninteractively.")
+  final class CantReadInteractionException extends SbtEthereumException("Failed to read from sbt.InteractionService! (Perhaps an interactive task was run noninteractively.)")
 
   final case class EthValue( wei : BigInt, denomination : Denomination ) {
     lazy val denominated : BigDecimal = denomination.fromWei( wei ) 
