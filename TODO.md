@@ -8,7 +8,7 @@ DB schema updates
 
 * Implement logic that checks prior existence of tables ("fresh" vs "preexisting") to inform schema upgrades
 
-* Even with freshness restriction (only upgading "fresh" tables), upgrades from very old schemas might fail if old upgrades try to
+* Even with freshness restriction (only upgrading "fresh" tables), upgrades from very old schemas might fail if old upgrades try to
   impose foreign key constraints on old versions of "fresh" tables. Think about fixing this.
 
 * Maybe define in-database constraints to prevent aliases that might mimic addresses or ENS names from ever being provided.
@@ -22,6 +22,15 @@ Other
 * Make sure autoRelockSeconds <= 0 means that private keys are never ever cached
 
 * Do implement a scheduled task that clears any cached private keys promptly
+
+* Define a cache that holds multiple EthSigners according to autoRelockSeconds (use EthSigner rather than EthPrivateKey, see below).
+
+* Make all sbt-ethereum EthSigners (including cached ones) hit the InteractionService, for either a credential or a confirmation, so
+  no signatures can be silently made.
+
+* Define a Java object whose internal byte[] is private that is wrappable to an EthSigner. Try to use either SecurityManager (unlikely
+  given sbt.TrapExit, no control over sysprops etc) or Java-9-modules (future version, when we require java 11), to ensure that the private
+  storage is not accessible -- checked by the runtime and not susceptible to a reflectve setAccessible(...)
 
 * Ensure drop and set commands print what they drop or replace
 

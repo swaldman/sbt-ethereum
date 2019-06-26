@@ -4611,7 +4611,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def erc20AllowanceSetTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenApproveParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genCompleteErc20TokenApproveParser )
 
     Def.inputTask {
       val s = state.value
@@ -4657,7 +4657,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def erc20ConvertAtomsToTokensTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenConvertAtomsToTokensParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genCompleteErc20TokenConvertAtomsToTokensParser )
 
     Def.inputTask {
       val log = streams.value.log
@@ -4679,7 +4679,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def erc20ConvertTokensToAtomsTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenConvertTokensToAtomsParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genCompleteErc20TokenConvertTokensToAtomsParser )
 
     Def.inputTask {
       val log = streams.value.log
@@ -4701,7 +4701,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def erc20TransferTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenTransferParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genCompleteErc20TokenTransferParser )
 
     Def.inputTask {
       val s = state.value
@@ -4747,7 +4747,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def erc20BalanceTask( config : Configuration ) : Initialize[InputTask[Erc20.Balance]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenBalanceParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genCompleteErc20TokenBalanceParser )
 
     Def.inputTask {
       val log = streams.value.log
@@ -4785,7 +4785,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def erc20SummaryTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenContractAddressParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genCompleteErc20TokenContractAddressParser )
 
     Def.inputTask {
       val log = streams.value.log
@@ -4841,7 +4841,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def erc20AllowancePrintTask( config : Configuration ) : Initialize[InputTask[Erc20.Balance]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genErc20TokenAllowanceParser )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genCompleteErc20TokenAllowanceParser )
 
     Def.inputTask {
       val log = streams.value.log
