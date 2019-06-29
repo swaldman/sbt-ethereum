@@ -215,7 +215,10 @@ object Parsers {
       ChronoUnits.get( key ) orElse ChronoUnits.get( key + 's' )
     }
 
-    final case class SecondsViaUnit( seconds : Long, unitProvided : ChronoUnit )
+    final case class SecondsViaUnit( seconds : Long, unitProvided : ChronoUnit ) {
+      def numUnits = seconds.toDouble / unitProvided.getDuration.getSeconds
+      def formattedNumUnits = s"${numUnits} ${unitProvided.toString.toLowerCase}"
+    }
 
     val JDurationParser = {
       for {

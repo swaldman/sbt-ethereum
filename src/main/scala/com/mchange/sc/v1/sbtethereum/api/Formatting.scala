@@ -11,8 +11,8 @@ object Formatting {
   def defaultFormatInstant( millis  : Long    ) : String = UF.formatInstant( millis )
   def defaultFormatTime   ( millis  : Long    ) : String = UF.formatTime( millis )
 
-  def userHex( bytes : Seq[Byte]    ) = UF.hexString( bytes   )
-  def userHex( bytes : Array[Byte]  ) = UF.hexString( bytes   )
-  def userHex( address : EthAddress ) = UF.hexString( address )
-  def userHex( hash : EthHash       ) = UF.hexString( hash    )
+  def formatHex( bytes : Seq[Byte]    ) = UF.hexString( bytes   )
+  def formatHex( bytes : Array[Byte]  ) = UF.hexString( bytes   )
+  def formatHex( address : EthAddress ) = UF.hexString( address )
+  def formatHex( hash : EthHash       ) = UF.hexString( hash    )
 }

@@ -251,6 +251,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val priceFeed = new PriceFeed.Coinbase( DefaultPriceRefreshDelay )
 
+  private val EnsRegisterRenewMarkup = 0.05d
+
   final object JsonFilter extends FilenameFilter {
     val DotSuffix = ".json"
     def accept( dir : File, name : String ) : Boolean = {
@@ -333,7 +335,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensMigrateRegistrar = inputKey[Unit]              ("Migrates a name from a predecessor registar (e.g. the original auction registrar) to any successor registrar.")
     val ensNamePrice        = inputKey[Unit]              ("Estimate the cost of renting (registering / renewing) a name for a period of time.")
     val ensNameRegister     = inputKey[Unit]              ("Registers a given ENS name.")
-    val ensNameRenew        = inputKey[Unit]              ("Renews (extends the registration period) of a given ENS name.")
+    val ensNameExtend       = inputKey[Unit]              ("Renews (extends the registration period) of a given ENS name.")
     val ensNameStatus       = inputKey[Unit]              ("Prints the current status of a given name.")
     val ensOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the name has an owner.")
     val ensOwnerSet         = inputKey[Unit]              ("Sets the owner of a given name to an address.")
@@ -653,6 +655,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensMigrateRegistrar in Compile := { ensMigrateRegistrarTask( Compile ).evaluated },
 
     ensMigrateRegistrar in Test := { ensMigrateRegistrarTask( Test ).evaluated },
+
+    ensNameExtend in Compile := { ensNameExtendTask( Compile ).evaluated },
+
+    ensNameExtend in Test := { ensNameExtendTask( Test ).evaluated },
 
     ensNamePrice in Compile := { ensNamePriceTask( Compile ).evaluated },
 
@@ -1626,6 +1632,67 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         case sn : Subnode => {
           doFindRent( sn.label, ensClient.RegistrarManagedDomain( sn.parent.fullName ) )
+        }
+        case tld : Tld => {
+          bail( s"Top-level domain names (like '${tld.fullPath}') are not paid rentals." )
+        }
+        case rev : Reverse => {
+          bail( s"Reverse ENS names (like '${rev.fullPath}') are not paid rentals." )
+        }
+      }
+    }
+  }
+
+  private def markupEnsRent( rawRent : BigInt ) : BigInt = rounded( BigDecimal( rawRent ) * BigDecimal(1 + EnsRegisterRenewMarkup) )
+
+  private def ensNameExtendTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathParser )
+
+    Def.inputTask {
+      val is        = interactionService.value
+      val log       = streams.value.log
+      val chainId   = findNodeChainIdTask(warn=true)(config).value
+      val ensClient = ( config / xensClient ).value
+      val pkf       = findCurrentSenderPrivateKeyFinderTask( config ).value
+      val epp       = parser.parsed
+
+      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+
+      val baseCurrencyCode = ethcfgBaseCurrencyCode.value
+
+      def doNameRenew( name : String, rmd : ensClient.RegistrarManagedDomain ) : Unit = {
+        require( rmd.hasValidRegistrar, s"There is no registrar associated with ENS domain '${rmd.domain}'." )
+
+        val svu = {
+          queryDurationInSeconds( log, is, """For how long would you like to extend the name? [Example: "3 years"] """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
+        }
+        val seconds = svu.seconds
+
+        val rentInWei = rmd.rentPriceInWei( name, seconds )
+        val markedupRentInWei = markupEnsRent( rentInWei )
+        val rentInEther = EthValue( rentInWei, Denominations.Ether ).denominated
+        val markedupRentInEther = EthValue( markedupRentInWei, Denominations.Ether ).denominated
+        log.info( s"In order to rent '${epp.fullPath}' for ${svu.formattedNumUnits}, it would cost approximately ${rentInEther} ether (${rentInWei} wei)." )
+        log.info( s"""To be sure the renewal succeeds, we'll mark it up a bit to ${markedupRentInEther} ether (${markedupRentInWei} wei). Any "change" will be returned.""" )
+        printFiatValueForEtherValue( log.info(_) )( chainId, baseCurrencyCode, markedupRentInEther )
+        val ok = queryYN( is, "Is that okay? [y/n] " )
+        if (ok) {
+          rmd.renew( pkf.find(), name, seconds, markedupRentInWei, forceNonce = nonceOverride )
+          log.info( s"'${epp.fullName}' has been renewed for ${seconds} seconds (${svu.formattedNumUnits})." )
+        }
+        else {
+          aborted( "User rejected renewal fee." )
+        }
+      }
+
+      import ens.ParsedPath._
+
+      epp match {
+        case bntld : BaseNameTld => {
+          doNameRenew( bntld.baseName, ensClient.forTopLevelDomain( bntld.tld ) )
+        }
+        case sn : Subnode => {
+          doNameRenew( sn.label, ensClient.RegistrarManagedDomain( sn.parent.fullName ) )
         }
         case tld : Tld => {
           bail( s"Top-level domain names (like '${tld.fullPath}') are not paid rentals." )
