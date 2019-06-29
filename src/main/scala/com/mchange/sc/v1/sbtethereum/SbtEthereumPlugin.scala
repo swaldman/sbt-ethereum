@@ -28,6 +28,7 @@ import generated._
 import java.io.{BufferedInputStream, File, FileInputStream, FilenameFilter}
 import java.nio.file.Files
 import java.security.SecureRandom
+import java.time.temporal.ChronoUnit
 import java.util.Date
 import java.util.concurrent.atomic.AtomicReference
 import play.api.libs.json.{JsObject, Json}
@@ -333,9 +334,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensAddressLookup    = inputKey[Option[EthAddress]]("Prints the address given ens name should resolve to, if one has been set.")
     val ensAddressSet       = inputKey[Unit]              ("Sets the address a given ens name should resolve to.")
     val ensMigrateRegistrar = inputKey[Unit]              ("Migrates a name from a predecessor registar (e.g. the original auction registrar) to any successor registrar.")
+    val ensNameExtend       = inputKey[Unit]              ("Extends the registration period of a given ENS name.")
     val ensNamePrice        = inputKey[Unit]              ("Estimate the cost of renting (registering / renewing) a name for a period of time.")
     val ensNameRegister     = inputKey[Unit]              ("Registers a given ENS name.")
-    val ensNameExtend       = inputKey[Unit]              ("Renews (extends the registration period) of a given ENS name.")
     val ensNameStatus       = inputKey[Unit]              ("Prints the current status of a given name.")
     val ensOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the name has an owner.")
     val ensOwnerSet         = inputKey[Unit]              ("Sets the owner of a given name to an address.")
@@ -663,6 +664,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensNamePrice in Compile := { ensNamePriceTask( Compile ).evaluated },
 
     ensNamePrice in Test := { ensNamePriceTask( Test ).evaluated },
+
+    ensNameRegister in Compile := { ensNameRegisterTask( Compile ).evaluated },
+
+    ensNameRegister in Test := { ensNameRegisterTask( Test ).evaluated },
 
     ensNameStatus in Compile := { ensNameStatusTask( Compile ).evaluated },
 
@@ -1616,14 +1621,14 @@ object SbtEthereumPlugin extends AutoPlugin {
         val minTime = rmd.minRegistrationDurationInSeconds
         val desiredPeriod = formatDurationInSeconds( seconds, unit )
         if ( seconds < minTime ) {
-          bail( s"Registration period must be longer than ${formatDurationInSeconds(minTime.toLong, unit)}. Cannot register for just ${desiredPeriod}." )
+          log.warn( s"Registration period must be longer than ${formatDurationInSeconds(minTime.toLong, unit)}." )
+          log.warn( s"You cannot register for just ${desiredPeriod}, although you can extend an existing registration by that amount." )
         }
-        else {
-          val rentInWei = rmd.rentPriceInWei( name, seconds )
-          val etherValue = EthValue( rentInWei, Denominations.Ether ).denominated
-          log.info( s"In order to rent '${epp.fullPath}' for ${desiredPeriod}, it would cost ${etherValue} ether (${rentInWei} wei)." )
-          printFiatValueForEtherValue( log.info(_) )( chainId, baseCurrencyCode, etherValue )
-        }
+
+        val rentInWei = rmd.rentPriceInWei( name, seconds )
+        val etherValue = EthValue( rentInWei, Denominations.Ether ).denominated
+        log.info( s"In order to rent '${epp.fullPath}' for ${desiredPeriod}, it would cost ${etherValue} ether (${rentInWei} wei)." )
+        printFiatValueForEtherValue( log.info(_) )( chainId, baseCurrencyCode, etherValue )
       }
 
       epp match {
@@ -1644,6 +1649,162 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def markupEnsRent( rawRent : BigInt ) : BigInt = rounded( BigDecimal( rawRent ) * BigDecimal(1 + EnsRegisterRenewMarkup) )
+
+  private def ensNameRegisterTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathMbAddressMbSecretParser )
+
+    Def.inputTask {
+      val is        = interactionService.value
+      val log       = streams.value.log
+      val chainId   = findNodeChainIdTask(warn=true)(config).value
+      val ensClient = ( config / xensClient ).value
+
+      val sender = findAddressSenderTask(warn=true)(config).value.assert
+      val pkf    = findCurrentSenderPrivateKeyFinderTask( config ).value
+
+      val ( epp, mbAddress, mbSecret ) = parser.parsed
+
+      val registrant = mbAddress.getOrElse( sender )
+
+      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+
+      val baseCurrencyCode = ethcfgBaseCurrencyCode.value
+
+      val ( commitmentNonceOverride , registrationNonceOverride ) = {
+        ( nonceOverride, mbSecret ) match {
+          case ( None, _ ) => {
+            ( None, None )
+          }
+          case ( Some( no ), Some( secret ) ) => {
+            log.warn( s"A nonce override of ${no} has been set." )
+            log.warn(  "Since a secret has been provided, only one transaction will be required to register and this override will be used." )
+            val ok = queryYN( is, "Is this okay? [y/n] " )
+            if (!ok) aborted( "Nonce override rejected. (Use 'ethTransactionNonceOverrideDrop' to use an automatically set nonce.)" )
+            ( None, Some( no ) )
+          }
+          case ( Some( no ), None ) => {
+            log.warn( s"A nonce override of ${no} has been set." )
+            log.warn( s"Since no secret has been provided, two transactions will be required to register '${epp.fullName}'." )
+            log.warn( s"Nonce override value ${no} will be used for the commitment transaction, and ${no+1} will be used for finalizing the registration." )
+            val ok = queryYN( is, "Is this okay? [y/n] " )
+            if (!ok) aborted( "Nonce override rejected. (Use 'ethTransactionNonceOverrideDrop' to use an automatically set nonce.)" )
+            ( Some( no ), Some( no+1 ) )
+          }
+        }
+      }
+
+      def doNameCommitRegister( name : String, rmd : ensClient.RegistrarManagedDomain ) : Unit = {
+        require( rmd.hasValidRegistrar, s"There is no registrar associated with ENS domain '${rmd.domain}'." )
+
+        lazy val pk = pkf.find()
+
+        @tailrec
+        def doQueryDurationInSecondsPaymentInWei : ( Long, BigInt ) = {
+          val DurationParsers.SecondsViaUnit(seconds, unit) = {
+            queryDurationInSeconds( log, is, """For how long would you like to rent the name? [Example: "3 years"] """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
+          }
+          val minTime = rmd.minRegistrationDurationInSeconds
+          val desiredPeriod = formatDurationInSeconds( seconds, unit )
+          if ( seconds < minTime ) {
+            log.warn( s"Registration period must be longer than ${formatDurationInSeconds(minTime.toLong, unit)}." )
+            log.warn( s"You cannot register for just ${desiredPeriod}, although you can extend an existing registration by that amount." )
+            log.warn( "Or just press [enter] to abort." )
+            doQueryDurationInSecondsPaymentInWei
+          }
+          else {
+            val paymentInWei = interactiveAssertAcceptablePayment( log, is, chainId, epp, name, seconds, unit, baseCurrencyCode, rmd )
+            ( seconds, paymentInWei )
+          }
+        }
+
+        def doNameCommit : ( Long, ens.Commitment ) = {
+          val minSeconds = rmd.minCommitmentAgeInSeconds.toLong
+          val maxSeconds = rmd.maxCommitmentAgeInSeconds.toLong
+          val maxHours   = maxSeconds.toDouble / 3600
+          val commitment = rmd.makeCommitment( name, registrant )
+          log.info(  "Establishing registration commitment. This will require a transaction to be submitted and mined." )
+          log.info( s"The secret to which we are committing is '${hexString(commitment.secret)}'." )
+          log.info(  "If we sadly time out while waiting for the transaction to mine, if it does eventually successfully mine...")
+          log.info( s"  you can continue where you left off with" )
+          log.info( s"    'ensNameRegister ${epp.fullName} ${hexString(registrant)} ${hexString(commitment.secret)}'" )
+          commitmentNonceOverride.foreach { cno =>
+            log.warn( s"  But you will need to drop the nonce override with 'ethTransactionNonceOverrideDrop' or set it to ${cno+1}." )
+          }
+          log.info( s"The registration must be completed after a minimum of ${minSeconds} seconds, but within a maximum of ${maxSeconds} seconds (${maxHours} hours) or the commitment will be lost." )
+          log.info(  "Establishing commitment." )
+          rmd.commit( pk, commitment, forceNonce = commitmentNonceOverride )
+          log.info( s"Temporary commitment of name '${name}' for registrant ${verboseAddress(chainId,registrant)} has succeeded!" )
+          ( minSeconds, commitment )
+        }
+
+        def doNameRegister( durationInSeconds : Long, paymentInWei : BigInt, secret : immutable.Seq[Byte] ) : Unit = {
+          log.info( s"Now finalizing the registration of name '${name}' for registrant '${registrant}'." )
+          log.info(  "If we sadly time out while waiting for the transaction to mine, it still may eventually succeed." )
+          log.info( s"Use 'ethNameStatus ${epp.fullName}' to check." )
+          rmd.register( pk, name, registrant, durationInSeconds, secret, paymentInWei, forceNonce = registrationNonceOverride )
+          log.info( s"Name '${epp.fullName}' has been successfully registered to ${verboseAddress(chainId, registrant)}!" )
+        }
+
+        val ( durationInSeconds, paymentInWei ) = doQueryDurationInSecondsPaymentInWei
+        val ( mbWait, secret ) = {
+          mbSecret match {
+            case Some( secret ) => ( None, secret )
+            case None => {
+              val ( wait, commitment ) = doNameCommit
+              ( Some( wait ), commitment.secret.widen )
+            }
+          }
+        }
+        mbWait.foreach { waitSeconds =>
+          log.info( s"We must wait a minimum of ${waitSeconds} seconds before we can complete the registration." )
+          log.info( "Please wait.")
+          Thread.sleep( waitSeconds * 1000 )
+        }
+        doNameRegister( durationInSeconds, paymentInWei, secret )
+      }
+
+      import ens.ParsedPath._
+
+      epp match {
+        case bntld : BaseNameTld => {
+          doNameCommitRegister( bntld.baseName, ensClient.forTopLevelDomain( bntld.tld ) )
+        }
+        case sn : Subnode => {
+          doNameCommitRegister( sn.label, ensClient.RegistrarManagedDomain( sn.parent.fullName ) )
+        }
+        case tld : Tld => {
+          bail( s"Top-level domain names (like '${tld.fullPath}') cannot be registered." )
+        }
+        case rev : Reverse => {
+          bail( s"Reverse ENS names (like '${rev.fullPath}') cannot be registered." )
+        }
+      }
+    }
+  }
+
+  private def interactiveAssertAcceptablePayment(
+    log : sbt.Logger,
+    is : sbt.InteractionService,
+    chainId : Int,
+    epp : ens.ParsedPath,
+    name : String,
+    seconds : Long,
+    unit : ChronoUnit,
+    baseCurrencyCode : String,
+    rmd : ens.Client#RegistrarManagedDomain
+  ) : BigInt = {
+    val desiredPeriod = formatDurationInSeconds( seconds, unit )
+    val rentInWei = rmd.rentPriceInWei( name, seconds )
+    val markedupRentInWei = markupEnsRent( rentInWei )
+    val rentInEther = EthValue( rentInWei, Denominations.Ether ).denominated
+    val markedupRentInEther = EthValue( markedupRentInWei, Denominations.Ether ).denominated
+    log.info( s"In order to rent '${epp.fullPath}' for ${desiredPeriod}, it would cost approximately ${rentInEther} ether (${rentInWei} wei)." )
+    log.info( s"""To be sure the renewal succeeds, we'll mark it up a bit to ${markedupRentInEther} ether (${markedupRentInWei} wei). Any "change" will be returned.""" )
+    printFiatValueForEtherValue( log.info(_) )( chainId, baseCurrencyCode, markedupRentInEther )
+    val ok = queryYN( is, "Is that okay? [y/n] " )
+    if (!ok) aborted( "User rejected renewal fee." )
+    markedupRentInWei
+  }
 
   private def ensNameExtendTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathParser )
@@ -1667,22 +1828,9 @@ object SbtEthereumPlugin extends AutoPlugin {
           queryDurationInSeconds( log, is, """For how long would you like to extend the name? [Example: "3 years"] """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
         }
         val seconds = svu.seconds
-
-        val rentInWei = rmd.rentPriceInWei( name, seconds )
-        val markedupRentInWei = markupEnsRent( rentInWei )
-        val rentInEther = EthValue( rentInWei, Denominations.Ether ).denominated
-        val markedupRentInEther = EthValue( markedupRentInWei, Denominations.Ether ).denominated
-        log.info( s"In order to rent '${epp.fullPath}' for ${svu.formattedNumUnits}, it would cost approximately ${rentInEther} ether (${rentInWei} wei)." )
-        log.info( s"""To be sure the renewal succeeds, we'll mark it up a bit to ${markedupRentInEther} ether (${markedupRentInWei} wei). Any "change" will be returned.""" )
-        printFiatValueForEtherValue( log.info(_) )( chainId, baseCurrencyCode, markedupRentInEther )
-        val ok = queryYN( is, "Is that okay? [y/n] " )
-        if (ok) {
-          rmd.renew( pkf.find(), name, seconds, markedupRentInWei, forceNonce = nonceOverride )
-          log.info( s"'${epp.fullName}' has been renewed for ${seconds} seconds (${svu.formattedNumUnits})." )
-        }
-        else {
-          aborted( "User rejected renewal fee." )
-        }
+        val paymentInWei = interactiveAssertAcceptablePayment( log, is, chainId, epp, name, seconds, svu.unitProvided, baseCurrencyCode, rmd )
+        rmd.renew( pkf.find(), name, seconds, paymentInWei, forceNonce = nonceOverride )
+        log.info( s"'${epp.fullName}' has been renewed for ${seconds} seconds (${svu.formattedNumUnits})." )
       }
 
       import ens.ParsedPath._
@@ -1719,7 +1867,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           forTldClient.maybeDomainRegistrarAddress match {
             case Right( address ) => log.info( s"ENS name '${pp_tld.tld}' appears to be a valid top-level domain whose registrar has address '${hexString(address)}'." )
             case Left ( problem ) => {
-              log.info( s"ENS name '${pp_tld.tld}' does not appear to be a valid top-level domain. (Could not find or contact a registrar. See ebt-ethereum debug logs for more details.)" )
+              log.info( s"ENS name '${pp_tld.tld}' does not appear to be a valid top-level domain. (Could not find or contact a registrar. See sbt-ethereum debug logs for more details.)" )
               DEBUG.log( s"Could not find or contact registrar for putative ENS top-level domain '${pp_tld.tld}'.", problem )
             }
           }

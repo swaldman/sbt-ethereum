@@ -351,6 +351,20 @@ object Parsers {
     }
   }
 
+  private [sbtethereum] def genEnsPathMbAddressMbSecretParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[Tuple3[ens.ParsedPath,Option[EthAddress],Option[immutable.Seq[Byte]]]] = {
+    for {
+      epp       <- genEnsPathParser( state, mbRpi )
+      mbAddress <- (Space ~> genAddressParser("<registrant-address>")( state, mbRpi )).?
+      mbSecret  <- (Space ~> rawFixedLengthByteStringAsStringParser(32).map( _.decodeHexAsSeq )).?
+    }
+    yield {
+      ( epp, mbAddress, mbSecret )
+    }
+  }
+
   private [sbtethereum] def ethHashParser( exampleStr : String ) : Parser[EthHash] = token(MaybeSpace ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), exampleStr).map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
 
   private [sbtethereum] def functionParser( abi : jsonrpc.Abi, restrictToConstants : Boolean ) : Parser[jsonrpc.Abi.Function] = {
