@@ -28,6 +28,7 @@ import generated._
 import java.io.{BufferedInputStream, File, FileInputStream, FilenameFilter}
 import java.nio.file.Files
 import java.security.SecureRandom
+import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.Date
 import java.util.concurrent.atomic.AtomicReference
@@ -1852,6 +1853,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private val GracePeriod90DaysMillis = 90L * 24 * 3600 * 1000
+
   private def ensNameStatusTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathParser )
 
@@ -1887,8 +1890,22 @@ object SbtEthereumPlugin extends AutoPlugin {
                   case None        => log.info( s"ENS name '${path}' is not avaiable, but does not have an owner. It is likely in a transitional state" )
                 }
                 forTldClient.nameExpires( baseName ) match {
-                  case Some( expiry ) => log.info( s"This registration will expire at '${formatInstant(expiry)}'." )
-                  case None           => log.info( s"The expiration date of this domain could not be determined. (Perhaps it needs to be migrated to the current registrar.)" )
+                  case Some( expiry ) => {
+                    val now = Instant.now()
+                    if ( expiry.isAfter( now ) ) {
+                      log.info( s"This registration will expire at '${formatInstant(expiry)}'." )
+                    }
+                    else {
+                      log.info( s"This registration expired at '${formatInstant(expiry)}'." )
+                      if ( ( now.toEpochMilli() - expiry.toEpochMilli() ) < GracePeriod90DaysMillis ) {
+                        log.warn(  "This registration may still be valid within an unguaranteed 90-day grace period, but name owners should not rely upon that." )
+                        log.warn( s"If it is not extended, the name should become available to new registrants by ${formatInstant(expiry.plusMillis(GracePeriod90DaysMillis))} at latest." )
+                      }
+                    }
+                  }
+                  case None => {
+                    log.info( s"The expiration date of this domain could not be determined. (Perhaps it needs to be migrated to the current registrar.)" )
+                  }
                 }
               }
             }
