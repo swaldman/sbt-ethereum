@@ -336,6 +336,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ensAddressSet       = inputKey[Unit]              ("Sets the address a given ens name should resolve to.")
     val ensMigrateRegistrar = inputKey[Unit]              ("Migrates a name from a predecessor registar (e.g. the original auction registrar) to any successor registrar.")
     val ensNameExtend       = inputKey[Unit]              ("Extends the registration period of a given ENS name.")
+    val ensNameHashes       = inputKey[Unit]              ("Prints the name hash and label hash associated with an ENS name.")
     val ensNamePrice        = inputKey[Unit]              ("Estimate the cost of renting (registering / renewing) a name for a period of time.")
     val ensNameRegister     = inputKey[Unit]              ("Registers a given ENS name.")
     val ensNameStatus       = inputKey[Unit]              ("Prints the current status of a given name.")
@@ -661,6 +662,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensNameExtend in Compile := { ensNameExtendTask( Compile ).evaluated },
 
     ensNameExtend in Test := { ensNameExtendTask( Test ).evaluated },
+
+    ensNameHashes in Compile := { ensNameHashesTask( Compile ).evaluated },
+
+    ensNameHashes in Test := { ensNameHashesTask( Test ).evaluated },
 
     ensNamePrice in Compile := { ensNamePriceTask( Compile ).evaluated },
 
@@ -1849,6 +1854,22 @@ object SbtEthereumPlugin extends AutoPlugin {
         case rev : Reverse => {
           bail( s"Reverse ENS names (like '${rev.fullPath}') are not paid rentals." )
         }
+      }
+    }
+  }
+
+  private def ensNameHashesTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathParser )
+
+    Def.inputTask {
+      val log       = streams.value.log
+      val epp       = parser.parsed
+      log.info( s"The ENS namehash of '${epp.fullName}' is '${hexString(epp.namehash)}'." )
+      epp match {
+        case hbn : ens.ParsedPath.HasBaseName => {
+          log.info( s"The labelhash of label '${hbn.label}' is '${hexString(hbn.labelhash)}'." )
+        }
+        case _ => /* ignore */
       }
     }
   }
