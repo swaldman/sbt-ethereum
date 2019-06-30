@@ -32,11 +32,11 @@ Other
   given sbt.TrapExit, no control over sysprops etc) or Java-9-modules (future version, when we require java 11), to ensure that the private
   storage is not accessible -- checked by the runtime and not susceptible to a reflectve setAccessible(...)
 
+* Use findPrivateKeyFinder task rather than findPrivateKey to defer query to unlock as long as possible
+
 * Ensure drop and set commands print what they drop or replace
 
 * Make it possible to specify an optional Chain ID in ethNodeChainIdUrlDefaultSet
-
-* New ENS
 
 * Utilities -- unixtime, denomination conversions, etc
 
