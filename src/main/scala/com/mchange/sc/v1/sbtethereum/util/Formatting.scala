@@ -33,6 +33,8 @@ object Formatting {
 
   def formatInstant( l : Long ) : String = formatInstant( Instant.ofEpochMilli( l ) )
 
+  def formatInstantOrUnknown( mbInstant : Option[Instant] ) = mbInstant.map( formatInstant ).getOrElse( "???" )
+
   def formatTime( l : Long ) : String = TimeFormatter.format( Instant.ofEpochMilli( l ) )
 
   def formatDurationInSeconds( seconds : Long, formatUnit : ChronoUnit ) : String = {

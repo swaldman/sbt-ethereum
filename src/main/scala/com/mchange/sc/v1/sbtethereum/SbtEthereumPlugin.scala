@@ -1622,7 +1622,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         require( rmd.hasValidRegistrar, s"There is no registrar associated with ENS domain '${rmd.domain}'." )
 
         val DurationParsers.SecondsViaUnit(seconds, unit) = {
-          queryDurationInSeconds( log, is, """For how long would you like to rent the name? [Example: "3 years"] """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
+          queryDurationInSeconds( log, is, """For how long would you like to rent the name (ex: "3 years")? """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
         }
         val minTime = rmd.minRegistrationDurationInSeconds
         val desiredPeriod = formatDurationInSeconds( seconds, unit )
@@ -1633,8 +1633,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val rentInWei = rmd.rentPriceInWei( name, seconds )
         val etherValue = EthValue( rentInWei, Denominations.Ether ).denominated
-        log.info( s"In order to rent '${epp.fullPath}' for ${desiredPeriod}, it would cost ${etherValue} ether (${rentInWei} wei)." )
-        printFiatValueForEtherValue( log.info(_) )( chainId, baseCurrencyCode, etherValue )
+        println( s"In order to register or extend '${epp.fullPath}' for ${desiredPeriod}, it would cost ${etherValue} ether (${rentInWei} wei)." )
+        printFiatValueForEtherValue( println(_) )( chainId, baseCurrencyCode, etherValue )
       }
 
       epp match {
@@ -1676,7 +1676,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val baseCurrencyCode = ethcfgBaseCurrencyCode.value
 
-      val ( commitmentNonceOverride , registrationNonceOverride ) = {
+      lazy val ( commitmentNonceOverride , registrationNonceOverride ) = {
         ( nonceOverride, mbSecret ) match {
           case ( None, _ ) => {
             ( None, None )
@@ -1707,14 +1707,14 @@ object SbtEthereumPlugin extends AutoPlugin {
         @tailrec
         def doQueryDurationInSecondsPaymentInWei : ( Long, BigInt ) = {
           val DurationParsers.SecondsViaUnit(seconds, unit) = {
-            queryDurationInSeconds( log, is, """For how long would you like to rent the name? [Example: "3 years"] """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
+            queryDurationInSeconds( log, is, """For how long would you like to rent the name (ex: "3 years")? """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
           }
           val minTime = rmd.minRegistrationDurationInSeconds
           val desiredPeriod = formatDurationInSeconds( seconds, unit )
           if ( seconds < minTime ) {
             log.warn( s"Registration period must be longer than ${formatDurationInSeconds(minTime.toLong, unit)}." )
             log.warn( s"You cannot register for just ${desiredPeriod}, although you can extend an existing registration by that amount." )
-            log.warn( "Or just press [enter] to abort." )
+            println( "Try again. Or just press [enter] to abort." )
             doQueryDurationInSecondsPaymentInWei
           }
           else {
@@ -1728,27 +1728,36 @@ object SbtEthereumPlugin extends AutoPlugin {
           val maxSeconds = rmd.maxCommitmentAgeInSeconds.toLong
           val maxHours   = maxSeconds.toDouble / 3600
           val commitment = rmd.makeCommitment( name, registrant )
-          log.info(  "Establishing registration commitment. This will require a transaction to be submitted and mined." )
-          log.info( s"The secret to which we are committing is '${hexString(commitment.secret)}'." )
-          log.info(  "If we sadly time out while waiting for the transaction to mine, if it does eventually successfully mine...")
-          log.info( s"  you can continue where you left off with" )
-          log.info( s"    'ensNameRegister ${epp.fullName} ${hexString(registrant)} ${hexString(commitment.secret)}'" )
+          println()
+          println( s"In order to register '${epp.fullName}', two transactions will be performed..." )
+          println( s"     (1) a commitment transaction" )
+          println( s"     (2) a registration transaction" )
+          println(  "You will need to approve both transactions." )
+          println( s"A ${minSeconds} second pause will be required between the two transactions." ) 
+          println()
+          println(  "Establishing registration commitment." )
+          println( s"""The random "secret" to which we are committing is '${hexString(commitment.secret)}'.""" )
+          println(  "If we sadly time out while waiting for the transaction to mine, if it does eventually successfully mine...")
+          println( s"  you can continue where you left off with" )
+          println( s"    'ensNameRegister ${epp.fullName} ${hexString(registrant)} ${hexString(commitment.secret)}'" )
           commitmentNonceOverride.foreach { cno =>
-            log.warn( s"  But you will need to drop the nonce override with 'ethTransactionNonceOverrideDrop' or set it to ${cno+1}." )
+            println( s"  But you will need to drop the nonce override with 'ethTransactionNonceOverrideDrop' or set it to ${cno+1}." )
           }
-          log.info( s"The registration must be completed after a minimum of ${minSeconds} seconds, but within a maximum of ${maxSeconds} seconds (${maxHours} hours) or the commitment will be lost." )
-          log.info(  "Establishing commitment." )
+          println( s"The registration must be completed after a minimum of ${minSeconds} seconds, but within a maximum of ${maxSeconds} seconds (${maxHours} hours) or the commitment will be lost." )
+          println(  "Preparing commitment transaction..." )
           rmd.commit( pk, commitment, forceNonce = commitmentNonceOverride )
           log.info( s"Temporary commitment of name '${name}' for registrant ${verboseAddress(chainId,registrant)} has succeeded!" )
           ( minSeconds, commitment )
         }
 
         def doNameRegister( durationInSeconds : Long, paymentInWei : BigInt, secret : immutable.Seq[Byte] ) : Unit = {
-          log.info( s"Now finalizing the registration of name '${name}' for registrant '${registrant}'." )
-          log.info(  "If we sadly time out while waiting for the transaction to mine, it still may eventually succeed." )
-          log.info( s"Use 'ethNameStatus ${epp.fullName}' to check." )
+          println()
+          println( s"Now finalizing the registration of name '${name}' for registrant '${registrant}'." )
+          println(  "If we sadly time out while waiting for the transaction to mine, it still may eventually succeed." )
+          println( s"Use 'ensNameStatus ${epp.fullName}' to check." )
           rmd.register( pk, name, registrant, durationInSeconds, secret, paymentInWei, forceNonce = registrationNonceOverride )
           log.info( s"Name '${epp.fullName}' has been successfully registered to ${verboseAddress(chainId, registrant)}!" )
+          log.info( s"The registration is valid until '${formatInstantOrUnknown(rmd.nameExpires(name))}'" )
         }
 
         val ( durationInSeconds, paymentInWei ) = doQueryDurationInSecondsPaymentInWei
@@ -1762,9 +1771,10 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
         mbWait.foreach { waitSeconds =>
-          log.info( s"We must wait a minimum of ${waitSeconds} seconds before we can complete the registration." )
-          log.info( "Please wait.")
-          Thread.sleep( waitSeconds * 1000 )
+          println
+          println( s"We must wait a minimum of ${waitSeconds} seconds before we can complete the registration." )
+          println( "We'll add 10% to be sure. Please wait.")
+          Thread.sleep( ((waitSeconds * 1000) * 11)/10 )
         }
         doNameRegister( durationInSeconds, paymentInWei, secret )
       }
@@ -1804,9 +1814,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val markedupRentInWei = markupEnsRent( rentInWei )
     val rentInEther = EthValue( rentInWei, Denominations.Ether ).denominated
     val markedupRentInEther = EthValue( markedupRentInWei, Denominations.Ether ).denominated
-    log.info( s"In order to rent '${epp.fullPath}' for ${desiredPeriod}, it would cost approximately ${rentInEther} ether (${rentInWei} wei)." )
-    log.info( s"""To be sure the renewal succeeds, we'll mark it up a bit to ${markedupRentInEther} ether (${markedupRentInWei} wei). Any "change" will be returned.""" )
-    printFiatValueForEtherValue( log.info(_) )( chainId, baseCurrencyCode, markedupRentInEther )
+    println( s"In order to rent '${epp.fullPath}' for ${desiredPeriod}, it would cost approximately ${rentInEther} ether (${rentInWei} wei)." )
+    println( s"""To be sure the renewal succeeds, we'll mark it up a bit to ${markedupRentInEther} ether (${markedupRentInWei} wei). Any "change" will be returned.""" )
+    printFiatValueForEtherValue( println(_) )( chainId, baseCurrencyCode, markedupRentInEther )
     val ok = queryYN( is, "Is that okay? [y/n] " )
     if (!ok) aborted( "User rejected renewal fee." )
     markedupRentInWei
@@ -1831,12 +1841,13 @@ object SbtEthereumPlugin extends AutoPlugin {
         require( rmd.hasValidRegistrar, s"There is no registrar associated with ENS domain '${rmd.domain}'." )
 
         val svu = {
-          queryDurationInSeconds( log, is, """For how long would you like to extend the name? [Example: "3 years"] """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
+          queryDurationInSeconds( log, is, """For how long would you like to extend the name (ex: "3 years")? """ ).getOrElse( aborted( "User failed to supply a desired time interval." ) )
         }
         val seconds = svu.seconds
         val paymentInWei = interactiveAssertAcceptablePayment( log, is, chainId, epp, name, seconds, svu.unitProvided, baseCurrencyCode, rmd )
         rmd.renew( pkf.find(), name, seconds, paymentInWei, forceNonce = nonceOverride )
-        log.info( s"'${epp.fullName}' has been renewed for ${seconds} seconds (${svu.formattedNumUnits})." )
+        log.info( s"Registration of '${epp.fullName}' has been extended for ${seconds} seconds (${svu.formattedNumUnits})." )
+        log.info( s"The registration is now valid until '${formatInstantOrUnknown(rmd.nameExpires(name))}'" )
       }
 
       import ens.ParsedPath._

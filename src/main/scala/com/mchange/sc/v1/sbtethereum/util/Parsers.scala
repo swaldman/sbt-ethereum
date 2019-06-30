@@ -203,6 +203,7 @@ object Parsers {
         binding(ChronoUnit.MINUTES),
         binding(ChronoUnit.HOURS),
         binding(ChronoUnit.DAYS),
+        binding(ChronoUnit.WEEKS),
         binding(ChronoUnit.MONTHS),
         binding(ChronoUnit.YEARS)
       )
@@ -351,13 +352,14 @@ object Parsers {
     }
   }
 
+  // XXX: Can't get any useful tab-completion working on this parser
   private [sbtethereum] def genEnsPathMbAddressMbSecretParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple3[ens.ParsedPath,Option[EthAddress],Option[immutable.Seq[Byte]]]] = {
     for {
       epp       <- genEnsPathParser( state, mbRpi )
-      mbAddress <- (Space ~> genAddressParser("<registrant-address>")( state, mbRpi )).?
+      mbAddress <- (Space ~> genAddressParser("[optional-registrant-address]")( state, mbRpi )).?
       mbSecret  <- (Space ~> rawFixedLengthByteStringAsStringParser(32).map( _.decodeHexAsSeq )).?
     }
     yield {
