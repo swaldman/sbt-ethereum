@@ -100,7 +100,7 @@ a:visited:hover {
     flex-shrink: 1;
     overflow-x: hidden;
     overflow-y: scroll;
-    scrollbar-color: white black;
+    scrollbar-color: #454 black;
 }
 #navigation::-webkit-scrollbar {
   width: 10px;
