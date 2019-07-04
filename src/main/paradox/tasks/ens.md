@@ -217,7 +217,7 @@ This corresponds to approximately 0.83 USD (at a rate of 317.605 USD per ETH, re
 
 **Usage:**
 ```
-> ensNameRegister <ens-name>.eth [optional-registrant-address] [optional-secret-from-prior-commitment]
+> ensNameRegister <ens-name>.eth [optional-registrant-address-as-hex-or-ens-or-alias] [optional-secret-from-prior-commitment]
 ```
 Interactively computes the price of registers an available ENS name for a given period of time.
 

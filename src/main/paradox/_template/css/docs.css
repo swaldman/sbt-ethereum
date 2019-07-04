@@ -100,6 +100,17 @@ a:visited:hover {
     flex-shrink: 1;
     overflow-x: hidden;
     overflow-y: scroll;
+    scrollbar-color: white black;
+}
+#navigation::-webkit-scrollbar {
+  width: 10px;
+  background-color: black;
+}
+#navigation::-webkit-scrollbar-thumb {
+    width: 6px;
+  border-radius: 6px;
+  -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3);
+  background-color: #454;
 }
 
 #navigation, #pageToc {
