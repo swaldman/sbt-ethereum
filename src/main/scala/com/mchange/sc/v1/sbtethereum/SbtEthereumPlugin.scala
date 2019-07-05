@@ -859,7 +859,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethKeystoreWalletV3Create := { xethKeystoreWalletV3CreateScrypt.value },
 
-    ethKeystoreWalletV3FromJsonImport := { ethKeystoreWalletV3FromJsonImportTask.value },
+    ethKeystoreWalletV3FromJsonImport in Compile := { ethKeystoreWalletV3FromJsonImportTask( Compile ).value },
+
+    ethKeystoreWalletV3FromJsonImport in Test := { ethKeystoreWalletV3FromJsonImportTask( Test ).value },
 
     ethKeystoreWalletV3FromPrivateKeyImport := { ethKeystoreWalletV3FromPrivateKeyImportTask.value },
 
@@ -2157,55 +2159,102 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def interactiveOptionalUpdateAliasTask( config : Configuration, address : EthAddress ) : Initialize[Task[Unit]] = Def.taskDyn {
+    val log = streams.value.log
+    val is = interactionService.value
+    def doAskSetAlias = queryYN( is, s"Would you like to define an alias for address '${hexString(address)}'? [y/n] " )
+    val update = doAskSetAlias
+    if ( update ) {
+      @tailrec
+      def doQueryAlias : Initialize[Task[Unit]] = {
+        val putative = assertReadLine( is, s"Please enter an alias for address '${hexString(address)}': ", mask = false ).trim
+        if ( putative.isEmpty ) {
+          log.info( "No alias provided." )
+          if ( doAskSetAlias ) {
+            doQueryAlias
+          }
+          else {
+            println("No alias set.")
+            EmptyTask
+          }
+        }
+        else if (!prelimGoodAlias(putative)) {
+          println( s"'${putative}' is not a valid alias." )
+          doQueryAlias
+        }
+        else {
+          interactiveUpdateAliasTask( config, putative, address )
+        }
+      }
+      doQueryAlias
+    }
+    else {
+      EmptyTask
+    }
+  }
+
+  private def prelimGoodAlias( putative : String ) : Boolean = {
+    sbt.complete.Parser.parse( putative, RawAddressAliasParser ) match {
+      case Left(_) => false
+      case Right( ok ) => !goodHexAddress( ok )
+    }
+  }
+
+  private def goodHexAddress( s : String ) = Failable( EthAddress(s) ).isSucceeded
+
+  private def interactiveUpdateAliasTask( config : Configuration, alias : String, address : EthAddress ) : Initialize[Task[Unit]] = Def.taskDyn {
+    val log = streams.value.log
+    val is = interactionService.value
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    if (goodHexAddress(alias)) {
+      throw new SbtEthereumException( s"You cannot use what would be a legitimate Ethereum hex address as an alias. Bad attempted alias: '${alias}'" )
+    }
+    val oldValue = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, alias ).assert
+
+    val shouldUpdate = {
+      oldValue match {
+        case Some( `address` ) => {
+          log.info( s"The alias '${alias}' already points to address '${hexString(address)}' (for chain with ID ${chainId}). Nothing to do." )
+          false
+        }
+        case Some( differentAddress ) => {
+          kludgeySleepForInteraction()
+          val replace = queryYN( is, s"The alias '${alias}' currently points to address '${hexString(differentAddress)}' (for chain with ID ${chainId}). Replace? [y/n] " )
+          if (! replace ) {
+            throw new OperationAbortedByUserException( s"User chose not to replace previously defined alias '${alias}' (for chain with ID ${chainId}). It continues to point to '${hexString(differentAddress)}'." )
+          }
+          else {
+            val didDrop = shoebox.AddressAliasManager.dropAddressAlias( chainId, alias ).assert
+            assert( didDrop, "Expected deletion of address alias '${alias}' did not in fact delete any rows!" )
+            true
+          }
+        }
+        case None => {
+          true
+        }
+      }
+    }
+
+    if ( shouldUpdate ) {
+      val check = shoebox.AddressAliasManager.insertAddressAlias( chainId, alias, address )
+      check.fold( _.vomit ){ _ =>
+        log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
+      }
+      Def.taskDyn {
+        xethTriggerDirtyAliasCache
+      }
+    }
+    else {
+      EmptyTask
+    }
+  }
+
   private def ethAddressAliasSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genNewAddressAliasParser )
 
     Def.inputTaskDyn {
-      val log = streams.value.log
-      val is = interactionService.value
-      val chainId = findNodeChainIdTask(warn=true)(config).value
       val ( alias, address ) = parser.parsed
-      if (! Failable( EthAddress( alias ) ).isFailed ) {
-        throw new SbtEthereumException( s"You cannot use what would be a legitimate Ethereum address as an alias. Bad attempted alias: '${alias}'" )
-      }
-      val oldValue = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, alias ).assert
-
-      val shouldUpdate = {
-        oldValue match {
-          case Some( `address` ) => {
-            log.info( s"The alias '${alias}' already points to address '${hexString(address)}' (for chain with ID ${chainId}). Nothing to do." )
-            false
-          }
-          case Some( differentAddress ) => {
-            kludgeySleepForInteraction()
-            val replace = queryYN( is, s"The alias '${alias}' currently points to address '${hexString(differentAddress)}' (for chain with ID ${chainId}). Replace? [y/n] " )
-            if (! replace ) {
-              throw new OperationAbortedByUserException( s"User chose not to replace previously defined alias '${alias}' (for chain with ID ${chainId}). It continues to point to '${hexString(differentAddress)}'." )
-            }
-            else {
-              val didDrop = shoebox.AddressAliasManager.dropAddressAlias( chainId, alias ).assert
-              assert( didDrop, "Expected deletion of address alias '${alias}' did not in fact delete any rows!" )
-              true
-            }
-          }
-          case None => {
-            true
-          }
-        }
-      }
-
-      if ( shouldUpdate ) {
-        val check = shoebox.AddressAliasManager.insertAddressAlias( chainId, alias, address )
-        check.fold( _.vomit ){ _ =>
-          log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
-        }
-        Def.taskDyn {
-          xethTriggerDirtyAliasCache
-        }
-      }
-      else {
-        EmptyTask
-      }
+      interactiveUpdateAliasTask( config, alias, address )
     }
   }
 
@@ -3190,7 +3239,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ethKeystoreWalletV3FromJsonImportTask : Initialize[Task[Unit]] = Def.task {
+  private def ethKeystoreWalletV3FromJsonImportTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     val log = streams.value.log
     val is = interactionService.value
     val w = readV3Wallet( is )
@@ -3198,6 +3247,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     shoebox.Keystore.V3.storeWallet( w ).get // asserts success
     log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
     log.info( s"Consider validating the JSON using 'ethKeystoreWalletV3Validate 0x${address.hex}'." )
+    interactiveOptionalUpdateAliasTask( config, address )
   }
 
   private def ethKeystoreWalletV3FromPrivateKeyImportTask : Initialize[Task[wallet.V3]] = Def.task {

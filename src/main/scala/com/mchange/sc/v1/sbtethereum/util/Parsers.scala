@@ -38,6 +38,8 @@ object Parsers {
 
   private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
 
+  private [sbtethereum] val RawAddressAliasParser = ID
+
   private val HexByteAsCharSeq = Parser.repeat( HexDigit, 2, 2 )
 
   private val HexByteAsString = HexByteAsCharSeq.map( _.mkString )
@@ -626,7 +628,7 @@ object Parsers {
   ) = {
     for {
       _       <- token(Space)
-      alias   <- token(ID, "<alias>")
+      alias   <- token(RawAddressAliasParser, "<alias>")
       _       <- token(Space)
       address <- genGenericAddressParser( state, mbRpi )
     }
