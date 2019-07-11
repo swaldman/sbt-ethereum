@@ -393,12 +393,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethDebugGanacheHalt  = taskKey[Unit] ("Stops any local ganache environment that may have been started previously")
 
     val ethKeystoreList                         = taskKey[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
-    val ethKeystorePrivateKeyReveal             = inputKey[Unit]      ("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
-    val ethKeystoreWalletV3Create               = taskKey [wallet.V3] ("Generates a new V3 wallet, using ethcfgEntropySource as a source of randomness")
-    val ethKeystoreWalletV3FromJsonImport       = taskKey [Unit]      ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
-    val ethKeystoreWalletV3FromPrivateKeyImport = taskKey [Unit]      ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
-    val ethKeystoreWalletV3Print                = inputKey[Unit]      ("Prints V3 wallet as JSON to the console.")
-    val ethKeystoreWalletV3Validate             = inputKey[Unit]      ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
+    val ethKeystorePrivateKeyReveal             = inputKey[Unit] ("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
+    val ethKeystoreWalletV3Create               = taskKey [Unit] ("Generates a new V3 wallet, using ethcfgEntropySource as a source of randomness")
+    val ethKeystoreWalletV3FromJsonImport       = taskKey [Unit] ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
+    val ethKeystoreWalletV3FromPrivateKeyImport = taskKey [Unit] ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
+    val ethKeystoreWalletV3Print                = inputKey[Unit] ("Prints V3 wallet as JSON to the console.")
+    val ethKeystoreWalletV3Validate             = inputKey[Unit] ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
     val ethLanguageSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum shoebox (or choose a supported version)")
     val ethLanguageSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
@@ -496,8 +496,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethGasPrice = taskKey[BigInt]("Finds the current gas price, including any overrides or gas price markups")
     val xethGenKeyPair = taskKey[EthKeyPair]("Generates a new key pair, using ethcfgEntropySource as a source of randomness")
     val xethGenScalaStubsAndTestingResources = taskKey[immutable.Seq[File]]("Generates stubs for compiled Solidity contracts, and resources helpful in testing them.")
-    val xethKeystoreWalletV3CreatePbkdf2 = taskKey[wallet.V3]("Generates a new pbkdf2 V3 wallet, using ethcfgEntropySource as a source of randomness")
-    val xethKeystoreWalletV3CreateScrypt = taskKey[wallet.V3]("Generates a new scrypt V3 wallet, using ethcfgEntropySource as a source of randomness")
+    val xethKeystoreWalletV3CreateDefault = taskKey[wallet.V3]("Generates a new V3 wallet, using a default algorithm (currently Scrypt), using ethcfgEntropySource as a source of randomness, no querying for alias or set-as-default")
+    val xethKeystoreWalletV3CreatePbkdf2 = taskKey[wallet.V3]("Generates a new pbkdf2 V3 wallet, using ethcfgEntropySource as a source of randomness, no querying for alias or set-as-default")
+    val xethKeystoreWalletV3CreateScrypt = taskKey[wallet.V3]("Generates a new scrypt V3 wallet, using ethcfgEntropySource as a source of randomness, no querying for alias or set-as-default")
     val xethInvokeData = inputKey[immutable.Seq[Byte]]("Prints the data portion that would be sent in a message invoking a function and its arguments on a deployed smart contract")
     val xethInvokerContext = taskKey[Invoker.Context]("Puts together gas and jsonrpc configuration to generate a context for transaction invocation.")
     val xethLoadAbiFor = inputKey[Abi]("Finds the ABI for a contract address, if known")
@@ -857,13 +858,17 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethKeystorePrivateKeyReveal in Test := { ethKeystorePrivateKeyRevealTask( Test ).evaluated },
 
-    ethKeystoreWalletV3Create := { xethKeystoreWalletV3CreateScrypt.value },
+    ethKeystoreWalletV3Create in Compile := { ethKeystoreWalletV3CreateTask( Compile ).value },
+
+    ethKeystoreWalletV3Create in Test := { ethKeystoreWalletV3CreateTask( Test ).value },
 
     ethKeystoreWalletV3FromJsonImport in Compile := { ethKeystoreWalletV3FromJsonImportTask( Compile ).value },
 
     ethKeystoreWalletV3FromJsonImport in Test := { ethKeystoreWalletV3FromJsonImportTask( Test ).value },
 
-    ethKeystoreWalletV3FromPrivateKeyImport := { ethKeystoreWalletV3FromPrivateKeyImportTask.value },
+    ethKeystoreWalletV3FromPrivateKeyImport in Compile := { ethKeystoreWalletV3FromPrivateKeyImportTask( Compile ).value },
+
+    ethKeystoreWalletV3FromPrivateKeyImport in Test := { ethKeystoreWalletV3FromPrivateKeyImportTask( Test ).value },
 
     ethKeystoreWalletV3Print in Compile := { ethKeystoreWalletV3PrintTask( Compile ).evaluated },
 
@@ -1120,6 +1125,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethInvokerContext in Compile := { xethInvokerContextTask( Compile ).value },
 
     xethInvokerContext in Test := { xethInvokerContextTask( Test ).value },
+
+    xethKeystoreWalletV3CreateDefault := { xethKeystoreWalletV3CreateDefaultTask.value }, // global config scope seems appropriate
 
     xethKeystoreWalletV3CreatePbkdf2 := { xethKeystoreWalletV3CreatePbkdf2Task.value }, // global config scope seems appropriate
 
@@ -2159,15 +2166,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def interactiveOptionalUpdateAliasTask( config : Configuration, address : EthAddress ) : Initialize[Task[Unit]] = Def.taskDyn {
+  private def interactiveOptionalCreateAliasTask( config : Configuration, address : EthAddress ) : Initialize[Task[Unit]] = Def.taskDyn {
     val log = streams.value.log
     val is = interactionService.value
-    def doAskSetAlias = queryYN( is, s"Would you like to define an alias for address '${hexString(address)}'? [y/n] " )
+    val chainId = findNodeChainIdTask(warn=false)(config).value
+    def doAskSetAlias = queryYN( is, s"Would you like to define an alias for address '${hexString(address)}' (on chain with ID ${chainId})? [y/n] " )
     val update = doAskSetAlias
     if ( update ) {
       @tailrec
       def doQueryAlias : Initialize[Task[Unit]] = {
-        val putative = assertReadLine( is, s"Please enter an alias for address '${hexString(address)}': ", mask = false ).trim
+        val putative = assertReadLine( is, s"Please enter an alias for address '${hexString(address)}' (on chain with ID ${chainId}): ", mask = false ).trim
         if ( putative.isEmpty ) {
           log.info( "No alias provided." )
           if ( doAskSetAlias ) {
@@ -3239,6 +3247,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ethKeystoreWalletV3CreateTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
+    val wallet = xethKeystoreWalletV3CreateDefault.value
+    interactiveOptionalCreateAliasTask( config, wallet.address )
+  }
+
   private def ethKeystoreWalletV3FromJsonImportTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     val log = streams.value.log
     val is = interactionService.value
@@ -3247,10 +3260,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     shoebox.Keystore.V3.storeWallet( w ).get // asserts success
     log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
     log.info( s"Consider validating the JSON using 'ethKeystoreWalletV3Validate 0x${address.hex}'." )
-    interactiveOptionalUpdateAliasTask( config, address )
+    interactiveOptionalCreateAliasTask( config, address )
   }
 
-  private def ethKeystoreWalletV3FromPrivateKeyImportTask : Initialize[Task[wallet.V3]] = Def.task {
+  private def ethKeystoreWalletV3FromPrivateKeyImportTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     val log   = streams.value.log
     val c     = xethcfgWalletV3Pbkdf2C.value
     val dklen = xethcfgWalletV3Pbkdf2DkLen.value
@@ -3263,9 +3276,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       if ( raw.startsWith( "0x" ) ) raw.substring(2) else raw
     }
     val privateKey = EthPrivateKey( privateKeyStr )
+    val address = privateKey.address
 
     val confirm = {
-      is.readLine( s"The imported private key corresponds to address '${hexString( privateKey.address )}'. Is this correct? [y/n] ", mask = false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
+      is.readLine( s"The imported private key corresponds to address '${hexString( address )}'. Is this correct? [y/n] ", mask = false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
     }
 
     if (! confirm ) {
@@ -3279,7 +3293,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       shoebox.Keystore.V3.storeWallet( w ).get // asserts success
       log.info( s"Wallet created and imported into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
       log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
-      w
+      interactiveOptionalCreateAliasTask( config, address )
     }
   }
 
@@ -5500,7 +5514,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     )
   }
 
-  private def xethKeystoreWalletV3CreatePbkdf2Task : Initialize[Task[wallet.V3]] = Def.task {
+  private def xethKeystoreWalletV3CreateDefaultTask : Initialize[Task[wallet.V3]] = xethKeystoreWalletV3CreateScryptTask
+
+  private val xethKeystoreWalletV3CreatePbkdf2Task : Initialize[Task[wallet.V3]] = Def.task {
     val log   = streams.value.log
     val c     = xethcfgWalletV3Pbkdf2C.value
     val dklen = xethcfgWalletV3Pbkdf2DkLen.value
@@ -5520,7 +5536,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     out
   }
 
-  private def xethKeystoreWalletV3CreateScryptTask : Initialize[Task[wallet.V3]] = Def.task {
+  private val xethKeystoreWalletV3CreateScryptTask : Initialize[Task[wallet.V3]] = Def.task {
     val log   = streams.value.log
     val n     = xethcfgWalletV3ScryptN.value
     val r     = xethcfgWalletV3ScryptR.value
@@ -5946,7 +5962,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       val checkInstall = queryYN( is, "There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] " )
       if ( checkInstall ) {
         val extract = Project.extract(s)
-        val (_, result) = extract.runTask(ethKeystoreWalletV3Create, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
+
+        // NOTE: we use the xeth version of the wallet V3 create task to skip querying for an alias,
+        //       since we instead query whetherthe new wallet should become the default sender
+        val (_, result) = extract.runTask(xethKeystoreWalletV3CreateDefault, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
 
         val address = result.address
 
