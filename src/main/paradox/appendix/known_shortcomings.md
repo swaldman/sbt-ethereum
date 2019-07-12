@@ -50,12 +50,6 @@ _sbt-ethereum_ does not currently support linking to such libraries.
 
 (This shouldn't be difficult to add, but we've rarely wanted it. Let us know if this is a feature you need!)
 
-### Scala stubs use stateful filters for event subscriptions
-
-Some Ethereum service providers, most notably _Infura_, do not support stateful filters, so event subscriptions will fail.
-As a workaround, you can always query for stub events yourself. Stub subscriptions using only stateless methods will hopefully
-be implemented soon.
-
 ### Java 11 support is untested
 
 It might work! It might not.
