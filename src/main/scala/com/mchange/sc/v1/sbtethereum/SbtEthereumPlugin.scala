@@ -392,6 +392,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethDebugGanacheStart = taskKey[Unit] (s"Starts a local ganache environment (if the command '${testing.Default.Ganache.Executable}' is in your PATH)")
     val ethDebugGanacheHalt  = taskKey[Unit] ("Stops any local ganache environment that may have been started previously")
 
+    val ethKeystoreFromJsonImport               = taskKey [Unit] ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
+    val ethKeystoreFromPrivateKeyImport         = taskKey [Unit] ("Prompts for the JSON of a V3 wallet and inserts it into the sbt-ethereum keystore")
     val ethKeystoreList                         = taskKey[immutable.SortedMap[EthAddress,immutable.SortedSet[String]]]("Lists all addresses in known and available keystores, with any aliases that may have been defined")
     val ethKeystorePrivateKeyReveal             = inputKey[Unit] ("Danger! Warning! Unlocks a wallet with a passphrase and prints the plaintext private key directly to the console (standard out)")
     val ethKeystoreWalletV3Create               = taskKey [Unit] ("Generates a new V3 wallet, using ethcfgEntropySource as a source of randomness")
@@ -849,6 +851,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethDebugGanacheStart in Test := { ethDebugGanacheStartTask.value },
 
     ethDebugGanacheHalt in Test := { ethDebugGanacheHaltTask.value },
+
+    ethKeystoreFromJsonImport in Compile := { ethKeystoreWalletV3FromJsonImportTask( Compile ).value },
+
+    ethKeystoreFromJsonImport in Test := { ethKeystoreWalletV3FromJsonImportTask( Test ).value },
+
+    ethKeystoreFromPrivateKeyImport in Compile := { ethKeystoreWalletV3FromPrivateKeyImportTask( Compile ).value },
+
+    ethKeystoreFromPrivateKeyImport in Test := { ethKeystoreWalletV3FromPrivateKeyImportTask( Test ).value },
 
     ethKeystoreList in Compile := { ethKeystoreListTask( Compile ).value },
 

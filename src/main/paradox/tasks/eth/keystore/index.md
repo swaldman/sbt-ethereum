@@ -2,6 +2,64 @@
 
 _sbt-ethereum_ tasks related to managing keys and wallets of addresses from which this installation of _sbt-ethereum_ may originate transactions.
 
+### ethKeystoreFromJsonImport
+
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ethKeystoreFromJsonImport
+```
+Allows user to paste the raw JSON of a V3 wallet and have it integrated into the _sbt-ethereum_ "shoebox" keystore.
+
+_**Note:** For now this is just an alias to_ `ethKeystoreWalletV3FromJsonImport`. _In the future, it may import to other formats than a JSON V3 wallet._
+
+**Example:**
+```
+> ethKeystoreFromJsonImport
+V3 Wallet JSON: {"address":"aecbfff6ccd465d9a7fe84079e1f20dfdf6e46aa","crypto":{"cipher":"aes-128-ctr","ciphertext":"ab06b8aac3fffcf51ec3da63f656298d27e038816a28f4b35094a74a55450fbc","kdfparams":{"p":1,"r":8,"salt":"ca142093f3b5d0f73924b87fa521d4f2ccbab892048d01dfa8d5b025cf09b371","dklen":32,"n":262144},"cipherparams":{"iv":"9e7603b0f3db200467aef294affbfc26"},"kdf":"scrypt","mac":"fb5bc3e62f4ce7da7ad168e6dfa2c5bd2a2c7a955822a8080ef4f300103ba301"},"id":"e4ff0e97-9483-49a2-8fe5-f1eef1941ba9","version":3}
+[info] Imported JSON wallet for address '0xaecbfff6ccd465d9a7fe84079e1f20dfdf6e46aa', but have not validated it.
+[info] Consider validating the JSON using 'ethKeystoreWalletV3Validate 0xaecbfff6ccd465d9a7fe84079e1f20dfdf6e46aa'.
+Would you like to define an alias for address '0xaecbfff6ccd465d9a7fe84079e1f20dfdf6e46aa' (on chain with ID 1)? [y/n] y
+Please enter an alias for address '0xaecbfff6ccd465d9a7fe84079e1f20dfdf6e46aa' (on chain with ID 1): red-wallet-main
+[info] Alias 'red-wallet-main' now points to address '0xaecbfff6ccd465d9a7fe84079e1f20dfdf6e46aa' (for chain with ID 1).
+[info] Refreshing caches.
+[success] Total time: 58 s, completed Jul 11, 2019, 2:07:38 PM
+```
+
+@@@
+
+### ethKeystoreFromPrivateKeyImport
+
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ethKeystoreFromPrivateKeyImport
+```
+Allows user to enter a 32-byte hex private key, and integrate that key and its associated _Ethereum_ address into the _sbt-ethereum_ shoebox keystore.
+
+_**Note:** For now this is just an alias to_ `ethKeystoreWalletV3FromPrivateKeyImport`. _In the future, it may import to other formats than a JSON V3 wallet._
+
+**Example:**
+```
+> ethKeystoreFromPrivateKeyImport
+Please enter the private key you would like to import (as 32 hex bytes): ****************************************************************
+The imported private key corresponds to address '0x2edb3588eef9257ad4d65e81b54c8049b0c79354'. Is this correct? [y/n] y
+Generating V3 wallet, alogorithm=pbkdf2, c=262144, dklen=32
+Enter passphrase for new wallet: ***************
+Please retype to confirm: ***************
+[info] Wallet created and imported into sbt-ethereum shoebox: '/Users/testuser/Library/Application Support/sbt-ethereum'. Please backup, via 'ethShoeboxBackup' or manually.
+[info] Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x2edb3588eef9257ad4d65e81b54c8049b0c79354'.
+Would you like to define an alias for address '0x2edb3588eef9257ad4d65e81b54c8049b0c79354' (on chain with ID 1)? [y/n] y
+Please enter an alias for address '0x2edb3588eef9257ad4d65e81b54c8049b0c79354' (on chain with ID 1): blue-wallet-main
+[info] Alias 'blue-wallet-main' now points to address '0x2edb3588eef9257ad4d65e81b54c8049b0c79354' (for chain with ID 1).
+[info] Refreshing caches.
+[success] Total time: 146 s, completed Jul 11, 2019, 1:59:58 PM
+```
+
+@@@
+
 ### ethKeystoreList
 
 @@@ div { .keydesc}
@@ -90,7 +148,7 @@ Please enter an alias for address '0xb3dd7fe3e7cdf45e8c6120df6ed9ddc2136714a8' (
 ```
 > ethKeystoreWalletV3FromJsonImport
 ```
-Allows user to paste the raw JSON of a V3 wallet and have it integrated into the _sbt-ethereum_ "shoebox" keystore.
+Allows user to paste the raw JSON of a V3 wallet and have it integrated into the _sbt-ethereum_ "shoebox" keystore as a V3 JSON wallet.
 
 **Example:**
 ```
