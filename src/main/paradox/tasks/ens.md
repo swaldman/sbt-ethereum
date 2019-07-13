@@ -219,7 +219,7 @@ This corresponds to approximately 0.83 USD (at a rate of 317.605 USD per ETH, re
 ```
 > ensNameRegister <ens-name>.eth [optional-registrant-address-as-hex-or-ens-or-alias] [optional-secret-from-prior-commitment]
 ```
-Interactively computes the price of registers an available ENS name for a given period of time.
+Interactively registers an available ENS name for a period of time.
 
 If a registrant address is provided, the name will be registered to that address. Otherwise, it will
 be registered to the @ref:[session's current sender](./eth/address/sender.md).
@@ -482,7 +482,7 @@ A transaction with hash '0xf0b21ad569e2e7a8244f31c0ca455558a17c6cd86500d38e7ce37
 > ensSubnodeCreate <full-subnode-ens-name>.eth
 ```
 
-Creates a "subnode" to (a hierarchical name beneath) an existing ENS name.
+Creates a "subnode" for an existing ENS name.
 The @ref:[current sender](./eth/address/sender.md) should be the owner of the parent name, and will become owner of the subname.
 
 If there already exists a name like `zzz.eth`, you can create `yyy.zzz.eth` as a subnode. If there already exists `yyy.zzz.eth`, you can create `xxx.yyy.zzz.eth`.
@@ -533,7 +533,7 @@ A transaction with hash '0x4d83b26b2e91351a3b500d64d1f1dffcd8d2fe2cdf06337a2fd11
 > ensSubnodeOwnerSet <full-subnode-ens-name>.eth <subnode-owner-as-hex-or-ens-or-alias>
 ```
 
-Resets the owner of a "subnode" to (a hierarchical name beneath) an existing ENS name.
+Resets the owner of a "subnode" for an existing ENS name.
 The @ref:[current sender](./eth/address/sender.md) should be the owner of the parent name.
 
 If the subnode does not already exist, but the parent name does, the subnode will be automatically created.
