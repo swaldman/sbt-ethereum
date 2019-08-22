@@ -398,6 +398,20 @@ object Parsers {
     baseParser.map( processedNamesToFunctions )
   }
 
+  // modified from DQuote parser in https://github.com/sbt/sbt/blob/develop/internal/util-complete/src/main/scala/sbt/internal/util/complete/Parsers.scala
+  val SQuoteChar  = '\''
+  val SQuoteClass = charClass(_ == SQuoteChar, "single-quote character")
+  val NotSQuoteClass = charClass({ c: Char => (c != SQuoteChar) }, "non-single-quote character")
+  val NotAnyQuoteSpaceClass = charClass({ c: Char => (c != SQuoteChar && c!= DQuoteChar && !c.isWhitespace) }, "not any-quote-initiating not whitespace character")
+
+  val SingleQuoteStringVerbatim = SQuoteChar ~> NotSQuoteClass.* <~ SQuoteChar
+
+  val NotAnyQuoted = (NotAnyQuoteSpaceClass ~ OptNotSpace) map { case (c, s) => c.toString + s }
+
+  private val RawStringInputParser : Parser[String] = {
+    ( StringVerbatim | StringEscapable | SingleQuoteStringVerbatim | NotAnyQuoted ).map( str => s""""${str}"""")
+  }
+
   private val BytesN_Regex = """bytes(\d+)""".r
 
   private def inputParser( input : jsonrpc.Abi.Parameter, mbRpi : Option[RichParserInfo] ) : Parser[String] = {
@@ -408,6 +422,7 @@ object Parsers {
       case "address" if mbRpi.nonEmpty => createAddressParser( sample, mbRpi ).map( _.hex )
       case BytesN_Regex( len )         => token( rawFixedLengthByteStringAsStringParser( len.toInt ) ).examples( defaultExamples )
       case "bytes"                     => token( RawBytesAsHexStringParser ).examples( defaultExamples )
+      case "string"                    => token( RawStringInputParser ).examples( defaultExamples )
       case _                           => token( (StringEscapable.map( str => s""""${str}"""") | NotQuoted) ).examples( defaultExamples ) 
     }
   }
