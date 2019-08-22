@@ -4246,11 +4246,24 @@ object SbtEthereumPlugin extends AutoPlugin {
               }
               t match {
                 case timeout : Poller.TimeoutException => {
-                  log.warn( s"Timeout after ${invokerContext.pollTimeout}!!! -- ${timeout}" )
-                  log.warn( s"Failed to retrieve a transaction receipt for the creation of contract '${deploymentAlias}'!" )
-                  log.warn(  "The contract may have been created, but without a receipt, the compilation and ABI could not be associated with an address.")
-                  log.warn( s"You may wish to check sender adddress '0x${sender.hex}' in a blockchain explorer (e.g. etherscan), and manually associate the ABI with the address of the transaction succeeded." )
-                  logFailedAbi()
+                  f_txnHash onComplete { tryTxnHash =>
+                    tryTxnHash.toOption match {
+                      case Some( txnHash ) => {
+                        log.warn( s"Timeout after ${invokerContext.pollTimeout}!!! -- ${timeout}" )
+                        log.warn( s"Failed to retrieve a transaction receipt for the creation of contract '${deploymentAlias}'!" )
+                        log.warn(  "The contract may have been created, but without a receipt, the compilation and ABI could not be associated with an address.")
+                        log.warn( s"To recheck for contract creation, try 'ethTransactionLookup ${hexString(txnHash)}" )
+                        log.warn( s"You may wish to check sender adddress '0x${sender.hex}' in a blockchain explorer (e.g. etherscan)." )
+                        log.warn(  "Once you have verified the deployed contract's address, you will need to manually associate the ABI (see below) with the address of the transaction succeeded with `ethContractAbiImport <address>`." )
+                        logFailedAbi()
+                      }
+                      case None => {
+                        val message = s"We experienced a timeout, which we expect only if we successfully submitted the transaction, yet we apparently did not receive the transaction hash from the server?! ${timeout}"
+                        log.error( message )
+                        SEVERE.log( message, timeout )
+                      }
+                    }
+                  }
                 }
                 case whatev => {
                   log.warn( s"Deployment of '${deploymentAlias}' did not succeed!" )
