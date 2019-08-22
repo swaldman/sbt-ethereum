@@ -17,7 +17,7 @@ DB schema updates
 * Maybe destaticify "shoebox" so we could interactively open, choose whether to migrate, pay attention to sbt setting etc on startup
   - maybe provide read-only access to previous db versions when opening old repositories? but might be a bit hard to manage.
 
-Other
+Security
 
 * Make sure autoRelockSeconds <= 0 means that private keys are never ever cached
 
@@ -32,9 +32,17 @@ Other
   given sbt.TrapExit, no control over sysprops etc) or Java-9-modules (future version, when we require java 11), to ensure that the private
   storage is not accessible -- checked by the runtime and not susceptible to a reflectve setAccessible(...)
 
+Other
+
+* Exported signatures are coming out as Vector[Byte] wrather than ImmutableArraySeq.Byte (because our export functions add to Vectors...). Fix this.
+
+* EthSignature.fromXXX methods sometimes accept immutable.Seq[Byte] when they should accept the more tolerant Seq[Byte]
+
+* Test whether EthAddress.Source and similar require explicitly an immutable.Seq[Byte] variant (rather than just Seq[Byte])
+
 * Use findPrivateKeyFinder task rather than findPrivateKey to defer query to unlock as long as possible
 
-* Ensure drop and set commands print what they drop or replace
+* Ensure drop and set commands at least print what they drop or replace
 
 * Make it possible to specify an optional Chain ID in ethNodeChainIdUrlDefaultSet
 
@@ -137,8 +145,6 @@ Other
 * Should I define distinct sbt configs for Mainnet, Rinkeby, Ropsten, etc (so we might do "Rinkeby / ethTransactionInvoke ..." etc)?
 
 * ethTransactionMockRaw ?
-
-* try Space ~> Space.* ~> for parsers? (Is Space Parser[Char] or Parser[String]???)
 
 * Rationalize / modularize Mutables
 
