@@ -73,7 +73,7 @@ import com.mchange.sc.v2.jsonrpc.Exchanger.Factory.{Default => DefaultExchangerF
 
 // global implicits
 import scala.concurrent.ExecutionContext.Implicits.global
-import com.mchange.sc.v2.concurrent.Poller
+import com.mchange.sc.v2.concurrent.{Poller, Scheduler}
 
 object SbtEthereumPlugin extends AutoPlugin {
 
@@ -99,6 +99,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     final object UsingUnreliableBackstopNodeUrl extends OneTimeWarnerKey
   }
   sealed trait OneTimeWarnerKey
+
+  private val MainScheduler = Scheduler.Default
 
   // TODO: Make a consistent choice about whether overrides should be scoped to ethNodeChainIds, or whether
   //       they should be unscoped but reset upon any sort of update of ethNodeChainId
@@ -4361,7 +4363,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val caller = findAddressSenderTask(warn=true)(config).value.assert
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
+
+      // lazy so we don't prompt until we need it
+      lazy val privateKey = findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
 
       val ( ( contractAddress, function, args, abi, abiLookup ), mbWei ) = parser.parsed
       abiLookup.logGenericShadowWarning( log )
@@ -4532,9 +4536,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     if ( chainId == None ) log.warn("No (non-negative) Chain ID value provided. Will sign with no replay attack prevention!")
 
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-    val privateKey = findUpdateCachePrivateKey( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
 
-    displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, utxn, privateKey.address )
+    // lazy so we don't prompt until we need it
+    lazy val privateKey = findUpdateCachePrivateKey( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
+
+    displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, utxn, signer )
     val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
     if ( !check ) aborted( "User chose not to sign the transaction." )
 
@@ -4737,7 +4743,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findUpdateCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
+
+      // lazy so we don't prompt until we need it
+      lazy val privateKey = findUpdateCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -4763,7 +4771,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val (to, amount) = parser.parsed
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findUpdateCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
+
+      // lazy so we don't prompt until we need it
+      lazy val privateKey = findUpdateCachePrivateKey( s, log, is, chainId, from, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -4972,7 +4982,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val caller = findAddressSenderTask(warn=true)(config).value.assert
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
+
+      // lazy so we don't prompt until we need it
+      lazy val privateKey = findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -5062,7 +5074,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val caller = findAddressSenderTask(warn=true)(config).value.assert
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
       val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-      val privateKey = findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
+
+      // lazy so we don't prompt until we need it
+      lazy val privateKey = findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true )
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
@@ -5239,7 +5253,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // for now, we'll hard-code the stub context defaults 
     // we can make this stuff configurable someday if it seems useful
-    implicit val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, stub.Context.Default.Scheduler )
+    implicit val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, MainScheduler )
 
     new ens.Client( nameServiceAddress )
   }
@@ -6105,7 +6119,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val icontext = (config / xethInvokerContext).value
     val privateKeyFinder = findCurrentSenderPrivateKeyFinderTask( config ).value
 
-    val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, stub.Context.Default.Scheduler )
+    val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, MainScheduler )
     val signer = new CautiousSigner( log, is, priceFeed, currencyCode, description = None )( privateKeyFinder, abiOverridesForChain )
     val sender = stub.Sender.Basic( signer )
     (scontext, sender)
@@ -6441,31 +6455,58 @@ object SbtEthereumPlugin extends AutoPlugin {
     new CautiousSigner( log, is, priceFeed, currencyCode, description )( findCheckCachePrivateKeyFinder(state,log,is,chainId,address), abiOverridesForChain )
   }
 
-  private def checkForCachedPrivateKey( is : sbt.InteractionService, chainId : Int, address : EthAddress, userValidateIfCached : Boolean = true, resetOnFailure : Boolean = true) : Option[EthPrivateKey] = {
-    // caps for value matches rather than variable names
-    val ChainId = chainId
-    val Address = address
-    val now = System.currentTimeMillis
-    Mutables.CurrentAddress.get match {
-      case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { // if chainId and/or ethcfgAddressSender has changed, this will no longer match
-        val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
-        val ok = {
-          if ( userValidateIfCached ) {
-            is.readLine( s"Using sender address ${verboseAddress( chainId, address)}, which is already unlocked. OK? [y/n] ", false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
-          } else {
-            true
+  private val RelockMarginSeconds = 5
+
+  private val CheckRelockPrivateKeyTask : () => Unit = {
+    () => {
+      Mutables.CurrentAddress.synchronized {
+        val now = System.currentTimeMillis
+        Mutables.CurrentAddress.get match {
+          case UnlockedAddress( _, address, _, autoRelockTime ) if (now >= autoRelockTime ) => {
+            Mutables.CurrentAddress.set( NoAddress )
+            DEBUG.log( s"Relocked private key for address '${address}' (expired '${formatInstant(autoRelockTime)}', checked '${formatInstant(now)}')" )
           }
-        }
-        if ( ok ) {
-          Some( privateKey )
-        } else {
-          if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
-          aborted( s"Use of sender address ${verboseAddress( chainId, address)} vetoed by user." )
+          case _ => /* ignore */
         }
       }
-      case _ => { // if we don't match, we reset / forget the cached private key
-        if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
-        None
+    }
+  }
+
+  private def checkForCachedPrivateKey( is : sbt.InteractionService, chainId : Int, address : EthAddress, userValidateIfCached : Boolean = true, resetOnFailure : Boolean = true) : Option[EthPrivateKey] = {
+    Mutables.CurrentAddress.synchronized {
+      // caps for value matches rather than variable names
+      val ChainId = chainId
+      val Address = address
+      val now = System.currentTimeMillis
+      Mutables.CurrentAddress.get match {
+        // if chainId and/or ethcfgAddressSender has changed, this will no longer match
+        // note that we never deliver an expired, cached key even if we have one
+        case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { 
+          val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
+          val ok = {
+            if ( userValidateIfCached ) {
+              is.readLine( s"Using sender address ${verboseAddress( chainId, address)}, which is already unlocked. OK? [y/n] ", false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
+            } else {
+              true
+            }
+          }
+          if ( ok ) {
+            Some( privateKey )
+          } else {
+            if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
+            aborted( s"Use of sender address ${verboseAddress( chainId, address)} vetoed by user." )
+          }
+        }
+        case UnlockedAddress( _, _, _, autoRelockTime ) if (now >= autoRelockTime ) => {
+          // we always reset expired keys when we see them
+          Mutables.CurrentAddress.set( NoAddress )
+          None
+        }
+        case _ => {
+          // otherwise, we honor the resetOnFailure argument
+          if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
+          None
+        }
       }
     }
   }
@@ -6484,7 +6525,15 @@ object SbtEthereumPlugin extends AutoPlugin {
     userValidateIfCached : Boolean
   ) : EthPrivateKey = {
 
-    def recache( privateKey : EthPrivateKey ) = Mutables.CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
+    def recache( privateKey : EthPrivateKey ) = {
+      if ( autoRelockSeconds > 0 ) {
+        Mutables.CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
+        MainScheduler.schedule( CheckRelockPrivateKeyTask, (autoRelockSeconds + RelockMarginSeconds).seconds )
+      }
+      else {
+        Mutables.CurrentAddress.set( NoAddress )
+      }
+    }
 
     def updateCached : EthPrivateKey = {
       val privateKey = findNoCachePrivateKey( state, log, is, chainId, address )

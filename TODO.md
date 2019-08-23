@@ -21,7 +21,7 @@ Security
 
 * Make sure autoRelockSeconds <= 0 means that private keys are never ever cached
 
-* Do implement a scheduled task that clears any cached private keys promptly
+* Implement a scheduled task that clears any cached private keys promptly
 
 * Define a cache that holds multiple EthSigners according to autoRelockSeconds (use EthSigner rather than EthPrivateKey, see below).
 
@@ -40,15 +40,13 @@ Other
 
 * Test whether EthAddress.Source and similar require explicitly an immutable.Seq[Byte] variant (rather than just Seq[Byte])
 
-* Use findPrivateKeyFinder task rather than findPrivateKey to defer query to unlock as long as possible
-
 * Ensure drop and set commands at least print what they drop or replace
 
 * Make it possible to specify an optional Chain ID in ethNodeChainIdUrlDefaultSet
 
 * Utilities -- unixtime, denomination conversions, etc
 
-* Consuela EthSignature.fromXXX factory methods should test V for presence of Chain ID, abd build EthSignature.WithChainId when appropriate.
+* Consuela EthSignature.fromXXX factory methods should test V for presence of Chain ID, and build EthSignature.WithChainId when appropriate.
   (Now these methods would just fail if asked to decode the hex of a signature with Chain ID.
 
 * Consuela EthSignature should include public support for signatures of raw, unhashed bytes.
@@ -93,8 +91,6 @@ Other
 
 * Warn prominently when waiting for a transaction times out, rather than successfully getting receipt. (Observed problem in ensAuctionFinalize.)
 
-* Maybe remove stack trace from jsonrpc.Invoker$TransactionDisapprovedExceptions generated from the transaction approver function?
-
 * The parser for ethTransactionDeploy should handle aliases / ens-names etc when ctor args are addresses
 
 * better formatting of currency amounts (fewer decimals)
@@ -116,7 +112,6 @@ Other
 * xethSignMessage
 * Prettify output of log items in client transactions
 * Excise jsonrpc.Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
-* ens TTL, and Deed stuff
 
 * fetch (accessing events bia RPC getLogs(...)) in stub utilities is async by default. Consistent with rest of design, define asyncFetch(...) and fetch(...)
 * Move stub.ScalaParameterHelper somewhere more sensible
