@@ -19,10 +19,6 @@ DB schema updates
 
 Security
 
-* Make sure autoRelockSeconds <= 0 means that private keys are never ever cached
-
-* Implement a scheduled task that clears any cached private keys promptly
-
 * Define a cache that holds multiple EthSigners according to autoRelockSeconds (use EthSigner rather than EthPrivateKey, see below).
 
 * Make all sbt-ethereum EthSigners (including cached ones) hit the InteractionService, for either a credential or a confirmation, so
@@ -33,6 +29,8 @@ Security
   storage is not accessible -- checked by the runtime and not susceptible to a reflectve setAccessible(...)
 
 Other
+
+* Make a stub.Nonce constructor that accepts Option[BigInt] / BigInt (and maybe other integral types)
 
 * Exported signatures are coming out as Vector[Byte] wrather than ImmutableArraySeq.Byte (because our export functions add to Vectors...). Fix this.
 

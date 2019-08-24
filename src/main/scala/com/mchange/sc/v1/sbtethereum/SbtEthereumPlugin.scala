@@ -465,6 +465,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionNonceOverrideDrop  = taskKey[Unit]("Removes any nonce override that may have been set.")
     val ethTransactionNonceOverridePrint = taskKey[Unit]("Prints any nonce override that may have been set.")
     val ethTransactionNonceOverrideSet   = inputKey[Unit]("Sets a fixed nonce to be used in the transactions, rather than automatically choosing the next nonce. (Remains fixed and set until explicitly dropped.)")
+    val ethTransactionNonceOverrideValue = taskKey[Option[BigInt]]("Silently finds the currently set session override for the nonce, if one is set.")
 
     val ethTransactionSign = inputKey[EthTransaction.Signed]("Loads an unsigned transaction, signs it, then prints and optionally saves its hex for future execution.")
 
@@ -1037,6 +1038,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionNonceOverridePrint in Compile := { ethTransactionNonceOverridePrintTask( Compile ).value },
 
     ethTransactionNonceOverridePrint in Test := { ethTransactionNonceOverridePrintTask( Test ).value },
+
+    ethTransactionNonceOverrideValue in Compile := { ethTransactionNonceOverrideValueTask( Compile ).value },
+
+    ethTransactionNonceOverrideValue in Test := { ethTransactionNonceOverrideValueTask( Test ).value },
 
     ethTransactionPing in Compile := { ethTransactionPingTask( Compile ).evaluated },
 
@@ -4447,6 +4452,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ethTransactionNonceOverrideValueTask( config : Configuration ) : Initialize[Task[Option[BigInt]]] = Def.task {
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    Mutables.NonceOverrides.get( chainId )
+  }
 
   private def ethTransactionSignTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Signed]] = Def.inputTask {
     val s = state.value
