@@ -358,6 +358,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressAliasList           = taskKey [Unit]       ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
     val ethAddressAliasSet            = inputKey[Unit]       ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
     val ethAddressBalance             = inputKey[BigDecimal] ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
+    val ethAddressOverride            = inputKey[Unit]       ("Basically an alias to 'ethAddressSenderOverrideSet'.")
+    val ethAddressOverrideDrop        = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressOverrideSet         = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressOverridePrint       = taskKey [Unit]       ("Displays any sender override, if set.")
     val ethAddressSenderDefaultDrop   = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderDefaultSet    = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderDefaultPrint  = taskKey [Unit]       ("Displays any sender override, if set.")
@@ -734,6 +738,22 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethAddressBalance in Compile := { ethAddressBalanceTask( Compile ).evaluated },
 
     ethAddressBalance in Test := { ethAddressBalanceTask( Test ).evaluated },
+
+    ethAddressOverrideDrop in Compile := { ethAddressSenderOverrideDropTask( Compile ).value },
+
+    ethAddressOverrideDrop in Test := { ethAddressSenderOverrideDropTask( Test ).value },
+
+    ethAddressOverridePrint in Compile := { ethAddressSenderOverridePrintTask( Compile ).value },
+
+    ethAddressOverridePrint in Test := { ethAddressSenderOverridePrintTask( Test ).value },
+
+    ethAddressOverrideSet in Compile := { ethAddressSenderOverrideSetTask( Compile ).evaluated },
+
+    ethAddressOverrideSet in Test := { ethAddressSenderOverrideSetTask( Test ).evaluated },
+
+    ethAddressOverride in Compile := { ethAddressSenderOverrideSetTask( Compile ).evaluated },
+
+    ethAddressOverride in Test := { ethAddressSenderOverrideSetTask( Test ).evaluated },
 
     ethAddressSenderPrint in Compile := { ethAddressSenderPrintTask( Compile ).value },
 
