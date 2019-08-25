@@ -8,6 +8,8 @@ import com.mchange.sc.v1.consuela._
 
 import com.mchange.sc.v1.consuela.ethereum.{ethabi, jsonrpc, EthAddress,EthHash, EthSignature, EthTransaction}
 import com.mchange.sc.v1.consuela.ethereum.specification.{Denominations,Types}
+import Denominations.Denomination
+
 import Types.{ByteSeqExact32,Unsigned256}
 
 import com.mchange.sc.v3.failable._
@@ -43,6 +45,54 @@ object Formatting {
     s"${amountInUnit} ${formatUnit.toString.toLowerCase}"
   }
 
+  private def formatEthValue( ethValue : EthValue )                      : String = ethValue.formatted
+  def formatEthValue( valueInWei : BigInt, denomination : Denomination ) : String = formatEthValue( EthValue( valueInWei, denomination ) )
+
+  def formatInWei   ( valueInWei : BigInt ) : String = formatEthValue( valueInWei, Denominations.Wei    )
+  def formatInGWei  ( valueInWei : BigInt ) : String = formatEthValue( valueInWei, Denominations.GWei   )
+  def formatInSzabo ( valueInWei : BigInt ) : String = formatEthValue( valueInWei, Denominations.Szabo  )
+  def formatInFinney( valueInWei : BigInt ) : String = formatEthValue( valueInWei, Denominations.Finney )
+  def formatInEther ( valueInWei : BigInt ) : String = formatEthValue( valueInWei, Denominations.Ether  )
+
+  def formatGasPriceTweak( tweak : jsonrpc.Invoker.MarkupOrOverride ) : String = {
+    tweak match {
+      case jsonrpc.Invoker.Markup( fraction, cap, floor ) => {
+        val capFloorPart = {
+          ( cap, floor ) match {
+            case ( Some(c), Some(fl) ) => s"subject to a cap of ${formatInGWei(c)} and a floor of ${formatInGWei(fl)}"
+            case ( Some(c), None     ) => s"subject to a cap of ${formatInGWei(c)}"
+            case ( None,    Some(fl) ) => s"subject to a floor of ${formatInGWei(fl)}"
+            case ( None,    None     ) =>  "not subject to any cap or floor"
+          }
+        }
+        val markupPart = if (fraction != 0) s" plus a markup of ${fraction} (${fraction * 100}%)" else ""
+        s"default gas price${markupPart}, ${capFloorPart}" 
+      }
+      case jsonrpc.Invoker.Override( valueInWei ) => {
+        s"a fixed gas price of ${formatInGWei(valueInWei)}"
+      }
+    }
+  }
+
+  def formatGasLimitTweak( tweak : jsonrpc.Invoker.MarkupOrOverride ) : String = {
+    tweak match {
+      case jsonrpc.Invoker.Markup( fraction, cap, floor ) => {
+        val capFloorPart = {
+          ( cap, floor ) match {
+            case ( Some(c), Some(fl) ) => s"subject to a cap of ${c} gas and a floor of ${fl} gas"
+            case ( Some(c), None     ) => s"subject to a cap of ${c} gas"
+            case ( None,    Some(fl) ) => s"subject to a floor of ${fl} gas"
+            case ( None,    None     ) =>  "not subject to any cap or floor"
+          }
+        }
+        val markupPart = if (fraction != 0) s" plus a markup of ${fraction} (${fraction * 100}%)" else ""
+        s"estimated gas cost${markupPart}, ${capFloorPart}" 
+      }
+      case jsonrpc.Invoker.Override( gas ) => {
+        s"a fixed limit of ${gas} gas"
+      }
+    }
+  }
 
   def hexString( bytes : Seq[Byte]    )   = s"0x${bytes.hex}"
   def hexString( bytes : Array[Byte]  )   = s"0x${bytes.hex}"
@@ -161,7 +211,7 @@ object Formatting {
         println( s"""==>   To:    ${ticklessVerboseAddress(chainId, msg.to)}""" )
         println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
         println( s"""==>   Data:  ${if (msg.data.length > 0) hexString(msg.data) else "None"}""" )
-        println( s"""==>   Value: ${EthValue(msg.value.widen, Denominations.Ether).denominated} Ether""" )
+        println( s"""==>   Value: ${EthValue(msg.value.widen, Denominations.Ether).denominated} ether""" )
 
         txn match {
           case signed : EthTransaction.Signed => {

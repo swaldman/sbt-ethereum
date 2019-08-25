@@ -44,7 +44,8 @@ package object sbtethereum {
   final class CantReadInteractionException extends SbtEthereumException("Failed to read from sbt.InteractionService! (Perhaps an interactive task was run noninteractively.)")
 
   final case class EthValue( wei : BigInt, denomination : Denomination ) {
-    lazy val denominated : BigDecimal = denomination.fromWei( wei ) 
+    lazy val denominated : BigDecimal = denomination.fromWei( wei )
+    lazy val formatted   : String = s"${denominated} ${denomination.unitName}"
   }
 
   private [sbtethereum] val Zero256 = Unsigned256( 0 )

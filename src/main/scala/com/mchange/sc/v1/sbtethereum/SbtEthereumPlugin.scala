@@ -133,10 +133,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val AbiOverrides = new ChainIdMutable[immutable.Map[EthAddress,Abi]]
 
     // MT: internally thread-safe
-    val GasLimitOverrides = new ChainIdMutable[BigInt]
+    val GasLimitTweakOverrides = new ChainIdMutable[Invoker.MarkupOrOverride]
 
     // MT: internally thread-safe
-    val GasPriceOverrides = new ChainIdMutable[BigInt]
+    val GasPriceTweakOverrides = new ChainIdMutable[Invoker.MarkupOrOverride]
 
     // MT: internally thread-safe
     val NonceOverrides = new ChainIdMutable[BigInt]
@@ -157,8 +157,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       SenderOverrides.reset()
       NodeUrlOverrides.reset()
       AbiOverrides.reset()
-      GasLimitOverrides.reset()
-      GasPriceOverrides.reset()
+      GasLimitTweakOverrides.reset()
+      GasPriceTweakOverrides.reset()
       NonceOverrides.reset()
       OneTimeWarner.resetAll()
       LocalGanache synchronized {
@@ -1317,10 +1317,50 @@ object SbtEthereumPlugin extends AutoPlugin {
     Mutables.SenderOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The sender has been overridden to ${verboseAddress( chainId, ovr )}.") }
     Mutables.NodeUrlOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The node URL has been overridden to '${ovr}'.") }
     Mutables.AbiOverrides.get( chainId ).foreach { ovr => log.warn( s"""NOTE: ABI overrides are set for the following addresses on this chain: ${ovr.keys.map(hexString).mkString(", ")}""" ) }
-    Mutables.GasLimitOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas limit overrides remains set for this chain, ${ovr} wei." ) }
-    Mutables.GasPriceOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas price override remains set for this chain, ${ovr} wei." ) }
+    Mutables.GasLimitTweakOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas limit override remains set for this chain, ${formatGasLimitTweak( ovr )}." ) }
+    Mutables.GasPriceTweakOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas price override remains set for this chain, ${formatGasPriceTweak( ovr )}." ) }
     Mutables.NonceOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A nonce override remains set for this chain. Its value is ${ovr}." ) }
     xethTriggerDirtyAliasCache
+  }
+
+  private def findGasLimitTweak( warnOverridden : Boolean )( config : Configuration ) : Initialize[Task[Invoker.MarkupOrOverride]] = Def.task {
+    val log = streams.value.log
+
+    val rawChainId = findNodeChainIdTask(warn=true)(config).value
+
+    val gasLimitMarkup  = ethcfgGasLimitMarkup.value
+    val gasLimitCap     = ethcfgGasLimitCap.?.value
+    val gasLimitFloor   = ethcfgGasLimitFloor.?.value
+
+    Mutables.GasLimitTweakOverrides.get( rawChainId ) match {
+      case Some( overrideTweak ) => {
+        if ( warnOverridden ) log.warn( s"Gas limit override set, ${formatGasLimitTweak( overrideTweak )}")
+        overrideTweak
+      }
+      case None => {
+        Invoker.Markup( gasLimitMarkup, gasLimitCap, gasLimitFloor )
+      }
+    }
+  }
+
+  private def findGasPriceTweak( warnOverridden : Boolean )( config : Configuration ) : Initialize[Task[Invoker.MarkupOrOverride]] = Def.task {
+    val log = streams.value.log
+
+    val rawChainId = findNodeChainIdTask(warn=true)(config).value
+    
+    val gasPriceMarkup  = ethcfgGasPriceMarkup.value
+    val gasPriceCap     = ethcfgGasPriceCap.?.value
+    val gasPriceFloor   = ethcfgGasPriceFloor.?.value
+
+    Mutables.GasPriceTweakOverrides.get( rawChainId ) match {
+      case Some( overrideTweak ) => {
+        if ( warnOverridden) log.warn( s"Gas price override set, ${formatGasPriceTweak( overrideTweak )}" )
+        overrideTweak
+      }
+      case None => {
+        Invoker.Markup( gasPriceMarkup, gasPriceCap, gasPriceFloor )
+      }
+    }
   }
 
   private def findAddressSenderTask( warn : Boolean )( config : Configuration ) : Initialize[Task[Failable[EthAddress]]] = Def.task {
@@ -4331,31 +4371,79 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethTransactionGasLimitOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    Mutables.GasLimitOverrides.drop( chainId )
+    Mutables.GasLimitTweakOverrides.drop( chainId )
     log.info( s"No gas override is now set for chain with ID ${chainId}. Quantities of gas will be automatically computed." )
+  }
+
+  @tailrec
+  private def doReadMarkup( log : sbt.Logger, is : sbt.InteractionService, overObject : String, limitOrPrice : String ) : Float = {
+    val markupStr = assertReadLine( is, s"Enter a markup over ${overObject} (as a fraction, e.g. 0.2): ", mask = false ).trim
+    if ( markupStr.isEmpty ) {
+      val checkAbort = queryYN( is, "No markup provided. Abort? [y/n] " )
+      if ( checkAbort ) aborted( "User aborted the gas ${limitOrPrice} override." ) else doReadMarkup( log, is, overObject, limitOrPrice )
+    }
+    else {
+      val fmarkup = Failable( markupStr.toFloat )
+      fmarkup match {
+        case Succeeded( markup ) => {
+          if (markup < 0 || markup > 1) {
+            val confirmed = queryYN( is, s"A markup of ${markup} (${markup * 100}%) is unusual. Are you sure? [y/n] " )
+            if ( confirmed ) markup else doReadMarkup( log, is, overObject, limitOrPrice )
+          }
+          else {
+            markup
+          }
+        }
+        case Failed( _ : NumberFormatException ) => {
+          log.warn( s"'${markupStr}' could not be interpreted as a floating point number." )
+          doReadMarkup( log, is, overObject, limitOrPrice )
+        }
+        case oops @ Failed( _ ) => {
+          oops.vomit
+        }
+      }
+    }
   }
 
   private def ethTransactionGasLimitOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
+    val is  = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val amount = bigIntParser("<gas-limit-override>").parsed
-    Mutables.GasLimitOverrides.set( chainId, amount )
-    log.info( s"Gas override set to ${amount} on chain with ID ${chainId}." )
+    val mbAmount = bigIntParser("[optional-gas-limit-override]").?.parsed
+    val ovr = {
+      mbAmount match {
+        case Some( amount ) => Invoker.Override( amount )
+        case None           => {
+          val mbFixed = assertReadOptionalBigInt( log, is, "Enter a fixed gas limit override, or just hit [Enter] to specify a dynamic markup with optional cap and floor: ", mask = false )
+          mbFixed match {
+            case Some( fixed ) => Invoker.Override( fixed )
+            case None          => {
+              val markup = doReadMarkup(log, is, "estimated gas costs", "limit")
+              val cap = assertReadOptionalBigInt( log, is, "Enter a cap for the acceptable gas limit (or [Enter] for no cap): ", mask = false )
+              val floor = assertReadOptionalBigInt( log, is, "Enter a floor for the acceptable gas limit (or [Enter] for no floor): ", mask = false )
+              Invoker.Markup( fraction = markup, cap = cap, floor = floor )
+            }
+          }
+        }
+      }
+    }
+    Mutables.GasLimitTweakOverrides.set( chainId, ovr )
+    log.info( s"Gas limit override set on chain with ID ${chainId}, ${formatGasLimitTweak( ovr )}." )
   }
 
   private def ethTransactionGasLimitOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    Mutables.GasLimitOverrides.get( chainId ) match {
-      case Some( value ) => log.info( s"A gas override is set, with value ${value}, for chain with ID ${chainId}." )
-      case None          => log.info( s"No gas override is currently set for chain with ID ${chainId}." )
+    Mutables.GasLimitTweakOverrides.get( chainId ) match {
+      case Some( value ) => log.info( s"A gas limit override is set for chain with ID ${chainId}, ${formatGasLimitTweak( value )}." )
+      case None          => log.info( s"No gas limit override is currently set for chain with ID ${chainId}." )
     }
   }
 
   private def ethTransactionGasPriceOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    Mutables.GasPriceOverrides.drop( chainId )
+    Mutables.GasPriceTweakOverrides.drop( chainId )
     log.info( s"No gas price override is now set for chain with ID ${chainId}." )
     log.info(  "Gas price will be automatically marked-up from your ethereum node's current default value." )
   }
@@ -4363,18 +4451,36 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethTransactionGasPriceOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    Mutables.GasPriceOverrides.get( chainId ) match {
-      case Some( value ) => log.info( s"A gas price override is set, with value ${value}, for chain with ID ${chainId}." )
+    Mutables.GasPriceTweakOverrides.get( chainId ) match {
+      case Some( value ) => log.info( s"A gas price override is set for chain with ID ${chainId}, ${formatGasPriceTweak( value )}." )
       case None          => log.info( s"No gas price override is currently set for chain with ID ${chainId}." )
     }
   }
 
   private def ethTransactionGasPriceOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
+    val is  = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val amount = valueInWeiParser("<gas-price-override>").parsed
-    Mutables.GasPriceOverrides.set( chainId, amount )
-    log.info( s"Gas price override set to ${amount} for chain with ID ${chainId}." )
+    val mbAmount = valueInWeiParser("[optional-gas-price-override-including-unit]").?.parsed
+    val ovr = {
+      mbAmount match {
+        case Some( amount ) => Invoker.Override( amount )
+        case None           => {
+          val mbFixed = assertReadOptionalAmountInWei( log, is, "Enter a fixed gas price override as amount and unit (e.g. '5 gwei'), or just hit [Enter] to specify a dynamic markup with optional cap and floor: ", mask = false )
+          mbFixed match {
+            case Some( fixed ) => Invoker.Override( fixed )
+            case None          => {
+              val markup = doReadMarkup(log, is, "default gas price", "price")
+              val cap = assertReadOptionalAmountInWei( log, is, "Enter a cap (e.g. '10 gwei') for the acceptable gas price (or [Enter] for no cap): ", mask = false )
+              val floor = assertReadOptionalAmountInWei( log, is, "Enter a floor (e.g. '1 gwei') for the acceptable gas price (or [Enter] for no floor): ", mask = false )
+              Invoker.Markup( fraction = markup, cap = cap, floor = floor )
+            }
+          }
+        }
+      }
+    }
+    Mutables.GasPriceTweakOverrides.set( chainId, ovr )
+    log.info( s"Gas price override set on chain with ID ${chainId}, ${formatGasPriceTweak( ovr )}." )
   }
 
   private def ethTransactionInvokeTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
@@ -5356,17 +5462,9 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def xethGasPriceTask( config : Configuration ) : Initialize[Task[BigInt]] = Def.task {
-    val log        = streams.value.log
-    val chainId    = findNodeChainIdTask(warn=true)(config).value
-    val jsonRpcUrl = findNodeUrlTask(warn=true)(config).value
-
-    val markup          = ethcfgGasPriceMarkup.value
+    val gasPriceTweak = findGasPriceTweak( warnOverridden = true )( config ).value
     val defaultGasPrice = (xethDefaultGasPrice in config).value
-
-    Mutables.GasPriceOverrides.get( chainId ) match {
-      case Some( gasPriceOverride ) => gasPriceOverride
-      case None                     => rounded( BigDecimal(defaultGasPrice) * BigDecimal(1 + markup) )
-    }
+    gasPriceTweak.compute( defaultGasPrice )
   }
 
   private def xethGenKeyPairTask : Initialize[Task[EthKeyPair]] = Def.task {
@@ -5514,23 +5612,18 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val log = streams.value.log
 
-    val jsonRpcUrl      = findNodeUrlTask(warn=true)(config).value
+    val jsonRpcUrl    = findNodeUrlTask(warn=true)(config).value
 
-    val pollPeriod      = ethcfgTransactionReceiptPollPeriod.value
-    val timeout         = ethcfgTransactionReceiptTimeout.value
+    val pollPeriod    = ethcfgTransactionReceiptPollPeriod.value
+    val timeout       = ethcfgTransactionReceiptTimeout.value
 
-    val httpTimeout     = xethcfgAsyncOperationTimeout.value
+    val httpTimeout   = xethcfgAsyncOperationTimeout.value
 
-    val gasLimitMarkup  = ethcfgGasLimitMarkup.value
-    val gasLimitCap     = ethcfgGasLimitCap.?.value
-    val gasLimitFloor   = ethcfgGasLimitFloor.?.value
+    val gasLimitTweak = findGasLimitTweak( warnOverridden = true )( config ).value
+    val gasPriceTweak = findGasPriceTweak( warnOverridden = true )( config ).value
 
-    val gasPriceMarkup  = ethcfgGasPriceMarkup.value
-    val gasPriceCap     = ethcfgGasPriceCap.?.value
-    val gasPriceFloor   = ethcfgGasPriceFloor.?.value
-
-    val is              = interactionService.value
-    val currencyCode    = ethcfgBaseCurrencyCode.value
+    val is            = interactionService.value
+    val currencyCode  = ethcfgBaseCurrencyCode.value
 
     val useReplayAttackProtection = ethcfgUseReplayAttackProtection.value
 
@@ -5538,29 +5631,6 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val eip155ChainId = {
       if ( isEphemeralChain( rawChainId ) || !useReplayAttackProtection ) None else Some( EthChainId( rawChainId ) )
-    }
-
-    val gasLimitTweak = {
-      Mutables.GasLimitOverrides.get( rawChainId ) match {
-        case Some( overrideValue ) => {
-          log.warn( s"Gas limit override set: ${overrideValue}")
-          Invoker.Override( overrideValue )
-        }
-        case None => {
-          Invoker.Markup( gasLimitMarkup, gasLimitCap, gasLimitFloor )
-        }
-      }
-    }
-    val gasPriceTweak = {
-      Mutables.GasPriceOverrides.get( rawChainId ) match {
-        case Some( overrideValue ) => {
-          log.warn( s"Gas price override set: ${overrideValue}")
-          Invoker.Override( overrideValue )
-        }
-        case None => {
-          Invoker.Markup( gasPriceMarkup, gasPriceCap, gasPriceFloor )
-        }
-      }
     }
 
     val transactionLogger = findTransactionLoggerTask( config ).value

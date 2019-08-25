@@ -10,6 +10,8 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress,EthTransaction}
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 
+import com.mchange.sc.v3.failable._
+
 import Parsers._
 
 import scala.annotation.tailrec
@@ -126,6 +128,57 @@ object InteractiveQuery {
   private [sbtethereum]
   def assertReadLine( is : sbt.InteractionService, prompt : String, mask : Boolean ) : String = {
     is.readLine( prompt, mask ).getOrElse( throwCantReadInteraction )
+  }
+
+  private val AmountInWeiParser = valueInWeiParser("<amount>")
+
+  private [sbtethereum]
+  def assertReadOptionalAmountInWei( log : sbt.Logger, is : sbt.InteractionService, prompt : String, mask : Boolean ) : Option[BigInt] = {
+
+    @tailrec
+    def doRead : Option[BigInt] = {
+      val check = assertReadLine( is, prompt, mask ).trim
+      if ( check.nonEmpty ) {
+        sbt.complete.Parser.parse( check, AmountInWeiParser ) match {
+          case Left( oops ) => {
+            log.error( s"Parse failure: ${oops}" )
+            println("""Please enter an integral amount, then a space, then a unit. For example, "5 gwei" or "10 ether".""")
+            println("""Supported units: wei, gwei, szabo, finney, ether""");
+            doRead
+          }
+          case Right( amountInWei ) => Some( amountInWei )
+        }
+      }
+      else {
+        None
+      }
+    }
+
+    doRead
+  }
+
+  private [sbtethereum]
+  def assertReadOptionalBigInt( log : sbt.Logger, is : sbt.InteractionService, prompt : String, mask : Boolean ) : Option[BigInt] = {
+
+    @tailrec
+    def doRead : Option[BigInt] = {
+      val check = assertReadLine( is, prompt, mask ).trim
+      if ( check.nonEmpty ) {
+        val fbi = Failable( BigInt( check ) )
+        if( fbi.isSucceeded ) {
+          Some( fbi.assert )
+        }
+        else {
+          log.warn( s"Invalid integral value '${check}'. Try again." )
+          doRead
+        }
+      }
+      else {
+        None
+      }
+    }
+
+    doRead
   }
 
   private [sbtethereum]
