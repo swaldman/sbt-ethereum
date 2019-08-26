@@ -66,15 +66,18 @@ Displays on the console any currently set gas limit override,
 
 **Usage:**
 ```
-> ethTransactionGasLimitOverrideSet <gas-limit-override>
+> ethTransactionGasLimitOverrideSet [optional-gas-limit-override]
 ```
 
 Sets the _gas limit_ for transactions in this session, overriding _sbt-ethereum_'s default automatic computation based on @ref:[`ethcfgGasPriceMarkup`](../../../settings/index.md#ethcfggaspricemarkup),
 @ref:[`ethcfgGasPriceCap`](../../../settings/index.md#ethcfggaspricecap), and @ref:[`ethcfgGasPriceCap`](../../../settings/index.md#ethcfggaspricefloor).
 
-_**Note: Typically, you will want an override to control one particular transaction, not multiple transactions in a session. Be sure to @ref:[drop](#ethtransactiongaslimitoverridedrop) the override when you are done with it. sbt-ethereum warns you when a gas limit override will be used.**_
+If no argument is supplied, the command will interactively guide you through setting an override, which may be a fixed value as above, or alternatively
+may be described as a markup over the default computed gas limit, subject to an optional cap and floor.
 
-**Example:**
+_**Note: Often you will want an override to control one particular transaction, not multiple transactions in a session. Be sure to @ref:[drop](#ethtransactiongaslimitoverridedrop) the override when you are done with it. sbt-ethereum warns you when a gas limit override will be used.**_
+
+**Example (simple override):**
 ```
 > ethTransactionGasLimitOverrideSet 21000
 [info] Gas override set to 21000 on chain with ID 1.
@@ -123,6 +126,16 @@ A transaction with hash '0xc68b15b48c58bb49fa6cb08866d5e83a0540b41dd4f8587f9d1a3
 [success] Total time: 53 s, completed Apr 3, 2019 10:06:07 PM
 ```
 
+**Example (interactive):**
+```
+> ethTransactionGasLimitOverrideSet
+Enter a fixed gas limit override, or hit [Enter] to specify a dynamic markup with optional cap and floor: 
+Enter a markup over estimated gas costs (as a fraction, e.g. 0.2): 0.3
+Enter a cap for the acceptable gas limit (or [Enter] for no cap): 30000
+Enter a floor for the acceptable gas limit (or [Enter] for no floor): 15000
+[info] Gas limit override set on chain with ID 1, estimated gas cost plus a markup of 0.30 (30.00%), subject to a cap of 30000 gas and a floor of 15000 gas.
+[success] Total time: 13 s, completed Aug 25, 2019 9:08:35 PM
+```
 @@@
 
 ### ethTransactionGasPriceOverride
@@ -193,11 +206,14 @@ Displays on the console any currently set gas price override,
 
 **Usage:**
 ```
-> ethTransactionGasPriceOverrideSet <gas-price-override-amount> <gas-price-override-unit>
+> ethTransactionGasPriceOverrideSet [optional-gas-price-override-amount] [optional-gas-price-override-unit]
 ```
 
 Sets the _gas price_ for transactions in this session, overriding _sbt-ethereum_'s default automatic computation based on @ref:[`ethcfgGasPriceMarkup`](../../../settings/index.md#ethcfggaspricemarkup),
 @ref:[`ethcfgGasPriceCap`](../../../settings/index.md#ethcfggaspricecap), and @ref:[`ethcfgGasPriceCap`](../../../settings/index.md#ethcfggaspricefloor).
+
+If no argument is supplied, the command will interactively guide you through setting an override, which may be a fixed amount as above, or alternatively
+may be described as a markup over the default computed gas price, subject to an optional cap and floor.
 
 _**Note: Typically, you will want an override to control one particular transaction, not multiple transactions in a session. Be sure to @ref:[drop](#ethtransactiongaspriceoverridedrop) the override when you are done with it. sbt-ethereum warns you when a gas price override will be used.**_
 
@@ -248,6 +264,17 @@ A transaction with hash '0xcd30b091ca5a6b31210aa2242db370518a40e05e04d08f6d360e8
 [info]        Events:              None
 [info] Ether sent.
 [success] Total time: 37 s, completed Apr 3, 2019 10:43:25 PM
+```
+
+**Example (interactive):**
+```
+> ethTransactionGasPriceOverrideSet
+Enter a fixed gas price override as amount and unit (e.g. '5 gwei'), or hit [Enter] to specify a dynamic markup with optional cap and floor: 
+Enter a markup over default gas price (as a fraction, e.g. 0.2): 0.10
+Enter a cap (e.g. '10 gwei') for the acceptable gas price (or [Enter] for no cap): 20 gwei
+Enter a floor (e.g. '1 gwei') for the acceptable gas price (or [Enter] for no floor): 3 gwei
+[info] Gas price override set on chain with ID 1, default gas price plus a markup of 0.10 (10.00%), subject to a cap of 20 gwei and a floor of 3 gwei.
+[success] Total time: 31 s, completed Aug 25, 2019 9:14:31 PM
 ```
 
 @@@

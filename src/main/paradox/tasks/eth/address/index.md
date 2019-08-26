@@ -53,6 +53,54 @@ This corresponds to approximately 195.21 USD (at a rate of 156.135 USD per ETH, 
 
 @@@
 
+## ethAddressOverride
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethAddressOverride <address-as-hex-or-ens-or-alias>
+```
+This is just an alias to @ref:[`ethAddressSenderOverrideSet`](sender.md#ethaddresssenderoverrideset). Please see that command for more information.
+
+@@@
+
+## ethAddressOverrideDrop
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethAddressOverrideDrop
+```
+This is just an alias to @ref:[`ethAddressSenderOverrideDrop`](sender.md#ethaddresssenderoverridedrop). Please see that command for more information.
+
+@@@
+
+## ethAddressOverridePrint
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethAddressOverridePrint
+```
+This is just an alias to @ref:[`ethAddressSenderOverridePrint`](sender.md#ethaddresssenderoverrideprint). Please see that command for more information.
+
+@@@
+
+## ethAddressOverrideSet
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethAddressOverrideSet <address-as-hex-or-ens-or-alias>
+```
+This is just an alias to @ref:[`ethAddressSenderOverrideSet`](sender.md#ethaddresssenderoverrideset). Please see that command for more information.
+
+@@@
+
 ### ethAddressSender*
 
 Manage the current sender associated with your sbt-ethereum sessions. See the @ref:[sender commands page](sender.md), or choose a command below:

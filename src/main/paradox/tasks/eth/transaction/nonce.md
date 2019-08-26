@@ -126,3 +126,12 @@ A transaction with hash '0x6343bab3d8fd466af5d5bf43e547cdd4057835d6f4a8071a73bfa
 ```
 
 @@@
+
+### ethTransactionNonceOverrideValue
+
+@@@ div { .keydesc }
+
+Silently returns (as `Option[BigInt]`) the current session's nonce override, if any.
+Intended for use by CLIs and plugins.
+
+@@@
