@@ -4414,7 +4414,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       mbAmount match {
         case Some( amount ) => Invoker.Override( amount )
         case None           => {
-          val mbFixed = assertReadOptionalBigInt( log, is, "Enter a fixed gas limit override, or just hit [Enter] to specify a dynamic markup with optional cap and floor: ", mask = false )
+          val mbFixed = assertReadOptionalBigInt( log, is, "Enter a fixed gas limit override, or hit [Enter] to specify a dynamic markup with optional cap and floor: ", mask = false )
           mbFixed match {
             case Some( fixed ) => Invoker.Override( fixed )
             case None          => {
@@ -4466,7 +4466,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       mbAmount match {
         case Some( amount ) => Invoker.Override( amount )
         case None           => {
-          val mbFixed = assertReadOptionalAmountInWei( log, is, "Enter a fixed gas price override as amount and unit (e.g. '5 gwei'), or just hit [Enter] to specify a dynamic markup with optional cap and floor: ", mask = false )
+          val mbFixed = assertReadOptionalAmountInWei( log, is, "Enter a fixed gas price override as amount and unit (e.g. '5 gwei'), or hit [Enter] to specify a dynamic markup with optional cap and floor: ", mask = false )
           mbFixed match {
             case Some( fixed ) => Invoker.Override( fixed )
             case None          => {

@@ -54,7 +54,10 @@ object Formatting {
   def formatInFinney( valueInWei : BigInt ) : String = formatEthValue( valueInWei, Denominations.Finney )
   def formatInEther ( valueInWei : BigInt ) : String = formatEthValue( valueInWei, Denominations.Ether  )
 
+  val MarkupFormatPattern = "#,##0.00"
+
   def formatGasPriceTweak( tweak : jsonrpc.Invoker.MarkupOrOverride ) : String = {
+    val nf = new java.text.DecimalFormat(MarkupFormatPattern)
     tweak match {
       case jsonrpc.Invoker.Markup( fraction, cap, floor ) => {
         val capFloorPart = {
@@ -65,7 +68,7 @@ object Formatting {
             case ( None,    None     ) =>  "not subject to any cap or floor"
           }
         }
-        val markupPart = if (fraction != 0) s" plus a markup of ${fraction} (${fraction * 100}%)" else ""
+        val markupPart = if (fraction != 0) s" plus a markup of ${nf.format(fraction)} (${nf.format(fraction * 100)}%)" else ""
         s"default gas price${markupPart}, ${capFloorPart}" 
       }
       case jsonrpc.Invoker.Override( valueInWei ) => {
@@ -75,6 +78,7 @@ object Formatting {
   }
 
   def formatGasLimitTweak( tweak : jsonrpc.Invoker.MarkupOrOverride ) : String = {
+    val nf = new java.text.DecimalFormat(MarkupFormatPattern)
     tweak match {
       case jsonrpc.Invoker.Markup( fraction, cap, floor ) => {
         val capFloorPart = {
@@ -85,7 +89,7 @@ object Formatting {
             case ( None,    None     ) =>  "not subject to any cap or floor"
           }
         }
-        val markupPart = if (fraction != 0) s" plus a markup of ${fraction} (${fraction * 100}%)" else ""
+        val markupPart = if (fraction != 0) s" plus a markup of ${nf.format(fraction)} (${nf.format(fraction * 100)}%)" else ""
         s"estimated gas cost${markupPart}, ${capFloorPart}" 
       }
       case jsonrpc.Invoker.Override( gas ) => {
