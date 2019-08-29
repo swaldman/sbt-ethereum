@@ -404,7 +404,7 @@ object Parsers {
   val NotSQuoteClass = charClass({ c: Char => (c != SQuoteChar) }, "non-single-quote character")
   val NotAnyQuoteSpaceClass = charClass({ c: Char => (c != SQuoteChar && c!= DQuoteChar && !c.isWhitespace) }, "not any-quote-initiating not whitespace character")
 
-  val SingleQuoteStringVerbatim = SQuoteChar ~> NotSQuoteClass.* <~ SQuoteChar
+  val SingleQuoteStringVerbatim = SQuoteChar ~> NotSQuoteClass.*.map( _.mkString ) <~ SQuoteChar
 
   val NotAnyQuoted = (NotAnyQuoteSpaceClass ~ OptNotSpace) map { case (c, s) => c.toString + s }
 
