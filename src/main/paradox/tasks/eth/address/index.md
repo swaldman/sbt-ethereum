@@ -53,7 +53,7 @@ This corresponds to approximately 195.21 USD (at a rate of 156.135 USD per ETH, 
 
 @@@
 
-## ethAddressOverride
+### ethAddressOverride
 
 @@@ div { .keydesc }
 
@@ -65,7 +65,7 @@ This is just an alias to @ref:[`ethAddressSenderOverrideSet`](sender.md#ethaddre
 
 @@@
 
-## ethAddressOverrideDrop
+### ethAddressOverrideDrop
 
 @@@ div { .keydesc }
 
@@ -77,7 +77,7 @@ This is just an alias to @ref:[`ethAddressSenderOverrideDrop`](sender.md#ethaddr
 
 @@@
 
-## ethAddressOverridePrint
+### ethAddressOverridePrint
 
 @@@ div { .keydesc }
 
@@ -89,7 +89,7 @@ This is just an alias to @ref:[`ethAddressSenderOverridePrint`](sender.md#ethadd
 
 @@@
 
-## ethAddressOverrideSet
+### ethAddressOverrideSet
 
 @@@ div { .keydesc }
 

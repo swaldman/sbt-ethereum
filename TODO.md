@@ -30,6 +30,12 @@ Security
 
 Other
 
+* Update default solidity version.
+
+* Redefine TransactionApprover in terms of (senderAddress, EthTransaction.Unsigned) rather than EthTransaction.Signed. Approve before signing.
+
+* Define `ethNodeChainId` for CLIs to get Chain ID. Expose `verboseAddress` to CLIs.
+
 * Make a stub.Nonce constructor that accepts Option[BigInt] / BigInt (and maybe other integral types)
 
 * Exported signatures are coming out as Vector[Byte] wrather than ImmutableArraySeq.Byte (because our export functions add to Vectors...). Fix this.
@@ -91,8 +97,6 @@ Other
 
 * The parser for ethTransactionDeploy should handle aliases / ens-names etc when ctor args are addresses
 
-* better formatting of currency amounts (fewer decimals)
-
 * ethHelp
 
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
@@ -108,7 +112,6 @@ Other
 * ethContractCompilationsAlias*
 * xethEstimateGas
 * xethSignMessage
-* Prettify output of log items in client transactions
 * Excise jsonrpc.Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
 
 * fetch (accessing events bia RPC getLogs(...)) in stub utilities is async by default. Consistent with rest of design, define asyncFetch(...) and fetch(...)
