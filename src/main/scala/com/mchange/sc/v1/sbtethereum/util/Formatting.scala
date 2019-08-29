@@ -54,7 +54,7 @@ object Formatting {
   def formatInFinney( valueInWei : BigInt ) : String = formatEthValue( valueInWei, Denominations.Finney )
   def formatInEther ( valueInWei : BigInt ) : String = formatEthValue( valueInWei, Denominations.Ether  )
 
-  val MarkupFormatPattern = "#,##0.00"
+  private val MarkupFormatPattern = "#,##0.00"
 
   def formatGasPriceTweak( tweak : jsonrpc.Invoker.MarkupOrOverride ) : String = {
     val nf = new java.text.DecimalFormat(MarkupFormatPattern)
@@ -181,6 +181,8 @@ object Formatting {
     _displayTransactionRequest( "==> T R A N S A C T I O N   S U B M I S S I O N   R E Q U E S T" )(log, chainId, chainAbiOverrides, priceFeed, currencyCode, txn, proposedSender, signerDescription )
   }
 
+  private val PricePattern = "#,##0.00"
+
   private def _displayTransactionRequest( titleLine : String )(
     log               : sbt.Logger,
     chainId           : Int,
@@ -193,6 +195,8 @@ object Formatting {
   ) : Unit = {
 
     // val abiOverrides = abiOverridesForChain( chainId )
+
+    val pf = new java.text.DecimalFormat(MarkupFormatPattern)
 
     val gasPrice   = txn.gasPrice.widen
     val gasLimit   = txn.gasLimit.widen
@@ -290,7 +294,7 @@ object Formatting {
       sb.append( s"==> $$$$$$ You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether.${LineSep}" )
       mbEthPrice match {
         case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-          sb.append( s"==> $$$$$$ This is worth ${ gasCostInEth * ethPrice } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
+          sb.append( s"==> $$$$$$ This is worth ${ pf.format(gasCostInEth * ethPrice) } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
         }
         case None => {
           sb.append( s"==> $$$$$$ (No ${currencyCode} value could be determined for ETH on chain with ID ${chainId} from ${priceFeed.source})." )
@@ -306,7 +310,7 @@ object Formatting {
       print( s"==> $$$$$$ You would also send ${xferInEth} ether" )
       mbEthPrice match {
         case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-          println( s" (${ xferInEth * ethPrice } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${maxTotalCostInEth * ethPrice} ${currencyCode})." )
+          println( s" (${ pf.format(xferInEth * ethPrice) } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${ pf.format(maxTotalCostInEth * ethPrice) } ${currencyCode})." )
         }
         case None => {
           println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
