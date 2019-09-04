@@ -36,13 +36,9 @@ Other
 
 * Fix tab-completion of a space in ethTransactionView/Mock/Invoke
 
-* Fix broken stub generation for solidity array / scala Seq return values
-
 * More informative message about how to deal with timeouts.
 
 * Update default solidity version.
-
-* Redefine TransactionApprover in terms of (senderAddress, EthTransaction.Unsigned) rather than EthTransaction.Signed. Approve before signing.
 
 * Define `ethNodeChainId` for CLIs to get Chain ID. Expose `verboseAddress` to CLIs.
 
