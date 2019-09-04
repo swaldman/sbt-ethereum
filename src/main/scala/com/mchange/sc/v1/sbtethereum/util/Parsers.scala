@@ -440,7 +440,7 @@ object Parsers {
 
   // XXX: We add case-insensitive flags only to "naive" regexs when defaultToCaseInsensitive is true.
   //      The intent is that users who explicitly set flags should have them unmolested. But we don't
-  //      actually test for setting flags. We test for th presence of "(?", which would include flag-setting,
+  //      actually test for setting flags. We test for the presence of "(?", which would include flag-setting,
   //      but also non-capturing groups and other constructs.
   //
   //      We should clean this up, and carefully check for the setting of flags to decide whether or not 

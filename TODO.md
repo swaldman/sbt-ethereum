@@ -30,6 +30,16 @@ Security
 
 Other
 
+* ethAddressPrint
+
+* Modify 'ethAddressSenderDrop' message to 1) reveal the sender dropped; 2) provide better information about the current sender
+
+* Fix tab-completion of a space in ethTransactionView/Mock/Invoke
+
+* Fix broken stub generation for solidity array / scala Seq return values
+
+* More informative message about how to deal with timeouts.
+
 * Update default solidity version.
 
 * Redefine TransactionApprover in terms of (senderAddress, EthTransaction.Unsigned) rather than EthTransaction.Signed. Approve before signing.

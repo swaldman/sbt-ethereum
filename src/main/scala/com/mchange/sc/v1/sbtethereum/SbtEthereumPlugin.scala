@@ -4281,7 +4281,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             _       <- Future.successful( log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." ) )
             receipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
           } yield {
-            log.info( s"Contract '${deploymentAlias}' deployed in transaction '0x${txnHash.hex}'." )
+            log.info( s"Contract '${deploymentAlias}' deployed in transaction with hash '0x${txnHash.hex}'." )
             receipt.contractAddress.foreach { ca =>
               log.info( s"Contract '${deploymentAlias}' has been assigned address '0x${ca.hex}'." )
 
@@ -4510,7 +4510,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val f_out = Invoker.transaction.sendMessage( privateKey, contractAddress, Unsigned256( amount ), callData, nonceOverride ) flatMap { txnHash =>
-        log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei ${mbWithNonceClause(nonceOverride)}to address '0x${contractAddress.hex}' in transaction '0x${txnHash.hex}'.""" )
+        log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei ${mbWithNonceClause(nonceOverride)}to address '0x${contractAddress.hex}' in transaction with hash '0x${txnHash.hex}'.""" )
         log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
         Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
       }
@@ -4842,7 +4842,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val (_, result) = extract.runInputTask(ethTransactionEtherSend in config, sendArgs, s)
 
         log.info( "Ping succeeded!" )
-        log.info( s"Sent 0 ether from '${from.hex}' to ${ recipientStr } in transaction '0x${result.transactionHash.hex}'" )
+        log.info( s"Sent 0 ether from '${from.hex}' to ${ recipientStr } in transaction with hash '0x${result.transactionHash.hex}'" )
         Some( result )
       }
       catch {
@@ -4885,7 +4885,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val f_out = Invoker.transaction.sendMessage( privateKey, to, Unsigned256( amount ), data, nonceOverride ) flatMap { txnHash =>
-        log.info( s"""Sending data '0x${data.hex}' with ${amount} wei to address '0x${to.hex}' ${mbWithNonceClause(nonceOverride)}in transaction '0x${txnHash.hex}'.""" )
+        log.info( s"""Sending data '0x${data.hex}' with ${amount} wei to address '0x${to.hex}' ${mbWithNonceClause(nonceOverride)}in transaction with hash '0x${txnHash.hex}'.""" )
         Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, _ ) )
       }
       val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
@@ -4913,7 +4913,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val f_out = Invoker.transaction.sendWei( privateKey, to, Unsigned256( amount ), nonceOverride ) flatMap { txnHash =>
-        log.info( s"Sending ${amount} wei to address '0x${to.hex}' ${mbWithNonceClause(nonceOverride)}in transaction '0x${txnHash.hex}'." )
+        log.info( s"Sending ${amount} wei to address '0x${to.hex}' ${mbWithNonceClause(nonceOverride)}in transaction with hash '0x${txnHash.hex}'." )
         log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
         Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None, txnHash, invokerContext.pollTimeout, _ ) )
       }
@@ -6683,7 +6683,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     new CautiousSigner( log, is, priceFeed, currencyCode, description )( findUpdateCachePrivateKeyFinder(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
   }
 
-  private def transactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
+  private def transactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
     if ( isEphemeralChain( chainId ) ) {
       ephemeralTransactionApprover( log, chainId, is, currencyCode )( ec )
     }
@@ -6692,24 +6692,18 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def ephemeralTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
-    txn => Future.successful( () )
+  private def ephemeralTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
+    inputs => Future.successful( () )
   }
 
-  private def normalTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : EthTransaction.Signed => Future[Unit] = {
+  private def normalTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
 
-    txn => Future {
+    inputs => Future {
 
-      displayTransactionSubmissionRequest( log, chainId, currencyCode, txn, txn.sender )
+      displayTransactionSubmissionRequest( log, chainId, currencyCode, inputs.utxn, inputs.signerAddress )
 
       val check = queryYN( is, "Would you like to submit this transaction? [y/n] " )
-      if ( check ) {
-        val txnHash = hashRLP[EthTransaction]( txn )
-        println( s"A transaction with hash '${hexString(txnHash)}' will be submitted. Please wait." )
-      }
-      else {
-        Invoker.throwDisapproved( txn, keepStackTrace = false )
-      }
+      if ( !check ) Invoker.throwDisapproved( inputs, keepStackTrace = false )
     }( ec )
   }
 
