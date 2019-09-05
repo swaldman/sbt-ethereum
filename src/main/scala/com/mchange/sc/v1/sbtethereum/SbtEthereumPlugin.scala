@@ -6218,8 +6218,23 @@ object SbtEthereumPlugin extends AutoPlugin {
     val icontext = (config / xethInvokerContext).value
     val privateKeyFinder = findCurrentSenderPrivateKeyFinderTask( config ).value
 
+    // for use in closures, access synchronized on its own lock
+    val preapprovals = mutable.HashSet.empty[Invoker.TransactionApprover.Inputs]
+    val preapprove : Invoker.TransactionApprover.Inputs => Unit = { inputs =>
+      preapprovals.synchronized {
+        preapprovals += inputs
+      }
+    }
+    val isPreapproved : Invoker.TransactionApprover.Inputs => Boolean = { inputs =>
+      preapprovals.synchronized {
+        preapprovals(inputs)
+      }
+    }
+
+    val preapprovingApprover = transactionApprover( log, icontext.chainId, is, currencyCode, preapprove )( icontext.econtext )
+    val preapprovingInovkerContext = icontext.copy( transactionApprover = preapprovingApprover )
     val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, MainScheduler )
-    val signer = new CautiousSigner( log, is, priceFeed, currencyCode, description = None )( privateKeyFinder, abiOverridesForChain )
+    val signer = new CautiousSigner( log, is, priceFeed, currencyCode, description = None )( privateKeyFinder, abiOverridesForChain, isPreapproved )
     val sender = stub.Sender.Basic( signer )
     (scontext, sender)
   }
@@ -6683,27 +6698,62 @@ object SbtEthereumPlugin extends AutoPlugin {
     new CautiousSigner( log, is, priceFeed, currencyCode, description )( findUpdateCachePrivateKeyFinder(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
   }
 
-  private def transactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
+  private def transactionApprover(
+    log : sbt.Logger,
+    chainId : Option[EthChainId],
+    is : sbt.InteractionService,
+    currencyCode : String,
+    preapprove : Invoker.TransactionApprover.Inputs => Unit
+  )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
+    val rawChainId : Int = {
+      chainId match {
+        case Some( ecid ) => ecid.value.widen.toInt
+        case None         => DefaultEphemeralChainId
+      }
+    }
+    transactionApprover( log, rawChainId, is, currencyCode, preapprove )( ec )
+  }
+
+  private def transactionApprover(
+    log : sbt.Logger,
+    chainId : Int,
+    is : sbt.InteractionService,
+    currencyCode : String,
+    preapprove : Invoker.TransactionApprover.Inputs => Unit = _ => ()
+  )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
     if ( isEphemeralChain( chainId ) ) {
-      ephemeralTransactionApprover( log, chainId, is, currencyCode )( ec )
+      ephemeralTransactionApprover( log, chainId, is, currencyCode, preapprove )( ec )
     }
     else {
-      normalTransactionApprover( log, chainId, is, currencyCode )( ec )
+      normalTransactionApprover( log, chainId, is, currencyCode, preapprove )( ec )
     }
   }
 
-  private def ephemeralTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
+  private def ephemeralTransactionApprover(
+    log : sbt.Logger,
+    chainId : Int,
+    is : sbt.InteractionService,
+    currencyCode : String,
+    preapprove : Invoker.TransactionApprover.Inputs => Unit
+  )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
     inputs => Future.successful( () )
   }
 
-  private def normalTransactionApprover( log : sbt.Logger, chainId : Int, is : sbt.InteractionService, currencyCode : String )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
+  private def normalTransactionApprover(
+    log : sbt.Logger,
+    chainId : Int,
+    is : sbt.InteractionService,
+    currencyCode : String,
+    preapprove : Invoker.TransactionApprover.Inputs => Unit
+  )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
 
     inputs => Future {
 
-      displayTransactionSubmissionRequest( log, chainId, currencyCode, inputs.utxn, inputs.signerAddress )
+      displayTransactionSignatureRequest( log, chainId, currencyCode, inputs.utxn, inputs.signerAddress )
 
       val check = queryYN( is, "Would you like to submit this transaction? [y/n] " )
       if ( !check ) Invoker.throwDisapproved( inputs, keepStackTrace = false )
+      else preapprove( inputs )
     }( ec )
   }
 

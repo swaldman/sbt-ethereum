@@ -21,13 +21,13 @@ object CautiousSigner {
 
 import CautiousSigner._
 
-class CautiousSigner private [sbtethereum] (
+final class CautiousSigner private [sbtethereum] (
   log          : sbt.Logger,
   is           : sbt.InteractionService,
   priceFeed    : PriceFeed,
   currencyCode : String,
   description  : Option[String]
-)( privateKeyFinder : PrivateKeyFinder, abiOverridesForChainId : AbiOverridesForChainIdFinder ) extends EthSigner {
+)( privateKeyFinder : PrivateKeyFinder, abiOverridesForChainId : AbiOverridesForChainIdFinder, isPreapproved : jsonrpc.Invoker.TransactionApprover.Inputs => Boolean = _ => false ) extends EthSigner {
 
   // throws if the check fails
   private def doCheckDocument( documentBytes : Seq[Byte], mbChainId : Option[EthChainId] ) : Unit = {
@@ -39,9 +39,12 @@ class CautiousSigner private [sbtethereum] (
       }
     }
     def handleSignTransaction( utxn : EthTransaction.Unsigned ) : Unit = {
-      displayTransactionSignatureRequest( log, chainId, abiOverridesForChainId( chainId ), priceFeed, currencyCode, utxn, address, description )
-      val ok = queryYN( is, s"Are you sure it is okay to sign this transaction as ${verboseAddress(chainId, address)}? [y/n] " )
-      if (!ok) aborted( "User chose not to sign proposed transaction." )
+      val inputs = jsonrpc.Invoker.TransactionApprover.Inputs( utxn, this.address, mbChainId )
+      if (! isPreapproved( inputs ) ) {
+        displayTransactionSignatureRequest( log, chainId, abiOverridesForChainId( chainId ), priceFeed, currencyCode, utxn, address, description )
+        val ok = queryYN( is, s"Are you sure it is okay to sign this transaction as ${verboseAddress(chainId, address)}? [y/n] " )
+        if (!ok) aborted( "User chose not to sign proposed transaction." )
+      }
     }
     def handleSignUnknown = {
       println()
