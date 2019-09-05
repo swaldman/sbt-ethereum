@@ -6232,8 +6232,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     val preapprovingApprover = transactionApprover( log, icontext.chainId, is, currencyCode, preapprove )( icontext.econtext )
-    val preapprovingInovkerContext = icontext.copy( transactionApprover = preapprovingApprover )
-    val scontext = stub.Context( icontext, stub.Context.Default.EventConfirmations, MainScheduler )
+    val preapprovingInvokerContext = icontext.copy( transactionApprover = preapprovingApprover )
+    val scontext = stub.Context( preapprovingInvokerContext, stub.Context.Default.EventConfirmations, MainScheduler )
     val signer = new CautiousSigner( log, is, priceFeed, currencyCode, description = None )( privateKeyFinder, abiOverridesForChain, isPreapproved )
     val sender = stub.Sender.Basic( signer )
     (scontext, sender)
@@ -6751,7 +6751,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       displayTransactionSignatureRequest( log, chainId, currencyCode, inputs.utxn, inputs.signerAddress )
 
-      val check = queryYN( is, "Would you like to submit this transaction? [y/n] " )
+      val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
       if ( !check ) Invoker.throwDisapproved( inputs, keepStackTrace = false )
       else preapprove( inputs )
     }( ec )
