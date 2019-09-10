@@ -30,8 +30,6 @@ Security
 
 Other
 
-* ethAddressPrint
-
 * Modify 'ethAddressSenderDrop' message to 1) reveal the sender dropped; 2) provide better information about the current sender
 
 * Fix tab-completion of a space in ethTransactionView/Mock/Invoke
@@ -42,26 +40,15 @@ Other
 
 * Define `ethNodeChainId` for CLIs to get Chain ID. Expose `verboseAddress` to CLIs.
 
-* Make a stub.Nonce constructor that accepts Option[BigInt] / BigInt (and maybe other integral types)
-
-* Exported signatures are coming out as Vector[Byte] wrather than ImmutableArraySeq.Byte (because our export functions add to Vectors...). Fix this.
-
-* EthSignature.fromXXX methods sometimes accept immutable.Seq[Byte] when they should accept the more tolerant Seq[Byte]
-
-* Test whether EthAddress.Source and similar require explicitly an immutable.Seq[Byte] variant (rather than just Seq[Byte])
-
 * Ensure drop and set commands at least print what they drop or replace
 
 * Make it possible to specify an optional Chain ID in ethNodeChainIdUrlDefaultSet
 
 * Utilities -- unixtime, denomination conversions, etc
 
-* Consuela EthSignature.fromXXX factory methods should test V for presence of Chain ID, and build EthSignature.WithChainId when appropriate.
-  (Now these methods would just fail if asked to decode the hex of a signature with Chain ID.
-
 * Consuela EthSignature should include public support for signatures of raw, unhashed bytes.
 
-* Maybe prompt should include current sender and overrides?
+* Maybe prompt should include current sender and overrides? (maybe just define an 'eth' task for this?)
 
 * Support multiple shoeboxes and user-definable locations
 

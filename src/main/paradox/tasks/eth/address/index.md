@@ -101,6 +101,18 @@ This is just an alias to @ref:[`ethAddressSenderOverrideSet`](sender.md#ethaddre
 
 @@@
 
+### ethAddressOverridePrintet
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethAddressOverridePrint
+```
+This is just an alias to @ref:[`ethAddressSenderOverridePrint`](sender.md#ethaddresssenderoverrideprint). Please see that command for more information.
+
+@@@
+
 ### ethAddressSender*
 
 Manage the current sender associated with your sbt-ethereum sessions. See the @ref:[sender commands page](sender.md), or choose a command below:

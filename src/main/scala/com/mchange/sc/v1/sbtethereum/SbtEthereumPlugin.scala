@@ -362,6 +362,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethAddressOverrideDrop        = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressOverrideSet         = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressOverridePrint       = taskKey [Unit]       ("Displays any sender override, if set.")
+    val ethAddressPrint               = taskKey [Unit]       ("Prints the sender address, which will be used to send ether or messages, and explains where and how it has ben set.")
     val ethAddressSenderDefaultDrop   = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderDefaultSet    = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
     val ethAddressSenderDefaultPrint  = taskKey [Unit]       ("Displays any sender override, if set.")
@@ -754,6 +755,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethAddressOverride in Compile := { ethAddressSenderOverrideSetTask( Compile ).evaluated },
 
     ethAddressOverride in Test := { ethAddressSenderOverrideSetTask( Test ).evaluated },
+
+    ethAddressPrint in Compile := { ethAddressSenderPrintTask( Compile ).value },
+
+    ethAddressPrint in Test := { ethAddressSenderPrintTask( Test ).value },
 
     ethAddressSenderPrint in Compile := { ethAddressSenderPrintTask( Compile ).value },
 
