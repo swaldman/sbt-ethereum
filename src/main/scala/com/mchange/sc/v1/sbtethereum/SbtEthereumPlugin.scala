@@ -353,24 +353,25 @@ object SbtEthereumPlugin extends AutoPlugin {
     val etherscanApiKeyPrint = taskKey[Unit]  ("Reveals the currently set API key for etherscan services, if any.")
     val etherscanApiKeySet   = inputKey[Unit] ("Sets an API key for etherscan services.")
 
-    val ethAddressAliasCheck          = inputKey[Unit]       ("Reveals the address associated with a given alias, or the aliases associated with a given address.")
-    val ethAddressAliasDrop           = inputKey[Unit]       ("Drops an alias for an ethereum address from the sbt-ethereum shoebox database.")
-    val ethAddressAliasList           = taskKey [Unit]       ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
-    val ethAddressAliasSet            = inputKey[Unit]       ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
-    val ethAddressBalance             = inputKey[BigDecimal] ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
-    val ethAddressOverride            = inputKey[Unit]       ("Basically an alias to 'ethAddressSenderOverrideSet'.")
-    val ethAddressOverrideDrop        = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
-    val ethAddressOverrideSet         = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
-    val ethAddressOverridePrint       = taskKey [Unit]       ("Displays any sender override, if set.")
-    val ethAddressPrint               = taskKey [Unit]       ("Prints the sender address, which will be used to send ether or messages, and explains where and how it has ben set.")
-    val ethAddressSenderDefaultDrop   = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
-    val ethAddressSenderDefaultSet    = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
-    val ethAddressSenderDefaultPrint  = taskKey [Unit]       ("Displays any sender override, if set.")
-    val ethAddressSenderOverride      = inputKey[Unit]       ("Basically an alias to 'ethAddressSenderOverrideSet'.")
-    val ethAddressSenderOverrideDrop  = taskKey [Unit]       ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
-    val ethAddressSenderOverrideSet   = inputKey[Unit]       ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
-    val ethAddressSenderOverridePrint = taskKey [Unit]       ("Displays any sender override, if set.")
-    val ethAddressSenderPrint         = taskKey [Unit]       ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
+    val ethAddressAliasCheck          = inputKey[Unit]               ("Reveals the address associated with a given alias, or the aliases associated with a given address.")
+    val ethAddressAliasDrop           = inputKey[Unit]               ("Drops an alias for an ethereum address from the sbt-ethereum shoebox database.")
+    val ethAddressAliasList           = taskKey [Unit]               ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
+    val ethAddressAliasSet            = inputKey[Unit]               ("Defines (or redefines) an alias for an ethereum address that can be used in place of the hex address in many tasks.")
+    val ethAddressBalance             = inputKey[BigDecimal]         ("Computes the balance in ether of a given address, or of current sender if no address is supplied")
+    val ethAddressOverride            = inputKey[Unit]               ("Basically an alias to 'ethAddressSenderOverrideSet'.")
+    val ethAddressOverrideDrop        = taskKey [Unit]               ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressOverrideSet         = inputKey[Unit]               ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressOverridePrint       = taskKey [Unit]               ("Displays any sender override, if set.")
+    val ethAddressPrint               = taskKey [Unit]               ("Prints the sender address, which will be used to send ether or messages, and explains where and how it has ben set.")
+    val ethAddressSender              = taskKey [Option[EthAddress]] ("Silently returns the current session sender address, if one is available, intended for use by plugins.")
+    val ethAddressSenderDefaultDrop   = taskKey [Unit]               ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressSenderDefaultSet    = inputKey[Unit]               ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressSenderDefaultPrint  = taskKey [Unit]               ("Displays any sender override, if set.")
+    val ethAddressSenderOverride      = inputKey[Unit]               ("Basically an alias to 'ethAddressSenderOverrideSet'.")
+    val ethAddressSenderOverrideDrop  = taskKey [Unit]               ("Removes any sender override, reverting to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressSenderOverrideSet   = inputKey[Unit]               ("Sets an ethereum address to be used as sender in prefernce to any 'ethcfgAddressSender' or default sender that may be set.")
+    val ethAddressSenderOverridePrint = taskKey [Unit]               ("Displays any sender override, if set.")
+    val ethAddressSenderPrint         = taskKey [Unit]               ("Prints the address that will be used to send ether or messages, and explains where and how it has ben set.")
 
     val ethContractAbiAliasDrop       = inputKey[Unit] ("Drops an alias for an ABI.")
     val ethContractAbiAliasList       = taskKey [Unit] ("Lists aliased ABIs and their hashes.")
@@ -759,6 +760,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethAddressPrint in Compile := { ethAddressSenderPrintTask( Compile ).value },
 
     ethAddressPrint in Test := { ethAddressSenderPrintTask( Test ).value },
+
+    ethAddressSender in Compile := { ethAddressSenderTask( Compile ).value },
+
+    ethAddressSender in Test := { ethAddressSenderTask( Test ).value },
 
     ethAddressSenderPrint in Compile := { ethAddressSenderPrintTask( Compile ).value },
 
@@ -2388,6 +2393,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ethAddressSenderTask( config : Configuration ) : Initialize[Task[Option[EthAddress]]] = Def.task {
+    findAddressSenderTask(warn=false)(config).value match {
+      case Succeeded( addr )                                => Some( addr )
+      case Failed( noSender : SenderNotAvailableException ) => None
+      case oops : Failed[_]                                 => oops.vomit
+    }
+  }
+
   private def ethAddressSenderPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val f_effective = findAddressSenderTask(warn=false)(config).value
@@ -2502,7 +2515,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
       shoebox.Database.setDefaultSenderAddress( chainId, newAddress ).assert
-      log.info( s"Successfully set default sender address for chain with ID ${chainId} to '${hexString(newAddress)}'." )
+      log.info( s"Successfully set default sender address for chain with ID ${chainId} to ${verboseAddress(chainId, newAddress)}." )
       log.info( s"You can use the synthetic alias '${DefaultSenderAlias}' to refer to this address." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -2518,14 +2531,24 @@ object SbtEthereumPlugin extends AutoPlugin {
       case Some( senderAddress ) => {
         val check = shoebox.Database.dropDefaultSenderAddress( chainId ).assert
         assert( check, "Huh? We had a an old senderAddress value, but trying to delete it failed to delete any rows?" )
-        log.info( s"The default sender address for chain with ID ${chainId} was '${hexString(senderAddress)}', but it has now been successfully dropped." )
+        log.info( s"Previously, the default sender address for chain with ID ${chainId} was ${verboseAddress(chainId, senderAddress)}.")
+        log.info(  "It has now been successfully dropped." )
       }
       case None => {
         log.info( s"No default sender address for chain with ID ${chainId} has been set. Nothing to do here." )
       }
     }
-    Def.taskDyn {
-      xethTriggerDirtyAliasCache
+    Def.task {
+      val markDirty = xethTriggerDirtyAliasCache.value
+      val mbNewAddress = findAddressSenderTask(warn=false)(config).value
+      mbNewAddress match {
+        case Succeeded( newAddress ) => {
+          log.info( s"The current session sender is now ${verboseAddress( chainId, newAddress )}." )
+          log.info(  "(Use 'ethAddressSenderPrint' for an explanation of where this address comes from.)" )
+        }
+        case Failed( src : SenderNotAvailableException ) => log.warn( s"There is now no sender address associated with this sbt-ethereum session!" )
+        case oops : Failed[_] => oops.vomit
+      }
     }
   }
 

@@ -36,6 +36,21 @@ chain your session addresses.
 The commands below allow you to manage the default sender and the sender override directly within _sbt-ethereum_. For most purposes they are all you need.
 (Senders hardcoded into SBT configuration or defined externally are rare.)
 
+### ethAddressSender
+
+@@@ div { .keydesc }
+
+__Intended for use by sbt plugins, not directly by humans. Humans should use @ref:[`ethAddressSenderPrint`](#ethaddresssenderprint).__
+
+Silently returns the current session sender address, if one is available, as `Option[EthAddress]`.
+
+**Example:**
+```
+> show ethAddressSender
+[info] Some(EthAddress(ByteSeqExact20(0x465e79b940bc2157e4259ff6b2d92f454497f1e4)))
+[success] Total time: 1 s, completed Sep 14, 2019 1:38:21 PM
+```
+
 ### ethAddressSenderDefaultDrop
 
 @@@ div { .keydesc }

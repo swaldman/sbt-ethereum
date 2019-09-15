@@ -21,6 +21,8 @@ Security
 
 * Define a cache that holds multiple EthSigners according to autoRelockSeconds (use EthSigner rather than EthPrivateKey, see below).
 
+* Factor the private key cache into a utility
+
 * Make all sbt-ethereum EthSigners (including cached ones) hit the InteractionService, for either a credential or a confirmation, so
   no signatures can be silently made.
 
@@ -30,7 +32,9 @@ Security
 
 Other
 
-* Modify 'ethAddressSenderDrop' message to 1) reveal the sender dropped; 2) provide better information about the current sender
+* Factor out transaction wait-for-mining into a single construct, handle timeouts better within this.
+
+* Let markups be specified as percentages as well as fractions
 
 * Fix tab-completion of a space in ethTransactionView/Mock/Invoke
 
