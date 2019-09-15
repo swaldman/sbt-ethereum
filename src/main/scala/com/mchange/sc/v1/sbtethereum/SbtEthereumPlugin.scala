@@ -353,6 +353,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val etherscanApiKeyPrint = taskKey[Unit]  ("Reveals the currently set API key for etherscan services, if any.")
     val etherscanApiKeySet   = inputKey[Unit] ("Sets an API key for etherscan services.")
 
+    val eth = taskKey[Unit]("Prints information about the current session to the console.")
+
     val ethAddressAliasCheck          = inputKey[Unit]               ("Reveals the address associated with a given alias, or the aliases associated with a given address.")
     val ethAddressAliasDrop           = inputKey[Unit]               ("Drops an alias for an ethereum address from the sbt-ethereum shoebox database.")
     val ethAddressAliasList           = taskKey [Unit]               ("Lists aliases for ethereum addresses that can be used in place of the hex address in many tasks.")
@@ -720,6 +722,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     etherscanApiKeySet := { etherscanApiKeySetTask.evaluated },
 
     etherscanApiKeyPrint := { etherscanApiKeyPrintTask.value },
+
+    eth in Compile := { logSessionInfoTask( Compile ).value },
+
+    eth in Test := { logSessionInfoTask( Test ).value },
 
     ethAddressAliasDrop in Compile := { ethAddressAliasDropTask( Compile ).evaluated },
 
@@ -1320,16 +1326,29 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val EmptyTask : Initialize[Task[Unit]] = Def.task( () )
 
-  private def markPotentiallyResetChainId( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
+  private def logSessionInfoTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=false)(config).value
+    val mbSender = (config / ethAddressSender).value
+
     log.info( s"The session is now active on chain with ID ${chainId}." )
+    mbSender match {
+      case Some( sender ) => log.info( s"The current session sender is ${verboseAddress( chainId, sender )}." )
+      case None           => {
+        log.warn( "There is no sender available for the current session." )
+        log.warn( "Consider using 'ethAddressSenderDefaultSet' or 'ethAddressSenderOverrideSet' to define one." )
+      }
+    }
     Mutables.SenderOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The sender has been overridden to ${verboseAddress( chainId, ovr )}.") }
     Mutables.NodeUrlOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The node URL has been overridden to '${ovr}'.") }
     Mutables.AbiOverrides.get( chainId ).foreach { ovr => log.warn( s"""NOTE: ABI overrides are set for the following addresses on this chain: ${ovr.keys.map(hexString).mkString(", ")}""" ) }
     Mutables.GasLimitTweakOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas limit override remains set for this chain, ${formatGasLimitTweak( ovr )}." ) }
     Mutables.GasPriceTweakOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas price override remains set for this chain, ${formatGasPriceTweak( ovr )}." ) }
     Mutables.NonceOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A nonce override remains set for this chain. Its value is ${ovr}." ) }
+  }
+
+  private def markPotentiallyResetChainId( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
+    val logit = logSessionInfoTask( config ).value
     xethTriggerDirtyAliasCache
   }
 

@@ -42,15 +42,15 @@ Other
 
 * Update default solidity version.
 
-* Define `ethNodeChainId` for CLIs to get Chain ID. Expose `verboseAddress` to CLIs.
+* Define `ethNodeChainId` for CLIs to get Chain ID.
+
+* Expose `verboseAddress` to CLIs.
 
 * Ensure drop and set commands at least print what they drop or replace
 
 * Make it possible to specify an optional Chain ID in ethNodeChainIdUrlDefaultSet
 
 * Utilities -- unixtime, denomination conversions, etc
-
-* Consuela EthSignature should include public support for signatures of raw, unhashed bytes.
 
 * Maybe prompt should include current sender and overrides? (maybe just define an 'eth' task for this?)
 
@@ -143,7 +143,6 @@ Other
 
 * Include information about overrides in transaction approver messages?
 
-* 'ethAddressSender' as a task silently returning the current sender for tasks and plugins
 
 
 
