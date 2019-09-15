@@ -69,7 +69,7 @@ final class CautiousSigner private [sbtethereum] (
         println( s"The data can be interpreted as JSON. Pretty printing: ${pretty}" )
       }
       println()
-      description.foreach( desc => println( s"Signer: ${desc}]" ) )
+      description.foreach( desc => println( s"[Signer: ${desc}]" ) )
       val ok = queryYN( is, s"Are you sure it is okay to sign this data as ${verboseAddress(chainId, address)}? [y/n] " )
       if (!ok) aborted( "User chose not to sign the nontransaction data." )
     }
@@ -97,18 +97,85 @@ final class CautiousSigner private [sbtethereum] (
 
     println( s"==> The application is attempting to sign a hash of some document which sbt-ethereum cannot identify, as ${verboseAddress(chainId, address)}." )
     println(  "==>")
+    println(  "==> IT IS EXTREMELY DANGEROUS TO SIGN THIS UNLESS YOU UNDERSTAND AND TRUST WHAT PRODUCED IT!" )
+    println(  "==>")
+    
     println( s"==> Hash bytes: ${hexString( documentHash )}" )
     println()
     val ok = queryYN( is, "Do you understand the document whose hash the application proposes to sign, and trust the application to sign it?" )
     if (!ok) aborted( "User chose not to sign proposed document hash." )
   }
+  private def doCheckWillNotHash( bytesToSign : Array[Byte], mbChainId : Option[EthChainId] ) : Unit = {
+    val chainId = {
+      mbChainId.fold( -1 ){ ecid =>
+        val bi = ecid.value.widen
+        if ( bi.isValidInt ) bi.toInt else throw new SbtEthereumException( s"Chain IDs outside the range of Ints are not supported. Found ${bi}" )
+      }
+    }
+    var maybeHash = false
+    println()
+    println(    "==> R A W   B Y T E S   S I G N A T U R E   R E Q U E S T")
+    println(    "==>")
 
+    description.foreach { desc =>
+      println(   s"==> Signer: ${desc}" )
+      println(    "==>")
+    }
+
+    println(    "==> An unconventional signature of raw, not-to-be hashed bytes is being requested!" )
+    println(    "==>")
+    if ( bytesToSign.length == EthHash.HashLength ) {
+      maybeHash = true
+      println(    "==> This raw data might be a an Ethereum-standard hash, producing a valid Ethereum signature of a document that might be anything!" )
+      println(    "==>")
+      println(    "==> IT IS EXTREMELY DANGEROUS TO SIGN THIS UNLESS YOU UNDERSTAND AND TRUST WHAT PRODUCED IT!" )
+      println(    "==>")
+    }
+    else {
+      println(    "==> This would not be a valid Ethereum signature of this or any document!" )
+      println(    "==>")
+    }
+    println(   s"==> The signing address would be ${verboseAddress(chainId,address)}." )
+    println(    "==>")
+    println( s"""==> Raw data: ${hexString(bytesToSign)}""" )
+    println(    "==>")
+    val rawString = new String( bytesToSign.toArray, CharsetUTF8 )
+    println( s"""==> Raw data interpreted as as UTF8 String: ${ StringLiteral.formatUnicodePermissiveStringLiteral( rawString ) }""" )
+    println()
+    Failable( Json.prettyPrint( Json.parse( bytesToSign.toArray ) ) ).foreach { pretty =>
+      println( s"The data can be interpreted as JSON. Pretty printing: ${pretty}" )
+    }
+    println()
+    description.foreach( desc => println( s"[Signer: ${desc}]" ) )
+    val message = {
+      if ( maybeHash ) {
+        s"Are you sure it is okay to sign these bytes, WHICH COULD RESULT IN A DANGEROUS, VALID SIGNATURE OF SOME DOCUMENT THAT HASHES TO THESE BYTES, as ${verboseAddress(chainId, address)}? [y/n] "
+      }
+      else {
+        s"Are you sure it is okay to produce an unconventional signature of these unhashed bytes as ${verboseAddress(chainId, address)}? [y/n] "
+      }
+    }
+    val ok = queryYN( is, message )
+    if (!ok) aborted( "User chose not to produce the unconventional signature of unhashed data." )
+  }
+
+  override def signWithoutHashing( bytesToSign : Array[Byte] ) : EthSignature.Basic = {
+    doCheckWillNotHash( bytesToSign, None )
+    val out = privateKeyFinder.asSigner().signWithoutHashing( bytesToSign )
+    println( "Unhashed (raw) document successfully signed." )
+    println( "-------------------------" )
+    println()
+    out
+  }
+  override def signWithoutHashing( bytesToSign : Seq[Byte] ) : EthSignature.Basic = {
+    this.signWithoutHashing( bytesToSign.toArray )
+  }
   override def sign( document : Array[Byte] ) : EthSignature.Basic = {
     this.sign( document.toImmutableSeq )
   }
   override def sign( document : Seq[Byte] )   : EthSignature.Basic = {
     doCheckDocument( document, None )
-    val out = privateKeyFinder.find().sign( document )
+    val out = privateKeyFinder.asSigner().sign( document )
     println( "Document successfully signed." )
     println( "-----------------------------" )
     println()
@@ -116,23 +183,34 @@ final class CautiousSigner private [sbtethereum] (
   }
   override def signPrehashed( documentHash : EthHash ) : EthSignature.Basic = {
     doCheckHash( documentHash, None )
-    val out = privateKeyFinder.find().signPrehashed( documentHash )
+    val out = privateKeyFinder.asSigner().signPrehashed( documentHash )
     println( "Hash successfully signed." )
     println( "-------------------------" )
     println()
     out
   }
+  override def signWithoutHashing( bytesToSign : Array[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
+    doCheckWillNotHash( bytesToSign, Some( chainId ) )
+    val out = privateKeyFinder.asSigner().signWithoutHashing( bytesToSign, chainId )
+    println( "Unhashed (raw) document successfully signed." )
+    println( "-------------------------" )
+    println()
+    out
+  }
+  override def signWithoutHashing( bytesToSign : Seq[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
+    this.signWithoutHashing( bytesToSign.toArray, chainId )
+  }
   override def sign( document : Array[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
     doCheckDocument( document.toImmutableSeq, Some( chainId ) )
-    privateKeyFinder.find().sign( document, chainId )
+    privateKeyFinder.asSigner().sign( document, chainId )
   }
   override def sign( document : Seq[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
     doCheckDocument( document, Some( chainId ) )
-    privateKeyFinder.find().sign( document, chainId )
+    privateKeyFinder.asSigner().sign( document, chainId )
   }
   override def signPrehashed( documentHash : EthHash, chainId : EthChainId ) : EthSignature.WithChainId = {
     doCheckHash( documentHash, Some( chainId ) )
-    signPrehashed( documentHash, chainId )
+    privateKeyFinder.asSigner().signPrehashed( documentHash, chainId )
   }
   override def address : EthAddress = privateKeyFinder.address
 }
