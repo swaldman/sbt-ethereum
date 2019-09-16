@@ -1564,15 +1564,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val caller = findAddressSenderTask(warn=true)(config).value.assert
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-    new PrivateKeyFinder( caller, () => findUpdateCachePrivateKey(s, log, is, chainId, caller, autoRelockSeconds, true ) )
+    SignersManager.findUpdateCachePrivateKeyFinder(s, log, is, chainId, caller, autoRelockSeconds, true )
   }
-
-  /*
-  private def findCurrentSenderPrivateKeyTask( config : Configuration ) : Initialize[Task[EthPrivateKey]] = Def.task {
-    val privateKeyFinder = findCurrentSenderPrivateKeyFinderTask( config ).value
-    privateKeyFinder.find()
-  }
-  */ 
 
   private def findTransactionLoggerTask( config : Configuration ) : Initialize[Task[Invoker.TransactionLogger]] = Def.task {
     val chainId = findNodeChainIdTask(warn=true)(config).value
@@ -1615,7 +1608,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTask {
       val log                  = streams.value.log
-      val pkf     = findCurrentSenderPrivateKeyFinderTask( config ).value
+      val pkf                  = findCurrentSenderPrivateKeyFinderTask( config ).value
       val chainId              = findNodeChainIdTask(warn=true)(config).value
       val ensClient            = ( config / xensClient).value
       val is                   = interactionService.value
@@ -1690,7 +1683,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val log              = streams.value.log
       val chainId          = findNodeChainIdTask(warn=true)(config).value
-      val pkf = findCurrentSenderPrivateKeyFinderTask( config ).value
+      val pkf              = findCurrentSenderPrivateKeyFinderTask( config ).value
       val ensClient        = ( config / xensClient ).value
       val epp              = parser.parsed
       val nonceOverride    = unwrapNonceOverrideBigInt( Some( log ), chainId )
@@ -3360,8 +3353,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val extract = Project.extract(s)
       val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, addressStr, s) // config doesn't really matter here, since we provide hex, not a config dependent alias
 
-      val credential = readCredential( is, address )
-      val privateKey = findPrivateKey( log, address, wallets, credential )
+      val privateKey = SignersManager.findRawPrivateKey( log, is, address, wallets )
       val confirmation = {
         is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
           .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
@@ -4716,8 +4708,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
 
-    // lazy so we don't prompt until we need it
-    lazy val privateKey = findUpdateCachePrivateKey( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
+    lazy val pkf = SignersManager.findUpdateCachePrivateKeyFinder( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
 
     displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, utxn, signer )
     val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
@@ -4725,8 +4716,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val signed = {
       chainId match {
-        case Some( num ) => utxn.sign( privateKey, EthChainId(num) )
-        case None        => utxn.sign( privateKey )
+        case Some( num ) => utxn.sign( pkf.asSigner(), EthChainId(num) )
+        case None        => utxn.sign( pkf.asSigner() )
       }
     }
     val signedAsBytes = RLP.encode[EthTransaction]( signed )
@@ -6174,8 +6165,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ( address : EthAddress, description : Option[String] ) => {
       address match {
-        case `currentSender` => findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
-        case _               => findCheckCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description )
+        case `currentSender` => SignersManager.findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
+        case _               => SignersManager.findCheckCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description )
       }
     }
   }
@@ -6485,252 +6476,264 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def allUnitsValue( valueInWei : BigInt ) = s"${valueInWei} wei (${Denominations.Ether.fromWei(valueInWei)} ether, ${Denominations.Finney.fromWei(valueInWei)} finney, ${Denominations.Szabo.fromWei(valueInWei)} szabo)"
 
-  private def findPrivateKey( log : sbt.Logger, address : EthAddress, gethWallets : immutable.Set[wallet.V3], credential : String ) : EthPrivateKey = {
-    def forceKey = {
-      try {
-        val out = EthPrivateKey( credential )
-        require( out.address == address, "The hex private key provided does not match desired address ${hexString(address)}." )
-        log.info( s"Successfully interpreted the credential supplied as hex private key for '${hexString(address)}'." )
-        out
-      }
-      catch {
-        case NonFatal(e) => {
-          WARNING.log( s"Converting an Exception that occurred while trying to interpret a credential as hex into a BadCredentialException.", e )
-          throw new BadCredentialException(address)
-        }
-      }
+
+  private object SignersManager {
+    private [SbtEthereumPlugin]
+    def findRawPrivateKey( log : sbt.Logger, is : sbt.InteractionService, address : EthAddress, gethWallets : immutable.Set[wallet.V3] ) : EthPrivateKey = {
+      val credential = readCredential( is, address )
+      findPrivateKey( log, address, gethWallets, credential )
     }
 
-    if ( gethWallets.isEmpty ) {
-      log.info( "No wallet available. Trying passphrase as hex private key." )
-      forceKey
-    }
-    else {
-      def tryWallet( gethWallet : wallet.V3 ) : Failable[EthPrivateKey] = Failable {
-        val walletAddress = gethWallet.address
+    private def findPrivateKey( log : sbt.Logger, address : EthAddress, gethWallets : immutable.Set[wallet.V3], credential : String ) : EthPrivateKey = {
+      def forceKey = {
         try {
-          assert( walletAddress == address, s"We should only have pulled wallets for our desired address '${hexString(address)}', but found a wallet for '${hexString(walletAddress)}'." )
-          wallet.V3.decodePrivateKey( gethWallet, credential )
-         } catch {
-          case v3e : wallet.V3.Exception => {
-            val maybe = {
-              try {
-                forceKey
-              }
-              catch {
-                case bce : BadCredentialException => {
-                  bce.initCause( v3e )
-                  throw bce
-                }
-              }
-            }
-            if (maybe.toPublicKey.toAddress != walletAddress) {
-              throw new BadCredentialException( walletAddress )
-            } else {
-              log.info("Successfully interpreted the credential supplied as a hex private key for address '${address}'.")
-              maybe
-            }
+          val out = EthPrivateKey( credential )
+          require( out.address == address, "The hex private key provided does not match desired address ${hexString(address)}." )
+          log.info( s"Successfully interpreted the credential supplied as hex private key for '${hexString(address)}'." )
+          out
+        }
+        catch {
+          case NonFatal(e) => {
+            WARNING.log( s"Converting an Exception that occurred while trying to interpret a credential as hex into a BadCredentialException.", e )
+            throw new BadCredentialException(address)
           }
         }
       }
-      val lazyAllAttempts = gethWallets.toStream.map( tryWallet )
-      val mbGood = lazyAllAttempts.find( _.isSucceeded )
-      mbGood match {
-        case Some( succeeded ) => succeeded.assert
-        case None              => {
-          log.warn( "Tried and failed to decode a private key from multiple wallets." )
-          lazyAllAttempts.foreach { underachiever =>
-            log.warn( s"Failed to decode private key from wallet: ${underachiever.assertFailed.message}" )
-          }
-          throw new BadCredentialException()
-        }
-      }
-    }
-  }
 
-  private def findNoCachePrivateKey(
-    state                : sbt.State,
-    log                  : sbt.Logger,
-    is                   : sbt.InteractionService,
-    chainId              : Int, // for alias display only
-    address              : EthAddress
-  ) : EthPrivateKey = {
-    // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
-    // it also slows down automated attempts to guess passwords, i guess...
-    Thread.sleep(1000)
-
-    val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( commasep => s", aliases $commasep" ) )
-
-    log.info( s"Unlocking address '0x${address.hex}' (on chain with ID ${chainId}$aliasesPart)" )
-
-    val credential = readCredential( is, address )
-
-    val extract = Project.extract(state)
-    val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in Compile, address.hex, state) // the config scope of xethLoadWalletV3For doesn't matter here, since we provide hex, not an alias
-
-    findPrivateKey( log, address, wallets, credential )
-  }
-
-  private def findCheckCachePrivateKey(
-    state                : sbt.State,
-    log                  : sbt.Logger,
-    is                   : sbt.InteractionService,
-    chainId              : Int, // for alias display only
-    address              : EthAddress
-  ) : EthPrivateKey = {
-    checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = true, resetOnFailure = false ) getOrElse findNoCachePrivateKey( state, log, is, chainId, address )
-  }
-
-  private def findCheckCachePrivateKeyFinder(
-    state                : sbt.State,
-    log                  : sbt.Logger,
-    is                   : sbt.InteractionService,
-    chainId              : Int,
-    address              : EthAddress
-  ) : PrivateKeyFinder = {
-    new PrivateKeyFinder( address, () => findCheckCachePrivateKey(state, log, is, chainId, address ) )
-  }
-
-  private def findCheckCacheCautiousSigner(
-    state                : sbt.State,
-    log                  : sbt.Logger,
-    is                   : sbt.InteractionService,
-    chainId              : Int, // for alias display only
-    address              : EthAddress,
-    priceFeed            : PriceFeed,
-    currencyCode         : String,
-    description          : Option[String]
-  ) : CautiousSigner = {
-    new CautiousSigner( log, is, priceFeed, currencyCode, description )( findCheckCachePrivateKeyFinder(state,log,is,chainId,address), abiOverridesForChain )
-  }
-
-  private val RelockMarginSeconds = 5
-
-  private val CheckRelockPrivateKeyTask : () => Unit = {
-    () => {
-      Mutables.CurrentAddress.synchronized {
-        val now = System.currentTimeMillis
-        Mutables.CurrentAddress.get match {
-          case UnlockedAddress( _, address, _, autoRelockTime ) if (now >= autoRelockTime ) => {
-            Mutables.CurrentAddress.set( NoAddress )
-            DEBUG.log( s"Relocked private key for address '${address}' (expired '${formatInstant(autoRelockTime)}', checked '${formatInstant(now)}')" )
-          }
-          case _ => /* ignore */
-        }
-      }
-    }
-  }
-
-  private def checkForCachedPrivateKey( is : sbt.InteractionService, chainId : Int, address : EthAddress, userValidateIfCached : Boolean = true, resetOnFailure : Boolean = true) : Option[EthPrivateKey] = {
-    Mutables.CurrentAddress.synchronized {
-      // caps for value matches rather than variable names
-      val ChainId = chainId
-      val Address = address
-      val now = System.currentTimeMillis
-      Mutables.CurrentAddress.get match {
-        // if chainId and/or ethcfgAddressSender has changed, this will no longer match
-        // note that we never deliver an expired, cached key even if we have one
-        case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => { 
-          val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
-          val ok = {
-            if ( userValidateIfCached ) {
-              is.readLine( s"Using sender address ${verboseAddress( chainId, address)}, which is already unlocked. OK? [y/n] ", false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
-            } else {
-              true
-            }
-          }
-          if ( ok ) {
-            Some( privateKey )
-          } else {
-            if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
-            aborted( s"Use of sender address ${verboseAddress( chainId, address)} vetoed by user." )
-          }
-        }
-        case UnlockedAddress( _, _, _, autoRelockTime ) if (now >= autoRelockTime ) => {
-          // we always reset expired keys when we see them
-          Mutables.CurrentAddress.set( NoAddress )
-          None
-        }
-        case _ => {
-          // otherwise, we honor the resetOnFailure argument
-          if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
-          None
-        }
-      }
-    }
-  }
-
-  /*
-   *  generally we only try to update the cache if the private key
-   *  we are looking up is the current session's chainId and sender
-   */ 
-  private def findUpdateCachePrivateKey(
-    state                : sbt.State,
-    log                  : sbt.Logger,
-    is                   : sbt.InteractionService,
-    chainId              : Int,
-    address              : EthAddress,
-    autoRelockSeconds    : Int,
-    userValidateIfCached : Boolean
-  ) : EthPrivateKey = {
-
-    def recache( privateKey : EthPrivateKey ) = {
-      if ( autoRelockSeconds > 0 ) {
-        Mutables.CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
-        MainScheduler.schedule( CheckRelockPrivateKeyTask, (autoRelockSeconds + RelockMarginSeconds).seconds )
+      if ( gethWallets.isEmpty ) {
+        log.info( "No wallet available. Trying passphrase as hex private key." )
+        forceKey
       }
       else {
-        Mutables.CurrentAddress.set( NoAddress )
-      }
-    }
-
-    def updateCached : EthPrivateKey = {
-      val privateKey = findNoCachePrivateKey( state, log, is, chainId, address )
-      recache( privateKey )
-      privateKey
-    }
-    def goodCached : Option[EthPrivateKey] = checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = userValidateIfCached, resetOnFailure = true )
-
-    // special case for testing...
-    if ( address == testing.Default.Faucet.Address ) {
-      testing.Default.Faucet.PrivateKey
-    } else {
-      Mutables.CurrentAddress.synchronized {
-        goodCached match {
-          case Some( privateKey ) => {
-            recache( privateKey )
-            privateKey
+        def tryWallet( gethWallet : wallet.V3 ) : Failable[EthPrivateKey] = Failable {
+          val walletAddress = gethWallet.address
+          try {
+            assert( walletAddress == address, s"We should only have pulled wallets for our desired address '${hexString(address)}', but found a wallet for '${hexString(walletAddress)}'." )
+            wallet.V3.decodePrivateKey( gethWallet, credential )
+          } catch {
+            case v3e : wallet.V3.Exception => {
+              val maybe = {
+                try {
+                  forceKey
+                }
+                catch {
+                  case bce : BadCredentialException => {
+                    bce.initCause( v3e )
+                    throw bce
+                  }
+                }
+              }
+              if (maybe.toPublicKey.toAddress != walletAddress) {
+                throw new BadCredentialException( walletAddress )
+              } else {
+                log.info("Successfully interpreted the credential supplied as a hex private key for address '${address}'.")
+                maybe
+              }
+            }
           }
-          case None => updateCached
+        }
+        val lazyAllAttempts = gethWallets.toStream.map( tryWallet )
+        val mbGood = lazyAllAttempts.find( _.isSucceeded )
+        mbGood match {
+          case Some( succeeded ) => succeeded.assert
+          case None              => {
+            log.warn( "Tried and failed to decode a private key from multiple wallets." )
+            lazyAllAttempts.foreach { underachiever =>
+              log.warn( s"Failed to decode private key from wallet: ${underachiever.assertFailed.message}" )
+            }
+            throw new BadCredentialException()
+          }
         }
       }
     }
-  }
 
-  private def findUpdateCachePrivateKeyFinder(
-    state                : sbt.State,
-    log                  : sbt.Logger,
-    is                   : sbt.InteractionService,
-    chainId              : Int,
-    address              : EthAddress,
-    autoRelockSeconds    : Int,
-    userValidateIfCached : Boolean
-  ) : PrivateKeyFinder = {
-    new PrivateKeyFinder( address, () => findUpdateCachePrivateKey(state, log, is, chainId, address, autoRelockSeconds, userValidateIfCached ) )
-  }
+    private def findNoCachePrivateKey(
+      state                : sbt.State,
+      log                  : sbt.Logger,
+      is                   : sbt.InteractionService,
+      chainId              : Int, // for alias display only
+      address              : EthAddress
+    ) : EthPrivateKey = {
+      // this is ugly and awkward, but it gives time for any log messages to get emitted before prompting for a credential
+      // it also slows down automated attempts to guess passwords, i guess...
+      Thread.sleep(1000)
 
-  private def findUpdateCacheCautiousSigner(
-    state                : sbt.State,
-    log                  : sbt.Logger,
-    is                   : sbt.InteractionService,
-    chainId              : Int, // for alias display only
-    address              : EthAddress,
-    priceFeed            : PriceFeed,
-    currencyCode         : String,
-    description          : Option[String],
-    autoRelockSeconds    : Int
-  ) : CautiousSigner = {
-    new CautiousSigner( log, is, priceFeed, currencyCode, description )( findUpdateCachePrivateKeyFinder(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
+      val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( commasep => s", aliases $commasep" ) )
+
+      log.info( s"Unlocking address '0x${address.hex}' (on chain with ID ${chainId}$aliasesPart)" )
+
+      val credential = readCredential( is, address )
+
+      val extract = Project.extract(state)
+      val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in Compile, address.hex, state) // the config scope of xethLoadWalletV3For doesn't matter here, since we provide hex, not an alias
+
+      findPrivateKey( log, address, wallets, credential )
+    }
+
+    private def findCheckCachePrivateKey(
+      state                : sbt.State,
+      log                  : sbt.Logger,
+      is                   : sbt.InteractionService,
+      chainId              : Int, // for alias display only
+      address              : EthAddress
+    ) : EthPrivateKey = {
+      checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = true, resetOnFailure = false ) getOrElse findNoCachePrivateKey( state, log, is, chainId, address )
+    }
+
+    private def findCheckCachePrivateKeyFinder(
+      state                : sbt.State,
+      log                  : sbt.Logger,
+      is                   : sbt.InteractionService,
+      chainId              : Int,
+      address              : EthAddress
+    ) : PrivateKeyFinder = {
+      new PrivateKeyFinder( address, () => findCheckCachePrivateKey(state, log, is, chainId, address ) )
+    }
+
+    private [SbtEthereumPlugin]
+    def findCheckCacheCautiousSigner(
+      state                : sbt.State,
+      log                  : sbt.Logger,
+      is                   : sbt.InteractionService,
+      chainId              : Int, // for alias display only
+      address              : EthAddress,
+      priceFeed            : PriceFeed,
+      currencyCode         : String,
+      description          : Option[String]
+    ) : CautiousSigner = {
+      new CautiousSigner( log, is, priceFeed, currencyCode, description )( findCheckCachePrivateKeyFinder(state,log,is,chainId,address), abiOverridesForChain )
+    }
+
+    private val RelockMarginSeconds = 5
+
+    private val CheckRelockPrivateKeyTask : () => Unit = {
+      () => {
+        Mutables.CurrentAddress.synchronized {
+          val now = System.currentTimeMillis
+          Mutables.CurrentAddress.get match {
+            case UnlockedAddress( _, address, _, autoRelockTime ) if (now >= autoRelockTime ) => {
+              Mutables.CurrentAddress.set( NoAddress )
+              DEBUG.log( s"Relocked private key for address '${address}' (expired '${formatInstant(autoRelockTime)}', checked '${formatInstant(now)}')" )
+            }
+            case _ => /* ignore */
+          }
+        }
+      }
+    }
+
+    private def checkForCachedPrivateKey( is : sbt.InteractionService, chainId : Int, address : EthAddress, userValidateIfCached : Boolean = true, resetOnFailure : Boolean = true) : Option[EthPrivateKey] = {
+      Mutables.CurrentAddress.synchronized {
+        // caps for value matches rather than variable names
+        val ChainId = chainId
+        val Address = address
+        val now = System.currentTimeMillis
+        Mutables.CurrentAddress.get match {
+          // if chainId and/or ethcfgAddressSender has changed, this will no longer match
+          // note that we never deliver an expired, cached key even if we have one
+          case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => {
+            val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
+            val ok = {
+              if ( userValidateIfCached ) {
+                is.readLine( s"Using sender address ${verboseAddress( chainId, address)}, which is already unlocked. OK? [y/n] ", false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
+              } else {
+                true
+              }
+            }
+            if ( ok ) {
+              Some( privateKey )
+            } else {
+              if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
+              aborted( s"Use of sender address ${verboseAddress( chainId, address)} vetoed by user." )
+            }
+          }
+          case UnlockedAddress( _, _, _, autoRelockTime ) if (now >= autoRelockTime ) => {
+            // we always reset expired keys when we see them
+            Mutables.CurrentAddress.set( NoAddress )
+            None
+          }
+          case _ => {
+            // otherwise, we honor the resetOnFailure argument
+            if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
+            None
+          }
+        }
+      }
+    }
+
+    /*
+     *  generally we only try to update the cache if the private key
+     *  we are looking up is the current session's chainId and sender
+     */ 
+    private def findUpdateCachePrivateKey(
+      state                : sbt.State,
+      log                  : sbt.Logger,
+      is                   : sbt.InteractionService,
+      chainId              : Int,
+      address              : EthAddress,
+      autoRelockSeconds    : Int,
+      userValidateIfCached : Boolean
+    ) : EthPrivateKey = {
+
+      def recache( privateKey : EthPrivateKey ) = {
+        if ( autoRelockSeconds > 0 ) {
+          Mutables.CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
+          MainScheduler.schedule( CheckRelockPrivateKeyTask, (autoRelockSeconds + RelockMarginSeconds).seconds )
+        }
+        else {
+          Mutables.CurrentAddress.set( NoAddress )
+        }
+      }
+
+      def updateCached : EthPrivateKey = {
+        val privateKey = findNoCachePrivateKey( state, log, is, chainId, address )
+        recache( privateKey )
+        privateKey
+      }
+      def goodCached : Option[EthPrivateKey] = checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = userValidateIfCached, resetOnFailure = true )
+
+      // special case for testing...
+      if ( address == testing.Default.Faucet.Address ) {
+        testing.Default.Faucet.PrivateKey
+      } else {
+        Mutables.CurrentAddress.synchronized {
+          goodCached match {
+            case Some( privateKey ) => {
+              recache( privateKey )
+              privateKey
+            }
+            case None => updateCached
+          }
+        }
+      }
+    }
+
+    private [SbtEthereumPlugin]
+    def findUpdateCachePrivateKeyFinder(
+      state                : sbt.State,
+      log                  : sbt.Logger,
+      is                   : sbt.InteractionService,
+      chainId              : Int,
+      address              : EthAddress,
+      autoRelockSeconds    : Int,
+      userValidateIfCached : Boolean
+    ) : PrivateKeyFinder = {
+      new PrivateKeyFinder( address, () => findUpdateCachePrivateKey(state, log, is, chainId, address, autoRelockSeconds, userValidateIfCached ) )
+    }
+
+    private [SbtEthereumPlugin]
+    def findUpdateCacheCautiousSigner(
+      state                : sbt.State,
+      log                  : sbt.Logger,
+      is                   : sbt.InteractionService,
+      chainId              : Int, // for alias display only
+      address              : EthAddress,
+      priceFeed            : PriceFeed,
+      currencyCode         : String,
+      description          : Option[String],
+      autoRelockSeconds    : Int
+    ) : CautiousSigner = {
+      new CautiousSigner( log, is, priceFeed, currencyCode, description )( findUpdateCachePrivateKeyFinder(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
+    }
   }
 
   private def transactionApprover(
