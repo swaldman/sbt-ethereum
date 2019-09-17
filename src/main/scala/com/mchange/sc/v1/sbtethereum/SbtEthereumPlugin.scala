@@ -83,10 +83,6 @@ object SbtEthereumPlugin extends AutoPlugin {
   // still, generally we should try to log through sbt loggers
   private implicit val logger = mlogger( this )
 
-  private trait AddressInfo
-  private final case object NoAddress                                                                                                 extends AddressInfo
-  private final case class  UnlockedAddress( chainId : Int, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
-
   final case class TimestampedAbi( abi : Abi, timestamp : Option[Long] )
 
   object OneTimeWarnerKey {
@@ -114,7 +110,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   //
   private final object Mutables {
     // MT: protected by CurrentAddress' lock
-    val CurrentAddress = new AtomicReference[AddressInfo]( NoAddress )
+    val CurrentAddress = new AtomicReference[SignersManager.AddressInfo]( SignersManager.NoAddress )
 
     val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
 
@@ -149,7 +145,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     def reset() : Unit = {
       CurrentAddress synchronized {
-        CurrentAddress.set( NoAddress )
+        CurrentAddress.set( SignersManager.NoAddress )
       }
       SessionSolidityCompilers.set( None )
       CurrentSolidityCompiler.set( None )
@@ -6476,8 +6472,42 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def allUnitsValue( valueInWei : BigInt ) = s"${valueInWei} wei (${Denominations.Ether.fromWei(valueInWei)} ether, ${Denominations.Finney.fromWei(valueInWei)} finney, ${Denominations.Szabo.fromWei(valueInWei)} szabo)"
 
-
   private object SignersManager {
+
+    // eventually try to make these fully private
+
+    private [SbtEthereumPlugin] trait AddressInfo
+    private [SbtEthereumPlugin] final case object NoAddress                                                                                                 extends AddressInfo
+    private [SbtEthereumPlugin] final case class  UnlockedAddress( chainId : Int, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
+
+    private [SbtEthereumPlugin]
+    def findUpdateCachePrivateKeyFinder(
+      state                : sbt.State,
+      log                  : sbt.Logger,
+      is                   : sbt.InteractionService,
+      chainId              : Int,
+      address              : EthAddress,
+      autoRelockSeconds    : Int,
+      userValidateIfCached : Boolean
+    ) : PrivateKeyFinder = {
+      new PrivateKeyFinder( address, () => findUpdateCachePrivateKey(state, log, is, chainId, address, autoRelockSeconds, userValidateIfCached ) )
+    }
+
+    private [SbtEthereumPlugin]
+    def findUpdateCacheCautiousSigner(
+      state                : sbt.State,
+      log                  : sbt.Logger,
+      is                   : sbt.InteractionService,
+      chainId              : Int, // for alias display only
+      address              : EthAddress,
+      priceFeed            : PriceFeed,
+      currencyCode         : String,
+      description          : Option[String],
+      autoRelockSeconds    : Int
+    ) : CautiousSigner = {
+      new CautiousSigner( log, is, priceFeed, currencyCode, description )( findUpdateCachePrivateKeyFinder(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
+    }
+
     private [SbtEthereumPlugin]
     def findRawPrivateKey( log : sbt.Logger, is : sbt.InteractionService, address : EthAddress, gethWallets : immutable.Set[wallet.V3] ) : EthPrivateKey = {
       val credential = readCredential( is, address )
@@ -6705,34 +6735,6 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
       }
-    }
-
-    private [SbtEthereumPlugin]
-    def findUpdateCachePrivateKeyFinder(
-      state                : sbt.State,
-      log                  : sbt.Logger,
-      is                   : sbt.InteractionService,
-      chainId              : Int,
-      address              : EthAddress,
-      autoRelockSeconds    : Int,
-      userValidateIfCached : Boolean
-    ) : PrivateKeyFinder = {
-      new PrivateKeyFinder( address, () => findUpdateCachePrivateKey(state, log, is, chainId, address, autoRelockSeconds, userValidateIfCached ) )
-    }
-
-    private [SbtEthereumPlugin]
-    def findUpdateCacheCautiousSigner(
-      state                : sbt.State,
-      log                  : sbt.Logger,
-      is                   : sbt.InteractionService,
-      chainId              : Int, // for alias display only
-      address              : EthAddress,
-      priceFeed            : PriceFeed,
-      currencyCode         : String,
-      description          : Option[String],
-      autoRelockSeconds    : Int
-    ) : CautiousSigner = {
-      new CautiousSigner( log, is, priceFeed, currencyCode, description )( findUpdateCachePrivateKeyFinder(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
     }
   }
 
