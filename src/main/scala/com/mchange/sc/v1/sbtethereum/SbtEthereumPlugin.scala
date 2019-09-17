@@ -109,8 +109,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   //       upon any switch
   //
   private final object Mutables {
-    // MT: protected by CurrentAddress' lock
-    val CurrentAddress = new AtomicReference[SignersManager.AddressInfo]( SignersManager.NoAddress )
+
+    val MainSignersManager = new SignersManager
 
     val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
 
@@ -144,9 +144,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val LocalGanache = new AtomicReference[Option[Process]]( None )
 
     def reset() : Unit = {
-      CurrentAddress synchronized {
-        CurrentAddress.set( SignersManager.NoAddress )
-      }
+      MainSignersManager.reset()
       SessionSolidityCompilers.set( None )
       CurrentSolidityCompiler.set( None )
       ChainIdOverride.set( None )
@@ -1560,7 +1558,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val caller = findAddressSenderTask(warn=true)(config).value.assert
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-    SignersManager.findUpdateCachePrivateKeyFinder(s, log, is, chainId, caller, autoRelockSeconds, true )
+    Mutables.MainSignersManager.findUpdateCachePrivateKeyFinder(s, log, is, chainId, caller, autoRelockSeconds, true )
   }
 
   private def findTransactionLoggerTask( config : Configuration ) : Initialize[Task[Invoker.TransactionLogger]] = Def.task {
@@ -3349,7 +3347,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val extract = Project.extract(s)
       val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, addressStr, s) // config doesn't really matter here, since we provide hex, not a config dependent alias
 
-      val privateKey = SignersManager.findRawPrivateKey( log, is, address, wallets )
+      val privateKey = Mutables.MainSignersManager.findRawPrivateKey( log, is, address, wallets )
       val confirmation = {
         is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
           .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
@@ -4704,7 +4702,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
 
-    lazy val pkf = SignersManager.findUpdateCachePrivateKeyFinder( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
+    lazy val pkf = Mutables.MainSignersManager.findUpdateCachePrivateKeyFinder( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
 
     displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, utxn, signer )
     val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
@@ -6161,8 +6159,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ( address : EthAddress, description : Option[String] ) => {
       address match {
-        case `currentSender` => SignersManager.findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
-        case _               => SignersManager.findCheckCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description )
+        case `currentSender` => Mutables.MainSignersManager.findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
+        case _               => Mutables.MainSignersManager.findCheckCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description )
       }
     }
   }
@@ -6473,12 +6471,22 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def allUnitsValue( valueInWei : BigInt ) = s"${valueInWei} wei (${Denominations.Ether.fromWei(valueInWei)} ether, ${Denominations.Finney.fromWei(valueInWei)} finney, ${Denominations.Szabo.fromWei(valueInWei)} szabo)"
 
   private object SignersManager {
+    private trait AddressInfo
+    private final case object NoAddress                                                                                                 extends AddressInfo
+    private final case class  UnlockedAddress( chainId : Int, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
+  }
+  private class SignersManager {
+    import SignersManager._
 
-    // eventually try to make these fully private
+    // MT: protected by CurrentAddress' lock
+    private val CurrentAddress = new AtomicReference[AddressInfo]( NoAddress )
 
-    private [SbtEthereumPlugin] trait AddressInfo
-    private [SbtEthereumPlugin] final case object NoAddress                                                                                                 extends AddressInfo
-    private [SbtEthereumPlugin] final case class  UnlockedAddress( chainId : Int, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
+    private [SbtEthereumPlugin]
+    def reset() : Unit = {
+      CurrentAddress.synchronized {
+        CurrentAddress.set( NoAddress )
+      }
+    }
 
     private [SbtEthereumPlugin]
     def findUpdateCachePrivateKeyFinder(
@@ -6638,11 +6646,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     private val CheckRelockPrivateKeyTask : () => Unit = {
       () => {
-        Mutables.CurrentAddress.synchronized {
+        CurrentAddress.synchronized {
           val now = System.currentTimeMillis
-          Mutables.CurrentAddress.get match {
+          CurrentAddress.get match {
             case UnlockedAddress( _, address, _, autoRelockTime ) if (now >= autoRelockTime ) => {
-              Mutables.CurrentAddress.set( NoAddress )
+              CurrentAddress.set( NoAddress )
               DEBUG.log( s"Relocked private key for address '${address}' (expired '${formatInstant(autoRelockTime)}', checked '${formatInstant(now)}')" )
             }
             case _ => /* ignore */
@@ -6652,12 +6660,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     private def checkForCachedPrivateKey( is : sbt.InteractionService, chainId : Int, address : EthAddress, userValidateIfCached : Boolean = true, resetOnFailure : Boolean = true) : Option[EthPrivateKey] = {
-      Mutables.CurrentAddress.synchronized {
+      CurrentAddress.synchronized {
         // caps for value matches rather than variable names
         val ChainId = chainId
         val Address = address
         val now = System.currentTimeMillis
-        Mutables.CurrentAddress.get match {
+        CurrentAddress.get match {
           // if chainId and/or ethcfgAddressSender has changed, this will no longer match
           // note that we never deliver an expired, cached key even if we have one
           case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => {
@@ -6672,18 +6680,18 @@ object SbtEthereumPlugin extends AutoPlugin {
             if ( ok ) {
               Some( privateKey )
             } else {
-              if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
+              if ( resetOnFailure ) CurrentAddress.set( NoAddress )
               aborted( s"Use of sender address ${verboseAddress( chainId, address)} vetoed by user." )
             }
           }
           case UnlockedAddress( _, _, _, autoRelockTime ) if (now >= autoRelockTime ) => {
             // we always reset expired keys when we see them
-            Mutables.CurrentAddress.set( NoAddress )
+            CurrentAddress.set( NoAddress )
             None
           }
           case _ => {
             // otherwise, we honor the resetOnFailure argument
-            if ( resetOnFailure ) Mutables.CurrentAddress.set( NoAddress )
+            if ( resetOnFailure ) CurrentAddress.set( NoAddress )
             None
           }
         }
@@ -6706,11 +6714,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       def recache( privateKey : EthPrivateKey ) = {
         if ( autoRelockSeconds > 0 ) {
-          Mutables.CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
+          CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
           MainScheduler.schedule( CheckRelockPrivateKeyTask, (autoRelockSeconds + RelockMarginSeconds).seconds )
         }
         else {
-          Mutables.CurrentAddress.set( NoAddress )
+          CurrentAddress.set( NoAddress )
         }
       }
 
@@ -6725,7 +6733,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       if ( address == testing.Default.Faucet.Address ) {
         testing.Default.Faucet.PrivateKey
       } else {
-        Mutables.CurrentAddress.synchronized {
+        CurrentAddress.synchronized {
           goodCached match {
             case Some( privateKey ) => {
               recache( privateKey )
