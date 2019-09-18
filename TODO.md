@@ -32,13 +32,18 @@ Security
 
 Other
 
+* Eventually, when we factor out Mutables to a class with well-encapsulated accessors,
+  replace awkward 'abiOverridesForChain' function in SignersManager and CautiousSigner
+  with a reference to the plugins Mutables-facade member
+
 * Factor out transaction wait-for-mining into a single construct, handle timeouts better within this.
+
+* More informative message about how to deal with timeouts.
 
 * Let markups be specified as percentages as well as fractions
 
-* Fix tab-completion of a space in ethTransactionView/Mock/Invoke
-
-* More informative message about how to deal with timeouts.
+* Fix tab-completion of a space in ethTransactionView/Mock/Invoke (many places now)
+  - maybe group leading spaces into one token, with examples defined for the non-space parts?
 
 * Update default solidity version.
 

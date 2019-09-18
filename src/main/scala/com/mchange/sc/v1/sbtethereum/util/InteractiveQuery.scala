@@ -185,6 +185,12 @@ object InteractiveQuery {
   def aborted( msg : String ) : Nothing = throw new OperationAbortedByUserException( msg )
 
   private [sbtethereum]
+  def readCredential( is : sbt.InteractionService, address : EthAddress, acceptHexPrivateKey : Boolean = true ) : String = {
+    val hpkPart = if (acceptHexPrivateKey) " or hex private key" else ""
+    is.readLine(s"Enter passphrase${hpkPart} for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
+  }
+
+  private [sbtethereum]
   def readConfirmCredential( log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
     if ( attempt < maxAttempts ) {
       val credential = is.readLine( readPrompt, mask = true ).getOrElse( throwCantReadInteraction )
