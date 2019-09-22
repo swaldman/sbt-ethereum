@@ -25,7 +25,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-Xlog-implicits" */
 )
 
-val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.1.0"
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.1.1-SNAPSHOT" changing()
 
 lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   name := "sbt-ethereum",
@@ -48,6 +48,28 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   consuelaApiBase := {
     val cVersion = consuelaArtifact.revision
     s"https://www.mchange.com/projects/consuela/version/${cVersion}/apidocs"
+  },
+  packageOptions in (Compile, packageBin) +=  {
+    import java.util.jar.{Attributes, Manifest}
+    val manifest = new Manifest
+    val entries = manifest.getEntries()
+    def seal( pkgpath : String ) = {
+      entries.put(pkgpath, new Attributes())
+      manifest.getAttributes(pkgpath).put(Attributes.Name.SEALED, "true")
+    }
+    val bp = "com/mchange/sc/v1/sbtethereum/"
+    val pkgpaths = Seq(
+      bp,
+      bp + "shoebox/",
+      bp + "util/",
+      bp + "testing/",
+      bp + "compile/",
+      bp + "lib/",
+      bp + "api/",
+      bp + "signers/",
+    )
+    pkgpaths.foreach( seal )
+    Package.JarManifest( manifest )
   },
   paradoxProperties += ("scaladoc.com.mchange.sc.v1.consuela.base_url" -> consuelaApiBase.value),
   updateSite := {

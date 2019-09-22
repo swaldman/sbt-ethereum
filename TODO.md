@@ -103,9 +103,14 @@ Other
 
 * Fix bizarre string literal parsing issue when """Fortune "Some string."""" style strings are used in auto spawn
 
+* Add to hooks Invoker.Context on presubmit( EthTransaction.Signed ) and postsubmit( EthTransaction.Signed, Future
+
 * enable Scala libraries to deploy as well as interact with already-deployed contracts
   * embed compilations as a resource in jar files
   * add method in jsonrpc.Invoker for contract creation
+
+* fetch (accessing events bia vPC getLogs(...)) in stub utilities is async by default. Consistent with rest of design, define asyncFetch(...) and fetch(...)
+
 
 * ethDebugListing and ethDebugInBrowser [ Desktop.getDesktop().browse( ... ) ]
   * get rid of excess lines in listings, change the suffixes to '.soldebug'
@@ -116,7 +121,8 @@ Other
 * xethSignMessage
 * Excise jsonrpc.Compilation from package.scala (jsonrpc) by wrapping the map that is currently its type definition
 
-* fetch (accessing events bia RPC getLogs(...)) in stub utilities is async by default. Consistent with rest of design, define asyncFetch(...) and fetch(...)
+
+
 * Move stub.ScalaParameterHelper somewhere more sensible
 * Uncloseable wrappers for default Poller (done!), Exchanger.Factory, jsonrpc.Client.Factory
 *   -- Also, maybe eliminate global-implicit by default status for these factories, require some ceremony to import them
