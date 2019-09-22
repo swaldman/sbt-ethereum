@@ -3,7 +3,8 @@ package com.mchange.sc.v1.sbtethereum.util
 import Formatting._
 import InteractiveQuery._
 
-import com.mchange.sc.v1.sbtethereum.{CharsetUTF8, DefaultEphemeralChainId, PriceFeed, PrivateKeyFinder, SbtEthereumException}
+import com.mchange.sc.v1.sbtethereum.{CharsetUTF8, DefaultEphemeralChainId, PriceFeed, SbtEthereumException, signers}
+import signers.LazySigner
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
@@ -27,11 +28,11 @@ final class CautiousSigner private [sbtethereum] (
   priceFeed    : PriceFeed,
   currencyCode : String,
   description  : Option[String]
-)( privateKeyFinder : PrivateKeyFinder, abiOverridesForChainId : AbiOverridesForChainIdFinder, isPreapproved : jsonrpc.Invoker.TransactionApprover.Inputs => Boolean = _ => false ) extends EthSigner {
+)( lazySigner : LazySigner, abiOverridesForChainId : AbiOverridesForChainIdFinder, isPreapproved : jsonrpc.Invoker.TransactionApprover.Inputs => Boolean = _ => false ) extends EthSigner {
 
   // throws if the check fails
   private def doCheckDocument( documentBytes : Seq[Byte], mbChainId : Option[EthChainId] ) : Unit = {
-    val address = privateKeyFinder.address
+    val address = lazySigner.address
     val chainId = {
       mbChainId.fold( DefaultEphemeralChainId ){ ecid =>
         val bi = ecid.value.widen
@@ -85,7 +86,7 @@ final class CautiousSigner private [sbtethereum] (
         if ( bi.isValidInt ) bi.toInt else throw new SbtEthereumException( s"Chain IDs outside the range of Ints are not supported. Found ${bi}" )
       }
     }
-    val address = privateKeyFinder.address
+    val address = lazySigner.address
       println()
       println(    "==> H A S H   S I G N A T U R E   R E Q U E S T")
       println(    "==>")
@@ -161,7 +162,7 @@ final class CautiousSigner private [sbtethereum] (
 
   override def signWithoutHashing( bytesToSign : Array[Byte] ) : EthSignature.Basic = {
     doCheckWillNotHash( bytesToSign, None )
-    val out = privateKeyFinder.asSigner().signWithoutHashing( bytesToSign )
+    val out = lazySigner.signWithoutHashing( bytesToSign )
     println( "Unhashed (raw) document successfully signed." )
     println( "-------------------------" )
     println()
@@ -175,7 +176,7 @@ final class CautiousSigner private [sbtethereum] (
   }
   override def sign( document : Seq[Byte] )   : EthSignature.Basic = {
     doCheckDocument( document, None )
-    val out = privateKeyFinder.asSigner().sign( document )
+    val out = lazySigner.sign( document )
     println( "Document successfully signed." )
     println( "-----------------------------" )
     println()
@@ -183,7 +184,7 @@ final class CautiousSigner private [sbtethereum] (
   }
   override def signPrehashed( documentHash : EthHash ) : EthSignature.Basic = {
     doCheckHash( documentHash, None )
-    val out = privateKeyFinder.asSigner().signPrehashed( documentHash )
+    val out = lazySigner.signPrehashed( documentHash )
     println( "Hash successfully signed." )
     println( "-------------------------" )
     println()
@@ -191,7 +192,7 @@ final class CautiousSigner private [sbtethereum] (
   }
   override def signWithoutHashing( bytesToSign : Array[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
     doCheckWillNotHash( bytesToSign, Some( chainId ) )
-    val out = privateKeyFinder.asSigner().signWithoutHashing( bytesToSign, chainId )
+    val out = lazySigner.signWithoutHashing( bytesToSign, chainId )
     println( "Unhashed (raw) document successfully signed." )
     println( "-------------------------" )
     println()
@@ -202,17 +203,17 @@ final class CautiousSigner private [sbtethereum] (
   }
   override def sign( document : Array[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
     doCheckDocument( document.toImmutableSeq, Some( chainId ) )
-    privateKeyFinder.asSigner().sign( document, chainId )
+    lazySigner.sign( document, chainId )
   }
   override def sign( document : Seq[Byte], chainId : EthChainId ) : EthSignature.WithChainId = {
     doCheckDocument( document, Some( chainId ) )
-    privateKeyFinder.asSigner().sign( document, chainId )
+    lazySigner.sign( document, chainId )
   }
   override def signPrehashed( documentHash : EthHash, chainId : EthChainId ) : EthSignature.WithChainId = {
     doCheckHash( documentHash, Some( chainId ) )
-    privateKeyFinder.asSigner().signPrehashed( documentHash, chainId )
+    lazySigner.signPrehashed( documentHash, chainId )
   }
-  override def address : EthAddress = privateKeyFinder.address
+  override def address : EthAddress = lazySigner.address
 }
 
 

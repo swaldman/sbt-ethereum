@@ -15,7 +15,7 @@ import com.mchange.sc.v3.failable._
 
 import com.mchange.sc.v1.log.MLevel._
 
-import com.mchange.sc.v1.sbtethereum.{BadCredentialException,PriceFeed,PrivateKeyFinder,util}
+import com.mchange.sc.v1.sbtethereum.{BadCredentialException,PriceFeed,util}
 import util.Formatting._
 import util.InteractiveQuery._
 import util.WalletsV3._
@@ -44,7 +44,7 @@ private [sbtethereum] class SignersManager( scheduler : Scheduler, keystoresV3 :
   }
 
   private [sbtethereum]
-  def findUpdateCachePrivateKeyFinder(
+  def findUpdateCacheLazySigner(
     state                : sbt.State,
     log                  : sbt.Logger,
     is                   : sbt.InteractionService,
@@ -52,8 +52,8 @@ private [sbtethereum] class SignersManager( scheduler : Scheduler, keystoresV3 :
     address              : EthAddress,
     autoRelockSeconds    : Int,
     userValidateIfCached : Boolean
-  ) : PrivateKeyFinder = {
-    new PrivateKeyFinder( address, () => findUpdateCachePrivateKey(state, log, is, chainId, address, autoRelockSeconds, userValidateIfCached ) )
+  ) : LazySigner = {
+    new LazySigner( address, () => findUpdateCachePrivateKey(state, log, is, chainId, address, autoRelockSeconds, userValidateIfCached ) )
   }
 
   private [sbtethereum]
@@ -68,7 +68,7 @@ private [sbtethereum] class SignersManager( scheduler : Scheduler, keystoresV3 :
     description          : Option[String],
     autoRelockSeconds    : Int
   ) : CautiousSigner = {
-    new CautiousSigner( log, is, priceFeed, currencyCode, description )( findUpdateCachePrivateKeyFinder(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
+    new CautiousSigner( log, is, priceFeed, currencyCode, description )( findUpdateCacheLazySigner(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
   }
 
   private [sbtethereum]
@@ -82,7 +82,7 @@ private [sbtethereum] class SignersManager( scheduler : Scheduler, keystoresV3 :
     currencyCode         : String,
     description          : Option[String]
   ) : CautiousSigner = {
-    new CautiousSigner( log, is, priceFeed, currencyCode, description )( findCheckCachePrivateKeyFinder(state,log,is,chainId,address), abiOverridesForChain )
+    new CautiousSigner( log, is, priceFeed, currencyCode, description )( findCheckCacheLazySigner(state,log,is,chainId,address), abiOverridesForChain )
   }
 
   private [sbtethereum]
@@ -186,14 +186,14 @@ private [sbtethereum] class SignersManager( scheduler : Scheduler, keystoresV3 :
     checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = true, resetOnFailure = false ) getOrElse findNoCachePrivateKey( state, log, is, chainId, address )
   }
 
-  private def findCheckCachePrivateKeyFinder(
+  private def findCheckCacheLazySigner(
     state                : sbt.State,
     log                  : sbt.Logger,
     is                   : sbt.InteractionService,
     chainId              : Int,
     address              : EthAddress
-  ) : PrivateKeyFinder = {
-    new PrivateKeyFinder( address, () => findCheckCachePrivateKey(state, log, is, chainId, address ) )
+  ) : LazySigner = {
+    new LazySigner( address, () => findCheckCachePrivateKey(state, log, is, chainId, address ) )
   }
 
   private val RelockMarginSeconds = 5
