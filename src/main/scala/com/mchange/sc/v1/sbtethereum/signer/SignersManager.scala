@@ -1,4 +1,4 @@
-package com.mchange.sc.v1.sbtethereum.signers
+package com.mchange.sc.v1.sbtethereum.signer
 
 import sbt._
 

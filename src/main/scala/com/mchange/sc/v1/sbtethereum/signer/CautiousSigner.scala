@@ -1,6 +1,4 @@
-package com.mchange.sc.v1.sbtethereum.signers
-
-import com.mchange.sc.v1.sbtethereum.signers._
+package com.mchange.sc.v1.sbtethereum.signer
 
 import com.mchange.sc.v1.sbtethereum.{CharsetUTF8, DefaultEphemeralChainId, PriceFeed, SbtEthereumException, util}
 import util.Formatting._

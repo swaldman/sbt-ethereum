@@ -23,7 +23,7 @@ import util.Spawn._
 import util.ClientTransactionReceipt._
 import util.Formatting._
 import util.WalletsV3._
-import signers._
+import signer._
 import generated._
 
 import java.io.{BufferedInputStream, File, FileInputStream, FilenameFilter}
