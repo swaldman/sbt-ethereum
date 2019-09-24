@@ -13,7 +13,6 @@ import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstalle
 import util.BaseCodeAndSuffix
 import util.OneTimeWarner
 import util.ChainIdMutable
-import util.CautiousSigner
 import util.Erc20
 import util.EthJsonRpc._
 import util.Parsers._

@@ -1,10 +1,10 @@
-package com.mchange.sc.v1.sbtethereum.util
+package com.mchange.sc.v1.sbtethereum.signers
 
-import Formatting._
-import InteractiveQuery._
+import com.mchange.sc.v1.sbtethereum.signers._
 
-import com.mchange.sc.v1.sbtethereum.{CharsetUTF8, DefaultEphemeralChainId, PriceFeed, SbtEthereumException, signers}
-import signers.LazySigner
+import com.mchange.sc.v1.sbtethereum.{CharsetUTF8, DefaultEphemeralChainId, PriceFeed, SbtEthereumException, util}
+import util.Formatting._
+import util.InteractiveQuery._
 
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._

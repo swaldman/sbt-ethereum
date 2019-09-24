@@ -19,7 +19,6 @@ import com.mchange.sc.v1.sbtethereum.{BadCredentialException,PriceFeed,util}
 import util.Formatting._
 import util.InteractiveQuery._
 import util.WalletsV3._
-import util.CautiousSigner
 
 import com.mchange.sc.v2.concurrent.Scheduler
 
