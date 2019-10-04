@@ -84,6 +84,9 @@ package object sbtethereum {
     exampleNameServiceReverseTld : String
   )
 
+  private [sbtethereum]
+  def syncOut[T]( op : =>T ) : T = System.out.synchronized( op )
+
   // due to ClassLoader issues, we have to load the java.util.logging config file manually. grrrr.
   private [sbtethereum]
   def initializeLoggingConfig() : Unit = {

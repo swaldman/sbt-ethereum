@@ -1591,9 +1591,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       val path      = parser.parsed.fullName
       val mbAddress = ensClient.address( path )
 
-      mbAddress match {
-        case Some( address ) => println( s"The name '${path}' resolves to address ${verboseAddress(chainId, address)}." )
-        case None            => println( s"The name '${path}' does not currently resolve to any address." )
+      syncOut {
+        mbAddress match {
+          case Some( address ) => println( s"The name '${path}' resolves to address ${verboseAddress(chainId, address)}." )
+          case None            => println( s"The name '${path}' does not currently resolve to any address." )
+        }
       }
 
       mbAddress
@@ -1614,58 +1616,60 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ensName              = epp.fullName
       val nonceOverride        = unwrapNonceOverrideBigInt( Some( log ), chainId )
 
-      try {
-        ensClient.setAddress( lazySigner, ensName, address, forceNonce = nonceOverride )
-      }
-      catch {
-        case e : ens.NoResolverSetException => {
-          val defaultResolver = mbDefaultResolver.getOrElse( throw e )
-          val setAndRetry = {
-            log.warn( s"No resolver has been set for '${ensName}'. If you wish, you can attach it to the default public resolver and then set the address." )
-            nonceOverride.foreach { nonce =>
-              log.warn( s"Note: The currently set nonce override of ${nonce} will be ignored. To control the nonce, set the resolver separately, then retry." )
+      syncOut {
+        try {
+          ensClient.setAddress( lazySigner, ensName, address, forceNonce = nonceOverride )
+        }
+        catch {
+          case e : ens.NoResolverSetException => {
+            val defaultResolver = mbDefaultResolver.getOrElse( throw e )
+            val setAndRetry = {
+              log.warn( s"No resolver has been set for '${ensName}'. If you wish, you can attach it to the default public resolver and then set the address." )
+              nonceOverride.foreach { nonce =>
+                log.warn( s"Note: The currently set nonce override of ${nonce} will be ignored. To control the nonce, set the resolver separately, then retry." )
+              }
+              kludgeySleepForInteraction()
+              is.readLine( s"Do you wish to use the default public resolver '${hexString(defaultResolver)}'? [y/n] ", false )
+                .getOrElse( throwCantReadInteraction )
+                .trim()
+                .equalsIgnoreCase("y")
             }
-            kludgeySleepForInteraction()
-            is.readLine( s"Do you wish to use the default public resolver '${hexString(defaultResolver)}'? [y/n] ", false )
-              .getOrElse( throwCantReadInteraction )
-              .trim()
-              .equalsIgnoreCase("y")
-          }
-          if ( setAndRetry ) {
-            log.info( s"Preparing transaction to set the resolver." ) 
-            ensClient.setResolver( lazySigner, ensName, defaultResolver )
-            log.info( s"Resolver for '${ensName}' set to public resolver '${hexString( defaultResolver )}'." )
+            if ( setAndRetry ) {
+              log.info( s"Preparing transaction to set the resolver." )
+              ensClient.setResolver( lazySigner, ensName, defaultResolver )
+              log.info( s"Resolver for '${ensName}' set to public resolver '${hexString( defaultResolver )}'." )
 
-            // await propogation back to us that the resolver has actually been set
-            log.info( "Verifiying resolver." )
-            var resolverSet = false
-            var tick = false
-            while ( !resolverSet ) {
-              try {
-                Thread.sleep(1000)
-                val mbFound = ensClient.resolver( ensName )
-                mbFound.foreach { found =>
-                  assert( found == defaultResolver, s"Huh? The resolver we just set to ${hexString(defaultResolver)} was found to be ${hexString(found)}. Bailing." )
-                  resolverSet = true
+              // await propogation back to us that the resolver has actually been set
+              log.info( "Verifiying resolver." )
+              var resolverSet = false
+              var tick = false
+              while ( !resolverSet ) {
+                try {
+                  Thread.sleep(1000)
+                  val mbFound = ensClient.resolver( ensName )
+                  mbFound.foreach { found =>
+                    assert( found == defaultResolver, s"Huh? The resolver we just set to ${hexString(defaultResolver)} was found to be ${hexString(found)}. Bailing." )
+                    resolverSet = true
+                  }
+                }
+                catch {
+                  case _ : ens.NoResolverSetException => {
+                    tick = true
+                    print( '.' )
+                    /* continue */
+                  }
                 }
               }
-              catch {
-                case _ : ens.NoResolverSetException => {
-                  tick = true
-                  print( '.' )
-                  /* continue */
-                }
-              }
+              if (tick) println()
+              log.info( s"Preparing transaction to set address." )
+              ensClient.setAddress( lazySigner, ensName, address )
+            } else {
+              throw e
             }
-            if (tick) println()
-            log.info( s"Preparing transaction to set address." ) 
-            ensClient.setAddress( lazySigner, ensName, address )
-          } else {
-            throw e
           }
         }
+        log.info( s"The name '${ensName}' now resolves to ${verboseAddress(chainId, address)}." )
       }
-      log.info( s"The name '${ensName}' now resolves to ${verboseAddress(chainId, address)}." )
     }
   }
 
@@ -1740,8 +1744,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         val rentInWei = rmd.rentPriceInWei( name, seconds )
         val etherValue = EthValue( rentInWei, Denominations.Ether ).denominated
-        println( s"In order to register or extend '${epp.fullPath}' for ${desiredPeriod}, it would cost ${etherValue} ether (${rentInWei} wei)." )
-        printFiatValueForEtherValue( println(_) )( chainId, baseCurrencyCode, etherValue )
+        syncOut {
+          println( s"In order to register or extend '${epp.fullPath}' for ${desiredPeriod}, it would cost ${etherValue} ether (${rentInWei} wei)." )
+          printFiatValueForEtherValue( println(_) )( chainId, baseCurrencyCode, etherValue )
+        }
       }
 
       epp match {
@@ -1763,7 +1769,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def markupEnsRent( rawRent : BigInt ) : BigInt = rounded( BigDecimal( rawRent ) * BigDecimal(1 + EnsRegisterRenewMarkup) )
 
-  private def ensNameRegisterTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    private def ensNameRegisterTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathMbAddressMbSecretParser )
 
     Def.inputTask {
@@ -1886,18 +1892,20 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       import ens.ParsedPath._
 
-      epp match {
-        case bntld : BaseNameTld => {
-          doNameCommitRegister( bntld.baseName, ensClient.forTopLevelDomain( bntld.tld ) )
-        }
-        case sn : Subnode => {
-          doNameCommitRegister( sn.label, ensClient.RegistrarManagedDomain( sn.parent.fullName ) )
-        }
-        case tld : Tld => {
-          bail( s"Top-level domain names (like '${tld.fullPath}') cannot be registered." )
-        }
-        case rev : Reverse => {
-          bail( s"Reverse ENS names (like '${rev.fullPath}') cannot be registered." )
+      syncOut {
+        epp match {
+          case bntld : BaseNameTld => {
+            doNameCommitRegister( bntld.baseName, ensClient.forTopLevelDomain( bntld.tld ) )
+          }
+          case sn : Subnode => {
+            doNameCommitRegister( sn.label, ensClient.RegistrarManagedDomain( sn.parent.fullName ) )
+          }
+          case tld : Tld => {
+            bail( s"Top-level domain names (like '${tld.fullPath}') cannot be registered." )
+          }
+          case rev : Reverse => {
+            bail( s"Reverse ENS names (like '${rev.fullPath}') cannot be registered." )
+          }
         }
       }
     }
@@ -1957,18 +1965,20 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       import ens.ParsedPath._
 
-      epp match {
-        case bntld : BaseNameTld => {
-          doNameRenew( bntld.baseName, ensClient.forTopLevelDomain( bntld.tld ) )
-        }
-        case sn : Subnode => {
-          doNameRenew( sn.label, ensClient.RegistrarManagedDomain( sn.parent.fullName ) )
-        }
-        case tld : Tld => {
-          bail( s"Top-level domain names (like '${tld.fullPath}') are not paid rentals." )
-        }
-        case rev : Reverse => {
-          bail( s"Reverse ENS names (like '${rev.fullPath}') are not paid rentals." )
+      syncOut {
+        epp match {
+          case bntld : BaseNameTld => {
+            doNameRenew( bntld.baseName, ensClient.forTopLevelDomain( bntld.tld ) )
+          }
+          case sn : Subnode => {
+            doNameRenew( sn.label, ensClient.RegistrarManagedDomain( sn.parent.fullName ) )
+          }
+          case tld : Tld => {
+            bail( s"Top-level domain names (like '${tld.fullPath}') are not paid rentals." )
+          }
+          case rev : Reverse => {
+            bail( s"Reverse ENS names (like '${rev.fullPath}') are not paid rentals." )
+          }
         }
       }
     }
@@ -2087,9 +2097,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       val name      = parser.parsed.fullName
       val mbOwner   = ensClient.owner( name )
 
-      mbOwner match {
-        case Some( address ) => println( s"The name '${name}' is owned by address ${verboseAddress(chainId, address)}." )
-        case None            => println( s"No owner has been assigned to the name '${name}'." )
+      syncOut {
+        mbOwner match {
+          case Some( address ) => println( s"The name '${name}' is owned by address ${verboseAddress(chainId, address)}." )
+          case None            => println( s"No owner has been assigned to the name '${name}'." )
+        }
       }
 
       mbOwner
@@ -2123,9 +2135,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       val name       = parser.parsed.fullName
       val mbResolver = ensClient.resolver( name )
 
-      mbResolver match {
-        case Some( address ) => println( s"The name '${name}' is associated with a resolver at address ${verboseAddress(chainId, address)}'." )
-        case None            => println( s"No resolver has been associated with the name '${name}'." )
+      syncOut {
+        mbResolver match {
+          case Some( address ) => println( s"The name '${name}' is associated with a resolver at address ${verboseAddress(chainId, address)}'." )
+          case None            => println( s"No resolver has been associated with the name '${name}'." )
+        }
       }
 
       mbResolver
@@ -2177,11 +2191,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def etherscanApiKeyDropTask : Initialize[Task[Unit]] = Def.task {
     val deleted = shoebox.Database.deleteEtherscanApiKey().assert
-    if ( deleted ) {
-      println("Etherscan API key successfully dropped.")
-    }
-    else {
-      println("Nothing to do. No Etherscan API key was set.")
+    syncOut {
+      if ( deleted ) {
+        println("Etherscan API key successfully dropped.")
+      }
+      else {
+        println("Nothing to do. No Etherscan API key was set.")
+      }
     }
   }
 
@@ -2189,14 +2205,18 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val apiKey = etherscanApiKeyParser("<etherscan-api-key>").parsed
     shoebox.Database.setEtherscanApiKey( apiKey ).assert
-    println("Etherscan API key successfully set.")
+    syncOut {
+      println("Etherscan API key successfully set.")
+    }
   }
 
   private def etherscanApiKeyPrintTask : Initialize[Task[Unit]] = Def.task {
     val mbApiKey = shoebox.Database.getEtherscanApiKey().assert
-    mbApiKey match {
-      case Some( apiKey ) => println( s"The currently set Etherscan API key is ${apiKey}" )
-      case None           => println(  "No Etherscan API key has been set." )
+    syncOut {
+      mbApiKey match {
+        case Some( apiKey ) => println( s"The currently set Etherscan API key is ${apiKey}" )
+        case None           => println(  "No Etherscan API key has been set." )
+      }
     }
   }
 
@@ -2228,8 +2248,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log      = streams.value.log
     val chainId  = findNodeChainIdTask(warn=true)(config).value
     val faliases = shoebox.AddressAliasManager.findAllAddressAliases( chainId )
-    faliases.fold( _ => log.warn("Could not read aliases from shoebox database.") ) { aliases =>
-      aliases.foreach { case (alias, address) => println( s"${alias} -> ${verboseAddress(chainId, address)}" ) }
+    syncOut {
+      faliases.fold( _ => log.warn("Could not read aliases from shoebox database.") ) { aliases =>
+        aliases.foreach { case (alias, address) => println( s"${alias} -> ${verboseAddress(chainId, address)}" ) }
+      }
     }
   }
 
@@ -2243,17 +2265,19 @@ object SbtEthereumPlugin extends AutoPlugin {
       val mbAddressForAlias = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, aliasOrAddress ).assert
       val mbEntryAsAddress = Failable( EthAddress( aliasOrAddress ) ).toOption
 
-      mbAddressForAlias match {
-        case Some( addressForAlias ) => println( s"The alias '${aliasOrAddress}' points to address ${verboseAddress( chainId, addressForAlias )}." )
-        case None => {
-          val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, addr ).get )
-          ( mbEntryAsAddress, aliasesForAddress ) match {
-            case ( Some( entryAsAddress ),        Seq() ) => println( s"The address '${hexString(entryAsAddress)}' is not associated with any aliases." )
-            case ( Some( entryAsAddress ), Seq( alias ) ) => println( s"The address '${hexString(entryAsAddress)}' is associated with alias '${alias}'." )
-            case ( Some( entryAsAddress ),      aliases ) => println( s"""The address '${hexString(entryAsAddress)}' is associated with aliases ${aliases.mkString( "['","', '", "']" )}.""" )
-            case (                   None,            _ ) => {
-              if (mbAddressForAlias.isEmpty) { // so we'd not have printed any message yet
-                println( s"The alias '${aliasOrAddress}' is not associated with any address." )
+      syncOut {
+        mbAddressForAlias match {
+          case Some( addressForAlias ) => println( s"The alias '${aliasOrAddress}' points to address ${verboseAddress( chainId, addressForAlias )}." )
+          case None => {
+            val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, addr ).get )
+              ( mbEntryAsAddress, aliasesForAddress ) match {
+              case ( Some( entryAsAddress ),        Seq() ) => println( s"The address '${hexString(entryAsAddress)}' is not associated with any aliases." )
+              case ( Some( entryAsAddress ), Seq( alias ) ) => println( s"The address '${hexString(entryAsAddress)}' is associated with alias '${alias}'." )
+              case ( Some( entryAsAddress ),      aliases ) => println( s"""The address '${hexString(entryAsAddress)}' is associated with aliases ${aliases.mkString( "['","', '", "']" )}.""" )
+              case (                   None,            _ ) => {
+                if (mbAddressForAlias.isEmpty) { // so we'd not have printed any message yet
+                  println( s"The alias '${aliasOrAddress}' is not associated with any address." )
+                }
               }
             }
           }
@@ -2358,7 +2382,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTaskDyn {
       val ( alias, address ) = parser.parsed
-      interactiveUpdateAliasTask( config, alias, address )
+      syncOut {
+        interactiveUpdateAliasTask( config, alias, address )
+      }
     }
   }
 
@@ -2377,12 +2403,14 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val exchangerConfig = findExchangerConfigTask( config ).value
 
-      val result           = doPrintingGetBalance( exchangerConfig, log, timeout, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
-      val etherValue       = result.denominated
+      syncOut {
+        val result           = doPrintingGetBalance( exchangerConfig, log, timeout, address, jsonrpc.Client.BlockNumber.Latest, Denominations.Ether )
+        val etherValue       = result.denominated
 
-      printFiatValueForEtherValue()( chainId, baseCurrencyCode, etherValue )
+        printFiatValueForEtherValue()( chainId, baseCurrencyCode, etherValue )
 
-      etherValue
+        etherValue
+      }
     }
   }
 
@@ -2511,13 +2539,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       val newAddress = parser.parsed
       val oldAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
       oldAddress.foreach { address =>
-        println( s"A default sender address has already been set for chain with ID ${chainId}: '${hexString(address)}'." )
-        val overwrite = queryYN( is, s"Do you wish to replace it? [y/n] " )
-        if ( overwrite ) {
-          shoebox.Database.dropDefaultSenderAddress( chainId ).assert
-        }
-        else {
-          throw new OperationAbortedByUserException( s"User chose not to replace previously set default sender address for chain with ID ${chainId}, which remains '${hexString(address)}'." )
+        syncOut {
+          println( s"A default sender address has already been set for chain with ID ${chainId}: '${hexString(address)}'." )
+          val overwrite = queryYN( is, s"Do you wish to replace it? [y/n] " )
+          if ( overwrite ) {
+            shoebox.Database.dropDefaultSenderAddress( chainId ).assert
+          }
+          else {
+            throw new OperationAbortedByUserException( s"User chose not to replace previously set default sender address for chain with ID ${chainId}, which remains '${hexString(address)}'." )
+          }
         }
       }
       shoebox.Database.setDefaultSenderAddress( chainId, newAddress ).assert
@@ -2619,7 +2649,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       "abi:" + alias :: hexString(hash) :: Nil
     }
 
-    texttable.printTable( columns, extract )( abiAliases.map( aa => texttable.Row(aa) ) )
+    syncOut {
+      texttable.printTable( columns, extract )( abiAliases.map( aa => texttable.Row(aa) ) )
+    }
   }
 
   private def ethContractAbiAliasSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
@@ -2646,11 +2678,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val ( abiSource, bytes ) = parser.parsed
       loggedAbiFromAbiSource( log, abiSource ).fold( throw nst( new AbiUnknownException( s"Can't find ABI for ${abiSource.sourceDesc}" ) ) ) { abi =>
-        val ( fcn, values ) = ethabi.decodeFunctionCall( abi, bytes ).assert
-        println( s"Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
+        syncOut {
+          val ( fcn, values ) = ethabi.decodeFunctionCall( abi, bytes ).assert
+          println( s"Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
           (values.zip( Stream.from(1) )).foreach { case (value, index) =>
             println( s"   Arg ${index} [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
           }
+        }
       }
     }
   }
@@ -2664,8 +2698,10 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ( abi, mbWarning, function, inputs ) = parser.parsed
       mbWarning.foreach( warning => log.warn( warning ) )
       val bytes = ethabi.callDataForAbiFunctionFromStringArgs( inputs, function ).assert
-      println( "Encoded data:" )
-      println( hexString(bytes) )
+      syncOut {
+        println( "Encoded data:" )
+        println( hexString(bytes) )
+      }
     }
   }
 
@@ -2709,105 +2745,107 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val ( toLinkAddress, abiSource ) = parser.parsed
 
-      // Note the we sort `abi` before binding to the val
-      val ( abi : Abi, sourceDesc : String) = standardSortAbiAndSourceDesc( log, abiSource )
-      
-      val mbKnownCompilation = shoebox.Database.deployedContractInfoForAddress( chainId, toLinkAddress ).assert
-      mbKnownCompilation match {
-        case Some( knownCompilation ) => {
-          knownCompilation.mbAbiHash match {
-            case Some( abiHash ) => {
-              log.warn( s"The contract at address '${hexString(toLinkAddress)}' was already associated with a deployed compilation, which has an ABI. A memorized ABI would shadow that." )
+      syncOut {
+        // Note the we sort `abi` before binding to the val
+        val ( abi : Abi, sourceDesc : String) = standardSortAbiAndSourceDesc( log, abiSource )
 
-              kludgeySleepForInteraction()
-              val doIt = queryYN( is, s"Do you still wish to memorize a new ABI for ${sourceDesc}? [y/n] " )
-              if (! doIt ) throw new OperationAbortedByUserException( "User chose not shadow ABI of already defined compilation." )
+        val mbKnownCompilation = shoebox.Database.deployedContractInfoForAddress( chainId, toLinkAddress ).assert
+        mbKnownCompilation match {
+          case Some( knownCompilation ) => {
+            knownCompilation.mbAbiHash match {
+              case Some( abiHash ) => {
+                log.warn( s"The contract at address '${hexString(toLinkAddress)}' was already associated with a deployed compilation, which has an ABI. A memorized ABI would shadow that." )
+
+                kludgeySleepForInteraction()
+                val doIt = queryYN( is, s"Do you still wish to memorize a new ABI for ${sourceDesc}? [y/n] " )
+                if (! doIt ) throw new OperationAbortedByUserException( "User chose not shadow ABI of already defined compilation." )
+              }
+              case None => {
+                // ignore, we won't be overriding anything
+              }
             }
-            case None => {
-              // ignore, we won't be overriding anything
+          }
+          case None => {
+            // ignore, we won't be overriding anything
+          }
+        }
+        val currentAbiOverrides = abiOverridesForChain( chainId )
+        currentAbiOverrides.get( toLinkAddress ).foreach { currentOverride =>
+          if ( currentOverride.withStandardSort != abi /* already sorted */ ) {
+            kludgeySleepForInteraction()
+            val ignoreOverride = queryYN( is, s"An ABI override is set in the present session that differs from the ABI you wish to associate with '${hexString(toLinkAddress)}'. Continue? [y/n] " )
+            if (! ignoreOverride ) throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet due to discrepancy between linked ABI and current override." )
+          }
+        }
+
+        def finishUpdate = {
+          log.info( s"The ABI previously associated with ${sourceDesc} ABI has been associated with address ${hexString(toLinkAddress)}." )
+          if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, toLinkAddress ).assert ) {
+            kludgeySleepForInteraction()
+            interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
+          }
+          Def.taskDyn {
+            xethTriggerDirtyAliasCache
+          }
+        }
+        def noop = EmptyTask
+
+        val lookupExisting = abiLookupForAddress( chainId, toLinkAddress, currentAbiOverrides )
+        lookupExisting match {
+          case AbiLookup( toLinkAddress, _, Some( `abi` ), _, _ ) => {
+            log.info( s"The ABI you have tried to link is already associated with '${hexString(toLinkAddress)}'. No changes were made." )
+            noop
+          }
+          case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), Some( `abi` ), _ ) => {
+            val deleteImported = queryYN( is, s"The ABI you have tried to link is the origial compilation ABI associated with ${hexString(toLinkAddress)}. Remove shadowing ABI to restore? [y/n] " )
+            if (! deleteImported ) {
+              throw new OperationAbortedByUserException( "User chose not to delete a currently associated ABI, which shadows an original compilation-derived ABI." )
+            }
+            else {
+              shoebox.Database.deleteImportedContractAbi( chainId, toLinkAddress ).assert // throw an Exception if there's a database issue
+              finishUpdate
             }
           }
-        }
-        case None => {
-          // ignore, we won't be overriding anything
-        }
-      }
-      val currentAbiOverrides = abiOverridesForChain( chainId )
-      currentAbiOverrides.get( toLinkAddress ).foreach { currentOverride =>
-        if ( currentOverride.withStandardSort != abi /* already sorted */ ) {
-          kludgeySleepForInteraction()
-          val ignoreOverride = queryYN( is, s"An ABI override is set in the present session that differs from the ABI you wish to associate with '${hexString(toLinkAddress)}'. Continue? [y/n] " )
-          if (! ignoreOverride ) throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet due to discrepancy between linked ABI and current override." )
-        }
-      }
-
-      def finishUpdate = {
-        log.info( s"The ABI previously associated with ${sourceDesc} ABI has been associated with address ${hexString(toLinkAddress)}." )
-        if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, toLinkAddress ).assert ) {
-          kludgeySleepForInteraction()
-          interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
-        }
-        Def.taskDyn {
-          xethTriggerDirtyAliasCache
-        }
-      }
-      def noop = EmptyTask
-
-      val lookupExisting = abiLookupForAddress( chainId, toLinkAddress, currentAbiOverrides )
-      lookupExisting match {
-        case AbiLookup( toLinkAddress, _, Some( `abi` ), _, _ ) => {
-          log.info( s"The ABI you have tried to link is already associated with '${hexString(toLinkAddress)}'. No changes were made." )
-          noop
-        }
-        case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), Some( `abi` ), _ ) => {
-          val deleteImported = queryYN( is, s"The ABI you have tried to link is the origial compilation ABI associated with ${hexString(toLinkAddress)}. Remove shadowing ABI to restore? [y/n] " )
-          if (! deleteImported ) {
-            throw new OperationAbortedByUserException( "User chose not to delete a currently associated ABI, which shadows an original compilation-derived ABI." )
+          case AbiLookup( toLinkAddress, _, None, Some( `abi` ), _ ) => {
+            log.info( s"The ABI you have tried to link is already associated with '${toLinkAddress}'. It is the unshadowed, original compilation ABI. No changes were made." )
+            noop
           }
-          else {
-            shoebox.Database.deleteImportedContractAbi( chainId, toLinkAddress ).assert // throw an Exception if there's a database issue
-            finishUpdate
+          case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), Some( compilationAbi ), _ ) => {
+            val overwriteShadow = queryYN( is, s"This operation would overwrite an existing ABI associated with '${hexString(toLinkAddress)}' (which itself shadowed an original compilation-derived ABI). Continue? [y/n] " )
+            if (! overwriteShadow ) {
+              throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association (which itself shadowed an original compilation-derived ABI)." )
+            }
+            else {
+              shoebox.Database.resetImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+              finishUpdate
+            }
           }
-        }
-        case AbiLookup( toLinkAddress, _, None, Some( `abi` ), _ ) => {
-          log.info( s"The ABI you have tried to link is already associated with '${toLinkAddress}'. It is the unshadowed, original compilation ABI. No changes were made." )
-          noop
-        }
-        case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), Some( compilationAbi ), _ ) => {
-          val overwriteShadow = queryYN( is, s"This operation would overwrite an existing ABI associated with '${hexString(toLinkAddress)}' (which itself shadowed an original compilation-derived ABI). Continue? [y/n] " )
-          if (! overwriteShadow ) {
-            throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association (which itself shadowed an original compilation-derived ABI)." )
+          case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), None, _ ) => {
+            val overwrite = queryYN( is, s"This operation would overwrite an existing ABI associated with '${hexString(toLinkAddress)}'. Continue? [y/n] " )
+            if (! overwrite ) {
+              throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association." )
+            }
+            else {
+              shoebox.Database.resetImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+              finishUpdate
+            }
           }
-          else {
-            shoebox.Database.resetImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
-            finishUpdate
+          case AbiLookup( toLinkAddress, _, None, Some( compilationAbi_ ), _ ) => {
+            val shadow = queryYN( is, "This operation would shadow an original compilation-derived ABI. Continue? [y/n] " )
+            if (! shadow ) {
+              throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association (which itself overrode an original compilation-derived ABI)." )
+            }
+            else {
+              shoebox.Database.setImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+              finishUpdate
+            }
           }
-        }
-        case AbiLookup( toLinkAddress, _, Some( memorizedAbi ), None, _ ) => {
-          val overwrite = queryYN( is, s"This operation would overwrite an existing ABI associated with '${hexString(toLinkAddress)}'. Continue? [y/n] " )
-          if (! overwrite ) {
-            throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association." )
-          }
-          else {
-            shoebox.Database.resetImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
-            finishUpdate
-          }
-        }
-        case AbiLookup( toLinkAddress, _, None, Some( compilationAbi_ ), _ ) => {
-          val shadow = queryYN( is, "This operation would shadow an original compilation-derived ABI. Continue? [y/n] " )
-          if (! shadow ) {
-            throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association (which itself overrode an original compilation-derived ABI)." )
-          }
-          else {
+          case AbiLookup( toLinkAddress, _, None, None, _ ) => {
             shoebox.Database.setImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
+          case unexpected => throw new SbtEthereumException( s"Unexpected AbiLookup: ${unexpected}" )
         }
-        case AbiLookup( toLinkAddress, _, None, None, _ ) => {
-          shoebox.Database.setImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
-          finishUpdate
-        }
-        case unexpected => throw new SbtEthereumException( s"Unexpected AbiLookup: ${unexpected}" )
       }
     }
   }
@@ -2846,7 +2884,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         case None         =>  ""
       }
     }
-    texttable.printTable( columns, extract )( addressesToAbiHashes.map( tup => texttable.Row(tup, aliasesPartForTup( tup ) ) ) )
+    syncOut {
+      texttable.printTable( columns, extract )( addressesToAbiHashes.map( tup => texttable.Row(tup, aliasesPartForTup( tup ) ) ) )
+    }
   }
 
   private def ethContractAbiOverrideDropAllTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
@@ -2877,9 +2917,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       val currentAbiOverrides = abiOverridesForChain( chainId )
       currentAbiOverrides.get( address ) match {
         case Some( abi ) => {
-          println( s"Session override of contract ABI for address '0x${address.hex}':" )
-          val json = Json.toJson( abi )
-          println( Json.prettyPrint( json ) )
+          syncOut {
+            println( s"Session override of contract ABI for address '0x${address.hex}':" )
+            val json = Json.toJson( abi )
+            println( Json.prettyPrint( json ) )
+          }
         }
         case None => {
           log.warn( s"No ABI override set for address '${hexString(address)}' (for chain with ID ${chainId})." )
@@ -2920,12 +2962,14 @@ object SbtEthereumPlugin extends AutoPlugin {
       val mbTup = abiFromAbiSource( abiSource )
       val mbAbi = mbTup.map( _._1 )
       mbTup.foreach( _._2.foreach( _.logGenericShadowWarning( log ) ) )
-      mbAbi match {
-        case None        => println( s"No contract ABI known for ${abiSource.sourceDesc}." )
-        case Some( abi ) => {
-          println( s"Contract ABI for ${abiSource.sourceDesc}:" )
-          val json = Json.toJson( abi )
-          println( if ( pretty ) Json.prettyPrint( json ) else  Json.stringify( json ) )
+      syncOut {
+        mbAbi match {
+          case None        => println( s"No contract ABI known for ${abiSource.sourceDesc}." )
+          case Some( abi ) => {
+            println( s"Contract ABI for ${abiSource.sourceDesc}:" )
+            val json = Json.toJson( abi )
+            println( if ( pretty ) Json.prettyPrint( json ) else  Json.stringify( json ) )
+          }
         }
       }
     }
@@ -3020,7 +3064,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    texttable.printTable( columns, extract, rowFilter )( allRecords.map( r => texttable.Row(r, annotation(r)) ) )
+    syncOut {
+      texttable.printTable( columns, extract, rowFilter )( allRecords.map( r => texttable.Row(r, annotation(r)) ) )
+    }
   }
 
   private def ethContractAbiDefaultImportTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
@@ -3035,86 +3081,88 @@ object SbtEthereumPlugin extends AutoPlugin {
       val timeout = xethcfgAsyncOperationTimeout.value
       val address = parser.parsed
       val mbKnownCompilation = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get
-      mbKnownCompilation match {
-        case Some( knownCompilation ) => {
-          knownCompilation.mbAbiHash match {
-            case Some( abiHash ) => {
-              log.warn( s"The contract at address '$address' was already associated with a deployed compilation and ABI with hash '${hexString(abiHash)}', which a new ABI would shadow!" )
+      syncOut {
+        mbKnownCompilation match {
+          case Some( knownCompilation ) => {
+            knownCompilation.mbAbiHash match {
+              case Some( abiHash ) => {
+                log.warn( s"The contract at address '$address' was already associated with a deployed compilation and ABI with hash '${hexString(abiHash)}', which a new ABI would shadow!" )
 
-              kludgeySleepForInteraction()
-              val shadow = queryYN( is, s"Are you sure you want to shadow the compilation ABI? [y/n] " )
-              if (! shadow) throw new OperationAbortedByUserException( "User chose not to shadow ABI defined in compilation." )
+                kludgeySleepForInteraction()
+                val shadow = queryYN( is, s"Are you sure you want to shadow the compilation ABI? [y/n] " )
+                if (! shadow) throw new OperationAbortedByUserException( "User chose not to shadow ABI defined in compilation." )
+              }
+              case None => {
+                // ignore, there's nothing we would shadow
+              }
             }
-            case None => {
-              // ignore, there's nothing we would shadow
+          }
+          case None => {
+            val abiLookup = abiLookupForAddress( chainId, address, abiOverrides )
+            if ( abiLookup.memorizedAbi.nonEmpty ) {
+              val overwrite = queryYN( is, s"A default ABI for '${hexString(address)}' on chain with ID ${chainId} has already been set. Overwrite? [y/n] " )
+              if (! overwrite) throw new OperationAbortedByUserException( "User chose not to overwrite already defined default contract ABI." )
+            }
+            else if ( abiLookup.compilationAbi.nonEmpty ) {
+              val shadow = queryYN( is, s"A compilation deployed at '${hexString(address)}' on chain with ID ${chainId} has a known, built-in ABI. Do you wish to shadow it? [y/n] " )
+              if (! shadow) throw new OperationAbortedByUserException( "User chose not to shadow built-in compilation ABI." )
             }
           }
         }
-        case None => {
-          val abiLookup = abiLookupForAddress( chainId, address, abiOverrides )
-          if ( abiLookup.memorizedAbi.nonEmpty ) { 
-            val overwrite = queryYN( is, s"A default ABI for '${hexString(address)}' on chain with ID ${chainId} has already been set. Overwrite? [y/n] " )
-            if (! overwrite) throw new OperationAbortedByUserException( "User chose not to overwrite already defined default contract ABI." )
-          }
-          else if ( abiLookup.compilationAbi.nonEmpty ) {
-            val shadow = queryYN( is, s"A compilation deployed at '${hexString(address)}' on chain with ID ${chainId} has a known, built-in ABI. Do you wish to shadow it? [y/n] " )
-            if (! shadow) throw new OperationAbortedByUserException( "User chose not to shadow built-in compilation ABI." )
-          }
-        }
-      }
-      val abi = {
-        val mbEtherscanAbi : Option[Abi] = {
-          val fmbApiKey = shoebox.Database.getEtherscanApiKey()
-          fmbApiKey match {
-            case Succeeded( mbApiKey ) => {
-              mbApiKey match {
-                case Some( apiKey ) => {
-                  val tryIt = queryYN( is, "An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] " )
-                  if ( tryIt ) {
-                    println( s"Attempting to fetch ABI for address '${hexString(address)}' from Etherscan." )
-                    val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( address )
-                    Await.ready( fAbi, timeout )
-                    fAbi.value.get match {
-                      case Success( abi ) => {
-                        println( "ABI found:" )
-                        println( Json.stringify( Json.toJson( abi ) ) )
-                        val useIt = queryYN( is, "Use this ABI? [y/n] ")
-                        if (useIt) Some( abi ) else None
-                      }
-                      case Failure( e ) => {
-                        println( s"Failed to import ABI from Etherscan: ${e}" )
-                        DEBUG.log( "Etherscan verified ABI import failure.", e )
-                        None
+        val abi = {
+          val mbEtherscanAbi : Option[Abi] = {
+            val fmbApiKey = shoebox.Database.getEtherscanApiKey()
+            fmbApiKey match {
+              case Succeeded( mbApiKey ) => {
+                mbApiKey match {
+                  case Some( apiKey ) => {
+                    val tryIt = queryYN( is, "An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] " )
+                    if ( tryIt ) {
+                      println( s"Attempting to fetch ABI for address '${hexString(address)}' from Etherscan." )
+                      val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( address )
+                      Await.ready( fAbi, timeout )
+                      fAbi.value.get match {
+                        case Success( abi ) => {
+                          println( "ABI found:" )
+                          println( Json.stringify( Json.toJson( abi ) ) )
+                          val useIt = queryYN( is, "Use this ABI? [y/n] ")
+                          if (useIt) Some( abi ) else None
+                        }
+                        case Failure( e ) => {
+                          println( s"Failed to import ABI from Etherscan: ${e}" )
+                          DEBUG.log( "Etherscan verified ABI import failure.", e )
+                          None
+                        }
                       }
                     }
+                    else {
+                      None
+                    }
                   }
-                  else {
+                  case None => {
+                    log.warn("No Etherscan API key has been set, so you will have to directly paste the ABI.")
+                    log.warn("Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeySet'.")
                     None
                   }
                 }
-                case None => {
-                  log.warn("No Etherscan API key has been set, so you will have to directly paste the ABI.")
-                  log.warn("Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeySet'.")
-                  None
-                }
+              }
+              case failed : Failed[_] => {
+                log.warn( s"An error occurred while trying to check if the database contains an Etherscan API key: '${failed.message}'" )
+                failed.xdebug("An error occurred while trying to check if the database contains an Etherscan API key")
+                None
               }
             }
-            case failed : Failed[_] => {
-              log.warn( s"An error occurred while trying to check if the database contains an Etherscan API key: '${failed.message}'" )
-              failed.xdebug("An error occurred while trying to check if the database contains an Etherscan API key")
-              None
-            }
+          }
+          mbEtherscanAbi match {
+            case Some( etherscanAbi ) => etherscanAbi
+            case None                 => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throwCantReadInteraction ) )
           }
         }
-        mbEtherscanAbi match {
-          case Some( etherscanAbi ) => etherscanAbi
-          case None                 => parseAbi( is.readLine( "Contract ABI: ", mask = false ).getOrElse( throwCantReadInteraction ) )
+        shoebox.Database.resetImportedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
+        log.info( s"A default ABI is now known for the contract at address ${hexString(address)}" )
+        if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, address ).assert ) {
+          interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported default ABI", address )
         }
-      }
-      shoebox.Database.resetImportedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
-      log.info( s"A default ABI is now known for the contract at address ${hexString(address)}" )
-      if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, address ).assert ) {
-        interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported default ABI", address )
       }
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -3179,56 +3227,59 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
 
       val source = parser.parsed
-      source match {
-        case Left( address ) => {
-          val mbinfo = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get // throw any db problem
-          mbinfo.fold( println( s"Contract with address ${verboseAddress( chainId, address )} not found. Perhaps try a different Chain ID?" ) ) { info =>
-            section( s"Contract Address (on blockchain with ID ${info.chainId})", Some( info.contractAddress.hex ), true )
-            section( "Deployer Address", info.mbDeployerAddress.map( _.hex ), true )
-            section( "Transaction Hash", info.mbTransactionHash.map( _.hex ), true )
-            section( "Deployment Timestamp", info.mbDeployedWhen.map( l => (new Date(l)).toString ) )
-            section( "Code Hash", Some( info.codeHash.hex ), true )
-            section( "Code", Some( info.code ), true )
-            constructorInputsSection( info.mbConstructorInputs, info.mbAbi )
-            section( "Contract Name", info.mbName )
-            section( "Contract Source", info.mbSource )
-            section( "Contract Language", info.mbLanguage )
-            section( "Language Version", info.mbLanguageVersion )
-            section( "Compiler Version", info.mbCompilerVersion )
-            section( "Compiler Options", info.mbCompilerOptions )
-            section( "ABI Hash", info.mbAbiHash.map( hexString ) )
-            jsonSection( "ABI Definition", info.mbAbi )
-            jsonSection( "User Documentation", info.mbUserDoc )
-            jsonSection( "Developer Documentation", info.mbDeveloperDoc )
-            section( "Metadata", info.mbMetadata )
-            section( "AST", info.mbAst )
-            section( "Project Name", info.mbProjectName )
+
+      syncOut {
+        source match {
+          case Left( address ) => {
+            val mbinfo = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get // throw any db problem
+            mbinfo.fold( println( s"Contract with address ${verboseAddress( chainId, address )} not found. Perhaps try a different Chain ID?" ) ) { info =>
+              section( s"Contract Address (on blockchain with ID ${info.chainId})", Some( info.contractAddress.hex ), true )
+              section( "Deployer Address", info.mbDeployerAddress.map( _.hex ), true )
+              section( "Transaction Hash", info.mbTransactionHash.map( _.hex ), true )
+              section( "Deployment Timestamp", info.mbDeployedWhen.map( l => (new Date(l)).toString ) )
+              section( "Code Hash", Some( info.codeHash.hex ), true )
+              section( "Code", Some( info.code ), true )
+              constructorInputsSection( info.mbConstructorInputs, info.mbAbi )
+              section( "Contract Name", info.mbName )
+              section( "Contract Source", info.mbSource )
+              section( "Contract Language", info.mbLanguage )
+              section( "Language Version", info.mbLanguageVersion )
+              section( "Compiler Version", info.mbCompilerVersion )
+              section( "Compiler Options", info.mbCompilerOptions )
+              section( "ABI Hash", info.mbAbiHash.map( hexString ) )
+              jsonSection( "ABI Definition", info.mbAbi )
+              jsonSection( "User Documentation", info.mbUserDoc )
+              jsonSection( "Developer Documentation", info.mbDeveloperDoc )
+              section( "Metadata", info.mbMetadata )
+              section( "AST", info.mbAst )
+              section( "Project Name", info.mbProjectName )
+            }
+          }
+          case Right( hash ) => {
+            val mbinfo = shoebox.Database.compilationInfoForCodeHash( hash ).get // throw any db problem
+            mbinfo.fold( println( s"Contract with code hash '$hash' not found." ) ) { info =>
+              section( "Code Hash", Some( hash.hex ), true )
+              section( "Code", Some( info.code ), true )
+              section( "Contract Name", info.mbName )
+              section( "Contract Source", info.mbSource )
+              section( "Contract Language", info.mbLanguage )
+              section( "Language Version", info.mbLanguageVersion )
+              section( "Compiler Version", info.mbCompilerVersion )
+              section( "Compiler Options", info.mbCompilerOptions )
+              section( "ABI Hash", info.mbAbiHash.map( hexString ) )
+              jsonSection( "ABI Definition", info.mbAbi )
+              jsonSection( "User Documentation", info.mbUserDoc )
+              jsonSection( "Developer Documentation", info.mbDeveloperDoc )
+              section( "Metadata", info.mbMetadata )
+              section( "AST", info.mbAst )
+              section( "Project Name", info.mbProjectName )
+              addressSection( "Deployments", shoebox.Database.chainIdContractAddressesForCodeHash( hash ).get )
+            }
           }
         }
-        case Right( hash ) => {
-          val mbinfo = shoebox.Database.compilationInfoForCodeHash( hash ).get // throw any db problem
-          mbinfo.fold( println( s"Contract with code hash '$hash' not found." ) ) { info =>
-            section( "Code Hash", Some( hash.hex ), true )
-            section( "Code", Some( info.code ), true )
-            section( "Contract Name", info.mbName )
-            section( "Contract Source", info.mbSource )
-            section( "Contract Language", info.mbLanguage )
-            section( "Language Version", info.mbLanguageVersion )
-            section( "Compiler Version", info.mbCompilerVersion )
-            section( "Compiler Options", info.mbCompilerOptions )
-            section( "ABI Hash", info.mbAbiHash.map( hexString ) )
-            jsonSection( "ABI Definition", info.mbAbi )
-            jsonSection( "User Documentation", info.mbUserDoc )
-            jsonSection( "Developer Documentation", info.mbDeveloperDoc )
-            section( "Metadata", info.mbMetadata )
-            section( "AST", info.mbAst )
-            section( "Project Name", info.mbProjectName )
-            addressSection( "Deployments", shoebox.Database.chainIdContractAddressesForCodeHash( hash ).get )
-          }
-        }
+        println( cap )
+        println()
       }
-      println( cap )
-      println()
     }
   }
 
@@ -3246,7 +3297,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       immutable.Vector( id, ca, nm, ch, ts )
     }
 
-    texttable.printTable( columns, extract )( contractsSummary.map( csr => texttable.Row(csr) ) )
+    syncOut {
+      texttable.printTable( columns, extract )( contractsSummary.map( csr => texttable.Row(csr) ) )
+    }
   }
 
   private def ethDebugGanacheStartTask : Initialize[Task[Unit]] = Def.task {
@@ -3318,18 +3371,21 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     val cap = "+" + dashspan(44) + "+"
     val KeystoreAddresses = "Keystore Addresses"
-    println( cap )
-    println( f"| $KeystoreAddresses%-42s |" )
-    println( cap )
-    out.keySet.toSeq.foreach { address =>
-      val ka = s"0x${address.hex}"
-      val aliasesArrow = {
-        val aliases = out(address)
-        if ( aliases.isEmpty ) "" else s""" <-- ${aliases.mkString(", ")}"""
+
+    syncOut {
+      println( cap )
+      println( f"| $KeystoreAddresses%-42s |" )
+      println( cap )
+      out.keySet.toSeq.foreach { address =>
+        val ka = s"0x${address.hex}"
+        val aliasesArrow = {
+          val aliases = out(address)
+          if ( aliases.isEmpty ) "" else s""" <-- ${aliases.mkString(", ")}"""
+        }
+        println( f"| $ka%-42s |" +  aliasesArrow )
       }
-      println( f"| $ka%-42s |" +  aliasesArrow )
+      println( cap )
     }
-    println( cap )
     out
   }
 
@@ -3348,32 +3404,39 @@ object SbtEthereumPlugin extends AutoPlugin {
       val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, addressStr, s) // config doesn't really matter here, since we provide hex, not a config dependent alias
 
       val privateKey = Mutables.MainSignersManager.findRawPrivateKey( log, is, address, wallets )
-      val confirmation = {
-        is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
-          .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
-      }
-      if ( confirmation == "YES" ) {
-        println( s"0x${privateKey.bytes.widen.hex}" )
-      } else {
-        throw notConfirmedByUser
+
+      syncOut {
+        val confirmation = {
+          is.readLine(s"Are you sure you want to reveal the unencrypted private key on this very insecure console? [Type YES exactly to continue, anything else aborts]: ", mask = false)
+            .getOrElse(throw new Exception("Failed to read a confirmation")) // fail if we can't get a credential
+        }
+        if ( confirmation == "YES" ) {
+          println( s"0x${privateKey.bytes.widen.hex}" )
+        } else {
+          throw notConfirmedByUser
+        }
       }
     }
   }
 
   private def ethKeystoreWalletV3CreateTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     val wallet = xethKeystoreWalletV3CreateDefault.value
-    interactiveOptionalCreateAliasTask( config, wallet.address )
+    syncOut {
+      interactiveOptionalCreateAliasTask( config, wallet.address )
+    }
   }
 
   private def ethKeystoreWalletV3FromJsonImportTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     val log = streams.value.log
     val is = interactionService.value
-    val w = readV3Wallet( is )
-    val address = w.address // a very cursory check of the wallet, NOT full validation
-    shoebox.Keystore.V3.storeWallet( w ).get // asserts success
-    log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
-    log.info( s"Consider validating the JSON using 'ethKeystoreWalletV3Validate 0x${address.hex}'." )
-    interactiveOptionalCreateAliasTask( config, address )
+    syncOut {
+      val w = readV3Wallet( is )
+      val address = w.address // a very cursory check of the wallet, NOT full validation
+      shoebox.Keystore.V3.storeWallet( w ).get // asserts success
+      log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
+      log.info( s"Consider validating the JSON using 'ethKeystoreWalletV3Validate 0x${address.hex}'." )
+      interactiveOptionalCreateAliasTask( config, address )
+    }
   }
 
   private def ethKeystoreWalletV3FromPrivateKeyImportTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
@@ -3384,29 +3447,31 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val entropySource = ethcfgEntropySource.value
 
-    val privateKeyStr = {
-      val raw = is.readLine( "Please enter the private key you would like to import (as 32 hex bytes): ", mask = true ).getOrElse( throwCantReadInteraction ).trim()
-      if ( raw.startsWith( "0x" ) ) raw.substring(2) else raw
-    }
-    val privateKey = EthPrivateKey( privateKeyStr )
-    val address = privateKey.address
+    syncOut {
+      val privateKeyStr = {
+        val raw = is.readLine( "Please enter the private key you would like to import (as 32 hex bytes): ", mask = true ).getOrElse( throwCantReadInteraction ).trim()
+        if ( raw.startsWith( "0x" ) ) raw.substring(2) else raw
+      }
+      val privateKey = EthPrivateKey( privateKeyStr )
+      val address = privateKey.address
 
-    val confirm = {
-      is.readLine( s"The imported private key corresponds to address '${hexString( address )}'. Is this correct? [y/n] ", mask = false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
-    }
+      val confirm = {
+        is.readLine( s"The imported private key corresponds to address '${hexString( address )}'. Is this correct? [y/n] ", mask = false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
+      }
 
-    if (! confirm ) {
-      log.info( "Import aborted." )
-      throw new SbtEthereumException( "Import aborted." )
-    }
-    else {
-      println( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" ) // use println rather than log info to be sure this prints before the credential query
-      val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
-      val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( privateKey ), random = entropySource )
-      shoebox.Keystore.V3.storeWallet( w ).get // asserts success
-      log.info( s"Wallet created and imported into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
-      log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
-      interactiveOptionalCreateAliasTask( config, address )
+      if (! confirm ) {
+        log.info( "Import aborted." )
+        throw new SbtEthereumException( "Import aborted." )
+      }
+      else {
+        println( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" ) // use println rather than log info to be sure this prints before the credential query
+        val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
+        val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( privateKey ), random = entropySource )
+        shoebox.Keystore.V3.storeWallet( w ).get // asserts success
+        log.info( s"Wallet created and imported into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
+        log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
+        interactiveOptionalCreateAliasTask( config, address )
+      }
     }
   }
 
@@ -3415,12 +3480,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     val keystoreDirs = OnlyShoeboxKeystoreV3
     val wallets = (xethLoadWalletsV3For in config).evaluated
     val sz = wallets.size
-    if ( sz == 0 ) unknownWallet( keystoreDirs )
-    else if ( sz > 1 ) log.warn( s"Multiple (${sz}) wallets found." )
-    wallets.zip( Stream.from(1) ) foreach { case ( w, idx ) =>
-      if ( sz > 1 ) println( s"==== V3 Wallet #${idx} ====" )
-      println( Json.stringify( w.withLowerCaseKeys ) )
-      if ( sz > 1 ) println()
+    syncOut {
+      if ( sz == 0 ) unknownWallet( keystoreDirs )
+      else if ( sz > 1 ) log.warn( s"Multiple (${sz}) wallets found." )
+      wallets.zip( Stream.from(1) ) foreach { case ( w, idx ) =>
+        if ( sz > 1 ) println( s"==== V3 Wallet #${idx} ====" )
+        println( Json.stringify( w.withLowerCaseKeys ) )
+        if ( sz > 1 ) println()
+      }
     }
   }
 
@@ -3435,40 +3502,43 @@ object SbtEthereumPlugin extends AutoPlugin {
       val extract = Project.extract(s)
       val inputAddress = parser.parsed
       val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, inputAddress.hex, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
-      if ( wallets.isEmpty ) {
-        unknownWallet( keystoreDirs )
-      }
-      else {
-        val credential = readCredential( is, inputAddress, acceptHexPrivateKey = false )
 
-        def validateWallet( w : wallet.V3 ) : Failable[Unit] = Failable {
-          val privateKey = wallet.V3.decodePrivateKey( w, credential )
-          val derivedAddress = privateKey.toPublicKey.toAddress
-          if ( derivedAddress != inputAddress ) {
-            throw new Exception(
-              s"The wallet loaded for '0x${inputAddress.hex}' decodes with the credential given, but to a private key associated with a different address, 0x${derivedAddress}! Keystore files may be mislabeled or corrupted."
-            )
-          }
-        }
-
-        def happy = log.info( s"A wallet for address '0x${inputAddress.hex}' is valid and decodable with the credential supplied." )
-
-        if ( wallets.size == 1 ) {
-          validateWallet( wallets.head ).assert
-          happy
+      syncOut {
+        if ( wallets.isEmpty ) {
+          unknownWallet( keystoreDirs )
         }
         else {
-          log.warn( s"Multiple wallets found for '${hexString(inputAddress)}'." )
-          val failables = wallets.map( validateWallet )
-          if ( failables.exists( _.isFailed ) ) {
-            log.warn( "Some wallets failed to decode with the credential supplied." )
-            failables.filter( _.isFailed ).foreach { failed =>
-              log.warn( s"Failure: ${failed.assertFailed.message}" )
+          val credential = readCredential( is, inputAddress, acceptHexPrivateKey = false )
+
+          def validateWallet( w : wallet.V3 ) : Failable[Unit] = Failable {
+            val privateKey = wallet.V3.decodePrivateKey( w, credential )
+            val derivedAddress = privateKey.toPublicKey.toAddress
+            if ( derivedAddress != inputAddress ) {
+              throw new Exception(
+                s"The wallet loaded for '0x${inputAddress.hex}' decodes with the credential given, but to a private key associated with a different address, 0x${derivedAddress}! Keystore files may be mislabeled or corrupted."
+              )
             }
           }
-          val success = failables.exists( _.isSucceeded )
-          if ( success ) log.info( s"At least one wallet for '${hexString(inputAddress)}' did decode with the credential supplied." )
-          else throw nst( new SbtEthereumException( s"No wallet for '${hexString(inputAddress)}' could be unlocked with the credential provided." ) )
+
+          def happy = log.info( s"A wallet for address '0x${inputAddress.hex}' is valid and decodable with the credential supplied." )
+
+          if ( wallets.size == 1 ) {
+            validateWallet( wallets.head ).assert
+            happy
+          }
+          else {
+            log.warn( s"Multiple wallets found for '${hexString(inputAddress)}'." )
+            val failables = wallets.map( validateWallet )
+            if ( failables.exists( _.isFailed ) ) {
+              log.warn( "Some wallets failed to decode with the credential supplied." )
+              failables.filter( _.isFailed ).foreach { failed =>
+                log.warn( s"Failure: ${failed.assertFailed.message}" )
+              }
+            }
+            val success = failables.exists( _.isSucceeded )
+            if ( success ) log.info( s"At least one wallet for '${hexString(inputAddress)}' did decode with the credential supplied." )
+            else throw nst( new SbtEthereumException( s"No wallet for '${hexString(inputAddress)}' could be unlocked with the credential provided." ) )
+          }
         }
       }
     }
@@ -3744,19 +3814,21 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val newUrl = urlParser( "<json-rpc-url>" ).parsed
-    val oldValue = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
-    oldValue.foreach { url =>
-      println( s"A default node json-rpc URL for chain with ID ${chainId} has already been set: '${url}'." )
-      val overwrite = queryYN( is, s"Do you wish to replace it? [y/n] " )
-      if ( overwrite ) {
-        shoebox.Database.dropDefaultJsonRpcUrl( chainId ).assert
+    syncOut {
+      val oldValue = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
+      oldValue.foreach { url =>
+        println( s"A default node json-rpc URL for chain with ID ${chainId} has already been set: '${url}'." )
+        val overwrite = queryYN( is, s"Do you wish to replace it? [y/n] " )
+        if ( overwrite ) {
+          shoebox.Database.dropDefaultJsonRpcUrl( chainId ).assert
+        }
+        else {
+          throw new OperationAbortedByUserException( s"User chose not to replace previously set default node json-rpc URL for chain with ID ${chainId}, which remains '${url}'." )
+        }
       }
-      else {
-        throw new OperationAbortedByUserException( s"User chose not to replace previously set default node json-rpc URL for chain with ID ${chainId}, which remains '${url}'." )
-      }
+      shoebox.Database.setDefaultJsonRpcUrl( chainId, newUrl ).assert
+      log.info( s"Successfully set default node json-rpc URL for chain with ID ${chainId} to ${newUrl}." )
     }
-    shoebox.Database.setDefaultJsonRpcUrl( chainId, newUrl ).assert
-    log.info( s"Successfully set default node json-rpc URL for chain with ID ${chainId} to ${newUrl}." )
   }
 
   private def ethNodeUrlDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
@@ -3881,18 +3953,20 @@ object SbtEthereumPlugin extends AutoPlugin {
       mbNumber.map( num => numberedFiles(num) )
     }
 
-    val dumpsByMostRecent = shoebox.Database.dumpsOrderedByMostRecent.assert
-    if ( dumpsByMostRecent.isEmpty ) {
-      log.warn( "No sbt-ethereum shoebox database dumps are available." )
-    }
-    else {
-      val mbDump = interactiveListAndSelectDump( dumpsByMostRecent )
-      mbDump match {
-        case Some( dump ) => {
-          shoebox.Database.restoreFromDump( dump ).assert
-          log.info( s"Restore from dump successful. (Prior, replaced database should have backed up into '${shoebox.Database.supersededByDumpDirectory.assert}'." )
+    syncOut {
+      val dumpsByMostRecent = shoebox.Database.dumpsOrderedByMostRecent.assert
+      if ( dumpsByMostRecent.isEmpty ) {
+        log.warn( "No sbt-ethereum shoebox database dumps are available." )
+      }
+      else {
+        val mbDump = interactiveListAndSelectDump( dumpsByMostRecent )
+        mbDump match {
+          case Some( dump ) => {
+            shoebox.Database.restoreFromDump( dump ).assert
+            log.info( s"Restore from dump successful. (Prior, replaced database should have backed up into '${shoebox.Database.supersededByDumpDirectory.assert}'." )
+          }
+          case None => throw new OperationAbortedByUserException( "User aborted replacement of the sbt-ethereum shoebox database from a previously generated dump file." )
         }
-        case None => throw new OperationAbortedByUserException( "User aborted replacement of the sbt-ethereum shoebox database from a previously generated dump file." )
       }
     }
   }
@@ -3959,50 +4033,52 @@ object SbtEthereumPlugin extends AutoPlugin {
       existingDir
     }
 
-    var databaseFailureDetected = false
-    val dir = {
-      val fmbPrior = shoebox.Database.getShoeboxBackupDir().xwarn("An error occurred while trying to read the default shoebox backup directory from the database.")
-      fmbPrior match {
-        case ok : Succeeded[Option[String]] => {
-          ok.result match {
-            case Some( path ) => {
-              val dd = new File( path ).getAbsoluteFile()
-              ( dd.exists, dd.isDirectory, dd.canWrite ) match {
-                case ( true, true, true ) => {
-                  val useDefault = queryYN( is, s"Create backup in default shoebox backup directory '${dd.getAbsolutePath}'? [y/n] " )
-                  if ( useDefault ) dd else promptForNewBackupDir()
-                }
-                case ( false, _, _ ) => {
-                  queryCreateBackupDir( dd, alreadyDefault = true ) match {
-                    case Some( f ) => f
-                    case None      => promptForNewBackupDir ()
+    syncOut {
+      var databaseFailureDetected = false
+      val dir = {
+        val fmbPrior = shoebox.Database.getShoeboxBackupDir().xwarn("An error occurred while trying to read the default shoebox backup directory from the database.")
+        fmbPrior match {
+          case ok : Succeeded[Option[String]] => {
+            ok.result match {
+              case Some( path ) => {
+                val dd = new File( path ).getAbsoluteFile()
+                  ( dd.exists, dd.isDirectory, dd.canWrite ) match {
+                  case ( true, true, true ) => {
+                    val useDefault = queryYN( is, s"Create backup in default shoebox backup directory '${dd.getAbsolutePath}'? [y/n] " )
+                    if ( useDefault ) dd else promptForNewBackupDir()
+                  }
+                  case ( false, _, _ ) => {
+                    queryCreateBackupDir( dd, alreadyDefault = true ) match {
+                      case Some( f ) => f
+                      case None      => promptForNewBackupDir ()
+                    }
+                  }
+                  case ( _, false, _ ) => {
+                    log.warn( s"Selected default shoebox backup directory '${dd.getAbsolutePath}' exists, but is not a directory. Please select a new shoebox backup directory." )
+                    promptForNewBackupDir()
+                  }
+                  case ( _, _, false ) => {
+                    log.warn( s"Selected default shoebox backup directory '${dd.getAbsolutePath}' is not writable. Please select a new shoebox backup directory." )
+                    promptForNewBackupDir()
                   }
                 }
-                case ( _, false, _ ) => {
-                  log.warn( s"Selected default shoebox backup directory '${dd.getAbsolutePath}' exists, but is not a directory. Please select a new shoebox backup directory." )
-                  promptForNewBackupDir()
-                }
-                case ( _, _, false ) => {
-                  log.warn( s"Selected default shoebox backup directory '${dd.getAbsolutePath}' is not writable. Please select a new shoebox backup directory." )
-                  promptForNewBackupDir()
-                }
+              }
+              case None => {
+                log.warn( s"No default shoebox backup directory has been selected. Please select a new shoebox backup directory." )
+                promptForNewBackupDir()
               }
             }
-            case None => {
-              log.warn( s"No default shoebox backup directory has been selected. Please select a new shoebox backup directory." )
-              promptForNewBackupDir()
-            }
+          }
+          case failed : Failed[_] => {
+            val msg = "sbt-ethereum experienced a failure while trying to read the default shoebox backup directory from the sbt-ethereum database!"
+            failed.xwarn( msg )
+            databaseFailureDetected = true
+            promptForNewBackupDir( promptToSave = false )
           }
         }
-        case failed : Failed[_] => {
-          val msg = "sbt-ethereum experienced a failure while trying to read the default shoebox backup directory from the sbt-ethereum database!"
-          failed.xwarn( msg )
-          databaseFailureDetected = true
-          promptForNewBackupDir( promptToSave = false )
-        }
       }
+      shoebox.Backup.perform( Some( log ), databaseFailureDetected, dir )
     }
-    shoebox.Backup.perform( Some( log ), databaseFailureDetected, dir )
   }
 
   private def ethShoeboxRestoreTask : Initialize[Task[Unit]] = Def.taskDyn {
@@ -4144,35 +4220,37 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    val mbBackupFile = {
-      shoebox.Database.getShoeboxBackupDir().xwarn("An error occurred while trying to read the default shoebox backup directory from the database.") match {
-        case Succeeded( Some( dirPath ) ) => {
-          val dir = new File( dirPath )
-          if ( dir.isDirectory() && dir.exists() && dir.canRead() ) {
-            val search = queryYN( is, s"Search default backup directory '${dir}' for backups? [y/n] " )
-            if (search) {
-              interactiveSearchFile( dir )
+    syncOut {
+      val mbBackupFile = {
+        shoebox.Database.getShoeboxBackupDir().xwarn("An error occurred while trying to read the default shoebox backup directory from the database.") match {
+          case Succeeded( Some( dirPath ) ) => {
+            val dir = new File( dirPath )
+            if ( dir.isDirectory() && dir.exists() && dir.canRead() ) {
+              val search = queryYN( is, s"Search default backup directory '${dir}' for backups? [y/n] " )
+              if (search) {
+                interactiveSearchFile( dir )
+              }
+              else {
+                promptViaBackupOrDir()
+              }
             }
             else {
               promptViaBackupOrDir()
             }
           }
-          else {
-            promptViaBackupOrDir()
-          }
+          case _ => promptViaBackupOrDir()
         }
-        case _ => promptViaBackupOrDir()
       }
-    }
 
-    mbBackupFile match {
-      case Some( backupFile ) => {
-        resetAllState()
-        shoebox.Backup.restore( Some( log ), backupFile )
-        val extract = Project.extract(s)
-        val (_, result) = extract.runTask( xethOnLoadSolicitCompilerInstall, s)
+      mbBackupFile match {
+        case Some( backupFile ) => {
+          resetAllState()
+          shoebox.Backup.restore( Some( log ), backupFile )
+          val extract = Project.extract(s)
+          val (_, result) = extract.runTask( xethOnLoadSolicitCompilerInstall, s)
+        }
+        case None => throw new OperationAbortedByUserException( s"No sbt-ethereum shoebox backup file selected. Restore aborted." )
       }
-      case None => throw new OperationAbortedByUserException( s"No sbt-ethereum shoebox backup file selected. Restore aborted." )
     }
 
     xethTriggerDirtySolidityCompilerList // causes parse cache and SessionSolidityCompilers to get updated
@@ -4312,7 +4390,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           for {
             txnHash <- f_txnHash
             _       <- Future.successful( log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." ) )
-            receipt <- Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
+            receipt <- Invoker.futureTransactionReceipt( txnHash ).map( ctr => syncOut( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, ctr ) ) )
           } yield {
             log.info( s"Contract '${deploymentAlias}' deployed in transaction with hash '0x${txnHash.hex}'." )
             receipt.contractAddress.foreach { ca =>
@@ -4390,12 +4468,14 @@ object SbtEthereumPlugin extends AutoPlugin {
         ( deploymentAlias, out )
       }
 
-      val result = quintets.map( (doSpawn _).tupled )
+      syncOut {
+        val result = quintets.map( (doSpawn _).tupled )
 
-      Def.taskDyn {
-        Def.task {
-          val force = xethTriggerDirtyAliasCache.value
-          result
+        Def.taskDyn {
+          Def.task {
+            val force = xethTriggerDirtyAliasCache.value
+            result
+          }
         }
       }
     }
@@ -4443,25 +4523,27 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is  = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val mbAmount = bigIntParser("[optional-gas-limit-override]").?.parsed
-    val ovr = {
-      mbAmount match {
-        case Some( amount ) => Invoker.Override( amount )
-        case None           => {
-          val mbFixed = assertReadOptionalBigInt( log, is, "Enter a fixed gas limit override, or hit [Enter] to specify a dynamic markup with optional cap and floor: ", mask = false )
-          mbFixed match {
-            case Some( fixed ) => Invoker.Override( fixed )
-            case None          => {
-              val markup = doReadMarkup(log, is, "estimated gas costs", "limit")
-              val cap = assertReadOptionalBigInt( log, is, "Enter a cap for the acceptable gas limit (or [Enter] for no cap): ", mask = false )
-              val floor = assertReadOptionalBigInt( log, is, "Enter a floor for the acceptable gas limit (or [Enter] for no floor): ", mask = false )
-              Invoker.Markup( fraction = markup, cap = cap, floor = floor )
+    syncOut {
+      val ovr = {
+        mbAmount match {
+          case Some( amount ) => Invoker.Override( amount )
+          case None           => {
+            val mbFixed = assertReadOptionalBigInt( log, is, "Enter a fixed gas limit override, or hit [Enter] to specify a dynamic markup with optional cap and floor: ", mask = false )
+            mbFixed match {
+              case Some( fixed ) => Invoker.Override( fixed )
+              case None          => {
+                val markup = doReadMarkup(log, is, "estimated gas costs", "limit")
+                val cap = assertReadOptionalBigInt( log, is, "Enter a cap for the acceptable gas limit (or [Enter] for no cap): ", mask = false )
+                val floor = assertReadOptionalBigInt( log, is, "Enter a floor for the acceptable gas limit (or [Enter] for no floor): ", mask = false )
+                Invoker.Markup( fraction = markup, cap = cap, floor = floor )
+              }
             }
           }
         }
       }
+      Mutables.GasLimitTweakOverrides.set( chainId, ovr )
+      log.info( s"Gas limit override set on chain with ID ${chainId}, ${formatGasLimitTweak( ovr )}." )
     }
-    Mutables.GasLimitTweakOverrides.set( chainId, ovr )
-    log.info( s"Gas limit override set on chain with ID ${chainId}, ${formatGasLimitTweak( ovr )}." )
   }
 
   private def ethTransactionGasLimitOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
@@ -4495,25 +4577,27 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is  = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val mbAmount = valueInWeiParser("[optional-gas-price-override-including-unit]").?.parsed
-    val ovr = {
-      mbAmount match {
-        case Some( amount ) => Invoker.Override( amount )
-        case None           => {
-          val mbFixed = assertReadOptionalAmountInWei( log, is, "Enter a fixed gas price override as amount and unit (e.g. '5 gwei'), or hit [Enter] to specify a dynamic markup with optional cap and floor: ", mask = false )
-          mbFixed match {
-            case Some( fixed ) => Invoker.Override( fixed )
-            case None          => {
-              val markup = doReadMarkup(log, is, "default gas price", "price")
-              val cap = assertReadOptionalAmountInWei( log, is, "Enter a cap (e.g. '10 gwei') for the acceptable gas price (or [Enter] for no cap): ", mask = false )
-              val floor = assertReadOptionalAmountInWei( log, is, "Enter a floor (e.g. '1 gwei') for the acceptable gas price (or [Enter] for no floor): ", mask = false )
-              Invoker.Markup( fraction = markup, cap = cap, floor = floor )
+    syncOut {
+      val ovr = {
+        mbAmount match {
+          case Some( amount ) => Invoker.Override( amount )
+          case None           => {
+            val mbFixed = assertReadOptionalAmountInWei( log, is, "Enter a fixed gas price override as amount and unit (e.g. '5 gwei'), or hit [Enter] to specify a dynamic markup with optional cap and floor: ", mask = false )
+            mbFixed match {
+              case Some( fixed ) => Invoker.Override( fixed )
+              case None          => {
+                val markup = doReadMarkup(log, is, "default gas price", "price")
+                val cap = assertReadOptionalAmountInWei( log, is, "Enter a cap (e.g. '10 gwei') for the acceptable gas price (or [Enter] for no cap): ", mask = false )
+                val floor = assertReadOptionalAmountInWei( log, is, "Enter a floor (e.g. '1 gwei') for the acceptable gas price (or [Enter] for no floor): ", mask = false )
+                Invoker.Markup( fraction = markup, cap = cap, floor = floor )
+              }
             }
           }
         }
       }
+      Mutables.GasPriceTweakOverrides.set( chainId, ovr )
+      log.info( s"Gas price override set on chain with ID ${chainId}, ${formatGasPriceTweak( ovr )}." )
     }
-    Mutables.GasPriceTweakOverrides.set( chainId, ovr )
-    log.info( s"Gas price override set on chain with ID ${chainId}, ${formatGasPriceTweak( ovr )}." )
   }
 
   private def ethTransactionInvokeTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
@@ -4542,7 +4626,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val f_out = Invoker.transaction.sendMessage( lazySigner, contractAddress, Unsigned256( amount ), callData, nonceOverride ) flatMap { txnHash =>
         log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei ${mbWithNonceClause(nonceOverride)}to address '0x${contractAddress.hex}' in transaction with hash '0x${txnHash.hex}'.""" )
         log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
-        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, _ ) )
+        Invoker.futureTransactionReceipt( txnHash ).map( ctr => syncOut ( prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, ctr ) ) )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will throw a TimeoutException internally on time out
     }
@@ -4568,7 +4652,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             abiLookup.resolveAbi( None ) // no need to warn, the ABI we choose only affects pretty-printing
           }
         }
-        prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, ctr )
+        syncOut( prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, ctr ) )
       }
       Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
     }
@@ -4652,93 +4736,94 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    val utxn = (mbUnsignedTxnFromCommandLine orElse queryUnsignedTransactionFile).getOrElse( throw new SbtEthereumException( "Could not find unsigned transaction to sign!" ) )
+    syncOut {
+      val utxn = (mbUnsignedTxnFromCommandLine orElse queryUnsignedTransactionFile).getOrElse( throw new SbtEthereumException( "Could not find unsigned transaction to sign!" ) )
 
-    val signer : EthAddress = {
-      val defaultToMaybeUse = {
-        mbDefaultSigner match {
-          case Some( address ) => {
-            val check = queryYN( is, s"Do you wish to sign for the sender associated with the current session, ${verboseAddress( sessionChainId, address )}? [y/n] " )
-            if ( check ) Some( address ) else None 
+      val signer : EthAddress = {
+        val defaultToMaybeUse = {
+          mbDefaultSigner match {
+            case Some( address ) => {
+              val check = queryYN( is, s"Do you wish to sign for the sender associated with the current session, ${verboseAddress( sessionChainId, address )}? [y/n] " )
+              if ( check ) Some( address ) else None
+            }
+            case None => None
           }
-          case None => None
         }
-      }
-      if ( defaultToMaybeUse.nonEmpty ) {
-        defaultToMaybeUse.get
-      }
-      else {
-        val raw = is.readLine( "Signer (as hex address, ens-name, or alias): ", mask = false).getOrElse( throwCantReadInteraction ).trim
-        sbt.complete.Parser.parse( raw, createAddressParser( "<hex-address-ens-name-or-alias>", Some( rpi ) ) ) match {
-          case Left( oops ) => throw new SbtEthereumException( s"Attempt to parse failed: ${oops}" )
-          case Right( address ) => address
-        }
-      }
-    }
-    val chainId = {
-      val useSessionChainId = {
-        if ( isEphemeralChain( sessionChainId ) ) {
-          false
+        if ( defaultToMaybeUse.nonEmpty ) {
+          defaultToMaybeUse.get
         }
         else {
-          queryYN( is, s"The Chain ID associated with your current session is ${sessionChainId}. Would you like to sign with this Chain ID? [y/n] " )
+          val raw = is.readLine( "Signer (as hex address, ens-name, or alias): ", mask = false).getOrElse( throwCantReadInteraction ).trim
+          sbt.complete.Parser.parse( raw, createAddressParser( "<hex-address-ens-name-or-alias>", Some( rpi ) ) ) match {
+            case Left( oops ) => throw new SbtEthereumException( s"Attempt to parse failed: ${oops}" )
+            case Right( address ) => address
+          }
         }
       }
-      if ( useSessionChainId ) {
-        Some( sessionChainId )
-      }
-      else {
-        val raw = is.readLine( "Enter the Chain ID to sign with (or return for none, no replay protection): ", mask = false).getOrElse( throwCantReadInteraction ).trim
-        if (raw.nonEmpty) {
-          val asNum = raw.toInt
-          if (asNum < 0) None else Some( asNum )
+      val chainId = {
+        val useSessionChainId = {
+          if ( isEphemeralChain( sessionChainId ) ) {
+            false
+          }
+          else {
+            queryYN( is, s"The Chain ID associated with your current session is ${sessionChainId}. Would you like to sign with this Chain ID? [y/n] " )
+          }
+        }
+        if ( useSessionChainId ) {
+          Some( sessionChainId )
         }
         else {
-          None
+          val raw = is.readLine( "Enter the Chain ID to sign with (or return for none, no replay protection): ", mask = false).getOrElse( throwCantReadInteraction ).trim
+          if (raw.nonEmpty) {
+            val asNum = raw.toInt
+            if (asNum < 0) None else Some( asNum )
+          }
+          else {
+            None
+          }
         }
       }
-    }
-    if ( chainId == None ) log.warn("No (non-negative) Chain ID value provided. Will sign with no replay attack protection!")
+      if ( chainId == None ) log.warn("No (non-negative) Chain ID value provided. Will sign with no replay attack protection!")
 
-    val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
+      val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
 
-    lazy val lazySigner = Mutables.MainSignersManager.findUpdateCacheLazySigner( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
+      lazy val lazySigner = Mutables.MainSignersManager.findUpdateCacheLazySigner( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
 
-    displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, utxn, signer )
-    val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
-    if ( !check ) aborted( "User chose not to sign the transaction." )
+      displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, utxn, signer )
+      val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
+      if ( !check ) aborted( "User chose not to sign the transaction." )
 
-    val signed = {
-      chainId match {
-        case Some( num ) => utxn.sign( lazySigner, EthChainId(num) )
-        case None        => utxn.sign( lazySigner )
+      val signed = {
+        chainId match {
+          case Some( num ) => utxn.sign( lazySigner, EthChainId(num) )
+          case None        => utxn.sign( lazySigner )
+        }
       }
-    }
-    val signedAsBytes = RLP.encode[EthTransaction]( signed )
+      val signedAsBytes = RLP.encode[EthTransaction]( signed )
 
-    println()
-    println(  "Full signed transaction:" )
-    println( s"0x${signedAsBytes.hex}" )
-    println()
+      println()
+      println(  "Full signed transaction:" )
+      println( s"0x${signedAsBytes.hex}" )
+      println()
 
-    def querySignedTransactionFile : Option[File] = queryOptionalGoodFile (
-      is = is,
-      query = "Enter the path to a (not-yet-existing) file in which to write the binary signed transaction, or [return] to skip: ",
-      goodFile = file => !file.exists() && file.getParentFile().canWrite(),
-      notGoodFileRetryPrompt = file => s"The file '${file} must not yet exist, but must be writable. Please try again!"
-    )
+      def querySignedTransactionFile : Option[File] = queryOptionalGoodFile (
+        is = is,
+        query = "Enter the path to a (not-yet-existing) file in which to write the binary signed transaction, or [return] to skip: ",
+        goodFile = file => !file.exists() && file.getParentFile().canWrite(),
+        notGoodFileRetryPrompt = file => s"The file '${file} must not yet exist, but must be writable. Please try again!"
+      )
 
-    querySignedTransactionFile match { 
-      case Some( file ) => {
-        file.replaceContents( signedAsBytes )
-        log.info( s"Signed transaction saved as '${file}'." )
+      querySignedTransactionFile match {
+        case Some( file ) => {
+          file.replaceContents( signedAsBytes )
+          log.info( s"Signed transaction saved as '${file}'." )
+        }
+        case None => {
+          log.warn( s"Signed transaction bytes not saved." )
+        }
       }
-      case None => {
-        log.warn( s"Signed transaction bytes not saved." )
-      }
+      signed
     }
-
-    signed
   }
 
   private def querySaveAndPrintUnsignedTransaction( is : sbt.InteractionService, log : sbt.Logger, chainId : Int, nonceOverridden : Boolean, autoNonceAddress : EthAddress, unsigned : EthTransaction.Unsigned ) : Unit = {
@@ -4787,19 +4872,21 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ( ( contractAddress, function, args, abi, abiLookup ), mbWei ) = parser.parsed
       abiLookup.logGenericShadowWarning( log )
 
-      val amount = mbWei.getOrElse( Zero )
-      val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
-      val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
-      log.debug( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
-      log.debug( s"Call data for function call: ${callData.hex}" )
+      syncOut {
+        val amount = mbWei.getOrElse( Zero )
+        val abiFunction = abiFunctionForFunctionNameAndArgs( function.name, args, abi ).get // throw an Exception if we can't get the abi function here
+        val callData = callDataForAbiFunctionFromStringArgs( args, abiFunction ).get // throw an Exception if we can't get the call data
+        log.debug( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
+        log.debug( s"Call data for function call: ${callData.hex}" )
 
-      implicit val invokerContext = (xethInvokerContext in config).value
+        implicit val invokerContext = (xethInvokerContext in config).value
 
-      val unsigned = Await.result( Invoker.transaction.prepareSendMessage( caller, contractAddress, Unsigned256(amount), callData, nonceOverride ), prepareTimeout )
+        val unsigned = Await.result( Invoker.transaction.prepareSendMessage( caller, contractAddress, Unsigned256(amount), callData, nonceOverride ), prepareTimeout )
 
-      querySaveAndPrintUnsignedTransaction( is, log, chainId, nonceOverride.nonEmpty, caller, unsigned )
+        querySaveAndPrintUnsignedTransaction( is, log, chainId, nonceOverride.nonEmpty, caller, unsigned )
 
-      unsigned
+        unsigned
+      }
     }
   }
 
@@ -4820,7 +4907,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val unsigned = Await.result( Invoker.transaction.prepareSendMessage( from, to, Unsigned256(amount), data, nonceOverride ), prepareTimeout )
 
-      querySaveAndPrintUnsignedTransaction( is, log, chainId, nonceOverride.nonEmpty, from, unsigned )
+      syncOut {
+        querySaveAndPrintUnsignedTransaction( is, log, chainId, nonceOverride.nonEmpty, from, unsigned )
+      }
 
       unsigned
     }
@@ -4844,7 +4933,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val unsigned = Await.result( Invoker.transaction.prepareSendWei( from, to, Unsigned256(amount), nonceOverride ), prepareTimeout )
 
-      querySaveAndPrintUnsignedTransaction( is, log, chainId, nonceOverride.nonEmpty, from, unsigned )
+      syncOut {
+        querySaveAndPrintUnsignedTransaction( is, log, chainId, nonceOverride.nonEmpty, from, unsigned )
+      }
 
       unsigned
     }
@@ -4880,7 +4971,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         case inc @ Incomplete( _, _, mbMsg, _, mbCause ) => {
           mbMsg.foreach( msg => log.warn( s"sbt.Incomplete - Message: ${msg}" ) )
-          mbCause.foreach( _.printStackTrace() )
+          syncOut( mbCause.foreach( _.printStackTrace() ) )
           throw nst( new PingFailedException( s"""Ping failed! Our attempt to send 0 ether from '0x${from.hex}' to ${ recipientStr } yielded an sbt.Incomplete: ${inc}""") )
         }
         case NonFatal(t) => {
@@ -4912,7 +5003,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val f_out = Invoker.transaction.sendMessage( lazySigner, to, Unsigned256( amount ), data, nonceOverride ) flatMap { txnHash =>
         log.info( s"""Sending data '0x${data.hex}' with ${amount} wei to address '0x${to.hex}' ${mbWithNonceClause(nonceOverride)}in transaction with hash '0x${txnHash.hex}'.""" )
-        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, _ ) )
+        Invoker.futureTransactionReceipt( txnHash ).map( ctr => syncOut( prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, ctr ) ) )
       }
       val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
       log.info("Transaction mined.")
@@ -4938,7 +5029,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val f_out = Invoker.transaction.sendWei( lazySigner, to, Unsigned256( amount ), nonceOverride ) flatMap { txnHash =>
         log.info( s"Sending ${amount} wei to address '0x${to.hex}' ${mbWithNonceClause(nonceOverride)}in transaction with hash '0x${txnHash.hex}'." )
         log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
-        Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None, txnHash, invokerContext.pollTimeout, _ ) )
+        Invoker.futureTransactionReceipt( txnHash ).map( ctr => syncOut( prettyPrintEval( log, None, txnHash, invokerContext.pollTimeout, ctr ) ) )
       }
       val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
       log.info("Ether sent.")
@@ -4969,74 +5060,76 @@ object SbtEthereumPlugin extends AutoPlugin {
     def txnBytesFromInteraction : Option[immutable.Seq[Byte]] = {
       is.readLine( "Paste or type signed transaction as hex bytes, or type [return] to abort: ", mask = false ).map( _.decodeHexAsSeq )
     }
-    
-    val txnBytesFromCommandLine = bytesParser("[optional-signed-transaction-as-hex]").?.parsed
-    val txnBytes = ( txnBytesFromCommandLine orElse txnBytesFromFile orElse txnBytesFromInteraction ).getOrElse {
-      throw new SbtEthereumException("Failed to find signed transaction bytes as a task argument, from a file, or via user interaction. Can't forward what we don't have.")        
-    }
-    val stxn : EthTransaction.Signed = {
-      RLP.decodeComplete[EthTransaction]( txnBytes ).assert match {
-        case _ : EthTransaction.Unsigned => throw new SbtEthereumException( "The transaction provided is an unsigned, not signed, transaction. It cannot be forwarded to a network." )
-        case signed : EthTransaction.Signed   => signed
+
+    syncOut {
+      val txnBytesFromCommandLine = bytesParser("[optional-signed-transaction-as-hex]").?.parsed
+      val txnBytes = ( txnBytesFromCommandLine orElse txnBytesFromFile orElse txnBytesFromInteraction ).getOrElse {
+        throw new SbtEthereumException("Failed to find signed transaction bytes as a task argument, from a file, or via user interaction. Can't forward what we don't have.")
       }
-    }
-
-    stxn.signature match {
-      case withId : EthSignature.WithChainId => {
-        val sigChainId = withId.chainId.value.unwrap.toInt
-        if ( sigChainId != sessionChainId ) {
-          log.warn( s"The Chain ID of the transaction you are forwarding (${sigChainId}) does not match the Chain ID associated with your current session (${sessionChainId})." )
-          log.warn( s"If the session Node URL '${nodeUrl}' properly matches the session Chain ID ${sessionChainId}, the signature of the transaction will be invalid and it will fail." )
-          log.warn( s"Consider aborting this transaction and switching to the proper chain via 'ethNodeChainIdOverrideSet'." )
-
-          kludgeySleepForInteraction()
-          val check = queryYN( is, "Do you want to forward the transaction despite the mismatched Chain IDs? [y/n] " )
-          if (! check ) aborted( "Operation aborted by user after mismatched Chain IDs detected." )
+      val stxn : EthTransaction.Signed = {
+        RLP.decodeComplete[EthTransaction]( txnBytes ).assert match {
+          case _ : EthTransaction.Unsigned => throw new SbtEthereumException( "The transaction provided is an unsigned, not signed, transaction. It cannot be forwarded to a network." )
+          case signed : EthTransaction.Signed   => signed
         }
       }
-      case noId : EthSignature.Basic => {
-        if ( replayAttackProtection && !isEphemeralChain( sessionChainId ) ) {
-          log.warn( s"The transaction you are submitting is signed without specifying a Chain ID." )
-          log.warn(  """It is a valid transaction, but it could be inadvertantly or purposely forwarded to other chains, in a so-called "replay attack".""" )
 
-          kludgeySleepForInteraction()
-          val check = queryYN( is, "Are you sure you want to submit this transaction, despite its validity not being restricted with a Chain ID? [y/n] " )
-          if (! check ) aborted( "Operation aborted by user after absence of Chain ID detected." )
-        }
-      }
-    }
+      stxn.signature match {
+        case withId : EthSignature.WithChainId => {
+          val sigChainId = withId.chainId.value.unwrap.toInt
+          if ( sigChainId != sessionChainId ) {
+            log.warn( s"The Chain ID of the transaction you are forwarding (${sigChainId}) does not match the Chain ID associated with your current session (${sessionChainId})." )
+            log.warn( s"If the session Node URL '${nodeUrl}' properly matches the session Chain ID ${sessionChainId}, the signature of the transaction will be invalid and it will fail." )
+            log.warn( s"Consider aborting this transaction and switching to the proper chain via 'ethNodeChainIdOverrideSet'." )
 
-    try {
-      val stxnNonce = stxn.nonce.widen
-      val nextNonce = Await.result( Invoker.nextNonce( stxn.sender ), Duration.Inf )
-      if ( stxnNonce != nextNonce ) {
-        val intChainId = {
-          invokerContext.chainId match {
-            case Some( ecid ) => ecid.value.widen.toInt
-            case None         => DefaultEphemeralChainId
+            kludgeySleepForInteraction()
+            val check = queryYN( is, "Do you want to forward the transaction despite the mismatched Chain IDs? [y/n] " )
+            if (! check ) aborted( "Operation aborted by user after mismatched Chain IDs detected." )
           }
         }
-        log.warn( s"The signed transaction has a nonce of ${stxnNonce}. The nonce expected for the next transaction by ${verboseAddress( intChainId, stxn.sender )} is ${nextNonce}." )
-        log.warn(  "This is likely due to the sender of the unsigned transaction differing from the signer of the transaction." )
-        log.warn(  "If submitted, the transaction is very likely to fail." )
+        case noId : EthSignature.Basic => {
+          if ( replayAttackProtection && !isEphemeralChain( sessionChainId ) ) {
+            log.warn( s"The transaction you are submitting is signed without specifying a Chain ID." )
+            log.warn(  """It is a valid transaction, but it could be inadvertantly or purposely forwarded to other chains, in a so-called "replay attack".""" )
 
-        kludgeySleepForInteraction()
-        val check = queryYN( is, "Do you still wish to submit the transaction? [y/n] " )
-        if (!check) aborted( "Operation aborted by user after mismatched nonce detected." )
+            kludgeySleepForInteraction()
+            val check = queryYN( is, "Are you sure you want to submit this transaction, despite its validity not being restricted with a Chain ID? [y/n] " )
+            if (! check ) aborted( "Operation aborted by user after absence of Chain ID detected." )
+          }
+        }
       }
-    }
-    catch {
-      case oae : OperationAbortedByUserException => throw oae
-      case e   : Exception                       => log.warn( s"Failed to check transaction nonce against the nonce expected by the chain: ${e}" ) 
-    }
 
-    val f_out = Invoker.transaction.sendSignedTransaction( stxn ) flatMap { txnHash =>
-      log.info( s"""Sending signed transaction with transaction hash '0x${txnHash.hex}'.""" )
-      Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, None, txnHash, invokerContext.pollTimeout, _ ) )
+      try {
+        val stxnNonce = stxn.nonce.widen
+        val nextNonce = Await.result( Invoker.nextNonce( stxn.sender ), Duration.Inf )
+        if ( stxnNonce != nextNonce ) {
+          val intChainId = {
+            invokerContext.chainId match {
+              case Some( ecid ) => ecid.value.widen.toInt
+              case None         => DefaultEphemeralChainId
+            }
+          }
+          log.warn( s"The signed transaction has a nonce of ${stxnNonce}. The nonce expected for the next transaction by ${verboseAddress( intChainId, stxn.sender )} is ${nextNonce}." )
+          log.warn(  "This is likely due to the sender of the unsigned transaction differing from the signer of the transaction." )
+          log.warn(  "If submitted, the transaction is very likely to fail." )
+
+          kludgeySleepForInteraction()
+          val check = queryYN( is, "Do you still wish to submit the transaction? [y/n] " )
+          if (!check) aborted( "Operation aborted by user after mismatched nonce detected." )
+        }
+      }
+      catch {
+        case oae : OperationAbortedByUserException => throw oae
+        case e   : Exception                       => log.warn( s"Failed to check transaction nonce against the nonce expected by the chain: ${e}" )
+      }
+
+      val f_out = Invoker.transaction.sendSignedTransaction( stxn ) flatMap { txnHash =>
+        log.info( s"""Sending signed transaction with transaction hash '0x${txnHash.hex}'.""" )
+        Invoker.futureTransactionReceipt( txnHash ).map( ctr => syncOut( prettyPrintEval( log, None, txnHash, invokerContext.pollTimeout, ctr ) ) )
+      }
+      val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
+      log.info("Transaction mined.")
+      out
     }
-    val out = Await.result( f_out, Duration.Inf ) // we use Duration.Inf because the Future will complete with failure on a timeout
-    log.info("Transaction mined.")
-    out
   }
 
   private def ethTransactionViewTask( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[Decoded.Value])]] = {
@@ -5158,9 +5251,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.warn( s"THIS FUNCTION COULD DO ANYTHING. " )
         log.warn( s"Make sure that you trust that the token contract does only what you intend, and carefully verify the transaction cost before approving the ultimate transaction." )
 
-        kludgeySleepForInteraction()
-        val check = queryYN( is, "Continue? [y/n] " )
-        if (! check) aborted( "User aborted the approval of access to tokens by a third party." )
+        syncOut {
+          kludgeySleepForInteraction()
+          val check = queryYN( is, "Continue? [y/n] " )
+          if (! check) aborted( "User aborted the approval of access to tokens by a third party." )
+        }
 
         Erc20.doApprove( tokenContractAddress, lazySigner, approveAddress, numAtoms, nonceOverride ) flatMap { txnHash =>
           log.info( s"ERC20 Allowance Approval, Token Contract ${verboseAddress( chainId, tokenContractAddress )}:")
@@ -5168,7 +5263,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.info( s"  -->   owned by ${verboseAddress( chainId, caller )}" )
           log.info( s"  -->   for use by ${verboseAddress( chainId, approveAddress )}" )
           log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
-          Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(Erc20.Abi), txnHash, invokerContext.pollTimeout, _ ) )
+          Invoker.futureTransactionReceipt( txnHash ).map( ctr => syncOut( prettyPrintEval( log, Some(Erc20.Abi), txnHash, invokerContext.pollTimeout, ctr ) ) )
         }
       }
       Await.result( f_out, Duration.Inf )
@@ -5248,9 +5343,11 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.warn( s"THIS FUNCTION COULD DO ANYTHING. " )
         log.warn( s"Make sure that you trust that the token contract does only what you intend, and carefully verify the transaction cost before approving the ultimate transaction." )
 
-        kludgeySleepForInteraction()
-        val check = queryYN( is, "Continue? [y/n] " )
-        if (! check) aborted( "User aborted the token transfer." )
+        syncOut {
+          kludgeySleepForInteraction()
+          val check = queryYN( is, "Continue? [y/n] " )
+          if (! check) aborted( "User aborted the token transfer." )
+        }
 
         Erc20.doTransfer( tokenContractAddress, lazySigner, toAddress, numAtoms, nonceOverride ) flatMap { txnHash =>
           log.info( s"ERC20 Transfer, Token Contract ${verboseAddress( chainId, tokenContractAddress )}:")
@@ -5258,7 +5355,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.info( s"  -->   from ${verboseAddress( chainId, caller )}" )
           log.info( s"  -->   to ${verboseAddress( chainId, toAddress )}" )
           log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
-          Invoker.futureTransactionReceipt( txnHash ).map( prettyPrintEval( log, Some(Erc20.Abi), txnHash, invokerContext.pollTimeout, _ ) )
+          Invoker.futureTransactionReceipt( txnHash ).map( ctr => syncOut( prettyPrintEval( log, Some(Erc20.Abi), txnHash, invokerContext.pollTimeout, ctr ) ) )
         }
       }
       Await.result( f_out, Duration.Inf )
@@ -5682,13 +5779,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     log.info( s"Generating V3 wallet, alogorithm=pbkdf2, c=${c}, dklen=${dklen}" )
 
-    kludgeySleepForInteraction()
-    val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
-    val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-    val out = shoebox.Keystore.V3.storeWallet( w ).get // asserts success
-    log.info( s"Wallet generated into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
-    log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
-    out
+    syncOut {
+      kludgeySleepForInteraction()
+      val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
+      val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
+      val out = shoebox.Keystore.V3.storeWallet( w ).get // asserts success
+      log.info( s"Wallet generated into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
+      log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
+      out
+    }
   }
 
   private val xethKeystoreWalletV3CreateScryptTask : Initialize[Task[wallet.V3]] = Def.task {
@@ -5704,13 +5803,15 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     log.info( s"Generating V3 wallet, alogorithm=scrypt, n=${n}, r=${r}, p=${p}, dklen=${dklen}" )
 
-    kludgeySleepForInteraction()
-    val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
-    val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-    val out = shoebox.Keystore.V3.storeWallet( w ).get // asserts success
-    log.info( s"Wallet generated into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
-    log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
-    out
+    syncOut {
+      kludgeySleepForInteraction()
+      val passphrase = readConfirmCredential(log, is, "Enter passphrase for new wallet: ")
+      val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
+      val out = shoebox.Keystore.V3.storeWallet( w ).get // asserts success
+      log.info( s"Wallet generated into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
+      log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
+      out
+    }
   }
 
   private def xethLoadAbiForTask( config : Configuration ) : Initialize[InputTask[Abi]] = {
@@ -5970,95 +6071,97 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log        = streams.value.log
     val is         = interactionService.value
 
-    if ( schemaOkay.isFailed ) {
-      val msg = "Failed to initialize the sbt-ethereum shoebox database."
-      SEVERE.log( msg, schemaOkay.assertThrowable )
-      log.error( msg )
+    syncOut {
+      if ( schemaOkay.isFailed ) {
+        val msg = "Failed to initialize the sbt-ethereum shoebox database."
+        SEVERE.log( msg, schemaOkay.assertThrowable )
+        log.error( msg )
 
-      if ( shoebox.Database.schemaVersionInconsistentUnchecked.assert ) {
-        val mbLastSuccessful = shoebox.Database.getLastSuccessfulSbtEthereumVersionUnchecked().assert
+        if ( shoebox.Database.schemaVersionInconsistentUnchecked.assert ) {
+          val mbLastSuccessful = shoebox.Database.getLastSuccessfulSbtEthereumVersionUnchecked().assert
 
-        log.error( "The sbt-ethereum shoebox database schema is in an inconsistent state (probably because an upgrade failed)." )
-        val mbLastDump = shoebox.Database.latestDumpIfAny.assert
-        mbLastDump match {
-          case Some( dump ) => {
-            val dumpTime = formatInstant( dump.timestamp )
-            kludgeySleepForInteraction()
-            val recover = queryYN( is, s"The most recent sbt-ethereum shoebox database dump available was taken at ${dumpTime}. Attempt recovery? [y/n] " )
-            if ( recover ) {
-              val attemptedRecovery = shoebox.Database.restoreFromDump( dump )
-              if ( attemptedRecovery.isFailed ) {
-                val msg = s"Could not restore the database from dump file '${dump.file.getCanonicalPath}'."
-                val t = attemptedRecovery.assertThrowable
-                log.error( msg )
-                SEVERE.log( msg, t )
-                throw t
-              }
-              else {
-                shoebox.Database.reset()
-                val fmbPostRecoverySchemaVersionUnchecked = shoebox.Database.getSchemaVersionUnchecked()
-                val targetSchemaVersion = shoebox.Database.TargetSchemaVersion
+          log.error( "The sbt-ethereum shoebox database schema is in an inconsistent state (probably because an upgrade failed)." )
+          val mbLastDump = shoebox.Database.latestDumpIfAny.assert
+          mbLastDump match {
+            case Some( dump ) => {
+              val dumpTime = formatInstant( dump.timestamp )
+              kludgeySleepForInteraction()
+              val recover = queryYN( is, s"The most recent sbt-ethereum shoebox database dump available was taken at ${dumpTime}. Attempt recovery? [y/n] " )
+              if ( recover ) {
+                val attemptedRecovery = shoebox.Database.restoreFromDump( dump )
+                if ( attemptedRecovery.isFailed ) {
+                  val msg = s"Could not restore the database from dump file '${dump.file.getCanonicalPath}'."
+                  val t = attemptedRecovery.assertThrowable
+                  log.error( msg )
+                  SEVERE.log( msg, t )
+                  throw t
+                }
+                else {
+                  shoebox.Database.reset()
+                  val fmbPostRecoverySchemaVersionUnchecked = shoebox.Database.getSchemaVersionUnchecked()
+                  val targetSchemaVersion = shoebox.Database.TargetSchemaVersion
 
-                val schemaOkayNow = shoebox.Database.DataSource.isSucceeded
-                val inconsistent   = shoebox.Database.schemaVersionInconsistentUnchecked.assert
+                  val schemaOkayNow = shoebox.Database.DataSource.isSucceeded
+                  val inconsistent   = shoebox.Database.schemaVersionInconsistentUnchecked.assert
 
-                ( schemaOkayNow, inconsistent ) match {
-                  case ( true, false ) => log.info( "Recovery of sbt-ethereum shoebox database succeeded." )
-                  case ( true, true )  => {
-                    val msg = "Internal inconsistency. The database simultaneously is reporting itself to be okay while the schema version is inconsistent. Probably an sbt-ethereum bug."
-                    log.error( msg )
-                    SEVERE.log( msg )
-                    throw new SbtEthereumException( msg )
-                  }
-                  case ( false, true ) => {
-                    val baseMsg = {
-                      if ( fmbPostRecoverySchemaVersionUnchecked.isSucceeded && fmbPostRecoverySchemaVersionUnchecked.assert != None ) { // we have the schema version we recovered to
-                        val dbSchemaVersion = fmbPostRecoverySchemaVersionUnchecked.assert.get
-                        s"""|The database restore seems to have succeeded, but the schema version is still inconsistent.
-                            |A failure seems to be occurring while upgrading the restored database from schema version ${dbSchemaVersion} to ${targetSchemaVersion}.""".stripMargin
-                      }
-                      else {
-                        s"""|The database restore seems to have succeeded, but the schema version is still inconsistent.
-                            |A failure seems to be occurring while upgrading the restored database to ${targetSchemaVersion}.""".stripMargin
-                      }
+                  ( schemaOkayNow, inconsistent ) match {
+                    case ( true, false ) => log.info( "Recovery of sbt-ethereum shoebox database succeeded." )
+                    case ( true, true )  => {
+                      val msg = "Internal inconsistency. The database simultaneously is reporting itself to be okay while the schema version is inconsistent. Probably an sbt-ethereum bug."
+                      log.error( msg )
+                      SEVERE.log( msg )
+                      throw new SbtEthereumException( msg )
                     }
-                    val versionSuggestion = {
-                      mbLastSuccessful match {
-                        case Some( lastSuccessful ) =>{
-                          s"""|
-                              |The last version of sbt-ethereum to successfully use the recovered database was ${lastSuccessful}.
-                              |Perhaps try restoring from that version.""".stripMargin
+                    case ( false, true ) => {
+                      val baseMsg = {
+                        if ( fmbPostRecoverySchemaVersionUnchecked.isSucceeded && fmbPostRecoverySchemaVersionUnchecked.assert != None ) { // we have the schema version we recovered to
+                          val dbSchemaVersion = fmbPostRecoverySchemaVersionUnchecked.assert.get
+                          s"""|The database restore seems to have succeeded, but the schema version is still inconsistent.
+                              |A failure seems to be occurring while upgrading the restored database from schema version ${dbSchemaVersion} to ${targetSchemaVersion}.""".stripMargin
                         }
-                        case None => ""
+                        else {
+                          s"""|The database restore seems to have succeeded, but the schema version is still inconsistent.
+                              |A failure seems to be occurring while upgrading the restored database to ${targetSchemaVersion}.""".stripMargin
+                        }
                       }
-                    }
+                      val versionSuggestion = {
+                        mbLastSuccessful match {
+                          case Some( lastSuccessful ) =>{
+                            s"""|
+                                |The last version of sbt-ethereum to successfully use the recovered database was ${lastSuccessful}.
+                                |Perhaps try restoring from that version.""".stripMargin
+                          }
+                          case None => ""
+                        }
+                      }
 
-                    val msg =  baseMsg + versionSuggestion
-                    log.error( msg )
-                    SEVERE.log( msg )
-                    throw new SbtEthereumException( msg )
-                  }
-                  case ( false, false ) => {
-                    val msg = "The schema of the recovered database does not seem inconsistent, but access to the database is still failing, for unknown reasons."
-                    log.error( msg )
-                    SEVERE.log( msg )
-                    throw new SbtEthereumException( msg )
+                      val msg =  baseMsg + versionSuggestion
+                      log.error( msg )
+                      SEVERE.log( msg )
+                      throw new SbtEthereumException( msg )
+                    }
+                    case ( false, false ) => {
+                      val msg = "The schema of the recovered database does not seem inconsistent, but access to the database is still failing, for unknown reasons."
+                      log.error( msg )
+                      SEVERE.log( msg )
+                      throw new SbtEthereumException( msg )
+                    }
                   }
                 }
               }
+              else {
+                throw new OperationAbortedByUserException( "Offer to attempted recovery refused by user." )
+              }
             }
-            else {
-              throw new OperationAbortedByUserException( "Offer to attempted recovery refused by user." )
-            }
+            case None => throw new SbtEthereumException( "No database dumps are available in the shoebox from which to attempt a recover." )
           }
-          case None => throw new SbtEthereumException( "No database dumps are available in the shoebox from which to attempt a recover." )
         }
-      }
-      else {
-        val msg = "The schema of the database does not seem inconsistent, but access to the database is still failing, for unknown reasons."
-        log.error( msg )
-        SEVERE.log( msg )
-        throw new SbtEthereumException( msg )
+        else {
+          val msg = "The schema of the database does not seem inconsistent, but access to the database is still failing, for unknown reasons."
+          log.error( msg )
+          SEVERE.log( msg )
+          throw new SbtEthereumException( msg )
+        }
       }
     }
   }
@@ -6076,30 +6179,32 @@ object SbtEthereumPlugin extends AutoPlugin {
       log.warn( s"Cannot find or create '${shoebox.SolcJ.DirName}' directory in the sbt-ethereum shoebox directory. This is not a good sign." )
     }
     else {
-      val DirSolcJ = currentSolcJDirectory.get
-      val versionDir = new File( DirSolcJ, currentDefaultCompilerVersion )
-      if (! versionDir.exists() ) {
-        val compilers = DirSolcJ.list()
-        if ( compilers.nonEmpty ) {
-          println( s"""Solidity compiler directory '${DirSolcJ.getAbsolutePath}'.""" )
-          println( s"""The following compiler versions currently appear to be installed: ${compilers.mkString(", ")}""" )
-        }
-        def prompt : Option[String] = is.readLine( s"The current default solidity compiler ['${currentDefaultCompilerVersion}'] is not installed. Install? [y/n] ", mask = false )
+      syncOut {
+        val DirSolcJ = currentSolcJDirectory.get
+        val versionDir = new File( DirSolcJ, currentDefaultCompilerVersion )
+        if (! versionDir.exists() ) {
+          val compilers = DirSolcJ.list()
+          if ( compilers.nonEmpty ) {
+            println( s"""Solidity compiler directory '${DirSolcJ.getAbsolutePath}'.""" )
+            println( s"""The following compiler versions currently appear to be installed: ${compilers.mkString(", ")}""" )
+          }
+          def prompt : Option[String] = is.readLine( s"The current default solidity compiler ['${currentDefaultCompilerVersion}'] is not installed. Install? [y/n] ", mask = false )
 
-        @tailrec
-        def checkInstall : Boolean = {
-          prompt match {
-            case None                                  => false
-            case Some( str ) if str.toLowerCase == "y" => true
-            case Some( str ) if str.toLowerCase == "n" => false
-            case _                                     => {
-              println( "Please type 'y' or 'n'." )
-              checkInstall
+          @tailrec
+          def checkInstall : Boolean = {
+            prompt match {
+              case None                                  => false
+              case Some( str ) if str.toLowerCase == "y" => true
+              case Some( str ) if str.toLowerCase == "n" => false
+              case _                                     => {
+                println( "Please type 'y' or 'n'." )
+                checkInstall
+              }
             }
           }
-        }
 
-        if ( checkInstall ) installLocalSolcJ( log, DirSolcJ, currentDefaultCompilerVersion, testTimeout )
+          if ( checkInstall ) installLocalSolcJ( log, DirSolcJ, currentDefaultCompilerVersion, testTimeout )
+        }
       }
     }
   }
@@ -6112,29 +6217,31 @@ object SbtEthereumPlugin extends AutoPlugin {
     val nontestConfig = Compile                                         // XXX: if you change this, change the hardcoded Compile value in the line below!
     val nontestChainId = findNodeChainIdTask(warn=true)(Compile).value  // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
     val combined = combinedKeystoresMultiMap( keystoresV3 )
-    if ( combined.isEmpty ) {
-      val checkInstall = queryYN( is, "There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] " )
-      if ( checkInstall ) {
-        val extract = Project.extract(s)
+    syncOut {
+      if ( combined.isEmpty ) {
+        val checkInstall = queryYN( is, "There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] " )
+        if ( checkInstall ) {
+          val extract = Project.extract(s)
 
-        // NOTE: we use the xeth version of the wallet V3 create task to skip querying for an alias,
-        //       since we instead query whetherthe new wallet should become the default sender
-        val (_, result) = extract.runTask(xethKeystoreWalletV3CreateDefault, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
+          // NOTE: we use the xeth version of the wallet V3 create task to skip querying for an alias,
+          //       since we instead query whetherthe new wallet should become the default sender
+          val (_, result) = extract.runTask(xethKeystoreWalletV3CreateDefault, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
 
-        val address = result.address
+          val address = result.address
 
-        if ( mbDefaultSender( nontestChainId ).isEmpty ) {
-          val checkSetDefault = queryYN( is, s"Would you like the new address '${hexString(address)}' to be the default sender on chain with ID ${nontestChainId}? [y/n] " )
-          if ( checkSetDefault ) {
-            extract.runInputTask( nontestConfig / ethAddressSenderDefaultSet, address.hex, s )
-          }
-          else {
-            println(s"No default sender has been defined. To create one later, use the command 'ethAddressSenderDefaultSet <address>'.")
+          if ( mbDefaultSender( nontestChainId ).isEmpty ) {
+            val checkSetDefault = queryYN( is, s"Would you like the new address '${hexString(address)}' to be the default sender on chain with ID ${nontestChainId}? [y/n] " )
+            if ( checkSetDefault ) {
+              extract.runInputTask( nontestConfig / ethAddressSenderDefaultSet, address.hex, s )
+            }
+            else {
+              println(s"No default sender has been defined. To create one later, use the command 'ethAddressSenderDefaultSet <address>'.")
+            }
           }
         }
-      }
-      else {
-        println("No wallet created. To create one later, use the command 'ethKeystoreWalletV3Create'.")
+        else {
+          println("No wallet created. To create one later, use the command 'ethKeystoreWalletV3Create'.")
+        }
       }
     }
   }
@@ -6198,7 +6305,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     catch {
       case t : Throwable => {
-        t.printStackTrace()
+        syncOut {
+          t.printStackTrace()
+        }
         throw t
       }
     }
@@ -6224,7 +6333,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     catch {
       case t : Throwable => {
-        t.printStackTrace()
+        syncOut {
+          t.printStackTrace()
+        }
         throw t
       }
     }
@@ -6506,12 +6617,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   )( implicit ec : ExecutionContext ) : Invoker.TransactionApprover.Inputs => Future[Unit] = {
 
     inputs => Future {
+      syncOut {
+        displayTransactionSignatureRequest( log, chainId, currencyCode, inputs.utxn, inputs.signerAddress )
 
-      displayTransactionSignatureRequest( log, chainId, currencyCode, inputs.utxn, inputs.signerAddress )
-
-      val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
-      if ( !check ) Invoker.throwDisapproved( inputs, keepStackTrace = false )
-      else preapprove( inputs )
+        val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
+        if ( !check ) Invoker.throwDisapproved( inputs, keepStackTrace = false )
+        else preapprove( inputs )
+      }
     }( ec )
   }
 
@@ -6546,14 +6658,16 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    query match {
-      case Some( alias ) => {
-        val check = shoebox.AddressAliasManager.insertAddressAlias( chainId, alias, address )
-        check.fold( _.vomit ){ _ => 
-          log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
+    syncOut {
+      query match {
+        case Some( alias ) => {
+          val check = shoebox.AddressAliasManager.insertAddressAlias( chainId, alias, address )
+          check.fold( _.vomit ){ _ =>
+            log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
+          }
         }
+        case None => log.info( s"No alias set for ${describedAddress}." )
       }
-      case None => log.info( s"No alias set for ${describedAddress}." )
     }
   }
 
