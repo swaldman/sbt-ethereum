@@ -29,7 +29,8 @@ object EthJsonRpc {
   private def doWithJsonClient[T]( efactory : Exchanger.Factory, exchangerConfig : Exchanger.Config, log : sbt.Logger, ec : ExecutionContext )( operation : jsonrpc.Client => T ) : T = {
     try {
       borrow( Client.forExchanger( efactory( exchangerConfig ) ) )( operation )
-    } catch {
+    }
+    catch {
       case e : java.net.ConnectException => {
         log.error( s"Failed to connect to JSON-RPC client at '${exchangerConfig.httpUrl}': ${e}" )
         throw e
@@ -69,7 +70,7 @@ object EthJsonRpc {
       case Pending        => s"${out.denominated} ${denomination.unitName} (including currently pending transactions, address 0x${address.hex})"
       case Quantity( bn ) => s"${out.denominated} ${denomination.unitName} (at block #${bn}, address 0x${address.hex})"
     }
-    println(msg)
+    syncOut( println(msg) )
     out
   }
 

@@ -51,7 +51,7 @@ object InteractiveQuery {
   }
 
   private [sbtethereum]
-  def queryYN( is : sbt.InteractionService, query : String ) : Boolean = {
+  def queryYN( is : sbt.InteractionService, query : String ) : Boolean = syncOut {
     def prompt = is.readLine( query, mask = false ).get
     def doPrompt : Boolean = {
       def redo = {
@@ -137,13 +137,15 @@ object InteractiveQuery {
 
     @tailrec
     def doRead : Option[BigInt] = {
-      val check = assertReadLine( is, prompt, mask ).trim
+      val check = syncOut( assertReadLine( is, prompt, mask ).trim )
       if ( check.nonEmpty ) {
         sbt.complete.Parser.parse( check, AmountInWeiParser ) match {
           case Left( oops ) => {
             log.error( s"Parse failure: ${oops}" )
-            println("""Please enter an integral amount, then a space, then a unit. For example, "5 gwei" or "10 ether".""")
-            println("""Supported units: wei, gwei, szabo, finney, ether""");
+            syncOut {
+              println("""Please enter an integral amount, then a space, then a unit. For example, "5 gwei" or "10 ether".""")
+              println("""Supported units: wei, gwei, szabo, finney, ether""");
+            }
             doRead
           }
           case Right( amountInWei ) => Some( amountInWei )
@@ -162,7 +164,7 @@ object InteractiveQuery {
 
     @tailrec
     def doRead : Option[BigInt] = {
-      val check = assertReadLine( is, prompt, mask ).trim
+      val check = syncOut( assertReadLine( is, prompt, mask ).trim )
       if ( check.nonEmpty ) {
         val fbi = Failable( BigInt( check ) )
         if( fbi.isSucceeded ) {
@@ -185,7 +187,7 @@ object InteractiveQuery {
   def aborted( msg : String ) : Nothing = throw new OperationAbortedByUserException( msg )
 
   private [sbtethereum]
-  def readCredential( is : sbt.InteractionService, address : EthAddress, acceptHexPrivateKey : Boolean = true ) : String = {
+  def readCredential( is : sbt.InteractionService, address : EthAddress, acceptHexPrivateKey : Boolean = true ) : String = syncOut {
     val hpkPart = if (acceptHexPrivateKey) " or hex private key" else ""
     is.readLine(s"Enter passphrase${hpkPart} for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
   }
@@ -193,8 +195,11 @@ object InteractiveQuery {
   private [sbtethereum]
   def readConfirmCredential( log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
     if ( attempt < maxAttempts ) {
-      val credential = is.readLine( readPrompt, mask = true ).getOrElse( throwCantReadInteraction )
-      val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throwCantReadInteraction )
+      val ( credential, confirmation ) = syncOut {
+        val _credential = is.readLine( readPrompt, mask = true ).getOrElse( throwCantReadInteraction )
+        val _confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throwCantReadInteraction )
+        ( _credential, _confirmation )
+      }
       if ( credential == confirmation ) {
         credential
       } else {

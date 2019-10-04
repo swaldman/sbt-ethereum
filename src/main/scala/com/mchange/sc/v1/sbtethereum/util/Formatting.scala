@@ -2,7 +2,7 @@ package com.mchange.sc.v1.sbtethereum.util
 
 import Abi.abiLookupForAddress
 
-import com.mchange.sc.v1.sbtethereum.{shoebox, EthValue, LineSep, PriceFeed, SbtEthereumException}
+import com.mchange.sc.v1.sbtethereum.{shoebox, syncOut, EthValue, LineSep, PriceFeed, SbtEthereumException}
 
 import com.mchange.sc.v1.consuela._
 
@@ -204,61 +204,71 @@ object Formatting {
 
     val nonce = txn.nonce.widen
 
-    println()
-    println( titleLine )
-    println( "==>" )
+    syncOut {
+      println()
+      println( titleLine )
+      println( "==>" )
 
-    signerDescription.foreach { desc =>
-      println(   s"==> Signer: ${desc}" )
-      println(    "==>")
+      signerDescription.foreach { desc =>
+        println(   s"==> Signer: ${desc}" )
+        println(    "==>")
+      }
     }
 
     txn match {
       case msg : EthTransaction.Message => {
-        println(  """==> The transaction would be a message with...""" )
-        println( s"""==>   To:    ${ticklessVerboseAddress(chainId, msg.to)}""" )
-        println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
-        println( s"""==>   Data:  ${if (msg.data.length > 0) hexString(msg.data) else "None"}""" )
-        println( s"""==>   Value: ${EthValue(msg.value.widen, Denominations.Ether).denominated} ether""" )
-
-        txn match {
-          case signed : EthTransaction.Signed => {
-            println(  "==>" )
-            signed.signature match {
-              case withId : EthSignature.WithChainId => {
-                val sigChainId = withId.chainId.value.widen.toInt // XXX: ugh.. we should probably modify all our ChainId stuff to be in terms of BigInt or UnsignedBigInt, rather than presuming Int...
-                if (chainId == sigChainId ) {
-                  println( s"==> The transaction is signed with Chain ID ${chainId} (which correctly matches the current session's 'ethNodeChainId')." )
-                }
-                else {
-                  println( s"==> WARNING: The transaction is signed with Chain ID ${sigChainId}, which does not match the current session's 'ethNodeChainId' of ${chainId}.")
-                  println( s"==>          If it is submitted within the current session, the transaction may fail." )
-                }
-              }
-              case withoutId : EthSignature.Basic => {
-                println( s"""==> WARNING: The transaction is signed with no embedded Chain ID. It could be successfully submitted on multiple chains, potentially as a result of "replay attacks".""" )
-              }
-            }
-          }
-          case unsigned : EthTransaction.Unsigned => /* skip section */
+        syncOut {
+          println(  """==> The transaction would be a message with...""" )
+          println( s"""==>   To:    ${ticklessVerboseAddress(chainId, msg.to)}""" )
+          println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
+          println( s"""==>   Data:  ${if (msg.data.length > 0) hexString(msg.data) else "None"}""" )
+          println( s"""==>   Value: ${EthValue(msg.value.widen, Denominations.Ether).denominated} ether""" )
         }
 
+        syncOut {
+          txn match {
+            case signed : EthTransaction.Signed => {
+              println(  "==>" )
+              signed.signature match {
+                case withId : EthSignature.WithChainId => {
+                  val sigChainId = withId.chainId.value.widen.toInt // XXX: ugh.. we should probably modify all our ChainId stuff to be in terms of BigInt or UnsignedBigInt, rather than presuming Int...
+                  if (chainId == sigChainId ) {
+                    println( s"==> The transaction is signed with Chain ID ${chainId} (which correctly matches the current session's 'ethNodeChainId')." )
+                  }
+                  else {
+                    println( s"==> WARNING: The transaction is signed with Chain ID ${sigChainId}, which does not match the current session's 'ethNodeChainId' of ${chainId}.")
+                    println( s"==>          If it is submitted within the current session, the transaction may fail." )
+                  }
+                }
+                case withoutId : EthSignature.Basic => {
+                  println( s"""==> WARNING: The transaction is signed with no embedded Chain ID. It could be successfully submitted on multiple chains, potentially as a result of "replay attacks".""" )
+                }
+              }
+            }
+            case unsigned : EthTransaction.Unsigned => /* skip section */
+          }
+        }
+          
         if (msg.data.nonEmpty) { // don't try to interpret pure ETH trasfers as ABI calls
           try {
             val abiLookup = abiLookupForAddress( chainId, msg.to, chainAbiOverrides )
             abiLookup.resolveAbi(Some(log)) match {
               case Some(abi) => {
-                val ( fcn, values ) = ethabi.decodeFunctionCall( abi, msg.data ).assert
-                println(  "==>" )
-                println( s"==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call..." )
-                println( s"==>   Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
+                syncOut {
+                  val ( fcn, values ) = ethabi.decodeFunctionCall( abi, msg.data ).assert
+                  println(  "==>" )
+                  println( s"==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call..." )
+                  println( s"==>   Function called: ${ethabi.signatureForAbiFunction(fcn)}" )
                   (values.zip( Stream.from(1) )).foreach { case (value, index) =>
                     println( s"==>     Arg ${index} [name=${value.parameter.name}, type=${value.parameter.`type`}]: ${value.stringRep}" )
                   }
+                }
               }
               case None => {
-                println(  "==>" )
-                println( s"==> !!! Any ABI is associated with the destination address is currently unknown, so we cannot decode the message data as a method call !!!" )
+                syncOut {
+                  println(  "==>" )
+                  println( s"==> !!! Any ABI is associated with the destination address is currently unknown, so we cannot decode the message data as a method call !!!" )
+                }
               }
             }
           }
@@ -272,55 +282,60 @@ object Formatting {
         }
       }
       case cc : EthTransaction.ContractCreation => {
-        println(  """==> The transaction would be a contract creation with...""" )
-        println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
-        println( s"""==>   Init:  ${if (cc.init.length > 0) hexString(cc.init) else "None"}""" )
-        println( s"""==>   Value: ${EthValue(cc.value.widen, Denominations.Ether).denominated} Ether""" )
-      }
-    }
-    println("==>")
-    println( s"==> The nonce of the transaction would be ${nonce}." )
-    println("==>")
-
-    println( s"==> $$$$$$ The transaction you have requested could use up to ${gasLimit} units of gas." )
-
-    val mbEthPrice = priceFeed.ethPriceInCurrency( chainId, currencyCode, forceRefresh = true )
-
-    val gweiPerGas = Denominations.GWei.fromWei(gasPrice)
-    val gasCostInWei = gasLimit * gasPrice
-    val gasCostInEth = Denominations.Ether.fromWei( gasCostInWei )
-    val gasCostMessage = {
-      val sb = new StringBuilder
-      sb.append( s"==> $$$$$$ You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether.${LineSep}" )
-      mbEthPrice match {
-        case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-          sb.append( s"==> $$$$$$ This is worth ${ pf.format(gasCostInEth * ethPrice) } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
-        }
-        case None => {
-          sb.append( s"==> $$$$$$ (No ${currencyCode} value could be determined for ETH on chain with ID ${chainId} from ${priceFeed.source})." )
-        }
-      }
-      sb.toString
-    }
-    println( gasCostMessage )
-
-    if ( valueInWei != 0 ) {
-      val xferInEth = Denominations.Ether.fromWei( valueInWei )
-      val maxTotalCostInEth = xferInEth + gasCostInEth
-      print( s"==> $$$$$$ You would also send ${xferInEth} ether" )
-      mbEthPrice match {
-        case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
-          println( s" (${ pf.format(xferInEth * ethPrice) } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${ pf.format(maxTotalCostInEth * ethPrice) } ${currencyCode})." )
-        }
-        case None => {
-          println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
+        syncOut {
+          println(  """==> The transaction would be a contract creation with...""" )
+          println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
+          println( s"""==>   Init:  ${if (cc.init.length > 0) hexString(cc.init) else "None"}""" )
+          println( s"""==>   Value: ${EthValue(cc.value.widen, Denominations.Ether).denominated} Ether""" )
         }
       }
     }
-    signerDescription.foreach { desc =>
-      println(  "==>" )
-      println( s"==> Signer: ${desc}" )
+
+    syncOut {
+      println("==>")
+      println( s"==> The nonce of the transaction would be ${nonce}." )
+      println("==>")
+
+      println( s"==> $$$$$$ The transaction you have requested could use up to ${gasLimit} units of gas." )
+
+      val mbEthPrice = priceFeed.ethPriceInCurrency( chainId, currencyCode, forceRefresh = true )
+
+      val gweiPerGas = Denominations.GWei.fromWei(gasPrice)
+      val gasCostInWei = gasLimit * gasPrice
+      val gasCostInEth = Denominations.Ether.fromWei( gasCostInWei )
+      val gasCostMessage = {
+        val sb = new StringBuilder
+        sb.append( s"==> $$$$$$ You would pay ${ gweiPerGas } gwei for each unit of gas, for a maximum cost of ${ gasCostInEth } ether.${LineSep}" )
+        mbEthPrice match {
+          case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
+            sb.append( s"==> $$$$$$ This is worth ${ pf.format(gasCostInEth * ethPrice) } ${currencyCode} (according to ${priceFeed.source} at ${formatTime( timestamp )})." )
+          }
+          case None => {
+            sb.append( s"==> $$$$$$ (No ${currencyCode} value could be determined for ETH on chain with ID ${chainId} from ${priceFeed.source})." )
+          }
+        }
+        sb.toString
+      }
+      println( gasCostMessage )
+
+      if ( valueInWei != 0 ) {
+        val xferInEth = Denominations.Ether.fromWei( valueInWei )
+        val maxTotalCostInEth = xferInEth + gasCostInEth
+        print( s"==> $$$$$$ You would also send ${xferInEth} ether" )
+        mbEthPrice match {
+          case Some( PriceFeed.Datum( ethPrice, timestamp ) ) => {
+            println( s" (${ pf.format(xferInEth * ethPrice) } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${ pf.format(maxTotalCostInEth * ethPrice) } ${currencyCode})." )
+          }
+          case None => {
+            println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
+          }
+        }
+      }
+      signerDescription.foreach { desc =>
+        println(  "==>" )
+        println( s"==> Signer: ${desc}" )
+      }
+      println()
     }
-    println()
   }
 }
