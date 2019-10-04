@@ -3,7 +3,6 @@ package com.mchange.sc.v1.sbtethereum.signer
 import sbt._
 
 import java.io.File
-import java.util.concurrent.atomic.AtomicReference
 
 import scala.collection._
 import scala.util.control.NonFatal
@@ -23,24 +22,124 @@ import util.WalletsV3._
 import com.mchange.sc.v2.concurrent.Scheduler
 
 private [sbtethereum] object SignersManager {
-  private trait AddressInfo
-  private final case object NoAddress                                                                                                 extends AddressInfo
-  private final case class  UnlockedAddress( chainId : Int, address : EthAddress, privateKey : EthPrivateKey, autoRelockTime : Long ) extends AddressInfo
+  private [SignersManager] final case class UnlockedAddress( address : EthAddress, privateKey : EthPrivateKey, autoRelockTimeMillis : Long )
 
   private implicit lazy val logger = mlogger( this )
 }
-private [sbtethereum] class SignersManager( scheduler : Scheduler, keystoresV3 : Seq[File], publicTestAddresses : immutable.Map[EthAddress,EthPrivateKey], abiOverridesForChain : Int => immutable.Map[EthAddress,jsonrpc.Abi] ) {
+private [sbtethereum] class SignersManager(
+  scheduler : Scheduler, // careful with the scheduler, which will embed references to the internal state
+  keystoresV3 : Seq[File],
+  publicTestAddresses : immutable.Map[EthAddress,EthPrivateKey],
+  abiOverridesForChain : Int => immutable.Map[EthAddress,jsonrpc.Abi],
+  maxUnlocked : Int = 3
+) {
   import SignersManager._
 
-  // MT: protected by CurrentAddress' lock
-  private val CurrentAddress = new AtomicReference[AddressInfo]( NoAddress )
+  TRACE.log( s"Initializing SignersManager [${this}]" )
+
+  private val RelockMarginSeconds = 5
+
+  object State {
+
+    // MT: protected by State's lock
+    private val currentAddresses = mutable.Map.empty[EthAddress,UnlockedAddress]
+    private val addressesByRelockTime = mutable.SortedMap.empty[Long,UnlockedAddress] // we ensure unlock times are unique!
+
+    private [SignersManager]
+    def checkWithoutValidating( address : EthAddress ) : Option[UnlockedAddress] = State.synchronized {
+      val mbua = currentAddresses.get( address )
+      mbua.foreach( ua => assertConsistent( address, ua ) )
+      mbua
+    }
+
+    private [SignersManager]
+    def reunlock( address : EthAddress, privateKey : EthPrivateKey, untilMillis : Long ) : UnlockedAddress = {
+      val ( expiryMillis, out ) = State.synchronized {
+        var safeUntil = untilMillis
+        while (addressesByRelockTime.contains( safeUntil )) safeUntil -= 1 // if we have to be inexact (extremely rare) err on the side of going shorter
+        val newUnlockedAddressMapsClear = currentAddresses.get( address ) match {
+          case Some( ua ) => {
+            assertConsistent( address, ua )
+            currentAddresses -= address
+            addressesByRelockTime -= ua.autoRelockTimeMillis
+            DEBUG.log( s"Validity of unlocked address '${hexString(address)}' will be extended to ${formatInstant(safeUntil)}" )
+            ua.copy( autoRelockTimeMillis = safeUntil )
+          }
+          case None => {
+            DEBUG.log( s"Address '${hexString(address)}' will be unlocked until ${formatInstant(safeUntil)}" )
+            UnlockedAddress( address, privateKey, safeUntil )
+          }
+        }
+        currentAddresses += Tuple2( address, newUnlockedAddressMapsClear )
+        addressesByRelockTime += Tuple2( safeUntil, newUnlockedAddressMapsClear )
+        while ( currentAddresses.size > maxUnlocked ) removeNext()
+        Tuple2( safeUntil, newUnlockedAddressMapsClear )
+      }
+      scheduler.schedule( () => checkExpiry( address ), ((expiryMillis - System.currentTimeMillis) + (RelockMarginSeconds * 1000)).milliseconds )
+      out
+    }
+
+    private [SignersManager]
+    def remove( address : EthAddress ) : Unit = State.synchronized {
+      TRACE.log( s"remove( ${hexString(address)} )" )
+      currentAddresses.get( address ).foreach { ua =>
+        assertConsistent( address, ua )
+        currentAddresses -= address
+        addressesByRelockTime -= ua.autoRelockTimeMillis
+      }
+    }
+
+    private [SignersManager]
+    def clear() : Unit = State.synchronized {
+      DEBUG.log( s"Resetting SignersManager [${SignersManager.this}]" )
+      currentAddresses.clear()
+      addressesByRelockTime.clear()
+    }
+
+    // should only be called while holding State's lock
+    private def assertConsistent( address : EthAddress, ua : UnlockedAddress ) = {
+      assert( currentAddresses.size == addressesByRelockTime.size )
+      assert( address == ua.address )
+      assert( addressesByRelockTime.get( ua.autoRelockTimeMillis ) == Some( ua ) )
+    }
+
+    // should only be called while holding State's lock
+    private def assertConsistent( untilMillis : Long, ua : UnlockedAddress ) = {
+      assert( currentAddresses.size == addressesByRelockTime.size )
+      assert( untilMillis == ua.autoRelockTimeMillis )
+      assert( addressesByRelockTime.get( ua.autoRelockTimeMillis ) == Some( ua ) )
+    }
+
+    private def removeNext() : Unit = State.synchronized {
+      TRACE.log( "removeNext()" )
+      val ( untilMillis, ua ) = addressesByRelockTime.head
+      assertConsistent( untilMillis, ua )
+      currentAddresses -= ua.address
+      addressesByRelockTime -= untilMillis
+    }
+
+    private def checkExpiry( address : EthAddress ) : Unit = State.synchronized {
+      TRACE.log( s"checkExpiry( ${hexString(address)} )" )
+      currentAddresses.get( address ) match {
+        case Some( ua ) => {
+          if ( System.currentTimeMillis() > ua.autoRelockTimeMillis ) {
+            remove( address )
+            DEBUG.log( s"Unlocked address '0x${hexString(address)}' expired at ${formatInstant(ua.autoRelockTimeMillis)}. Relocked." )
+          }
+          else {
+            DEBUG.log( s"Unlocked address '0x${hexString(address)}' checked and is still valid, expires at ${formatInstant(ua.autoRelockTimeMillis)}." )
+          }
+        }
+        case None => {
+          DEBUG.log( s"Address '0x${hexString(address)}' not unlocked. No need to verify expiry." )
+        }
+      }
+    }
+
+  }
 
   private [sbtethereum]
-  def reset() : Unit = {
-    CurrentAddress.synchronized {
-      CurrentAddress.set( NoAddress )
-    }
-  }
+  def reset() : Unit = State.clear()
 
   private [sbtethereum]
   def findUpdateCacheLazySigner(
@@ -182,7 +281,7 @@ private [sbtethereum] class SignersManager( scheduler : Scheduler, keystoresV3 :
     chainId              : Int, // for alias display only
     address              : EthAddress
   ) : EthPrivateKey = {
-    checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = true, resetOnFailure = false ) getOrElse findNoCachePrivateKey( state, log, is, chainId, address )
+    checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = true, resetOnVeto = false ) getOrElse findNoCachePrivateKey( state, log, is, chainId, address )
   }
 
   private def findCheckCacheLazySigner(
@@ -195,58 +294,42 @@ private [sbtethereum] class SignersManager( scheduler : Scheduler, keystoresV3 :
     new LazySigner( address, () => findCheckCachePrivateKey(state, log, is, chainId, address ) )
   }
 
-  private val RelockMarginSeconds = 5
-
-  private val CheckRelockPrivateKeyTask : () => Unit = {
-    () => {
-      CurrentAddress.synchronized {
-        val now = System.currentTimeMillis
-        CurrentAddress.get match {
-          case UnlockedAddress( _, address, _, autoRelockTime ) if (now >= autoRelockTime ) => {
-            CurrentAddress.set( NoAddress )
-            DEBUG.log( s"Relocked private key for address '${address}' (expired '${formatInstant(autoRelockTime)}', checked '${formatInstant(now)}')" )
+  private def checkForCachedPrivateKey( is : sbt.InteractionService, chainId : Int, address : EthAddress, userValidateIfCached : Boolean = true, resetOnVeto : Boolean = true) : Option[EthPrivateKey] = State.synchronized {
+    // caps for value matches rather than variable names
+    val Address = address
+    val now = System.currentTimeMillis
+    State.checkWithoutValidating( address ) match {
+      // if chainId and/or ethcfgAddressSender has changed, this will no longer match
+      // note that we never deliver an expired, cached key even if we have one
+      case Some( UnlockedAddress( Address, privateKey, autoRelockTimeMillis ) ) if (now < autoRelockTimeMillis ) => {
+        val ok = {
+          if ( userValidateIfCached ) {
+            queryYN( is, s"Using sender address ${verboseAddress( chainId, address )}, which is already unlocked. OK? [y/n] " )
+          } else {
+            true
           }
-          case _ => /* ignore */
+        }
+        if ( ok ) {
+          Some( privateKey )
+        }
+        else {
+          if ( resetOnVeto ) {
+            DEBUG.log( s"Reuse of unlocked address vetoed, and unlockOnVeto set to true. Relocking '${hexString(address)}'." )
+            State.remove( address )
+          }
+          aborted( s"Use of sender address ${verboseAddress( chainId, address)} vetoed by user." )
         }
       }
-    }
-  }
-
-  private def checkForCachedPrivateKey( is : sbt.InteractionService, chainId : Int, address : EthAddress, userValidateIfCached : Boolean = true, resetOnFailure : Boolean = true) : Option[EthPrivateKey] = {
-    CurrentAddress.synchronized {
-      // caps for value matches rather than variable names
-      val ChainId = chainId
-      val Address = address
-      val now = System.currentTimeMillis
-      CurrentAddress.get match {
-        // if chainId and/or ethcfgAddressSender has changed, this will no longer match
-        // note that we never deliver an expired, cached key even if we have one
-        case UnlockedAddress( ChainId, Address, privateKey, autoRelockTime ) if (now < autoRelockTime ) => {
-          val aliasesPart = commaSepAliasesForAddress( ChainId, Address ).fold( _ => "")( _.fold("")( commasep => s", aliases $commasep" ) )
-          val ok = {
-            if ( userValidateIfCached ) {
-              is.readLine( s"Using sender address ${verboseAddress( chainId, address)}, which is already unlocked. OK? [y/n] ", false ).getOrElse( throwCantReadInteraction ).trim().equalsIgnoreCase("y")
-            } else {
-              true
-            }
-          }
-          if ( ok ) {
-            Some( privateKey )
-          } else {
-            if ( resetOnFailure ) CurrentAddress.set( NoAddress )
-            aborted( s"Use of sender address ${verboseAddress( chainId, address)} vetoed by user." )
-          }
-        }
-        case UnlockedAddress( _, _, _, autoRelockTime ) if (now >= autoRelockTime ) => {
-          // we always reset expired keys when we see them
-          CurrentAddress.set( NoAddress )
-          None
-        }
-        case _ => {
-          // otherwise, we honor the resetOnFailure argument
-          if ( resetOnFailure ) CurrentAddress.set( NoAddress )
-          None
-        }
+      case Some( UnlockedAddress( Address, _, autoRelockTimeMillis ) ) if (now >= autoRelockTimeMillis ) => {
+        // we always reset expired keys when we see them
+        State.remove( address )
+        None
+      }
+      case Some( ua ) => {
+        throw new AssertionError( s"Unexpected address, looking for ${hexString(address)} found ${hexString(ua.address)} (UnlockedAddress: ${ua})." )
+      }
+      case None => {
+        None
       }
     }
   }
@@ -263,34 +346,33 @@ private [sbtethereum] class SignersManager( scheduler : Scheduler, keystoresV3 :
     address              : EthAddress,
     autoRelockSeconds    : Int,
     userValidateIfCached : Boolean
-  ) : EthPrivateKey = {
+  ) : EthPrivateKey = State.synchronized {
 
     def recache( privateKey : EthPrivateKey ) = {
-      if ( autoRelockSeconds > 0 ) {
-        CurrentAddress.set( UnlockedAddress( chainId, address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) ) )
-        scheduler.schedule( CheckRelockPrivateKeyTask, (autoRelockSeconds + RelockMarginSeconds).seconds )
+      if ( maxUnlocked > 0 && autoRelockSeconds > 0 ) {
+        assert( address == privateKey.address )
+        State.reunlock( address, privateKey, System.currentTimeMillis + (autoRelockSeconds * 1000) )
       }
       else {
-        CurrentAddress.set( NoAddress )
+        State.remove( address )
       }
     }
 
     def updateCached : EthPrivateKey = {
       val privateKey = findNoCachePrivateKey( state, log, is, chainId, address )
+      assert( address == privateKey.address )
       recache( privateKey )
       privateKey
     }
-    def goodCached : Option[EthPrivateKey] = checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = userValidateIfCached, resetOnFailure = true )
+    def goodCached : Option[EthPrivateKey] = checkForCachedPrivateKey( is, chainId, address, userValidateIfCached = userValidateIfCached, resetOnVeto = true )
 
     def realFindUpdateCache : EthPrivateKey = {
-      CurrentAddress.synchronized {
-        goodCached match {
-          case Some( privateKey ) => {
-            recache( privateKey )
-            privateKey
-          }
-          case None => updateCached
+      goodCached match {
+        case Some( privateKey ) => {
+          recache( privateKey )
+          privateKey
         }
+        case None => updateCached
       }
     }
 
