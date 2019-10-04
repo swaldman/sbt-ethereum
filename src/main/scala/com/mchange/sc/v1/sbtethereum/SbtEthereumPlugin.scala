@@ -2266,12 +2266,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val is = interactionService.value
     val chainId = findNodeChainIdTask(warn=false)(config).value
-    def doAskSetAlias = queryYN( is, s"Would you like to define an alias for address '${hexString(address)}' (on chain with ID ${chainId})? [y/n] " )
+    def doAskSetAlias = queryYN( is, s"Would you like to define an alias for address ${verboseAddress( chainId, address )}? [y/n] " )
     val update = doAskSetAlias
     if ( update ) {
       @tailrec
       def doQueryAlias : Initialize[Task[Unit]] = {
-        val putative = assertReadLine( is, s"Please enter an alias for address '${hexString(address)}' (on chain with ID ${chainId}): ", mask = false ).trim
+        val putative = assertReadLine( is, s"Please enter an alias for address ${verboseAddress( chainId, address )}: ", mask = false ).trim
         if ( putative.isEmpty ) {
           log.info( "No alias provided." )
           if ( doAskSetAlias ) {
