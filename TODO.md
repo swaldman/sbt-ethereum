@@ -19,10 +19,6 @@ DB schema updates
 
 Security
 
-* Define a cache that holds multiple EthSigners according to autoRelockSeconds (use EthSigner rather than EthPrivateKey, see below).
-
-* Factor the private key cache into a utility
-
 * Make all sbt-ethereum EthSigners (including cached ones) hit the InteractionService, for either a credential or a confirmation, so
   no signatures can be silently made.
 
@@ -39,6 +35,9 @@ Other
 * Factor out transaction wait-for-mining into a single construct, handle timeouts better within this.
 
 * More informative message about how to deal with timeouts.
+
+* Much better output (hash, warning to wait, etc) when hitting ENS and other stub transactions.
+  - onSubmit function in Invoker.Context, onSynchronousMined or something in Stub.Context
 
 * Let markups be specified as percentages as well as fractions
 

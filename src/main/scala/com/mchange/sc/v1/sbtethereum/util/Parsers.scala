@@ -116,7 +116,7 @@ object Parsers {
   private [sbtethereum]
   def reset() : Unit = EnsAddressCache.reset()
 
-  private def createSimpleAddressParser( tabHelp : String ) = token(OptSpace) ~> token( RawAddressParser, tabHelp )
+  private def createSimpleAddressParser( tabHelp : String ) = token( RawAddressParser, tabHelp )
 
   private def rawAddressAliasParser( aliases : SortedMap[String,EthAddress] ) : Parser[String] = {
     aliases.keys.foldLeft( failure("not a known alias") : Parser[String] )( ( nascent, next ) => nascent | literal( next ) )
@@ -141,7 +141,7 @@ object Parsers {
         // val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
         // token(OptSpace) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensParser ).examples( allExamples : _* )
 
-        token(OptSpace) ~> token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensParser )
+        token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensParser )
       }
       case None => {
         createSimpleAddressParser( tabHelp )
@@ -256,7 +256,7 @@ object Parsers {
   }
 
   private [sbtethereum] def ensPathParser( exampleTld : String, desc : String = "ens-name" ) : Parser[ens.ParsedPath] = {
-    token( RawEnsPath ).examples( s"<${desc}>.${exampleTld}", " " ).map { rawPath =>
+    token( RawEnsPath ).examples( s"<${desc}>.${exampleTld}", ZWSP ).map { rawPath =>
       ens.ParsedPath( rawPath )
     }
   }
@@ -370,7 +370,7 @@ object Parsers {
     }
   }
 
-  private [sbtethereum] def ethHashParser( exampleStr : String ) : Parser[EthHash] = token(OptSpace ~> literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), exampleStr).map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
+  private [sbtethereum] def ethHashParser( exampleStr : String ) : Parser[EthHash] = token(literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), exampleStr).map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
 
   private [sbtethereum] def functionParser( abi : jsonrpc.Abi, restrictToConstants : Boolean ) : Parser[jsonrpc.Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
@@ -545,88 +545,84 @@ object Parsers {
 
   private def _genEnsPathXxxAddressParser( example : String )( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,EthAddress)] = {
     mbRpi.map { rpi =>
-      token(Space) ~> (ensPathParser( rpi.exampleNameServiceTld ) ~ (Space ~> createAddressParser( example, mbRpi )))
+      for {
+        _ <- Space
+        ensPath <- ensPathParser( rpi.exampleNameServiceTld )
+        _ <- Space.examples(" ")
+        address <- createAddressParser( example, mbRpi )
+      }
+      yield {
+        Tuple2( ensPath, address )
+      }
     } getOrElse {
       failure( "Failed to retrieve RichParserInfo." )
     }
   }
 
   private [sbtethereum] def genAddressParser(tabHelp : String)( state : State, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
-    createAddressParser( tabHelp, mbRpi )
+    Space ~> createAddressParser( tabHelp, mbRpi )
   }
 
   private [sbtethereum] def genGenericAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
-    createAddressParser( "<address-hex>", mbRpi )
+    Space ~> createAddressParser( "<address-hex>", mbRpi )
   }
 
   private [sbtethereum] def genCompleteErc20TokenContractAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
-    token(Space) ~> createAddressParser( "<erc20-token-address-hex>", mbRpi )
+    Space ~> createAddressParser( "<erc20-token-address-hex>", mbRpi )
   }
 
   private [sbtethereum] def genCompleteErc20TokenTransferParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple3[EthAddress, EthAddress, String]] = {
-    token(Space) ~> (
-      createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
-        (Space ~> createAddressParser( "<transfer-to-address>", mbRpi )).flatMap { toAddress =>
-          (Space ~> amountParser( "<number-of-tokens>" ).map( _.toString )).map { numTokensStr =>
-            ( contractAddress, toAddress, numTokensStr )
-          }
+    (Space ~> createAddressParser( "<erc20-token-contract-address>", mbRpi )).flatMap { contractAddress =>
+      (Space ~> createAddressParser( "<transfer-to-address>", mbRpi )).flatMap { toAddress =>
+        (Space ~> amountParser( "<number-of-tokens>" ).map( _.toString )).map { numTokensStr =>
+          ( contractAddress, toAddress, numTokensStr )
         }
       }
-    )
+    }
   }
 
   private [sbtethereum] def genCompleteErc20TokenApproveParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple3[EthAddress, EthAddress, String]] = {
-    token(Space) ~> (
-      createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
-        (Space ~> createAddressParser( "<approved-address>", mbRpi )).flatMap { toAddress =>
-          (Space ~> amountParser( "<number-of-tokens>" ).map( _.toString )).map { numTokensStr =>
-            ( contractAddress, toAddress, numTokensStr )
-          }
+    (Space ~> createAddressParser( "<erc20-token-contract-address>", mbRpi )).flatMap { contractAddress =>
+      (Space ~> createAddressParser( "<approved-address>", mbRpi )).flatMap { toAddress =>
+        (Space ~> amountParser( "<number-of-tokens>" ).map( _.toString )).map { numTokensStr =>
+          ( contractAddress, toAddress, numTokensStr )
         }
       }
-    )
+    }
   }
 
   private [sbtethereum] def genCompleteErc20TokenAllowanceParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple3[EthAddress, EthAddress, EthAddress]] = {
-    token(Space) ~> (
-      createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
-        (Space ~> createAddressParser( "<token-owner-address>", mbRpi )).flatMap { ownerAddress =>
-          (Space ~> createAddressParser( "<allowed-address>", mbRpi )).map { allowedAddress =>
-            ( contractAddress, ownerAddress, allowedAddress )
-          }
+    (Space ~> createAddressParser( "<erc20-token-contract-address>", mbRpi )).flatMap { contractAddress =>
+      (Space ~> createAddressParser( "<token-owner-address>", mbRpi )).flatMap { ownerAddress =>
+        (Space ~> createAddressParser( "<allowed-address>", mbRpi )).map { allowedAddress =>
+          ( contractAddress, ownerAddress, allowedAddress )
         }
       }
-    )
+    }
   }
 
   private [sbtethereum] def genCompleteErc20TokenBalanceParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple2[EthAddress, Option[EthAddress]]] = {
-    token(Space) ~> (
-      createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
-        (Space ~> createAddressParser( "[optional-tokenholder-address]", mbRpi )).?.map { mbTokenHolderAddress =>
-          ( contractAddress, mbTokenHolderAddress )
-        }
+    (Space ~> createAddressParser( "<erc20-token-contract-address>", mbRpi )).flatMap { contractAddress =>
+      (Space ~> createAddressParser( "[optional-tokenholder-address]", mbRpi )).?.map { mbTokenHolderAddress =>
+        ( contractAddress, mbTokenHolderAddress )
       }
-    )
+    }
   }
 
   private [sbtethereum] def genCompleteErc20TokenConvertTokensToAtomsParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple2[EthAddress, BigDecimal]] = {
-    token(Space) ~> (
-      createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
-        (Space ~> amountParser( "<amount-in-tokens>" )).map { numTokens =>
-          ( contractAddress, numTokens )
-        }
+    (Space ~> createAddressParser( "<erc20-token-contract-address>", mbRpi )).flatMap { contractAddress =>
+      (Space ~> amountParser( "<amount-in-tokens>" )).map { numTokens =>
+        ( contractAddress, numTokens )
       }
-    )
+    }
   }
 
   private [sbtethereum] def genCompleteErc20TokenConvertAtomsToTokensParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple2[EthAddress, BigInt]] = {
-    token(Space) ~> (
-      createAddressParser( "<erc20-token-contract-address>", mbRpi ).flatMap { contractAddress =>
-        (Space ~> bigIntParser( "<amount-in-atoms>" )).map { numAtoms =>
-          ( contractAddress, numAtoms )
-        }
+    (Space ~> createAddressParser( "<erc20-token-contract-address>", mbRpi )).flatMap { contractAddress =>
+      (Space ~> bigIntParser( "<amount-in-atoms>" )).map { numAtoms =>
+        ( contractAddress, numAtoms )
       }
-    )
+    }
   }
 
   private [sbtethereum] def genOptionalGenericAddressParser(
@@ -657,7 +653,7 @@ object Parsers {
     state : State,
     mbRpi : Option[RichParserInfo]
   ) = {
-    createAddressParser( "<recipient-address>", mbRpi )
+    Space ~> createAddressParser( "<recipient-address>", mbRpi )
   }
 
   // for some reason, using a flatMap(...) dependent parser explcitly seems to yield more relable tab completion
@@ -675,7 +671,7 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[Either[EthAddress,EthHash]] = {
     val chp = ethHashParser( s"<${prefix}contract-code-hash>" )
-    createAddressParser( s"<${prefix}address-hex>", mbRpi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) )
+    Space ~> (createAddressParser( s"<${prefix}address-hex>", mbRpi ).map( addr => Left[EthAddress,EthHash]( addr ) ) | chp.map( ch => Right[EthAddress,EthHash]( ch ) ))
   }
 
   private [sbtethereum] def genContractAddressOrCodeHashParser(
@@ -747,14 +743,14 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) = {
     val raw = createAddressParser( "<to-address>", mbRpi ).flatMap( addr => success(addr) ~ bytesParser("<txn-data-hex>") ~ valueInWeiParser("<amount-to-pay>") ~ bigIntParser("[optional nonce]").? )
-    raw.map { case ((( to, bytes ), amount), mbNonce ) => (to, bytes.toVector, amount, mbNonce ) }
+    (Space ~> raw).map { case ((( to, bytes ), amount), mbNonce ) => (to, bytes.toVector, amount, mbNonce ) }
   }
   private [sbtethereum] def genToAddressBytesAmountParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) = {
     val raw = createAddressParser( "<to-address>", mbRpi ).flatMap( addr => success(addr) ~ bytesParser("<txn-data-hex>") ~ valueInWeiParser("<amount-to-pay>") )
-    raw.map { case (( to, bytes ), amount) => (to, bytes.toVector, amount ) }
+    (Space ~> raw).map { case (( to, bytes ), amount) => (to, bytes.toVector, amount ) }
   }
   private [sbtethereum] def genLiteralSetParser(
     state : State,
@@ -780,8 +776,8 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[AbiSource] = {
     mbRpi.fold( failure("ABI aliases not available!" ) : Parser[AbiSource] ) { rpi =>
-      ( ethHashParser( s"<contract-code-or-abi-hash>" ).map( HashSource.apply ) |
-        createAddressParser( s"<contract-address-hex-or-alias>", mbRpi ).map( addr => AddressSource( rpi.chainId, addr, rpi.abiOverrides ) ) |
+      ( (Space ~> ethHashParser( s"<contract-code-or-abi-hash>" )).map( HashSource.apply ) |
+        (Space ~> createAddressParser( s"<contract-address-hex-or-alias>", mbRpi )).map( addr => AddressSource( rpi.chainId, addr, rpi.abiOverrides ) ) |
         _genAliasAbiSourceParser(state, mbRpi) )
     }
   }
@@ -796,7 +792,7 @@ object Parsers {
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[EthAddress, AbiSource]] = {
-    createAddressParser( "<address-to-associate-with-abi>", mbRpi ).flatMap( addr => (token(Space) ~> _genAnyAbiSourceParser( state, mbRpi ).map( abiSource => (addr, abiSource) ) ) )
+    (Space ~> createAddressParser( "<address-to-associate-with-abi>", mbRpi )).flatMap( addr => (token(Space) ~> _genAnyAbiSourceParser( state, mbRpi ).map( abiSource => (addr, abiSource) ) ) )
   }
 
   private [sbtethereum] def genAnyAbiSourceHexBytesParser(
