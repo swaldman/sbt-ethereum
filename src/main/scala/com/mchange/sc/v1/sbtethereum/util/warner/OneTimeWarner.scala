@@ -1,4 +1,4 @@
-package com.mchange.sc.v1.sbtethereum.util
+package com.mchange.sc.v1.sbtethereum.util.warner
 
 import sbt._
 

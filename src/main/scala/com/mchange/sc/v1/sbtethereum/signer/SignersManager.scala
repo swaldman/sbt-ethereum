@@ -28,10 +28,10 @@ private [sbtethereum] object SignersManager {
 }
 private [sbtethereum] class SignersManager(
   scheduler : Scheduler, // careful with the scheduler, which will embed references to the internal state
-  keystoresV3 : Seq[File],
+  keystoresV3 : immutable.Seq[File],
   publicTestAddresses : immutable.Map[EthAddress,EthPrivateKey],
   abiOverridesForChain : Int => immutable.Map[EthAddress,jsonrpc.Abi],
-  maxUnlocked : Int = 3
+  maxUnlocked : Int
 ) {
   import SignersManager._
 

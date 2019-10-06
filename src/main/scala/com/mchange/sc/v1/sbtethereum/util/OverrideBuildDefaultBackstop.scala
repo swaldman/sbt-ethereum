@@ -1,5 +1,7 @@
 package com.mchange.sc.v1.sbtethereum.util
 
+import warner._
+
 import com.mchange.sc.v3.failable._
 
 /*

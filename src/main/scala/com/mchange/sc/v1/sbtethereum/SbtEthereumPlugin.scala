@@ -10,9 +10,8 @@ import BasicJsonProtocol._
 
 import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstaller, SourceFile}
 
+import util.warner._
 import util.BaseCodeAndSuffix
-import util.OneTimeWarner
-import util.ChainIdMutable
 import util.Erc20
 import util.EthJsonRpc._
 import util.Parsers._
@@ -32,7 +31,6 @@ import java.security.SecureRandom
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.Date
-import java.util.concurrent.atomic.AtomicReference
 import play.api.libs.json.{JsObject, Json}
 import com.mchange.sc.v1.etherscan
 import com.mchange.sc.v3.failable._
@@ -72,9 +70,10 @@ import scala.concurrent.ExecutionContext
 import com.mchange.sc.v2.jsonrpc.Exchanger
 import com.mchange.sc.v2.jsonrpc.Exchanger.Factory.{Default => DefaultExchangerFactory}
 
+import com.mchange.sc.v2.concurrent.{Poller, Scheduler}
+
 // global implicits
 import scala.concurrent.ExecutionContext.Implicits.global
-import com.mchange.sc.v2.concurrent.{Poller, Scheduler}
 
 object SbtEthereumPlugin extends AutoPlugin {
 
@@ -86,83 +85,19 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   final case class TimestampedAbi( abi : Abi, timestamp : Option[Long] )
 
-  object OneTimeWarnerKey {
-    final object NodeChainIdInBuild extends OneTimeWarnerKey
-    final object NodeUrlInBuild extends OneTimeWarnerKey
-    final object AddressSenderInBuild  extends OneTimeWarnerKey
-    final object EtherscanApiKeyInBuild  extends OneTimeWarnerKey
-
-    final object EthDefaultNodeSupportedOnlyForMainet extends OneTimeWarnerKey
-    final object UsingUnreliableBackstopNodeUrl extends OneTimeWarnerKey
-  }
-  sealed trait OneTimeWarnerKey
-
   private val MainScheduler = Scheduler.Default
 
   private val PublicTestAddresses = immutable.Map( testing.Default.Faucet.Address -> testing.Default.Faucet.PrivateKey )
 
-  // TODO: Make a consistent choice about whether overrides should be scoped to ethNodeChainIds, or whether
-  //       they should be unscoped but reset upon any sort of update of ethNodeChainId
-  //
-  //       They are reset, along with all mutables, if the session is reinitialized via
-  //
-  //         'set ethNodeChainId := <int>'
-  //
-  //       But perhaps its best to retain overrides across (to-be-implemented) gentler switches (and report the overrides
-  //       upon any switch
-  //
-  private final object Mutables {
+  private val MaxUnlockedAddresses = 3
 
-    val MainSignersManager = new SignersManager( MainScheduler, OnlyShoeboxKeystoreV3, PublicTestAddresses, abiOverridesForChain )
-
-    val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
-
-    val CurrentSolidityCompiler = new AtomicReference[Option[( String, Compiler.Solidity )]]( None )
-
-    // MT: protected by ChainIdOverride' lock
-    val ChainIdOverride = new AtomicReference[Option[Int]]( None ) // Only supported for Compile config
-
-    // MT: internally thread-safe
-    val SenderOverrides = new ChainIdMutable[EthAddress]
-
-    // MT: internally thread-safe
-    val NodeUrlOverrides = new ChainIdMutable[String]
-
-    // MT: internally thread-safe
-    val AbiOverrides = new ChainIdMutable[immutable.Map[EthAddress,Abi]]
-
-    // MT: internally thread-safe
-    val GasLimitTweakOverrides = new ChainIdMutable[Invoker.MarkupOrOverride]
-
-    // MT: internally thread-safe
-    val GasPriceTweakOverrides = new ChainIdMutable[Invoker.MarkupOrOverride]
-
-    // MT: internally thread-safe
-    val NonceOverrides = new ChainIdMutable[BigInt]
-
-    // MT: internally thread-safe
-    val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
-
-    // MT: protected by LocalGanache's lock
-    val LocalGanache = new AtomicReference[Option[Process]]( None )
-
-    def reset() : Unit = {
-      MainSignersManager.reset()
-      SessionSolidityCompilers.set( None )
-      CurrentSolidityCompiler.set( None )
-      ChainIdOverride.set( None )
-      SenderOverrides.reset()
-      NodeUrlOverrides.reset()
-      AbiOverrides.reset()
-      GasLimitTweakOverrides.reset()
-      GasPriceTweakOverrides.reset()
-      NonceOverrides.reset()
-      OneTimeWarner.resetAll()
-      LocalGanache synchronized {
-        LocalGanache.set( None )
-      }
-    }
-  }
+  private val Mutables = new mutables.Raw (
+    scheduler            = MainScheduler,
+    keystoresV3          = OnlyShoeboxKeystoreV3,
+    publicTestAddresses  = PublicTestAddresses,
+    abiOverridesForChain = abiOverridesForChain,
+    maxUnlockedAddresses = MaxUnlockedAddresses
+  )
 
   private def resetAllState() : Unit = {
     Mutables.reset()
