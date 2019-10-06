@@ -66,7 +66,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
       bp + "compile/",
       bp + "lib/",
       bp + "api/",
-      bp + "signers/",
+      bp + "signer/",
     )
     pkgpaths.foreach( seal )
     Package.JarManifest( manifest )
