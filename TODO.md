@@ -26,6 +26,12 @@ Security
   given sbt.TrapExit, no control over sysprops etc) or Java-9-modules (future version, when we require java 11), to ensure that the private
   storage is not accessible -- checked by the runtime and not susceptible to a reflectve setAccessible(...)
 
+* I think the best approach will be to use Java9 modules, only export packages com.mchange.sc.v1.sbtethereum and com.mchange.sc.v1.sbtethereum.api,
+  seal the packages and carefully control what can be done with that API and ensure security relevant operations are visbily side-effecting,
+  encourage (with default scripts and warning) running JVMs with --illegal-access=deny (there's not at present runtime visibility of the setting :(
+  maybe we can arrange some kind of setup where we test access to unexported packages and ensure that unwanted accesses fail with an Exception.
+  Ideally we test all of our own, and detect if someone is running with --add-opens
+
 Other
 
 * Eventually, when we factor out Mutables to a class with well-encapsulated accessors,
