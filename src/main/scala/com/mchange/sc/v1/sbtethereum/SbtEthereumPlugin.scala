@@ -105,26 +105,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     util.Parsers.reset()
   }
 
-  private def unwrapNonceOverride( mbLog : Option[sbt.Logger], chainId : Int ) : Option[Unsigned256] = {
-    val out = Mutables.NonceOverrides.get( chainId ).map( Unsigned256.apply )
-    out.foreach { noverride =>
-      mbLog.foreach { log =>
-        log.info( s"Nonce override set: ${noverride.widen}" )
-      }
-    }
-    out
-  }
-
-  private def unwrapNonceOverrideBigInt( mbLog : Option[sbt.Logger], chainId : Int ) : Option[BigInt] = {
-    val out = Mutables.NonceOverrides.get( chainId )
-    out.foreach { noverride =>
-      mbLog.foreach { log =>
-        log.info( s"Nonce override set: ${noverride}" )
-      }
-    }
-    out
-  }
-
   private val BufferSize = 4096
 
   private val PollSeconds = 15
@@ -1512,7 +1492,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val mbDefaultResolver    = ( config / enscfgNameServicePublicResolver).?.value
       val ( epp, address )     = parser.parsed
       val ensName              = epp.fullName
-      val nonceOverride        = unwrapNonceOverrideBigInt( Some( log ), chainId )
+      val nonceOverride        = logFetchNonceOverrideBigInt( Some( log ), chainId )
 
       try {
         ensClient.setAddress( lazySigner, ensName, address, forceNonce = nonceOverride )
@@ -1579,7 +1559,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val lazySigner       = findCurrentSenderLazySignerTask( config ).value
       val ensClient        = ( config / xensClient ).value
       val epp              = parser.parsed
-      val nonceOverride    = unwrapNonceOverrideBigInt( Some( log ), chainId )
+      val nonceOverride    = logFetchNonceOverrideBigInt( Some( log ), chainId )
       
 
       epp match {
@@ -1680,7 +1660,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       val registrant = mbAddress.getOrElse( sender )
 
-      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverrideBigInt( Some( log ), chainId )
 
       val baseCurrencyCode = ethcfgBaseCurrencyCode.value
 
@@ -1844,7 +1824,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val lazySigner = findCurrentSenderLazySignerTask( config ).value
       val epp        = parser.parsed
 
-      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverrideBigInt( Some( log ), chainId )
 
       val baseCurrencyCode = ethcfgBaseCurrencyCode.value
 
@@ -2014,7 +1994,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val lazySigner    = findCurrentSenderLazySignerTask( config ).value
       val chainId       = findNodeChainIdTask(warn=true)(config).value
       val ensClient     = ( config / xensClient).value
-      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverrideBigInt( Some( log ), chainId )
 
       val ( ensParsedPath, ownerAddress ) = parser.parsed
       val ensName = ensParsedPath.fullName
@@ -2053,7 +2033,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val lazySigner    = findCurrentSenderLazySignerTask( config ).value
       val chainId       = findNodeChainIdTask(warn=true)(config).value
       val ensClient     = ( config / xensClient).value
-      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverrideBigInt( Some( log ), chainId )
       val ( ensParsedPath, resolverAddress ) = parser.parsed
       val ensName = ensParsedPath.fullName
       syncOut {
@@ -2081,7 +2061,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val lazySigner    = findCurrentSenderLazySignerTask( config ).value
       val chainId       = findNodeChainIdTask(warn=true)(config).value
       val ensClient     = ( config / xensClient ).value
-      val nonceOverride = unwrapNonceOverrideBigInt( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverrideBigInt( Some( log ), chainId )
       val ( eppSubnode, newOwnerAddress) = parser.parsed
       ensClient.setSubnodeOwner( lazySigner, eppSubnode.parent.fullName, eppSubnode.label, newOwnerAddress, forceNonce = nonceOverride )
       log.info( s"The name '${eppSubnode.fullName}' now exists, with owner ${verboseAddress(chainId, newOwnerAddress)}." )
@@ -4252,7 +4232,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       implicit val invokerContext = (xethInvokerContext in config).value
 
       val nonceOverride = {
-        unwrapNonceOverride( Some( log ), chainId ) match {
+        logFetchNonceOverride( Some( log ), chainId ) match {
           case noverride @ Some( _ ) if (quintets.length <= 1) => {
             noverride
           }
@@ -4498,7 +4478,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val is = interactionService.value
       val chainId = findNodeChainIdTask(warn=true)(config).value
-      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverride( Some( log ), chainId )
 
       val lazySigner = findCurrentSenderLazySignerTask( config ).value
 
@@ -4762,7 +4742,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val caller = findAddressSenderTask(warn=true)(config).value.assert
-      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverride( Some( log ), chainId )
       val prepareTimeout = xethcfgTransactionUnsignedTimeout.value
 
       val ( ( contractAddress, function, args, abi, abiLookup ), mbWei ) = parser.parsed
@@ -4794,7 +4774,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val from = findAddressSenderTask(warn=true)(config).value.assert
       val (to, data, amount) = parser.parsed
-      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverride( Some( log ), chainId )
       val prepareTimeout = xethcfgTransactionUnsignedTimeout.value
 
       implicit val invokerContext = (xethInvokerContext in config).value
@@ -4818,7 +4798,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val from = findAddressSenderTask(warn=true)(config).value.assert
       val (to, amount) = parser.parsed
-      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverride( Some( log ), chainId )
       val prepareTimeout = xethcfgTransactionUnsignedTimeout.value
 
       implicit val invokerContext = (xethInvokerContext in config).value
@@ -4885,7 +4865,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         val abiLookup = abiLookupForAddress( chainId, to, Mutables.abiOverridesForChain( chainId ) )
         abiLookup.resolveAbi( None ) // don't log anything, the ABI here is not necessary, just makes for richer messages
       }
-      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverride( Some( log ), chainId )
 
       lazy val lazySigner = findCurrentSenderLazySignerTask( config ).value
 
@@ -4910,7 +4890,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val (to, amount) = parser.parsed
-      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverride( Some( log ), chainId )
 
       val lazySigner = findCurrentSenderLazySignerTask( config ).value
 
@@ -5119,7 +5099,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val is = interactionService.value
       val chainId = findNodeChainIdTask(warn=true)(config).value
-      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverride( Some( log ), chainId )
 
       val lazySigner = findCurrentSenderLazySignerTask( config ).value
       val caller = lazySigner.address
@@ -5209,7 +5189,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val is = interactionService.value
       val chainId = findNodeChainIdTask(warn=true)(config).value
-      val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
+      val nonceOverride = logFetchNonceOverride( Some( log ), chainId )
 
       val lazySigner = findCurrentSenderLazySignerTask( config ).value
       val caller = lazySigner.address
@@ -6331,6 +6311,26 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   // helper functions
+
+  private def logFetchNonceOverride( mbLog : Option[sbt.Logger], chainId : Int ) : Option[Unsigned256] = {
+    val out = Mutables.NonceOverrides.get( chainId ).map( Unsigned256.apply )
+    out.foreach { noverride =>
+      mbLog.foreach { log =>
+        log.warn( s"Nonce override set: ${noverride.widen}" )
+      }
+    }
+    out
+  }
+
+  private def logFetchNonceOverrideBigInt( mbLog : Option[sbt.Logger], chainId : Int ) : Option[BigInt] = {
+    val out = Mutables.NonceOverrides.get( chainId )
+    out.foreach { noverride =>
+      mbLog.foreach { log =>
+        log.warn( s"Nonce override set: ${noverride}" )
+      }
+    }
+    out
+  }
 
   private def configPrefix( config : Configuration ) : String = {
     config match {
