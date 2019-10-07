@@ -22,11 +22,10 @@ private [sbtethereum] final class Raw (
   scheduler            : Scheduler,
   keystoresV3          : immutable.Seq[File],
   publicTestAddresses  : immutable.Map[EthAddress,EthPrivateKey],
-  abiOverridesForChain : Int => immutable.Map[EthAddress,jsonrpc.Abi],
   maxUnlockedAddresses : Int
 ) {
   // MT: internally thread-safe
-  val MainSignersManager = new SignersManager( scheduler, keystoresV3, publicTestAddresses, abiOverridesForChain, maxUnlockedAddresses )
+  val MainSignersManager = new SignersManager( scheduler, keystoresV3, publicTestAddresses, this.abiOverridesForChain, maxUnlockedAddresses )
 
   // MT: protected by SessionSolidityCompilers' lock
   private val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
@@ -44,7 +43,7 @@ private [sbtethereum] final class Raw (
   val NodeUrlOverrides = new ChainIdMutable[String]
 
   // MT: internally thread-safe
-  val AbiOverrides = new ChainIdMutable[immutable.Map[EthAddress,jsonrpc.Abi]]
+  private val AbiOverrides = new ChainIdMutable[immutable.Map[EthAddress,jsonrpc.Abi]]
 
   // MT: internally thread-safe
   val GasLimitTweakOverrides = new ChainIdMutable[jsonrpc.Invoker.MarkupOrOverride]
@@ -66,6 +65,43 @@ private [sbtethereum] final class Raw (
   def withCurrentSolidityCompiler[U]( op : AtomicReference[Option[( String, Compiler.Solidity )]] => U) : U            = _with( CurrentSolidityCompiler )( op )  
   def withCompileConfigChainIdOverride[U]( op : AtomicReference[Option[Int]] => U) : U                                 = _with( ChainIdOverride )( op )
   def withLocalGanache[U]( op : AtomicReference[Option[Process]] => U) : U                                             = _with( LocalGanache )( op )
+
+  def logWarnOverrides( log : sbt.Logger, chainId : Int ) = {
+    import util.Formatting._
+
+    SenderOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The sender has been overridden to ${verboseAddress( chainId, ovr )}.") }
+    NodeUrlOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The node URL has been overridden to '${ovr}'.") }
+    AbiOverrides.get( chainId ).foreach { ovr => log.warn( s"""NOTE: ABI overrides are set for the following addresses on this chain: ${ovr.keys.map(hexString).mkString(", ")}""" ) }
+    GasLimitTweakOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas limit override remains set for this chain, ${formatGasLimitTweak( ovr )}." ) }
+    GasPriceTweakOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas price override remains set for this chain, ${formatGasPriceTweak( ovr )}." ) }
+    NonceOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A nonce override remains set for this chain. Its value is ${ovr}." ) }
+  }
+
+  def abiOverridesForChain( chainId : Int ) : immutable.Map[EthAddress,jsonrpc.Abi] = {
+    AbiOverrides.get( chainId ).getOrElse( immutable.Map.empty[EthAddress,jsonrpc.Abi] )
+  }
+
+  def addAbiOverrideForChain( chainId : Int, address : EthAddress, abi : jsonrpc.Abi ) : Unit = {
+    AbiOverrides.modify( chainId ) { pre =>
+      Some( pre.getOrElse( immutable.Map.empty[EthAddress,jsonrpc.Abi] ) + Tuple2( address, abi ) )
+    }
+  }
+
+  def removeAbiOverrideForChain( chainId : Int, address : EthAddress ) : Boolean = {
+    val modified = {
+      AbiOverrides.modify( chainId ) { pre =>
+        pre match {
+          case Some( mapping ) => Some(mapping - address).filter( _.nonEmpty )
+          case None            => None
+        }
+      }
+    }
+    modified.pre != modified.post
+  }
+
+  def clearAbiOverrideForChain( chainId : Int ) : Boolean = {
+    AbiOverrides.getDrop( chainId ) != None
+  }
 
   def reset() : Unit = {
     MainSignersManager.reset()

@@ -95,7 +95,6 @@ object SbtEthereumPlugin extends AutoPlugin {
     scheduler            = MainScheduler,
     keystoresV3          = OnlyShoeboxKeystoreV3,
     publicTestAddresses  = PublicTestAddresses,
-    abiOverridesForChain = abiOverridesForChain,
     maxUnlockedAddresses = MaxUnlockedAddresses
   )
 
@@ -123,32 +122,6 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
     out
-  }
-
-  private def abiOverridesForChain( chainId : Int ) : immutable.Map[EthAddress,Abi] = {
-    Mutables.AbiOverrides.get( chainId ).getOrElse( immutable.Map.empty[EthAddress,Abi] )
-  }
-
-  private def addAbiOverrideForChain( chainId : Int, address : EthAddress, abi : Abi ) : Unit = {
-    Mutables.AbiOverrides.modify( chainId ) { pre =>
-      Some( pre.getOrElse( immutable.Map.empty[EthAddress,Abi] ) + Tuple2( address, abi ) )
-    }
-  }
-
-  private def removeAbiOverrideForChain( chainId : Int, address : EthAddress ) : Boolean = {
-    val modified = {
-      Mutables.AbiOverrides.modify( chainId ) { pre =>
-        pre match {
-          case Some( mapping ) => Some(mapping - address).filter( _.nonEmpty )
-          case None            => None
-        }
-      }
-    }
-    modified.pre != modified.post
-  }
-
-  private def clearAbiOverrideForChain( chainId : Int ) : Boolean = {
-    Mutables.AbiOverrides.getDrop( chainId ) != None
   }
 
   private val BufferSize = 4096
@@ -1267,12 +1240,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.warn( "Consider using 'ethAddressSenderDefaultSet' or 'ethAddressSenderOverrideSet' to define one." )
       }
     }
-    Mutables.SenderOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The sender has been overridden to ${verboseAddress( chainId, ovr )}.") }
-    Mutables.NodeUrlOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: The node URL has been overridden to '${ovr}'.") }
-    Mutables.AbiOverrides.get( chainId ).foreach { ovr => log.warn( s"""NOTE: ABI overrides are set for the following addresses on this chain: ${ovr.keys.map(hexString).mkString(", ")}""" ) }
-    Mutables.GasLimitTweakOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas limit override remains set for this chain, ${formatGasLimitTweak( ovr )}." ) }
-    Mutables.GasPriceTweakOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A gas price override remains set for this chain, ${formatGasPriceTweak( ovr )}." ) }
-    Mutables.NonceOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A nonce override remains set for this chain. Its value is ${ovr}." ) }
+    Mutables.logWarnOverrides( log, chainId )
   }
 
   private def markPotentiallyResetChainId( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
@@ -2700,7 +2668,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           // ignore, we won't be overriding anything
         }
       }
-      val currentAbiOverrides = abiOverridesForChain( chainId )
+      val currentAbiOverrides = Mutables.abiOverridesForChain( chainId )
       currentAbiOverrides.get( toLinkAddress ).foreach { currentOverride =>
         if ( currentOverride.withStandardSort != abi /* already sorted */ ) {
           kludgeySleepForInteraction()
@@ -2792,7 +2760,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ( toLinkAddress, abiSource ) = parser.parsed
       val ( abi, mbLookup ) = abiFromAbiSource( abiSource ).getOrElse( throw nst( new AbiUnknownException( s"Can't find ABI for ${abiSource.sourceDesc}" ) ) )
       mbLookup.foreach( _.logGenericShadowWarning( log ) )
-      addAbiOverrideForChain( chainId, toLinkAddress, abi )
+      Mutables.addAbiOverrideForChain( chainId, toLinkAddress, abi )
       log.info( s"ABI override successfully set." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -2804,7 +2772,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val s = state.value
     val log = streams.value.log
-    val currentAbiOverrides = abiOverridesForChain( chainId )
+    val currentAbiOverrides = Mutables.abiOverridesForChain( chainId )
     val addressesToAbiHashes = currentAbiOverrides.map { case (k,v) => (k, abiHash(v)) }
 
     val columns = immutable.Vector( "ABI Override Addresses", "ABI Hash" ).map( texttable.Column.apply( _ ) )
@@ -2825,7 +2793,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val s = state.value
     val log = streams.value.log
-    val out = clearAbiOverrideForChain( chainId )
+    val out = Mutables.clearAbiOverrideForChain( chainId )
     if ( out ) {
       log.info( s"ABI overrides on chain with ID ${chainId} successfully dropped." )
       Def.taskDyn {
@@ -2846,7 +2814,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val address = parser.parsed
-      val currentAbiOverrides = abiOverridesForChain( chainId )
+      val currentAbiOverrides = Mutables.abiOverridesForChain( chainId )
       currentAbiOverrides.get( address ) match {
         case Some( abi ) => {
           syncOut {
@@ -2870,7 +2838,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val address = parser.parsed
-      val out = removeAbiOverrideForChain( chainId, address )
+      val out = Mutables.removeAbiOverrideForChain( chainId, address )
       if ( out ) {
         log.info( s"ABI override successfully dropped." )
         Def.taskDyn {
@@ -3006,7 +2974,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTaskDyn {
       val chainId = findNodeChainIdTask(warn=true)(config).value
-      val abiOverrides = abiOverridesForChain( chainId )
+      val abiOverrides = Mutables.abiOverridesForChain( chainId )
       val s = state.value
       val log = streams.value.log
       val is = interactionService.value
@@ -4560,7 +4528,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val log = streams.value.log
       val chainId = findNodeChainIdTask(warn=true)(config).value
-      val abiOverrides = abiOverridesForChain( chainId )
+      val abiOverrides = Mutables.abiOverridesForChain( chainId )
       val txnHash = parser.parsed
 
       implicit val invokerContext = (xethInvokerContext in config).value
@@ -4913,7 +4881,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val (to, data, amount) = parser.parsed
       val mbAbi = {
-        val abiLookup = abiLookupForAddress( chainId, to, abiOverridesForChain( chainId ) )
+        val abiLookup = abiLookupForAddress( chainId, to, Mutables.abiOverridesForChain( chainId ) )
         abiLookup.resolveAbi( None ) // don't log anything, the ABI here is not necessary, just makes for richer messages
       }
       val nonceOverride = unwrapNonceOverride( Some( log ), chainId )
@@ -5441,7 +5409,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbJsonRpcUrl                 = maybeFindNodeUrlTask(warn=false)(config).value
     val addressAliases               = shoebox.AddressAliasManager.findAllAddressAliases( chainId ).assert
     val abiAliases                   = shoebox.AbiAliasHashManager.findAllAbiAliases( chainId ).assert
-    val abiOverrides                 = abiOverridesForChain( chainId )
+    val abiOverrides                 = Mutables.abiOverridesForChain( chainId )
     val nameServiceAddress           = (config / enscfgNameServiceAddress).value
     val exampleNameServiceTld        = if ( chainId == 1 ) "eth" else "test"
     val exampleNameServiceReverseTld = "addr.reverse"
@@ -5736,7 +5704,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log = streams.value.log
       val chainId = findNodeChainIdTask(warn=true)(config).value
-      val abiOverrides = abiOverridesForChain( chainId )
+      val abiOverrides = Mutables.abiOverridesForChain( chainId )
       ensureAbiLookupForAddress( chainId, parser.parsed, abiOverrides ).resolveAbi( Some( log ) ).get
     }
   }
@@ -6272,7 +6240,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val preapprovingApprover = transactionApprover( log, icontext.chainId, is, currencyCode, preapprove )( icontext.econtext )
     val preapprovingInvokerContext = icontext.copy( transactionApprover = preapprovingApprover )
     val scontext = stub.Context( preapprovingInvokerContext, stub.Context.Default.EventConfirmations, MainScheduler )
-    val signer = new CautiousSigner( log, is, priceFeed, currencyCode, description = None )( lazySigner, abiOverridesForChain, isPreapproved )
+    val signer = new CautiousSigner( log, is, priceFeed, currencyCode, description = None )( lazySigner, Mutables.abiOverridesForChain, isPreapproved )
     val sender = stub.Sender.Basic( signer )
     (scontext, sender)
   }
@@ -6536,11 +6504,11 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def displayTransactionSignatureRequest( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress) : Unit = {
-    util.Formatting.displayTransactionSignatureRequest( log, chainId, abiOverridesForChain( chainId ), priceFeed, currencyCode, txn, proposedSender )  // syncOut internal
+    util.Formatting.displayTransactionSignatureRequest( log, chainId, Mutables.abiOverridesForChain( chainId ), priceFeed, currencyCode, txn, proposedSender )  // syncOut internal
   }
 
   private def displayTransactionSubmissionRequest( log : sbt.Logger, chainId : Int, currencyCode : String, txn : EthTransaction, proposedSender : EthAddress) : Unit = {
-    util.Formatting.displayTransactionSubmissionRequest( log, chainId, abiOverridesForChain( chainId ), priceFeed, currencyCode, txn, proposedSender )  // syncOut internal
+    util.Formatting.displayTransactionSubmissionRequest( log, chainId, Mutables.abiOverridesForChain( chainId ), priceFeed, currencyCode, txn, proposedSender )  // syncOut internal
   }
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
