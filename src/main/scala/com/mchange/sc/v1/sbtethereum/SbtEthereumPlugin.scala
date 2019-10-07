@@ -21,6 +21,7 @@ import util.InteractiveQuery._
 import util.Spawn._
 import util.ClientTransactionReceipt._
 import util.Formatting._
+import util.PrivateKey._
 import util.WalletsV3._
 import signer._
 import generated._
@@ -39,7 +40,7 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.io._
 import com.mchange.sc.v2.util.Platform
 import com.mchange.sc.v1.log.MLevel._
-import com.mchange.sc.v1.log.MLogger
+//import com.mchange.sc.v1.log.MLogger
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.consuela.ethereum._
@@ -91,7 +92,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val MaxUnlockedAddresses = 3
 
-  private val Mutables = new mutables.Raw (
+  private val Mutables = new mutables.Mutables (
     scheduler            = MainScheduler,
     keystoresV3          = OnlyShoeboxKeystoreV3,
     publicTestAddresses  = PublicTestAddresses,
@@ -1458,7 +1459,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val caller = findAddressSenderTask(warn=true)(config).value.assert
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
-    Mutables.MainSignersManager.findUpdateCacheLazySigner(s, log, is, chainId, caller, autoRelockSeconds, true )
+    Mutables.findUpdateCacheLazySigner(s, log, is, chainId, caller, autoRelockSeconds, true )
   }
 
   private def findTransactionLoggerTask( config : Configuration ) : Initialize[Task[Invoker.TransactionLogger]] = Def.task {
@@ -3297,13 +3298,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
 
       val address = parser.parsed
-      val addressStr = address.hex
+      val addressStr = s" ${address.hex}"
 
       val s = state.value
       val extract = Project.extract(s)
       val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, addressStr, s) // config doesn't really matter here, since we provide hex, not a config dependent alias
 
-      val privateKey = Mutables.MainSignersManager.findRawPrivateKey( log, is, address, wallets )
+      val privateKey = findRawPrivateKey( log, is, address, wallets )
 
       syncOut {
         val confirmation = {
@@ -4675,7 +4676,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
 
-    lazy val lazySigner = Mutables.MainSignersManager.findUpdateCacheLazySigner( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
+    lazy val lazySigner = Mutables.findUpdateCacheLazySigner( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
 
     displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, utxn, signer ) // syncOut internal
     val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
@@ -6145,8 +6146,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ( address : EthAddress, description : Option[String] ) => {
       address match {
-        case `currentSender` => Mutables.MainSignersManager.findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
-        case _               => Mutables.MainSignersManager.findCheckCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description )
+        case `currentSender` => Mutables.findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
+        case _               => Mutables.findCheckCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description )
       }
     }
   }

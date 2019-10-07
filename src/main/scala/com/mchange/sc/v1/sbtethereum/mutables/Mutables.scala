@@ -1,8 +1,8 @@
 package com.mchange.sc.v1.sbtethereum.mutables
 
-import com.mchange.sc.v1.sbtethereum.{compile,signer,util}
+import com.mchange.sc.v1.sbtethereum.{compile,signer,util,PriceFeed}
 import compile.Compiler
-import signer.SignersManager
+import signer._
 import util.warner._
 import util.ChainIdMutable
 
@@ -18,14 +18,14 @@ import java.io.File
 
 import java.util.concurrent.atomic.AtomicReference
 
-private [sbtethereum] final class Raw (
+private [sbtethereum] final class Mutables (
   scheduler            : Scheduler,
   keystoresV3          : immutable.Seq[File],
   publicTestAddresses  : immutable.Map[EthAddress,EthPrivateKey],
   maxUnlockedAddresses : Int
 ) {
   // MT: internally thread-safe
-  val MainSignersManager = new SignersManager( scheduler, keystoresV3, publicTestAddresses, this.abiOverridesForChain, maxUnlockedAddresses )
+  private val MainSignersManager = new SignersManager( scheduler, keystoresV3, publicTestAddresses, this.abiOverridesForChain, maxUnlockedAddresses )
 
   // MT: protected by SessionSolidityCompilers' lock
   private val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
@@ -60,12 +60,16 @@ private [sbtethereum] final class Raw (
   // MT: protected by LocalGanache's lock
   private val LocalGanache = new AtomicReference[Option[Process]]( None )
 
+  // API to make synchronized access to simple holders available
   private def _with[T <: AnyRef,U]( t : T )( op : T => U ) : U = t.synchronized( op(t) )
-  def withSessionSolidityCompilers[U]( op : AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]] => U) : U = _with( SessionSolidityCompilers )( op )  
-  def withCurrentSolidityCompiler[U]( op : AtomicReference[Option[( String, Compiler.Solidity )]] => U) : U            = _with( CurrentSolidityCompiler )( op )  
-  def withCompileConfigChainIdOverride[U]( op : AtomicReference[Option[Int]] => U) : U                                 = _with( ChainIdOverride )( op )
-  def withLocalGanache[U]( op : AtomicReference[Option[Process]] => U) : U                                             = _with( LocalGanache )( op )
 
+  private [sbtethereum] def withSessionSolidityCompilers[U]( op : AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]] => U) : U = _with( SessionSolidityCompilers )( op )  
+  private [sbtethereum] def withCurrentSolidityCompiler[U]( op : AtomicReference[Option[( String, Compiler.Solidity )]] => U) : U            = _with( CurrentSolidityCompiler )( op )  
+  private [sbtethereum] def withCompileConfigChainIdOverride[U]( op : AtomicReference[Option[Int]] => U) : U                                 = _with( ChainIdOverride )( op )
+  private [sbtethereum] def withLocalGanache[U]( op : AtomicReference[Option[Process]] => U) : U                                             = _with( LocalGanache )( op )
+
+  // API to warn all overrides for a chainId (usually the current Session's chain in configuration Compile )
+  private [sbtethereum]
   def logWarnOverrides( log : sbt.Logger, chainId : Int ) = {
     import util.Formatting._
 
@@ -77,16 +81,20 @@ private [sbtethereum] final class Raw (
     NonceOverrides.get( chainId ).foreach { ovr => log.warn( s"NOTE: A nonce override remains set for this chain. Its value is ${ovr}." ) }
   }
 
+  // API for managing ABI overrides
+  private [sbtethereum]
   def abiOverridesForChain( chainId : Int ) : immutable.Map[EthAddress,jsonrpc.Abi] = {
     AbiOverrides.get( chainId ).getOrElse( immutable.Map.empty[EthAddress,jsonrpc.Abi] )
   }
 
+  private [sbtethereum]
   def addAbiOverrideForChain( chainId : Int, address : EthAddress, abi : jsonrpc.Abi ) : Unit = {
     AbiOverrides.modify( chainId ) { pre =>
       Some( pre.getOrElse( immutable.Map.empty[EthAddress,jsonrpc.Abi] ) + Tuple2( address, abi ) )
     }
   }
 
+  private [sbtethereum]
   def removeAbiOverrideForChain( chainId : Int, address : EthAddress ) : Boolean = {
     val modified = {
       AbiOverrides.modify( chainId ) { pre =>
@@ -99,10 +107,55 @@ private [sbtethereum] final class Raw (
     modified.pre != modified.post
   }
 
+  private [sbtethereum]
   def clearAbiOverrideForChain( chainId : Int ) : Boolean = {
     AbiOverrides.getDrop( chainId ) != None
   }
 
+  // API for managing signers and private keys
+  private [sbtethereum]
+  def findUpdateCacheLazySigner(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int,
+    address              : EthAddress,
+    autoRelockSeconds    : Int,
+    userValidateIfCached : Boolean
+  ) : LazySigner = {
+    MainSignersManager.findUpdateCacheLazySigner(state, log, is, chainId, address, autoRelockSeconds, userValidateIfCached )
+  }
+
+  private [sbtethereum]
+  def findUpdateCacheCautiousSigner(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int, // for alias display only
+    address              : EthAddress,
+    priceFeed            : PriceFeed,
+    currencyCode         : String,
+    description          : Option[String],
+    autoRelockSeconds    : Int
+  ) : CautiousSigner = {
+    MainSignersManager.findUpdateCacheCautiousSigner(state, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
+  }
+
+  private [sbtethereum]
+  def findCheckCacheCautiousSigner(
+    state                : sbt.State,
+    log                  : sbt.Logger,
+    is                   : sbt.InteractionService,
+    chainId              : Int, // for alias display only
+    address              : EthAddress,
+    priceFeed            : PriceFeed,
+    currencyCode         : String,
+    description          : Option[String]
+  ) : CautiousSigner = {
+    MainSignersManager.findCheckCacheCautiousSigner(state, log, is, chainId, address, priceFeed, currencyCode, description )
+  }
+
+  private [sbtethereum]
   def reset() : Unit = {
     MainSignersManager.reset()
     withSessionSolidityCompilers( _.set( None ) )
