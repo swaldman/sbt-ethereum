@@ -200,11 +200,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   // if we've started a child test process,
   // kill it on exit
   val GanacheDestroyer: Thread = new Thread {
-    override def run() : Unit = {
-      Mutables.LocalGanache synchronized {
-        Mutables.LocalGanache.get.foreach ( _.destroy )
-      }
-    }
+    override def run() : Unit = Mutables.withLocalGanache( lg => lg.get.foreach ( _.destroy ) )
   }
 
   java.lang.Runtime.getRuntime.addShutdownHook( GanacheDestroyer )
@@ -1385,9 +1381,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val mbOverrideNodeChainId = {
       if (config == Compile ) { // chain ID overrides only supported for Compile config
-        Mutables.ChainIdOverride.synchronized {
-          Mutables.ChainIdOverride.get
-        }
+        Mutables.withCompileConfigChainIdOverride( _.get )
       }
       else {
         None
@@ -3259,11 +3253,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    Mutables.LocalGanache synchronized {
-      Mutables.LocalGanache.get match {
+    Mutables.withLocalGanache { lg =>
+      lg.get match {
         case Some( process ) => log.warn("A local ganache environment is already running. To restart it, please try 'ethDebugGanacheRestart'.")
         case _               => {
-          Mutables.LocalGanache.set( Some( newGanacheProcess ) )
+          lg.set( Some( newGanacheProcess ) )
           log.info("A local ganache process has been started.")
         }
       }
@@ -3282,10 +3276,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethDebugGanacheHaltTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
 
-    Mutables.LocalGanache synchronized {
-      Mutables.LocalGanache.get match {
+    Mutables.withLocalGanache { lg =>
+      lg.get match {
         case Some( process ) => {
-          Mutables.LocalGanache.set( None )
+          lg.set( None )
           process.destroy()
           log.info("A local ganache environment was running but has been stopped.")
         }
@@ -3507,7 +3501,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethLanguageSolidityCompilerPrintTask : Initialize[Task[Unit]] = Def.task {
     val log       = streams.value.log
     val ensureSet = (xethFindCurrentSolidityCompiler in Compile).value
-    val ( key, compiler ) = Mutables.CurrentSolidityCompiler.get.get
+    val ( key, compiler ) = Mutables.withCurrentSolidityCompiler( _.get.get )
     log.info( s"Current solidity compiler '$key', which refers to $compiler." )
   }
 
@@ -3517,9 +3511,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log = streams.value.log
       val key = parser.parsed
-      val mbNewCompiler = Mutables.SessionSolidityCompilers.get.get.get( key )
+      val mbNewCompiler = Mutables.withSessionSolidityCompilers( _.get.get.get( key ) )
       val newCompilerTuple = mbNewCompiler.map( nc => ( key, nc ) )
-      Mutables.CurrentSolidityCompiler.set( newCompilerTuple )
+      Mutables.withCurrentSolidityCompiler( _.set( newCompilerTuple ) )
       log.info( s"Set compiler to '$key'" )
     }
   }
@@ -3600,9 +3594,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     assert( config == Compile, "Only the Compile confg is supported for now." )
 
     val log = streams.value.log
-    Mutables.ChainIdOverride.synchronized {
-      val oldValue = Mutables.ChainIdOverride.get
-      Mutables.ChainIdOverride.set( None )
+    Mutables.withCompileConfigChainIdOverride { cio =>
+      val oldValue = cio.get
+      cio.set( None )
       oldValue match {
         case Some( chainId ) => {
           log.info( s"A chain ID override had been set to ${chainId}, but has now been dropped." ) // when we have the find task implemented, make this more informative
@@ -3624,8 +3618,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     Def.inputTaskDyn {
       val log = streams.value.log
-      Mutables.ChainIdOverride.synchronized {
-        val oldValue = Mutables.ChainIdOverride.get
+      Mutables.withCompileConfigChainIdOverride { cio =>
+        val oldValue = cio.get
         val newValue = parser.parsed
         oldValue match {
           case Some( oldOverride ) if oldOverride == newValue => {
@@ -3633,12 +3627,12 @@ object SbtEthereumPlugin extends AutoPlugin {
             EmptyTask
           }
           case Some( oldOverride ) => {
-            Mutables.ChainIdOverride.set( Some( newValue ) )
+            cio.set( Some( newValue ) )
             log.info( s"A prior chain ID override (old value ${oldOverride}) has been replaced with a new override, chain ID ${newValue}." )
             markPotentiallyResetChainId( config )
           }
           case None => {
-            Mutables.ChainIdOverride.set( Some( newValue ) )
+            cio.set( Some( newValue ) )
             log.info( s"The chain ID has been overridden to ${newValue}." )
             markPotentiallyResetChainId( config )
           }
@@ -3650,9 +3644,9 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeChainIdOverridePrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     assert( config == Compile, "Only the Compile confg is supported for now." )
 
-    Mutables.ChainIdOverride.synchronized {
-      val log = streams.value.log
-      val value = Mutables.ChainIdOverride.get
+    val log = streams.value.log
+    Mutables.withCompileConfigChainIdOverride { cio =>
+      val value = cio.get
       value match {
         case Some( chainId ) => log.info( s"The chain ID is overridden to ${chainId}." )
         case None            => log.info(  "The chain ID has not been overridden." )
@@ -3668,7 +3662,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val mbOverride = {
       config match {
-        case Compile => Mutables.ChainIdOverride.synchronized { Mutables.ChainIdOverride.get }
+        case Compile => Mutables.withCompileConfigChainIdOverride( _.get )
         case Test    => None // overrides only supported for config compile, for now
         case _       => None 
       }
@@ -5470,32 +5464,36 @@ object SbtEthereumPlugin extends AutoPlugin {
     import Compiler.Solidity._
 
     // val compilerKeys = xethFindCacheSessionSolidityCompilerKeys.value
-    val sessionCompilers = Mutables.SessionSolidityCompilers.get.getOrElse( throw new Exception("Internal error -- caching compiler keys during onLoad should have forced sessionCompilers to be set, but it's not." ) )
+    val sessionCompilers = Mutables.withSessionSolidityCompilers { ssc =>
+      ssc.get.getOrElse( throw new Exception("Internal error -- caching compiler keys during onLoad should have forced sessionCompilers to be set, but it's not." ) )
+    }
     val compilerKeys = sessionCompilers.keySet
 
     val mbJsonRpcUrl = Some( findNodeUrlTask(warn=false)(Compile).value )
 
-    Mutables.CurrentSolidityCompiler.get.map( _._2).getOrElse {
-      def latestLocalInstallVersion : Option[SemanticVersion] = {
-        val versions = (immutable.TreeSet.empty[SemanticVersion] ++ compilerKeys.map( LocalSolc.versionFromKey ).filter( _ != None ).map( _.get ))
-        if ( versions.size > 0 ) Some(versions.last) else None
+    Mutables.withCurrentSolidityCompiler { csc =>
+      csc.get.map( _._2).getOrElse {
+        def latestLocalInstallVersion : Option[SemanticVersion] = {
+          val versions = (immutable.TreeSet.empty[SemanticVersion] ++ compilerKeys.map( LocalSolc.versionFromKey ).filter( _ != None ).map( _.get ))
+          if ( versions.size > 0 ) Some(versions.last) else None
+        }
+        def latestLocalInstallKey : Option[String] = latestLocalInstallVersion.map( version => s"${LocalSolc.KeyPrefix}${version.versionString}" )
+
+        val key = {
+          mbJsonRpcUrl.flatMap( jru => compilerKeys.find( key => key.startsWith(EthNetcompile.KeyPrefix) && key.endsWith( jru ) ) ) orElse  // use an explicitly set netcompile
+          compilerKeys.find( _ == LocalPathSolcKey ) orElse                                                                                 // use a local compiler on the path
+          latestLocalInstallKey orElse                                                                                                      // use the latest local compiler in the shoebox
+          compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse                                                                 // use the default eth-netcompile
+          compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) )                                                                         // use the (deprecated, mostly disappeared) json-rpc eth_CompileSolidity
+        }.getOrElse {
+          throw new Exception( s"Cannot find a usable solidity compiler. compilerKeys: ${compilerKeys}, sessionCompilers: ${sessionCompilers}" )
+        }
+        val compiler = sessionCompilers.get( key ).getOrElse( throw new Exception( s"Could not find a solidity compiler for key '$key'. sessionCompilers: ${sessionCompilers}" ) )
+
+        csc.set( Some( Tuple2( key, compiler ) ) )
+
+        compiler
       }
-      def latestLocalInstallKey : Option[String] = latestLocalInstallVersion.map( version => s"${LocalSolc.KeyPrefix}${version.versionString}" )
-
-      val key = {
-        mbJsonRpcUrl.flatMap( jru => compilerKeys.find( key => key.startsWith(EthNetcompile.KeyPrefix) && key.endsWith( jru ) ) ) orElse  // use an explicitly set netcompile
-        compilerKeys.find( _ == LocalPathSolcKey ) orElse                                                                                 // use a local compiler on the path
-        latestLocalInstallKey orElse                                                                                                      // use the latest local compiler in the shoebox
-        compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse                                                                 // use the default eth-netcompile
-        compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) )                                                                         // use the (deprecated, mostly disappeared) json-rpc eth_CompileSolidity
-      }.getOrElse {
-        throw new Exception( s"Cannot find a usable solidity compiler. compilerKeys: ${compilerKeys}, sessionCompilers: ${sessionCompilers}" )
-      }
-      val compiler = sessionCompilers.get( key ).getOrElse( throw new Exception( s"Could not find a solidity compiler for key '$key'. sessionCompilers: ${sessionCompilers}" ) )
-
-      Mutables.CurrentSolidityCompiler.set( Some( Tuple2( key, compiler ) ) )
-
-      compiler
     }
   }
 
@@ -6341,7 +6339,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val raw = checkLocalShoeboxSolcs :+ localPath :+ ethJsonRpc :+ netcompile :+ defaultNetcompile
 
     val out = immutable.SortedMap( raw.filter( _ != None ).map( _.get ) : _* )
-    Mutables.SessionSolidityCompilers.set( Some( out ) )
+    Mutables.withSessionSolidityCompilers( _.set( Some( out ) ) )
     out
   }
 

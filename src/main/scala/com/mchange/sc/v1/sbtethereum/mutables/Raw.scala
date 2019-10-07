@@ -25,15 +25,17 @@ private [sbtethereum] final class Raw (
   abiOverridesForChain : Int => immutable.Map[EthAddress,jsonrpc.Abi],
   maxUnlockedAddresses : Int
 ) {
-
+  // MT: internally thread-safe
   val MainSignersManager = new SignersManager( scheduler, keystoresV3, publicTestAddresses, abiOverridesForChain, maxUnlockedAddresses )
 
-  val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
+  // MT: protected by SessionSolidityCompilers' lock
+  private val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
 
-  val CurrentSolidityCompiler = new AtomicReference[Option[( String, Compiler.Solidity )]]( None )
+  // MT: protected by CurrentSolidityCompiler's lock
+  private val CurrentSolidityCompiler = new AtomicReference[Option[( String, Compiler.Solidity )]]( None )
 
   // MT: protected by ChainIdOverride' lock
-  val ChainIdOverride = new AtomicReference[Option[Int]]( None ) // Only supported for Compile config
+  private val ChainIdOverride = new AtomicReference[Option[Int]]( None ) // Only supported for Compile config
 
   // MT: internally thread-safe
   val SenderOverrides = new ChainIdMutable[EthAddress]
@@ -57,13 +59,19 @@ private [sbtethereum] final class Raw (
   val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
 
   // MT: protected by LocalGanache's lock
-  val LocalGanache = new AtomicReference[Option[Process]]( None )
+  private val LocalGanache = new AtomicReference[Option[Process]]( None )
+
+  private def _with[T <: AnyRef,U]( t : T )( op : T => U ) : U = t.synchronized( op(t) )
+  def withSessionSolidityCompilers[U]( op : AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]] => U) : U = _with( SessionSolidityCompilers )( op )  
+  def withCurrentSolidityCompiler[U]( op : AtomicReference[Option[( String, Compiler.Solidity )]] => U) : U            = _with( CurrentSolidityCompiler )( op )  
+  def withCompileConfigChainIdOverride[U]( op : AtomicReference[Option[Int]] => U) : U                                 = _with( ChainIdOverride )( op )
+  def withLocalGanache[U]( op : AtomicReference[Option[Process]] => U) : U                                             = _with( LocalGanache )( op )
 
   def reset() : Unit = {
     MainSignersManager.reset()
-    SessionSolidityCompilers.set( None )
-    CurrentSolidityCompiler.set( None )
-    ChainIdOverride.set( None )
+    withSessionSolidityCompilers( _.set( None ) )
+    withCurrentSolidityCompiler( _.set( None ) )
+    withCompileConfigChainIdOverride( _.set( None ) )
     SenderOverrides.reset()
     NodeUrlOverrides.reset()
     AbiOverrides.reset()
@@ -71,9 +79,7 @@ private [sbtethereum] final class Raw (
     GasPriceTweakOverrides.reset()
     NonceOverrides.reset()
     OneTimeWarner.resetAll()
-    LocalGanache synchronized {
-      LocalGanache.set( None )
-    }
+    withLocalGanache( _.set( None ) )
   }
 }
 
