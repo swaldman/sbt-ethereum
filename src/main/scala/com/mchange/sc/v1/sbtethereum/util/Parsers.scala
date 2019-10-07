@@ -708,7 +708,6 @@ object Parsers {
     mbRpi match {
       case Some( rpi ) => {
         for {
-          _                    <- Space
           address              <- genGenericAddressParser( state, mbRpi )
           _                    <- Space
           abiLookup            =  abiLookupForAddressDefaultEmpty( rpi.chainId, address, rpi.abiOverrides )
