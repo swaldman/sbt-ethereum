@@ -45,11 +45,6 @@ Other
 * Much better output (hash, warning to wait, etc) when hitting ENS and other stub transactions.
   - onSubmit function in Invoker.Context, onSynchronousMined or something in Stub.Context
 
-* Let markups be specified as percentages as well as fractions
-
-* Fix tab-completion of a space in ethTransactionView/Mock/Invoke (many places now)
-  - maybe group leading spaces into one token, with examples defined for the non-space parts?
-
 * Update default solidity version.
 
 * Define `ethNodeChainId` for CLIs to get Chain ID.
@@ -154,8 +149,6 @@ Other
 * Should I define distinct sbt configs for Mainnet, Rinkeby, Ropsten, etc (so we might do "Rinkeby / ethTransactionInvoke ..." etc)?
 
 * ethTransactionMockRaw ?
-
-* Rationalize / modularize Mutables
 
 * Include information about overrides in transaction approver messages?
 

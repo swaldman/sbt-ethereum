@@ -4357,18 +4357,33 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( s"No gas override is now set for chain with ID ${chainId}. Quantities of gas will be automatically computed." )
   }
 
+  private def interpretMarkup( markupStr : String ) : Option[Float] = {
+    try {
+      if ( markupStr.endsWith("%") ) {
+        val percentMarkup = markupStr.init.mkString.trim.toFloat
+        Some( percentMarkup / 100 )
+      }
+      else {
+        Some( markupStr.toFloat )
+      }
+    }
+    catch {
+      case nfe : NumberFormatException => None
+    }
+  }
+
   @tailrec
   private def doReadMarkup( log : sbt.Logger, is : sbt.InteractionService, overObject : String, limitOrPrice : String ) : Float = {
-    val markupStr = syncOut( assertReadLine( is, s"Enter a markup over ${overObject} (as a fraction, e.g. 0.2): ", mask = false ).trim )
+    val markupStr = syncOut( assertReadLine( is, s"Enter a markup over ${overObject} (as a fraction, e.g. 0.2, or a percentage, e.g. 20%): ", mask = false ).trim )
     if ( markupStr.isEmpty ) {
       val checkAbort = queryYN( is, "No markup provided. Abort? [y/n] " )
       if ( checkAbort ) aborted( "User aborted the gas ${limitOrPrice} override." ) else doReadMarkup( log, is, overObject, limitOrPrice )
     }
     else {
-      val fmarkup = Failable( markupStr.toFloat )
-      fmarkup match {
-        case Succeeded( markup ) => {
-          if (markup < 0 || markup > 1) {
+      val markup = interpretMarkup( markupStr )
+      markup match {
+        case Some( markup ) => {
+          if (markup < 0 || markup >= 1) {
             val confirmed = queryYN( is, s"A markup of ${markup} (${markup * 100}%) is unusual. Are you sure? [y/n] " )
             if ( confirmed ) markup else doReadMarkup( log, is, overObject, limitOrPrice )
           }
@@ -4376,12 +4391,9 @@ object SbtEthereumPlugin extends AutoPlugin {
             markup
           }
         }
-        case Failed( _ : NumberFormatException ) => {
+        case None => {
           log.warn( s"'${markupStr}' could not be interpreted as a floating point number." )
           doReadMarkup( log, is, overObject, limitOrPrice )
-        }
-        case oops @ Failed( _ ) => {
-          oops.vomit
         }
       }
     }
