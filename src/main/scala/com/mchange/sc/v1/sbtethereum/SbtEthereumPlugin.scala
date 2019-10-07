@@ -6140,16 +6140,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val is = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val currentSender = findAddressSenderTask(warn=true)(config).value.assert
     val currencyCode = ethcfgBaseCurrencyCode.value
     val autoRelockSeconds = ethcfgKeystoreAutoRelockSeconds.value
 
-    ( address : EthAddress, description : Option[String] ) => {
-      address match {
-        case `currentSender` => Mutables.findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
-        case _               => Mutables.findCheckCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description )
-      }
-    }
+    ( address : EthAddress, description : Option[String] ) => Mutables.findUpdateCacheCautiousSigner( s, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
   }
 
   private def xethSqlQueryShoeboxDatabaseTask : Initialize[InputTask[Unit]] = Def.inputTask {

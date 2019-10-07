@@ -170,7 +170,7 @@ private [sbtethereum] class SignersManager(
     new CautiousSigner( log, is, priceFeed, currencyCode, description )( findUpdateCacheLazySigner(state,log,is,chainId,address,autoRelockSeconds,userValidateIfCached = true /* Cautious */), abiOverridesForChain )
   }
 
-  private [sbtethereum]
+  private // for now, we're not exporting this. there's little reason to use it, since we now cache multiple addresses
   def findCheckCacheCautiousSigner(
     state                : sbt.State,
     log                  : sbt.Logger,

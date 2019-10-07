@@ -142,20 +142,6 @@ private [sbtethereum] final class Mutables (
   }
 
   private [sbtethereum]
-  def findCheckCacheCautiousSigner(
-    state                : sbt.State,
-    log                  : sbt.Logger,
-    is                   : sbt.InteractionService,
-    chainId              : Int, // for alias display only
-    address              : EthAddress,
-    priceFeed            : PriceFeed,
-    currencyCode         : String,
-    description          : Option[String]
-  ) : CautiousSigner = {
-    MainSignersManager.findCheckCacheCautiousSigner(state, log, is, chainId, address, priceFeed, currencyCode, description )
-  }
-
-  private [sbtethereum]
   def reset() : Unit = {
     MainSignersManager.reset()
     withSessionSolidityCompilers( _.set( None ) )
