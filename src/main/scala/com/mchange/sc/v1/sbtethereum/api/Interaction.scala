@@ -22,8 +22,8 @@ object Interaction {
     UIQ.queryPositiveIntOrNone( is, query, min, max )
   }
 
-  def readConfirmCredential( log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
-    UIQ.readConfirmCredential( log, is, readPrompt, confirmPrompt, maxAttempts, attempt )
+  def readConfirmCredential( is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3 ) : String = {
+    UIQ.readConfirmCredential( is, readPrompt, confirmPrompt, maxAttempts )
   }
 
   def aborted( msg : String ) : Nothing = UIQ.aborted( msg )

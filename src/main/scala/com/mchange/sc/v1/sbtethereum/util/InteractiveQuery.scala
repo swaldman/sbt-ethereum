@@ -12,6 +12,8 @@ import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 
 import com.mchange.sc.v3.failable._
 
+import Console.{YELLOW,RED,RESET}
+
 import Parsers._
 
 import scala.annotation.tailrec
@@ -20,6 +22,9 @@ import scala.language.higherKinds
 private [sbtethereum]
 object InteractiveQuery {
   private type I[T] = T
+
+  private def warn( s : String ) : Unit = println( s"${YELLOW}${s}${RESET}" )
+  private def error( s : String ) : Unit = println( s"${RED}${s}${RESET}" )
 
   @tailrec
   private def _queryGoodFile[F[_]]( is : sbt.InteractionService, wrap : File => F[File] )( query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : File => String, noEntryDefault : => F[File] ) : F[File] = {
@@ -126,23 +131,23 @@ object InteractiveQuery {
   def notConfirmedByUser = new OperationAbortedByUserException( "Not confirmed by user." )
 
   private [sbtethereum]
-  def assertReadLine( is : sbt.InteractionService, prompt : String, mask : Boolean ) : String = {
-    is.readLine( prompt, mask ).getOrElse( throwCantReadInteraction )
+  def assertReadLine( is : sbt.InteractionService, prompt : String, mask : Boolean ) : String = syncOut {
+    is.readLine( prompt, mask ).getOrElse( throwCantReadInteraction ).trim()
   }
 
   private val AmountInWeiParser = valueInWeiParser("<amount>")
 
   private [sbtethereum]
-  def assertReadOptionalAmountInWei( log : sbt.Logger, is : sbt.InteractionService, prompt : String, mask : Boolean ) : Option[BigInt] = {
+  def assertReadOptionalAmountInWei( is : sbt.InteractionService, prompt : String, mask : Boolean ) : Option[BigInt] = syncOut {
 
     @tailrec
     def doRead : Option[BigInt] = {
-      val check = syncOut( assertReadLine( is, prompt, mask ).trim )
+      val check = assertReadLine( is, prompt, mask )
       if ( check.nonEmpty ) {
         sbt.complete.Parser.parse( check, AmountInWeiParser ) match {
           case Left( oops ) => {
-            log.error( s"Parse failure: ${oops}" )
             syncOut {
+              error( s"Parse failure: ${oops}" )
               println("""Please enter an integral amount, then a space, then a unit. For example, "5 gwei" or "10 ether".""")
               println("""Supported units: wei, gwei, szabo, finney, ether""");
             }
@@ -160,18 +165,18 @@ object InteractiveQuery {
   }
 
   private [sbtethereum]
-  def assertReadOptionalBigInt( log : sbt.Logger, is : sbt.InteractionService, prompt : String, mask : Boolean ) : Option[BigInt] = {
+  def assertReadOptionalBigInt( is : sbt.InteractionService, prompt : String, mask : Boolean ) : Option[BigInt] = syncOut {
 
     @tailrec
     def doRead : Option[BigInt] = {
-      val check = syncOut( assertReadLine( is, prompt, mask ).trim )
+      val check = assertReadLine( is, prompt, mask )
       if ( check.nonEmpty ) {
         val fbi = Failable( BigInt( check ) )
         if( fbi.isSucceeded ) {
           Some( fbi.assert )
         }
         else {
-          log.warn( s"Invalid integral value '${check}'. Try again." )
+          warn( s"Invalid integral value '${check}'. Try again." )
           doRead
         }
       }
@@ -189,38 +194,44 @@ object InteractiveQuery {
   private [sbtethereum]
   def readCredential( is : sbt.InteractionService, address : EthAddress, acceptHexPrivateKey : Boolean = true ) : String = syncOut {
     val hpkPart = if (acceptHexPrivateKey) " or hex private key" else ""
-    is.readLine(s"Enter passphrase${hpkPart} for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
+    val out = is.readLine(s"Enter passphrase${hpkPart} for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
+    out
   }
 
-  private [sbtethereum]
-  def readConfirmCredential( log : sbt.Logger, is : sbt.InteractionService, readPrompt : String, confirmPrompt: String = "Please retype to confirm: ", maxAttempts : Int = 3, attempt : Int = 0 ) : String = {
-    if ( attempt < maxAttempts ) {
-      val ( credential, confirmation ) = syncOut {
-        val _credential = is.readLine( readPrompt, mask = true ).getOrElse( throwCantReadInteraction )
-        val _confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throwCantReadInteraction )
-        ( _credential, _confirmation )
-      }
-      if ( credential == confirmation ) {
-        credential
+  def readConfirmCredential(
+    is : sbt.InteractionService,
+    readPrompt : String,
+    confirmPrompt: String = "Please retype to confirm: ",
+    maxAttempts : Int = 3
+  ) : String = syncOut {
+    @tailrec
+    def doReadConfirm( attempt : Int = 0 ) : String = {
+      if ( attempt < maxAttempts ) {
+        val credential = is.readLine( readPrompt, mask = true ).getOrElse( throwCantReadInteraction )
+        val confirmation = is.readLine( confirmPrompt, mask = true ).getOrElse( throwCantReadInteraction )
+        if ( credential == confirmation ) {
+          credential
+        } else {
+          warn( "Entries did not match! Retrying." )
+          doReadConfirm( attempt + 1 )
+        }
       } else {
-        log.warn("Entries did not match! Retrying.")
-        readConfirmCredential( log, is, readPrompt, confirmPrompt, maxAttempts, attempt + 1 )
+        throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )
       }
-    } else {
-      throw new Exception( s"After ${attempt} attempts, provided credential could not be confirmed. Bailing." )
     }
+    doReadConfirm(0)
   }
 
   private [sbtethereum]
-  def queryDurationInSeconds( log : sbt.Logger, is : sbt.InteractionService, readPrompt : String ) : Option[DurationParsers.SecondsViaUnit] = {
+  def queryDurationInSeconds( is : sbt.InteractionService, readPrompt : String ) : Option[DurationParsers.SecondsViaUnit] = syncOut {
 
     @tailrec
     def doRead : Option[DurationParsers.SecondsViaUnit] = {
-      val entry = assertReadLine( is, readPrompt, mask = false ).trim
+      val entry = assertReadLine( is, readPrompt, mask = false )
       if ( entry.nonEmpty ) {
         sbt.complete.Parser.parse( entry, DurationParsers.DurationInSecondsParser ) match {
           case Left( oops ) => {
-            log.error( s"Parse failure: ${oops}" )
+            error( s"Parse failure: ${oops}" )
             println("""Please enter an integral amount, then a space, then a unit. For example, "10 seconds" or "5 years".""")
             println("""Supported units: """ + DurationParsers.AllUnits.mkString(", ") )
             doRead
@@ -238,9 +249,9 @@ object InteractiveQuery {
 
   // not currently used
   private [sbtethereum]
-  def interactiveQueryUnsignedTransaction( is : sbt.InteractionService, log : sbt.Logger ) : EthTransaction.Unsigned = {
+  def interactiveQueryUnsignedTransaction( is : sbt.InteractionService ) : EthTransaction.Unsigned = syncOut {
     def queryEthAmount( query : String, nonfunctionalTabHelp : String ) : BigInt = {
-      val raw = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
+      val raw = assertReadLine( is, query, mask = false)
       try {
         BigInt(raw)
       }
@@ -266,7 +277,7 @@ object InteractiveQuery {
       val raw = is.readLine( "To (as hex address): ", mask = false).getOrElse( throwCantReadInteraction ).trim
       if ( raw.nonEmpty ) Some( EthAddress( raw ) ) else None
     }
-    if ( to == None ) log.warn( "No 'To:' address specified. This is a contract creation transaction!" )
+    if ( to == None ) warn( "No 'To:' address specified. This is a contract creation transaction!" )
     val amount = queryEthAmount( "ETH to send (as wei, or else number and unit): ", "<eth-to-send>" )
     val data = {
       val raw = is.readLine( "Data / Init (as hex string): ", mask = false).getOrElse( throwCantReadInteraction ).trim

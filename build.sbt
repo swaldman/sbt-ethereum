@@ -36,7 +36,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
     "com.mchange"    %% "mlog-scala"            % "0.3.12-SNAPSHOT" changing(),
     "com.mchange"    %% "literal"               % "0.1.0-SNAPSHOT" changing(),
     "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
-    "com.mchange"    %% "ens-scala"             % "0.2.0",
+    "com.mchange"    %% "ens-scala"             % "0.2.1-SNAPSHOT" changing(),
     "com.mchange"    %% "texttable"             % "0.0.2",
     "com.mchange"    %  "c3p0"                  % "0.9.5.4",
     "com.h2database" %  "h2"                    % "1.4.192",
