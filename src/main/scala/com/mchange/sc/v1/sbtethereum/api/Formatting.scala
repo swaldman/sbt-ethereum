@@ -15,4 +15,6 @@ object Formatting {
   def formatHex( bytes : Array[Byte]  ) = UF.hexString( bytes   )
   def formatHex( address : EthAddress ) = UF.hexString( address )
   def formatHex( hash : EthHash       ) = UF.hexString( hash    )
+
+  def verboseAddress( chainId : Int, address : EthAddress, ticks : Boolean = true ) : String = UF.verboseAddress( chainId, address, ticks )
 }

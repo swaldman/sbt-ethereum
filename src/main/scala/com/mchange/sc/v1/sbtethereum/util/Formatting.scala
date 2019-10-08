@@ -147,12 +147,8 @@ object Formatting {
     }
   }
 
-  def verboseAddress( chainId : Int, address : EthAddress ) : String = {
-    _verboseAddress( chainId, address, s => s"'${s}'" )
-  }
-
-  def ticklessVerboseAddress( chainId : Int, address : EthAddress ) : String = {
-    _verboseAddress( chainId, address, identity )
+  def verboseAddress( chainId : Int, address : EthAddress, ticks : Boolean = true ) : String = {
+    if (ticks) _verboseAddress( chainId, address, s => s"'${s}'" ) else _verboseAddress( chainId, address, identity )
   }
 
   def displayTransactionSignatureRequest(
@@ -219,8 +215,8 @@ object Formatting {
       case msg : EthTransaction.Message => {
         syncOut {
           println(  """==> The transaction would be a message with...""" )
-          println( s"""==>   To:    ${ticklessVerboseAddress(chainId, msg.to)}""" )
-          println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
+          println( s"""==>   To:    ${verboseAddress(chainId, msg.to, ticks=false)}""" )
+          println( s"""==>   From:  ${verboseAddress(chainId, proposedSender, ticks=false)}""" )
           println( s"""==>   Data:  ${if (msg.data.length > 0) hexString(msg.data) else "None"}""" )
           println( s"""==>   Value: ${EthValue(msg.value.widen, Denominations.Ether).denominated} ether""" )
         }
@@ -284,7 +280,7 @@ object Formatting {
       case cc : EthTransaction.ContractCreation => {
         syncOut {
           println(  """==> The transaction would be a contract creation with...""" )
-          println( s"""==>   From:  ${ticklessVerboseAddress(chainId, proposedSender)}""" )
+          println( s"""==>   From:  ${verboseAddress(chainId, proposedSender, ticks=false)}""" )
           println( s"""==>   Init:  ${if (cc.init.length > 0) hexString(cc.init) else "None"}""" )
           println( s"""==>   Value: ${EthValue(cc.value.widen, Denominations.Ether).denominated} Ether""" )
         }

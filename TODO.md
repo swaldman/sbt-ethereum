@@ -34,22 +34,11 @@ Security
 
 Other
 
-* Eventually, when we factor out Mutables to a class with well-encapsulated accessors,
-  replace awkward 'abiOverridesForChain' function in SignersManager and CautiousSigner
-  with a reference to the plugins Mutables-facade member
-
 * Factor out transaction wait-for-mining into a single construct, handle timeouts better within this.
 
 * More informative message about how to deal with timeouts.
 
-* Much better output (hash, warning to wait, etc) when hitting ENS and other stub transactions.
-  - onSubmit function in Invoker.Context, onSynchronousMined or something in Stub.Context
-
 * Update default solidity version.
-
-* Define `ethNodeChainId` for CLIs to get Chain ID.
-
-* Expose `verboseAddress` to CLIs.
 
 * Ensure drop and set commands at least print what they drop or replace
 
@@ -67,7 +56,7 @@ Other
 
 * Define setting etherscancfgApiKey, for users who prefer global-sbt-style configuration
 
-* object prepare in stubs, that with functions that yield unsigned transactions
+* object prepare in stubs, with functions that yield unsigned transactions
 
 * clean up solidity compiler autosetting, let compilers be specified in builds, let there be a settable user-default compiler that persists between sessions.
   - Current logic in xethFindCurrentSolidityCompilerTask is not so great
