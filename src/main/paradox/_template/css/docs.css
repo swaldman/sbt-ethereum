@@ -395,6 +395,11 @@ ul li {
     text-align: justify;
 }
 
+#pageContent div.callout ol, #pageContent div.callout ul {
+    padding-left: 80pt;
+    padding-right: 50pt;
+}
+
 #pageContent div.callout-title {
     display: none;
 }

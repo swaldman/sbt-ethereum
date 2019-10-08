@@ -6,6 +6,7 @@
 
 @@@ index
 
+* [eth](eth/index.md)
 * [ethAddress*](eth/address/index.md)
 * [ethContract*](eth/contract/index.md)
 * [ethDebug*](eth/debug/index.md)

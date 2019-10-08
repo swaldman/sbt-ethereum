@@ -1211,9 +1211,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def logSessionInfoTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=false)(config).value
+    val nodeUrl = findNodeUrlTask(warn=false)(config).value
     val mbSender = (config / ethAddressSender).value
 
-    log.info( s"The session is now active on chain with ID ${chainId}." )
+    log.info( s"The session is now active on chain with ID ${chainId}, with node URL '${nodeUrl}'." )
     mbSender match {
       case Some( sender ) => log.info( s"The current session sender is ${verboseAddress( chainId, sender )}." )
       case None           => {

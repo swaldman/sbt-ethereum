@@ -353,7 +353,9 @@ _sbt-ethereum_ stores wallet files in its internal shoebox directory. You can ba
 
 _sbt-ethereum_ **does not store the passcodes** that unlock these wallets. You need to store these yourself, preferably somewhere offline, and be sure not to lose them.
 
-If you lose _either one of_ a wallet file or its passcode, **all of the value stored in that wallet's associated address will likely be lost forever**. Ouch.
+If you lose _either one of_ a wallet file or its passcode, **all of the value stored in that wallet's associated address will likely be lost forever**.
+
+Ouch.
 
 @@@
 
@@ -444,3 +446,20 @@ address but it seems not to show up, because you don't realize you are looking a
 
 Did you get a block number? Hooray! You are successfully connecting to a node.
 
+### Check out your session status
+
+Any time you are at an _sbt-ethereum_ command line, you can get a quick glance at your current session's status, just by typing `eth`.
+Your session is usually associated with a sender address (if you sent a transaction, who would you be?), a chain ID,
+a node URL, and potentially a bunch of overrides that replace _sbt-ethereum_'s default behavior, just for this session.
+
+Let's try it.
+
+```
+> eth
+[info] The session is now active on chain with ID 1, with node URL 'https://ethjsonrpc.mchange.com/'.
+[info] The current session sender is '0x1144f4f7aad0c463c667e0f8d73fc13f1e7e86a2' (with aliases ['default-sender'] on chain with ID 1).
+[success] Total time: 0 s, completed Oct 8, 2019, 3:21:46 PM
+
+```
+
+Kewl.
