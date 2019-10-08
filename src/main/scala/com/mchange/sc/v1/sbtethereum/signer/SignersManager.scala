@@ -14,7 +14,7 @@ import com.mchange.sc.v3.failable._
 
 import com.mchange.sc.v1.log.MLevel._
 
-import com.mchange.sc.v1.sbtethereum.{PriceFeed,util}
+import com.mchange.sc.v1.sbtethereum.{PriceFeed,util,syncOut}
 import util.Formatting._
 import util.InteractiveQuery._
 import util.PrivateKey._
@@ -199,7 +199,7 @@ private [sbtethereum] class SignersManager(
 
     log.info( s"Unlocking address '0x${address.hex}' (on chain with ID ${chainId}$aliasesPart)" )
 
-    val credential = readCredential( is, address )
+    val credential = syncOut( newLineAfter = true )( readCredential( is, address ) )
 
     val wallets = walletsForAddress( address, keystoresV3 )
 
@@ -236,7 +236,7 @@ private [sbtethereum] class SignersManager(
       case Some( UnlockedAddress( Address, privateKey, autoRelockTimeMillis ) ) if (now < autoRelockTimeMillis ) => {
         val ok = {
           if ( userValidateIfCached ) {
-            queryYN( is, s"Using sender address ${verboseAddress( chainId, address )}, which is already unlocked. OK? [y/n] " )
+            syncOut( newLineAfter = true )( queryYN( is, s"Using sender address ${verboseAddress( chainId, address )}, which is already unlocked. OK? [y/n] " ) )
           } else {
             true
           }

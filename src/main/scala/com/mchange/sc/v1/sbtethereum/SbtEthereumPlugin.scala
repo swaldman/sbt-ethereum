@@ -4671,7 +4671,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     lazy val lazySigner = Mutables.findUpdateCacheLazySigner( s, log, is, chainId.getOrElse( DefaultEphemeralChainId ), signer, autoRelockSeconds, true )
 
     displayTransactionSignatureRequest( log, chainId.getOrElse( DefaultEphemeralChainId ), currencyCode, utxn, signer ) // syncOut internal
-    val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
+    val check = syncOut( newLineAfter = true ) {
+      queryYN( is, "Would you like to sign this transaction? [y/n] " )
+    }
     if ( !check ) aborted( "User chose not to sign the transaction." )
 
     val signed = {
@@ -6506,7 +6508,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       syncOut {
         displayTransactionSignatureRequest( log, chainId, currencyCode, inputs.utxn, inputs.signerAddress ) // syncOut internal
 
-        val check = queryYN( is, "Would you like to sign this transaction? [y/n] " )
+        val check = syncOut( newLineAfter = true ) {
+          queryYN( is, "Would you like to sign this transaction? [y/n] " )
+        }
         if ( !check ) Invoker.throwDisapproved( inputs, keepStackTrace = false )
         else preapprove( inputs )
       }

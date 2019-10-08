@@ -87,6 +87,14 @@ package object sbtethereum {
   private [sbtethereum]
   def syncOut[T]( op : =>T ) : T = System.out.synchronized( op )
 
+  private [sbtethereum]
+  def syncOut[T]( newLineBefore : Boolean = false, newLineAfter : Boolean = false )( op : =>T ) : T = System.out.synchronized {
+    if ( newLineBefore ) println
+    val ret = op
+    if ( newLineAfter ) println
+    ret
+  }
+
   // due to ClassLoader issues, we have to load the java.util.logging config file manually. grrrr.
   private [sbtethereum]
   def initializeLoggingConfig() : Unit = {
