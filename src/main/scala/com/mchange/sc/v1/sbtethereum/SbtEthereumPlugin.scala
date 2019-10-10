@@ -13,6 +13,7 @@ import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstalle
 import util.warner._
 import util.BaseCodeAndSuffix
 import util.Erc20
+import util.MLogSbtLogger
 import util.EthJsonRpc._
 import util.Parsers._
 import util.SJsonNewFormats._
@@ -1140,6 +1141,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     compileSolidity in Test := { compileSolidityTask( Test ).value },
 
     commands ++= Seq( ethDebugGanacheRestartCommand, ethDebugGanacheTestCommand ),
+
+    extraLoggers := {
+      val currentFunction = extraLoggers.value
+
+      (key : Def.ScopedKey[_]) => MLogSbtLogger(key) +: currentFunction(key)
+    },
 
     libraryDependencies ++= {
       ethcfgScalaStubsPackage.?.value.fold( Nil : Seq[ModuleID] )( _ => Consuela.ModuleID :: Nil )
