@@ -38,8 +38,11 @@ for this session.
 > eth
 [info] The session is now active on chain with ID 1, with node URL 'https://ethjsonrpc.mchange.com/'.
 [info] The current session sender is '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (with aliases ['default-sender','testing0'] on chain with ID 1).
-[warn] NOTE: A gas price override remains set for this chain, default gas price plus a markup of 0.60 (60.00%), subject to a cap of 8 gwei and a floor of 0.5 gwei.
-[success] Total time: 0 s, completed Oct 8, 2019, 2:48:51 PM
+[info] The current default gas price according to your node is 1 gwei. (THIS MAY CHANGE AT ANY TIME.)
+[info]  + You current session includes an override of the gas price, default gas price plus a markup of 0.50 (50.00%), not subject to any cap or floor.
+[info]  + So, the actual price you would pay is 1.5 gwei.
+[warn] NOTE: A gas price override remains set for this chain, default gas price plus a markup of 0.50 (50.00%), not subject to any cap or floor.
+[success] Total time: 0 s, completed Oct 11, 2019 10:55:04 PM
 ```
 
 @@@
