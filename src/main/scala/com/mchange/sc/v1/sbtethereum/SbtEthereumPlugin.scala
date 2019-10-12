@@ -608,9 +608,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     etherscanApiKeyPrint := { etherscanApiKeyPrintTask.value },
 
-    eth in Compile := { logSessionInfoTask( Compile ).value },
+    eth in Compile := { ethTask( Compile ).value },
 
-    eth in Test := { logSessionInfoTask( Test ).value },
+    eth in Test := { ethTask( Test ).value },
 
     ethAddressAliasDrop in Compile := { ethAddressAliasDropTask( Compile ).evaluated },
 
@@ -1060,9 +1060,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethInvokeData in Test := { xethInvokeDataTask( Test ).evaluated },
 
-    xethInvokerContext in Compile := { xethInvokerContextTask( Compile ).value },
+    xethInvokerContext in Compile := { xethInvokerContextTask( Compile, warn = true ).value },
 
-    xethInvokerContext in Test := { xethInvokerContextTask( Test ).value },
+    xethInvokerContext in Test := { xethInvokerContextTask( Test, warn = true ).value },
 
     xethKeystoreWalletV3CreateDefault := { xethKeystoreWalletV3CreateDefaultTask.value }, // global config scope seems appropriate
 
@@ -1178,7 +1178,6 @@ object SbtEthereumPlugin extends AutoPlugin {
                     val sbtkeyLogger = Logger.getLogger("sbtkey")
                     if ( !sbtkeyLogger.getHandlers().contains( fileHandler ) ) {
                       sbtkeyLogger.addHandler( fileHandler )
-                      println( s"Added handler ${fileHandler}." )
                     }
                     this.initted = true
                   }
@@ -1280,6 +1279,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val nodeUrl = findNodeUrlTask(warn=false)(config).value
     val mbSender = (config / ethAddressSender).value
 
+    implicit val icontext = xethInvokerContextTask( config, warn=false).value
+
     log.info( s"The session is now active on chain with ID ${chainId}, with node URL '${nodeUrl}'." )
     mbSender match {
       case Some( sender ) => log.info( s"The current session sender is ${verboseAddress( chainId, sender )}." )
@@ -1287,6 +1288,20 @@ object SbtEthereumPlugin extends AutoPlugin {
         log.warn( "There is no sender available for the current session." )
         log.warn( "Consider using 'ethAddressSenderDefaultSet' or 'ethAddressSenderOverrideSet' to define one." )
       }
+    }
+    val fut = Invoker.currentDefaultGasPrice map { defaultGasPrice =>
+      log.info( s"The current default gas price according to your node is ${formatInGWei(defaultGasPrice)}. (THIS MAY CHANGE AT ANY TIME.)" )
+      Mutables.GasPriceTweakOverrides.get( chainId ).foreach { tweak =>
+        log.info(s" + You current session includes an override of the gas price, ${formatGasPriceTweak(tweak)}.")
+        log.info(s" + So, the actual price you would pay is ${formatInGWei(tweak.compute(defaultGasPrice))}.")
+      }
+    }
+
+    try {
+      Await.result( fut, 10.seconds )
+    }
+    catch {
+      case NonFatal(t) => log.warn( s"Unable to retrieve the current default gas price from our node: ${t}" )
     }
     Mutables.logWarnOverrides( log, chainId )
   }
@@ -2162,6 +2177,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   // eth tasks
+
+  private def ethTask( config : Configuration ) = logSessionInfoTask( config )
 
   private def ethAddressAliasDropTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressAliasParser )
@@ -5692,7 +5709,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def xethInvokerContextTask( config : Configuration ) : Initialize[Task[Invoker.Context]] = Def.task {
+  private def xethInvokerContextTask( config : Configuration, warn : Boolean ) : Initialize[Task[Invoker.Context]] = Def.task {
 
     val log = streams.value.log
 
@@ -5703,8 +5720,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val httpTimeout   = xethcfgAsyncOperationTimeout.value
 
-    val gasLimitTweak = findGasLimitTweak( warnOverridden = true )( config ).value
-    val gasPriceTweak = findGasPriceTweak( warnOverridden = true )( config ).value
+    val gasLimitTweak = findGasLimitTweak( warnOverridden = warn )( config ).value
+    val gasPriceTweak = findGasPriceTweak( warnOverridden = warn )( config ).value
 
     val is            = interactionService.value
     val currencyCode  = ethcfgBaseCurrencyCode.value
