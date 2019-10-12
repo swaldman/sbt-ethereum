@@ -38,9 +38,9 @@ import com.mchange.sc.v3.failable._
 import com.mchange.sc.v3.failable.logging._
 import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.io._
+import com.mchange.v2.log.log4j2.MLogAppender
 import com.mchange.sc.v2.util.Platform
 import com.mchange.sc.v1.log.MLevel._
-//import com.mchange.sc.v1.log.MLogger
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.consuela.ethereum._
@@ -204,6 +204,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgUseReplayAttackProtection     = settingKey[Boolean]     ("Defines whether transactions should be signed with EIP-155 \"simple replay attack protection\", if (and only if) we are on a nonephemeral chain.")
 
     val xethcfgAsyncOperationTimeout      = settingKey[Duration]      ("Length of time to wait for asynchronous operations, like HTTP calls and external processes.")
+    val xethcfgExperimentalUnifiedLogging = settingKey[Boolean]       ("Attempt to unify sbt log messages into sbt-ethereum log file. Not yet ready for prime time.")
     val xethcfgNamedAbiSource             = settingKey[File]          ("Location where files containing json files containing ABIs for which stubs should be generated. Each as '<stubname>.json'.")
     val xethcfgTestingResourcesObjectName = settingKey[String]        ("The name of the Scala object that will be automatically generated with resources for tests.")
     val xethcfgTransactionUnsignedTimeout = settingKey[Duration]("How long users might wait while trying to prepare a transaction for offline signing.")
@@ -520,6 +521,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     // xeth settings
 
     xethcfgAsyncOperationTimeout := 30.seconds,
+
+    xethcfgExperimentalUnifiedLogging := true,
 
     xethcfgNamedAbiSource in Compile := (sourceDirectory in Compile).value / "ethabi",
 
@@ -1140,6 +1143,69 @@ object SbtEthereumPlugin extends AutoPlugin {
     compileSolidity in Test := { compileSolidityTask( Test ).value },
 
     commands ++= Seq( ethDebugGanacheRestartCommand, ethDebugGanacheTestCommand ),
+
+    extraLoggers := {
+      val currentFunction = extraLoggers.value
+      val unify = xethcfgExperimentalUnifiedLogging.value
+      val sbtlog = sLog.value
+
+      if ( unify ) {
+        import java.util.logging._
+
+        val mbFileHandler =  Logger.getLogger("").getHandlers().find( _.isInstanceOf[FileHandler] )
+
+        mbFileHandler match {
+          case None => {
+            sbtlog.warn("Could not find a FileHandler to unify sbt log output with MLog/JUL logging." )
+            currentFunction
+          }
+          case Some( fileHandler ) => {
+
+            def loggerNameForKey( key : sbt.Def.ScopedKey[_] ) = s"""sbtkey.${key.scope.task.toOption.getOrElse("<unknown>")}"""
+
+            def appender( key : sbt.Def.ScopedKey[_] ) = {
+              import org.apache.logging.log4j.message._
+
+              new MLogAppender(loggerNameForKey(key)) {
+                import sbt.internal.util.StringEvent
+
+                private var initted = false
+
+                // for some reason, if we do this early while thw setting is being evaluated
+                // the handler gets lost, removed somehow from the sbtkey logger
+                private def delayedInitHandler = this.synchronized {
+                  if (! initted ) {
+                    val sbtkeyLogger = Logger.getLogger("sbtkey")
+                    if ( !sbtkeyLogger.getHandlers().contains( fileHandler ) ) {
+                      sbtkeyLogger.addHandler( fileHandler )
+                      println( s"Added handler ${fileHandler}." )
+                    }
+                    this.initted = true
+                  }
+                }
+
+                override def messageToString( message : Message ) : String = {
+                  delayedInitHandler
+                  message match {
+                    case om : ObjectMessage => {
+                      om.getParameter() match {
+                        case se : StringEvent => s"[${se.level}] ${se.message}"
+                        case _                => super.messageToString( message )
+                      }
+                    }
+                    case _ => super.messageToString( message )
+                  }
+                }
+              }
+            }
+            (key : Def.ScopedKey[_]) =>  appender(key) +: currentFunction(key)
+          }
+        }
+      }
+      else {
+        currentFunction
+      }
+    },
 
     libraryDependencies ++= {
       ethcfgScalaStubsPackage.?.value.fold( Nil : Seq[ModuleID] )( _ => Consuela.ModuleID :: Nil )

@@ -34,6 +34,9 @@ Security
 
 Other
 
+* Try implementing (in mchange-commons-java com.mchange.v2.log) a log4j2 MLogAppender that could be used (with sbt's extraLoggers key)
+  to capture sbt logging in MLog-managed sbt-ethereum.log
+
 * Factor out transaction wait-for-mining into a single construct, handle timeouts better within this.
 
 * More informative message about how to deal with timeouts.
