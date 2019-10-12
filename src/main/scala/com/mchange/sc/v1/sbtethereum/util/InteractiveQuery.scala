@@ -10,9 +10,9 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress,EthTransaction}
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.Unsigned256
 
-import com.mchange.sc.v3.failable._
+import com.mchange.sc.v2.util.Platform
 
-import Console.{YELLOW,RED,RESET}
+import com.mchange.sc.v3.failable._
 
 import Parsers._
 
@@ -22,6 +22,17 @@ import scala.language.higherKinds
 private [sbtethereum]
 object InteractiveQuery {
   private type I[T] = T
+
+  private val ( _yellow, _red, _reset ) = {
+    Platform.Current match {
+      case Some( Platform.Windows ) => ("","","")
+      case _                        => ( Console.YELLOW, Console.RED, Console.RESET )
+    }
+  }
+
+  private val YELLOW = _yellow
+  private val RED    = _red
+  private val RESET  = _reset
 
   private def warn( s : String ) : Unit = println( s"${YELLOW}${s}${RESET}" )
   private def error( s : String ) : Unit = println( s"${RED}${s}${RESET}" )
