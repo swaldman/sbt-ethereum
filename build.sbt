@@ -6,7 +6,7 @@ val consuelaApiBase = settingKey[String]("Base of consuela API docs")
 val updateSite = taskKey[Unit]("Updates the project website on tickle")
 
 ThisBuild / organization := "com.mchange"
-ThisBuild / version := "0.3.1-SNAPSHOT"
+ThisBuild / version := "0.3.1"
 
 ThisBuild / resolvers += ("releases" at nexusReleases)
 ThisBuild / resolvers += ("snapshots" at nexusSnapshots)
@@ -32,7 +32,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   sbtPlugin := true,
   libraryDependencies ++= Seq(
     consuelaArtifact,
-    "com.mchange"    %% "etherscan-utils"       % "0.0.3",
+    "com.mchange"    %% "etherscan-utils"       % "0.0.4",
     "com.mchange"    %% "mlog-scala"            % "0.3.13",
     "com.mchange"    %% "literal"               % "0.1.0",
     "com.mchange"    %% "danburkert-continuum"  % "0.3.99",

@@ -49,6 +49,8 @@ Other
        it is used by methods with leading spaces
      + newAbiAliasParser is OptSpace-led, probably shouldn't be, but verify uses
 
+* Much better message on ethAddressSenderOverrideDrop
+
 * Factor out transaction wait-for-mining into a single construct, handle timeouts better within this.
 
 * More informative message about how to deal with timeouts.
