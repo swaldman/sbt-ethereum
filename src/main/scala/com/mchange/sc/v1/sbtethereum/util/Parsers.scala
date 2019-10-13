@@ -684,7 +684,7 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[(jsonrpc.Abi, Option[String], jsonrpc.Abi.Function, immutable.Seq[String])] = {
     val abiMaybeWarningParser = {
-      val maybeAbiTupleParser = _genAnyAbiSourceParser( state, mbRpi ).map( abiFromAbiSource )
+      val maybeAbiTupleParser = genAnyAbiSourceParser( state, mbRpi ).map( abiFromAbiSource )
       maybeAbiTupleParser.flatMap { maybeAbiTuple =>
         maybeAbiTuple match {
           case Some( Tuple2(abi, mbLookup) ) => success( Tuple2( abi, mbLookup.flatMap( _.genericShadowWarningMessage ) ) )
@@ -692,12 +692,9 @@ object Parsers {
         }
       }
     }
-    val rawParser = {
-      abiMaybeWarningParser.flatMap {
-        case ( abi, mbWarning ) => token(Space) ~> functionAndInputsParser(abi, restrictedToConstants, mbRpi ).map { case ( function, inputs ) => ( abi, mbWarning, function, inputs ) }
-      }
+    abiMaybeWarningParser.flatMap {
+      case ( abi, mbWarning ) => token(Space) ~> functionAndInputsParser(abi, restrictedToConstants, mbRpi ).map { case ( function, inputs ) => ( abi, mbWarning, function, inputs ) }
     }
-    token(OptSpace) ~> rawParser
   }
 
   private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
@@ -757,7 +754,7 @@ object Parsers {
     OptSpace ~> token( mbLiterals.fold( failure("Failed to load acceptable values") : Parser[String] )( _.foldLeft( failure("No acceptable values") : Parser[String] )( ( nascent, next ) => nascent | literal(next) ) ) )
   }
 
-  private def _genAliasAbiSourceParser(
+  private def _aliasAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[AbiSource] = {
@@ -769,48 +766,43 @@ object Parsers {
     }
   }
 
-  private [sbtethereum] def _genAnyAbiSourceParser(
+  private [sbtethereum] def genAnyAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[AbiSource] = {
     mbRpi.fold( failure("ABI aliases not available!" ) : Parser[AbiSource] ) { rpi =>
-      ( (Space ~> ethHashParser( s"<contract-code-or-abi-hash>" )).map( HashSource.apply ) |
-        (Space ~> createAddressParser( s"<contract-address-hex-or-alias>", mbRpi )).map( addr => AddressSource( rpi.chainId, addr, rpi.abiOverrides ) ) |
-        _genAliasAbiSourceParser(state, mbRpi) )
+      def tryHash = ethHashParser( s"<contract-code-or-abi-hash>" ).map( HashSource.apply )
+      def tryAddress = createAddressParser( s"<contract-address-hex-or-alias>", mbRpi ).map( addr => AddressSource( rpi.chainId, addr, rpi.abiOverrides ) )
+      def tryAbiAlias = _aliasAbiSourceParser(state, mbRpi)
+      Space ~> ( tryAddress | tryHash | tryAbiAlias )
     }
   }
-
-  private [sbtethereum] def genAnyAbiSourceParser(
-    state : State,
-    mbRpi : Option[RichParserInfo]
-  ) : Parser[AbiSource] = token(OptSpace) ~> _genAnyAbiSourceParser( state, mbRpi )
-
 
   private [sbtethereum] def genAddressAnyAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[EthAddress, AbiSource]] = {
-    (Space ~> createAddressParser( "<address-to-associate-with-abi>", mbRpi )).flatMap( addr => (token(Space) ~> _genAnyAbiSourceParser( state, mbRpi ).map( abiSource => (addr, abiSource) ) ) )
+    (Space ~> createAddressParser( "<address-to-associate-with-abi>", mbRpi )).flatMap( addr => genAnyAbiSourceParser( state, mbRpi ).map( abiSource => (addr, abiSource) ) )
   }
 
   private [sbtethereum] def genAnyAbiSourceHexBytesParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[AbiSource, immutable.Seq[Byte]]] = {
-    token(OptSpace) ~> _genAnyAbiSourceParser( state, mbRpi ).flatMap { abiSource =>
+    genAnyAbiSourceParser( state, mbRpi ).flatMap { abiSource =>
       ( (token(Space) ~> token( (literal("0x").?) ~> token(HexDigit.*) ) ).map( chars => chars.mkString.decodeHexAsSeq ) ).map( hexSeq => ( abiSource, hexSeq ) )
     }
   }
 
   private [sbtethereum] val newAbiAliasParser : Parser[String] = {
-    token(OptSpace) ~> literal("abi:").? ~> token(ID, "<new-abi-alias>")
+    literal("abi:").? ~> token(ID, "<new-abi-alias>")
   }
 
   private [sbtethereum] def genNewAbiAliasAbiSourceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[Tuple2[String, AbiSource]] = {
-    token(OptSpace) ~> (newAbiAliasParser ~ (token(Space) ~> _genAnyAbiSourceParser( state, mbRpi )))
+    Space ~> (newAbiAliasParser ~ genAnyAbiSourceParser( state, mbRpi ))
   }
 
   // yields the parsed alias without the "abi:" prefix!
@@ -819,7 +811,7 @@ object Parsers {
     mbRpi : Option[RichParserInfo]
   ) : Parser[String] = {
     mbRpi.fold( failure( "Could not find RichParserInfo for abiAliases." ) : Parser[String] ) { rpi =>
-      token(OptSpace) ~> (literal("abi:") ~> token(NotSpace)).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) )
+      token(Space) ~> (literal("abi:") ~> token(NotSpace)).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) )
     }
   }
   

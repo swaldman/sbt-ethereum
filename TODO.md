@@ -45,9 +45,7 @@ Other
 * Review remaining OptSpace-led gen... parsers. Generaly gen... parsers now should begin with a non-optional Space,
   although CARE MUST BE TAKEN
      + genContractSpawnParser, which should interpret empty string as SpawnInstruction.Auto
-     + _getAliasAbiSourceParse does not begin with a Space of any sort and should probably just be renamed...
-       it is used by methods with leading spaces
-     + newAbiAliasParser is OptSpace-led, probably shouldn't be, but verify uses
+     + also e.g. intParser, etherscanApiKeyParser, amountParser, bytesParser, urlParser have probably undesirable OptSpace prefixes.
 
 * Much better message on ethAddressSenderOverrideDrop
 
