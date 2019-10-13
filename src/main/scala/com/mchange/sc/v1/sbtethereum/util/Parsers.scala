@@ -362,7 +362,7 @@ object Parsers {
   ) : Parser[Tuple3[ens.ParsedPath,Option[EthAddress],Option[immutable.Seq[Byte]]]] = {
     for {
       epp       <- genEnsPathParser( state, mbRpi )
-      mbAddress <- (Space ~> genAddressParser("[optional-registrant-address]")( state, mbRpi )).?
+      mbAddress <- genAddressParser("[optional-registrant-address]")( state, mbRpi ).?
       mbSecret  <- (Space ~> rawFixedLengthByteStringAsStringParser(32).map( _.decodeHexAsSeq )).?
     }
     yield {
@@ -641,8 +641,7 @@ object Parsers {
     for {
       _       <- token(Space)
       alias   <- token(RawAddressAliasParser, "<alias>")
-      _       <- token(Space)
-      address <- genGenericAddressParser( state, mbRpi )
+      address <- genGenericAddressParser( state, mbRpi ) // includes a leading space
     }
     yield {
       ( alias, address )
