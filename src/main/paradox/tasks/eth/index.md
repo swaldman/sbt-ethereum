@@ -1,6 +1,6 @@
 # eth
 
-The vast majority of _sbt-ethereum_ tasks begin with an `eth`. Prefix. Typing
+The vast majority of _sbt-ethereum_ tasks begin with an `eth` prefix. Typing
 ```
 > eth<tab>
 ```
