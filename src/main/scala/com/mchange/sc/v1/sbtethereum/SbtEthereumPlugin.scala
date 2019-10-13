@@ -1292,7 +1292,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val fut = Invoker.currentDefaultGasPrice map { defaultGasPrice =>
       log.info( s"The current default gas price according to your node is ${formatInGWei(defaultGasPrice)}. (THIS MAY CHANGE AT ANY TIME.)" )
       Mutables.GasPriceTweakOverrides.get( chainId ).foreach { tweak =>
-        log.info(s" + You current session includes an override of the gas price, ${formatGasPriceTweak(tweak)}.")
+        log.info(s" + Your current session includes an override of the gas price, ${formatGasPriceTweak(tweak)}.")
         log.info(s" + So, the actual price you would pay is ${formatInGWei(tweak.compute(defaultGasPrice))}.")
       }
     }
