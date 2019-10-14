@@ -136,12 +136,13 @@ object Parsers {
       case Some( rpi ) => {
         val aliases = rpi.addressAliases
         val tld = rpi.exampleNameServiceTld
-        val ensParser = ensPathToAddressParserSelective( pathPredicate = CouldBeNonTldEns )( rpi ).examples( s"<ens-name>.${tld}" )
+        val ensParser = ensPathToAddressParserSelective( pathPredicate = CouldBeNonTldEns, pathPredicateFailureDesc = "Cannot be, but required to be, non-TLD ENS name" )( rpi ).examples( s"<ens-name>.${tld}" )
 
         // val allExamples = Vector( tabHelp, s"<ens-name>.${tld}" ) ++ aliases.keySet
         // token(OptSpace) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensParser ).examples( allExamples : _* )
 
-        token( RawAddressParser.examples( tabHelp ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensParser )
+        // extra example ZWSP to prevent tab completion on just "<" if there are no aliases and all the tab-help looks like <whatever>
+        token( RawAddressParser.examples( tabHelp, ZWSP ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensParser )
       }
       case None => {
         createSimpleAddressParser( tabHelp )
@@ -305,12 +306,17 @@ object Parsers {
     }
   }
 
-  private [sbtethereum] def ensPathToAddressParserSelective( pathPredicate : String => Boolean = _ => true, parsedPathPredicate : ens.ParsedPath => Boolean = _ => true)( rpi : RichParserInfo ) : Parser[EthAddress] = {
+  private def ensPathToAddressParserSelective(
+    pathPredicate : String => Boolean = _ => true,
+    pathPredicateFailureDesc : String = "No further description available",
+    parsedPathPredicate : ens.ParsedPath => Boolean = _ => true,
+    parsedPathPredicateFailureDesc : String = "No further description available"
+  )( rpi : RichParserInfo ) : Parser[EthAddress] = {
     for {
       rawPath <- RawEnsPath
-      _       <- if (pathPredicate( rawPath )) success( rawPath ) else failure("Ruled out by simple path predicate")
+      _       <- if (pathPredicate( rawPath )) success( rawPath ) else failure(s"ENS address ruled out by simple path predicate -- ${pathPredicateFailureDesc}.")
       epp      = ens.ParsedPath( rawPath )
-      _       <- if (parsedPathPredicate( epp )) success( epp ) else failure("Ruled out by parsed path predicate")
+      _       <- if (parsedPathPredicate( epp )) success( epp ) else failure(s"ENS address ruled out by parsed path predicate -- ${parsedPathPredicateFailureDesc}.")
       faddress = EnsAddressCache.lookup( rpi, epp.fullName )
       address <- if (faddress.isSucceeded) success( faddress.get ) else failure("Failed to find an address for putative ENS path.")
     }
