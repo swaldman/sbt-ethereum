@@ -3461,7 +3461,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val s = state.value
       val extract = Project.extract(s)
       val inputAddress = parser.parsed
-      val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, inputAddress.hex, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
+      val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, s" ${inputAddress.hex}", s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
 
       if ( wallets.isEmpty ) {
         unknownWallet( keystoreDirs )
@@ -5948,7 +5948,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def xethLoadWalletsV3Task( config : Configuration ) : Initialize[Task[immutable.Set[wallet.V3]]] = Def.task {
     val s = state.value
-    val addressStr = findAddressSenderTask(warn=true)(config).value.assert.hex
+    val addressStr = s" ${findAddressSenderTask(warn=true)(config).value.assert.hex}"
     val extract = Project.extract(s)
     val (_, result) = extract.runInputTask((xethLoadWalletsV3For in config), addressStr, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
     result
@@ -6195,7 +6195,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         if ( mbDefaultSender( nontestChainId ).isEmpty ) {
           val checkSetDefault = queryYN( is, s"Would you like the new address '${hexString(address)}' to be the default sender on chain with ID ${nontestChainId}? [y/n] " )
           if ( checkSetDefault ) {
-            extract.runInputTask( nontestConfig / ethAddressSenderDefaultSet, address.hex, s )
+            extract.runInputTask( nontestConfig / ethAddressSenderDefaultSet, s" ${address.hex}", s )
           }
           else {
             log.info(s"No default sender has been defined. To create one later, use the command 'ethAddressSenderDefaultSet <address>'.")
