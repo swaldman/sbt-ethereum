@@ -5958,22 +5958,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genGenericAddressParser )
 
     Def.inputTask {
-      val keystoresV3 = OnlyShoeboxKeystoreV3
-      val log         = streams.value.log
-
+      val log     = streams.value.log
       val chainId = findNodeChainIdTask(warn=true)(config).value
-
       val address = parser.parsed
-
-      val out = walletsForAddress( address, keystoresV3 )
-
-      val message = {
-        val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s" (aliases $str)" ) )
-        if ( out.isEmpty ) s"""No V3 wallet found for '0x${address.hex}'${aliasesPart}. Directories checked: ${keystoresV3.mkString(", ")}"""
-        else s"V3 wallet(s) found for '0x${address.hex}'${aliasesPart}"
-      }
-      log.info( message )
-      out
+      loadWalletsV3( log, chainId, address )
     }
   }
 
@@ -6412,6 +6400,23 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   // helper functions
+
+  private def loadWalletsV3( log : sbt.Logger, chainId : Int, address : EthAddress ) : immutable.Set[wallet.V3] = {
+    val keystoresV3 = OnlyShoeboxKeystoreV3
+    loadWalletsV3( log, chainId, address, keystoresV3 )
+  }
+
+  private def loadWalletsV3( log : sbt.Logger, chainId : Int, address : EthAddress, keystoresV3 : Seq[File] ) : immutable.Set[wallet.V3] = {
+    val out = walletsForAddress( address, keystoresV3 )
+
+    val message = {
+      val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( str => s" (aliases $str)" ) )
+      if ( out.isEmpty ) s"""No V3 wallet found for '0x${address.hex}'${aliasesPart}. Directories checked: ${keystoresV3.mkString(", ")}"""
+      else s"V3 wallet(s) found for '0x${address.hex}'${aliasesPart}"
+    }
+    log.info( message )
+    out
+  }
 
   private def logFetchNonceOverride( mbLog : Option[sbt.Logger], chainId : Int ) : Option[Unsigned256] = {
     val out = Mutables.NonceOverrides.get( chainId ).map( Unsigned256.apply )
