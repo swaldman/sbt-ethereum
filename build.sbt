@@ -1,6 +1,6 @@
 val nexus = "https://oss.sonatype.org/"
 val nexusSnapshots = nexus + "content/repositories/snapshots"
-val nexusReleases = nexus + "service/local/staging/deploy/maven2"
+val nexusStaging = nexus + "service/local/staging/deploy/maven2"
 
 val consuelaApiBase = settingKey[String]("Base of consuela API docs")
 val updateSite = taskKey[Unit]("Updates the project website on tickle")
@@ -8,12 +8,12 @@ val updateSite = taskKey[Unit]("Updates the project website on tickle")
 ThisBuild / organization := "com.mchange"
 ThisBuild / version := "0.3.4-SNAPSHOT"
 
-ThisBuild / resolvers += ("releases" at nexusReleases)
+ThisBuild / resolvers += ("releases" at nexusStaging)
 ThisBuild / resolvers += ("snapshots" at nexusSnapshots)
 ThisBuild / resolvers += ("Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/")
 
 ThisBuild / publishTo := {
-  if (isSnapshot.value) Some("snapshots" at nexusSnapshots ) else Some("releases"  at nexusReleases )
+  if (isSnapshot.value) Some("snapshots" at nexusSnapshots ) else Some("releases"  at nexusStaging )
 }
 
 ThisBuild / scalaVersion := "2.12.10"
@@ -25,7 +25,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-Xlog-implicits" */
 )
 
-val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.2.0"
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.2.1-SNAPSHOT" changing()
 
 lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   name := "sbt-ethereum",
@@ -36,7 +36,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
     "com.mchange"    %% "mlog-scala"            % "0.3.13",
     "com.mchange"    %% "literal"               % "0.1.0",
     "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
-    "com.mchange"    %% "ens-scala"             % "0.2.1",
+    "com.mchange"    %% "ens-scala"             % "0.2.2-SNAPSHOT" changing(),
     "com.mchange"    %% "texttable"             % "0.0.2",
     "com.mchange"    %  "c3p0"                  % "0.9.5.4",
     "com.h2database" %  "h2"                    % "1.4.192",
