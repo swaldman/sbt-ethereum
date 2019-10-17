@@ -7,9 +7,13 @@ On a Mac or Linux, run the _Terminal_ application to get started. On Windows, yo
 You can also use the version of "bash" that comes with some versions of Windows @ref:[git](#git).
 
 
-### java 8 runtime
+### java 8 or 11 runtime
 
-To work with _sbt-ethereum_, you'll need a _Java 8 runtime_ installed on your computer. To see whether you already have this installed,
+To work with _sbt-ethereum_, you'll need a _Java 8 or 11 runtime_ installed on your computer.
+
+ <p><u>More recent non-"long-term-support" versions like Java 13 are not supported!</u></p>
+
+To see whether you already have an appropriate JVM installed,
 type
 ```
 $ java -version
@@ -20,9 +24,16 @@ java version "1.8.0_172"
 Java(TM) SE Runtime Environment (build 1.8.0_172-b11)
 Java HotSpot(TM) 64-Bit Server VM (build 25.172-b11, mixed mode)
 ```
-The exact version numbers don't matter, as long as they begin with "1.8".
+The exact version numbers don't matter, as long as they begin with "1.8" or "11".
 
-If you do not already have a Java 8 VM installed, you can download it from Oracle [here](https://www.oracle.com/technetwork/java/javase/downloads/jre8-downloads-2133155.html).
+@@@ div {.tight}
+
+If you do not already have a Java VM installed, you can download one from Oracle:
+
+  * [Java 8](https://www.oracle.com/technetwork/java/javase/downloads/jre8-downloads-2133155.html)
+  * [Java 11](https://www.oracle.com/technetwork/java/javase/downloads/jdk11-downloads-5066655.html)
+
+@@@
 
 ### git
 
