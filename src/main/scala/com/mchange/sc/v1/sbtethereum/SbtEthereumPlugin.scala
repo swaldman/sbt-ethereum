@@ -4,6 +4,7 @@ import sbt._
 import sbt.Keys._
 import sbt.plugins.JvmPlugin
 import sbt.Def.Initialize
+import sbt.complete.DefaultParsers.Space // all other parsers from util.Parser
 
 import sjsonnew._
 import BasicJsonProtocol._
@@ -2159,7 +2160,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def etherscanApiKeySetTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
-    val apiKey = etherscanApiKeyParser("<etherscan-api-key>").parsed
+    val apiKey = (Space ~> etherscanApiKeyParser("<etherscan-api-key>")).parsed
     shoebox.Database.setEtherscanApiKey( apiKey ).assert
     syncOut {
       println("Etherscan API key successfully set.")
@@ -3502,7 +3503,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val testTimeout = xethcfgAsyncOperationTimeout.value
 
-    val mbVersion = SolcJVersionParser.parsed
+    val mbVersion = (Space ~> SolcJVersionParser).parsed
 
     val versionToInstall = mbVersion.getOrElse( SolcJInstaller.DefaultSolcJVersion )
 
@@ -3582,7 +3583,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeChainIdDefaultSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     assert( config == Compile, "Only the Compile confg is supported for now." )
 
-    val parser  = intParser("<new-default-chain-id>")
+    val parser  = Space ~> intParser("<new-default-chain-id>")
 
     Def.inputTaskDyn {
       val log     = streams.value.log
@@ -3640,7 +3641,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeChainIdOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     assert( config == Compile, "Only the Compile confg is supported for now." )
 
-    val parser  = intParser(s"<chain-id>")
+    val parser  = Space ~> intParser(s"<chain-id>")
 
     Def.inputTaskDyn {
       val log = streams.value.log
@@ -3766,7 +3767,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val is = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val newUrl = urlParser( "<json-rpc-url>" ).parsed
+    val newUrl = (Space ~> urlParser( "<json-rpc-url>" )).parsed
     val oldValue = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
     oldValue.foreach { url =>
       val overwrite = syncOut {
@@ -3818,7 +3819,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeUrlOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val overrideUrl = urlParser( "<override-json-rpc-url>" ).parsed
+    val overrideUrl = (Space ~> urlParser( "<override-json-rpc-url>" )).parsed
     Mutables.NodeUrlOverrides.set( chainId, overrideUrl )
     log.info( s"The default node json-rpc URL for chain with ID ${chainId} has been overridden. The new overridden value '${overrideUrl}' will be used for all tasks." )
   }
@@ -4482,7 +4483,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val is  = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val mbAmount = bigIntParser("[optional-gas-limit-override]").?.parsed
+    val mbAmount = (Space ~> bigIntParser("[optional-gas-limit-override]")).?.parsed
 
     val ovr = {
       mbAmount match {
@@ -4535,7 +4536,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val is  = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val mbAmount = valueInWeiParser("[optional-gas-price-override-including-unit]").?.parsed
+    val mbAmount = (Space ~> valueInWeiParser("[optional-gas-price-override-including-unit]")).?.parsed
 
     val ovr = {
       mbAmount match {
@@ -4633,7 +4634,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethTransactionNonceOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val amount = bigIntParser("<nonce-override>").parsed
+    val amount = (Space ~> bigIntParser("<nonce-override>")).parsed
     Mutables.NonceOverrides.set( chainId, amount )
     log.info( s"Nonce override set to ${amount} for chain with ID ${chainId}." )
     log.info(  "Future transactions will use this value as a fixed nonce, until this override is explcitly unset with 'ethTransactionNonceOverrideDrop'." )
@@ -4669,7 +4670,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val rpi = (config / xethFindCacheRichParserInfo).value
 
-    val mbUnsignedTxnFromCommandLine : Option[EthTransaction.Unsigned] = bytesParser("[optional-signed-transaction-as-hex]").?.parsed.map { bytes =>
+    val mbUnsignedTxnFromCommandLine : Option[EthTransaction.Unsigned] = (Space ~> bytesParser("[optional-signed-transaction-as-hex]")).?.parsed.map { bytes =>
       RLP.decodeComplete[EthTransaction]( bytes ).assert match {
         case txn : EthTransaction.Unsigned => txn
         case _   : EthTransaction.Signed   => throw new SbtEthereumException( "The transaction data you provided is already signed. Cannot re-sign." )
@@ -5024,7 +5025,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       is.readLine( "Paste or type signed transaction as hex bytes, or type [return] to abort: ", mask = false ).map( _.decodeHexAsSeq )
     }
 
-    val txnBytesFromCommandLine = bytesParser("[optional-signed-transaction-as-hex]").?.parsed
+    val txnBytesFromCommandLine = (Space ~> bytesParser("[optional-signed-transaction-as-hex]")).?.parsed
     val txnBytes = ( txnBytesFromCommandLine orElse txnBytesFromFile orElse txnBytesFromInteraction ).getOrElse {
       throw new SbtEthereumException("Failed to find signed transaction bytes as a task argument, from a file, or via user interaction. Can't forward what we don't have.")
     }

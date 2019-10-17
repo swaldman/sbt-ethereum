@@ -30,6 +30,13 @@ import play.api.libs.json._
 
 // XXX: This whole mess needs to be reorganized, using readable for-comprehension parsers,
 //      and strict conventions about spaces and tokens
+
+/*
+ * A convention: 
+ *    genXXX parsers all begin with a leading space.
+ *    Others do not -- Any leading space must be specified at point-of-use
+ * 
+ */ 
 private [sbtethereum]
 object Parsers {
   private implicit lazy val logger = mlogger( this )
@@ -156,7 +163,7 @@ object Parsers {
 
   private [sbtethereum] val RawBigIntParser = (Digit.+).map( chars => BigInt( chars.mkString ) )
 
-  private [sbtethereum] def bigIntParser( tabHelp : String ) = token(OptSpace ~> RawBigIntParser, tabHelp)
+  private [sbtethereum] def bigIntParser( tabHelp : String ) = token(RawBigIntParser, tabHelp)
 
   private [sbtethereum] val RawAmountParser = ((Digit|literal('.')).+).map( chars => BigDecimal( chars.mkString ) )
 
@@ -168,31 +175,31 @@ object Parsers {
 
   private [sbtethereum] val RawEtherscanApiKeyParser = NotSpace
 
-  private [sbtethereum] def intParser( tabHelp : String ) = token(OptSpace) ~> token( RawIntParser, tabHelp )
+  private [sbtethereum] def intParser( tabHelp : String ) = token( RawIntParser, tabHelp )
 
-  private [sbtethereum] def etherscanApiKeyParser( tabHelp : String ) = token(OptSpace) ~> token( RawEtherscanApiKeyParser, tabHelp )
+  private [sbtethereum] def etherscanApiKeyParser( tabHelp : String ) = token( RawEtherscanApiKeyParser, tabHelp )
 
   //private [sbtethereum] def amountParser( tabHelp : String ) = token(OptSpace ~> (Digit|literal('.')).+, tabHelp).map( chars => BigDecimal( chars.mkString ) )
-  private [sbtethereum] def amountParser( tabHelp : String ) = token(OptSpace) ~> token(RawAmountParser, tabHelp)
+  private [sbtethereum] def amountParser( tabHelp : String ) = token(RawAmountParser, tabHelp)
 
-  private [sbtethereum] def bytesParser( tabHelp : String ) = token(OptSpace) ~> token(RawBytesParser, tabHelp)
+  private [sbtethereum] def bytesParser( tabHelp : String ) = token(RawBytesParser, tabHelp)
 
-  private [sbtethereum] def urlParser( tabHelp : String ) = token(OptSpace) ~> token(RawUrlParser, tabHelp)
+  private [sbtethereum] def urlParser( tabHelp : String ) = token(RawUrlParser, tabHelp)
 
   private [sbtethereum] val UnitParser = {
     val ( w, gw, s, f, e ) = ( "wei", "gwei", "szabo", "finney", "ether" );
-    token(OptSpace) ~> token( literal(w) | literal(gw) | literal(s) | literal(f) | literal(e) )
+    token( literal(w) | literal(gw) | literal(s) | literal(f) | literal(e) )
   }
 
   private [sbtethereum] def toValueInWei( amount : BigDecimal, unit : String ) : BigInt = rounded(amount * BigDecimal(Denominations.Multiplier.BigInt( unit )))
 
   private [sbtethereum] def valueInWeiParser( tabHelp : String ) : Parser[BigInt] = {
-    (amountParser( tabHelp ) ~ UnitParser).map { case ( amount, unit ) => toValueInWei( amount, unit ) }
+    (amountParser( tabHelp ) ~ (Space ~> UnitParser)).map { case ( amount, unit ) => toValueInWei( amount, unit ) }
   }
 
   private [sbtethereum] val SolcJVersionParser : Parser[Option[String]] = {
     val mandatory = compile.SolcJInstaller.SupportedVersions.foldLeft( failure("No supported versions") : Parser[String] )( ( nascent, next ) => nascent | literal(next) )
-    token(OptSpace) ~> token(mandatory.?)
+    token(mandatory.?)
   }
 
   private [sbtethereum]
@@ -480,7 +487,7 @@ object Parsers {
     val simpleInputsParser = inputsParser( ctor.inputs, None )
     val withMaybeValueParser = simpleInputsParser.flatMap { seq =>
       if ( ctor.payable ) {
-        valueInWeiParser("[ETH to pay, optional]").?.flatMap( mbv => success(  ( seq, mbv ) ) ) // useless flatmap rather than map
+        (Space ~> valueInWeiParser("[ETH to pay, optional]")).?.flatMap( mbv => success(  ( seq, mbv ) ) ) // useless flatmap rather than map
       } else {
         success( ( seq, None ) )
       }
@@ -504,29 +511,29 @@ object Parsers {
         case Some( seed ) => ctorArgsMaybeValueInWeiParser( seed )
       }
     }
-    val autoParser = OptSpace map { _ => SpawnInstruction.Auto }
-    token(OptSpace) ~> ( argsParser | autoParser )
+    val autoParser = success( SpawnInstruction.Auto )
+    token(OptSpace) ~> ( argsParser | autoParser ) // OptSpace here, because an empty-string should work to cause auto-deploy contracts to deploy
   }
 
   private [sbtethereum] def genAddressAliasParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) = {
-    token(OptSpace) ~> mbRpi.map( rpi => token( rawAddressAliasParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
+    token(Space) ~> mbRpi.map( rpi => token( rawAddressAliasParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
   private [sbtethereum] def genAliasWithAddressParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) = {
-    token(OptSpace) ~> mbRpi.map( rpi => token( rawAliasWithAddressParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
+    token(Space) ~> mbRpi.map( rpi => token( rawAliasWithAddressParser( rpi.addressAliases ).examples( rpi.addressAliases.keySet, false ) ) ).getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
   }
 
   private [sbtethereum] def genPermissiveAddressAliasOrAddressAsStringParser(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[String] = {
-    token(OptSpace) ~> (
+    token(Space) ~> (
       mbRpi.map { rpi =>
         token( ( RawAddressParser.map( _.hex ) | rawAddressAliasParser( rpi.addressAliases ) ) | ID ).examples( rpi.addressAliases.keySet + "<eth-address-hex>", false )
       }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
@@ -668,7 +675,7 @@ object Parsers {
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[( EthAddress, BigInt )] = {
-    genRecipientAddressParser( state, mbRpi ).flatMap( addr => valueInWeiParser("<amount>").map( valueInWei => Tuple2( addr, valueInWei ) ) )
+    genRecipientAddressParser( state, mbRpi ).flatMap( addr => (Space ~> valueInWeiParser("<amount>")).map( valueInWei => Tuple2( addr, valueInWei ) ) )
   }
 
   private [sbtethereum] def _genContractAddressOrCodeHashParser( prefix : String )(
@@ -733,7 +740,7 @@ object Parsers {
   ) : Parser[((EthAddress, jsonrpc.Abi.Function, immutable.Seq[String], jsonrpc.Abi, AbiLookup), Option[BigInt])] = {
     genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbRpi ).flatMap { afia =>
       if ( afia._2.payable ) {
-        valueInWeiParser("[ETH to pay, optional]").?.flatMap( mbv => success(  ( afia, mbv ) ) ) // useless flatmap rather than map
+        (Space ~> valueInWeiParser("[ETH to pay, optional]")).?.flatMap( mbv => success(  ( afia, mbv ) ) ) // useless flatmap rather than map
       } else {
         success( ( afia, None ) )
       }
@@ -742,22 +749,41 @@ object Parsers {
   private [sbtethereum] def genToAddressBytesAmountOptionalNonceParser(
     state : State,
     mbRpi : Option[RichParserInfo]
-  ) = {
-    val raw = createAddressParser( "<to-address>", mbRpi ).flatMap( addr => success(addr) ~ bytesParser("<txn-data-hex>") ~ valueInWeiParser("<amount-to-pay>") ~ bigIntParser("[optional nonce]").? )
-    (Space ~> raw).map { case ((( to, bytes ), amount), mbNonce ) => (to, bytes.toVector, amount, mbNonce ) }
+  ) : Parser[Tuple4[EthAddress,immutable.Seq[Byte],BigInt,Option[BigInt]]] = {
+    for {
+      _       <- Space
+      to      <- createAddressParser( "<to-address>", mbRpi )
+      _       <- Space
+      bytes   <- bytesParser("<txn-data-hex>")
+      _       <- Space
+      amount  <- valueInWeiParser("<amount-to-pay>")
+      mbNonce <- (Space ~> bigIntParser("[optional nonce]")).?
+    }
+    yield {
+      Tuple4(to, bytes.toVector, amount, mbNonce )
+    }
   }
   private [sbtethereum] def genToAddressBytesAmountParser(
     state : State,
     mbRpi : Option[RichParserInfo]
-  ) = {
-    val raw = createAddressParser( "<to-address>", mbRpi ).flatMap( addr => success(addr) ~ bytesParser("<txn-data-hex>") ~ valueInWeiParser("<amount-to-pay>") )
-    (Space ~> raw).map { case (( to, bytes ), amount) => (to, bytes.toVector, amount ) }
+  ) : Parser[Tuple3[EthAddress,immutable.Seq[Byte],BigInt]] = {
+    for {
+      _       <- Space
+      to      <- createAddressParser( "<to-address>", mbRpi )
+      _       <- Space
+      bytes   <- bytesParser("<txn-data-hex>")
+      _       <- Space
+      amount  <- valueInWeiParser("<amount-to-pay>")
+    }
+    yield {
+      Tuple3(to, bytes.toVector, amount)
+    }
   }
   private [sbtethereum] def genLiteralSetParser(
     state : State,
     mbLiterals : Option[immutable.Set[String]]
   ) : Parser[String] = {
-    OptSpace ~> token( mbLiterals.fold( failure("Failed to load acceptable values") : Parser[String] )( _.foldLeft( failure("No acceptable values") : Parser[String] )( ( nascent, next ) => nascent | literal(next) ) ) )
+    Space ~> token( mbLiterals.fold( failure("Failed to load acceptable values") : Parser[String] )( _.foldLeft( failure("No acceptable values") : Parser[String] )( ( nascent, next ) => nascent | literal(next) ) ) )
   }
 
   private def _aliasAbiSourceParser(
