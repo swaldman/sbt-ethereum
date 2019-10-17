@@ -3361,14 +3361,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val is = interactionService.value
       val log = streams.value.log
+      val chainId = findNodeChainIdTask(warn=true)(config).value
 
       val address = parser.parsed
-      val addressStr = s" ${address.hex}"
-
-      val s = state.value
-      val extract = Project.extract(s)
-      val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, addressStr, s) // config doesn't really matter here, since we provide hex, not a config dependent alias
-
+      val wallets = loadWalletsV3( log, chainId, address )
       val privateKey = findRawPrivateKey( log, is, address, wallets )
 
       syncOut {
@@ -3457,11 +3453,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     Def.inputTask {
       val log = streams.value.log
       val is = interactionService.value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
       val keystoreDirs = OnlyShoeboxKeystoreV3
-      val s = state.value
-      val extract = Project.extract(s)
       val inputAddress = parser.parsed
-      val (_, wallets) = extract.runInputTask(xethLoadWalletsV3For in config, s" ${inputAddress.hex}", s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
+      val wallets = loadWalletsV3( log, chainId, inputAddress )
 
       if ( wallets.isEmpty ) {
         unknownWallet( keystoreDirs )
@@ -5947,11 +5942,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
 
   private def xethLoadWalletsV3Task( config : Configuration ) : Initialize[Task[immutable.Set[wallet.V3]]] = Def.task {
-    val s = state.value
-    val addressStr = s" ${findAddressSenderTask(warn=true)(config).value.assert.hex}"
-    val extract = Project.extract(s)
-    val (_, result) = extract.runInputTask((xethLoadWalletsV3For in config), addressStr, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
-    result
+    val log     = streams.value.log
+    val chainId = findNodeChainIdTask(warn=true)(config).value
+    val address = findAddressSenderTask(warn=true)(config).value.assert
+    loadWalletsV3( log, chainId, address )
   }
 
   private def xethLoadWalletsV3ForTask( config : Configuration ) : Initialize[InputTask[immutable.Set[wallet.V3]]] = {
