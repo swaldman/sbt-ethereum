@@ -5,10 +5,13 @@ import compile.Compiler
 import signer._
 import util.warner._
 import util.ChainIdMutable
+import util.MLogToggler
 
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc, EthAddress, EthPrivateKey}
 
 import com.mchange.sc.v2.concurrent.Scheduler
+
+import com.mchange.v2.log.FallbackMLog
 
 import scala.collection._
 
@@ -22,7 +25,8 @@ private [sbtethereum] final class Mutables (
   scheduler            : Scheduler,
   keystoresV3          : immutable.Seq[File],
   publicTestAddresses  : immutable.Map[EthAddress,EthPrivateKey],
-  maxUnlockedAddresses : Int
+  maxUnlockedAddresses : Int,
+  fallbackMLogFilter   : FallbackMLog.Filter
 ) {
   // MT: internally thread-safe
   private val MainSignersManager = new SignersManager( scheduler, keystoresV3, publicTestAddresses, this.abiOverridesForChain, maxUnlockedAddresses )
@@ -56,6 +60,9 @@ private [sbtethereum] final class Mutables (
 
   // MT: internally thread-safe
   val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
+
+  // MT: internally thread-safe
+  private val MLogToggler = new MLogToggler( fallbackMLogFilter )
 
   // MT: protected by LocalGanache's lock
   private val LocalGanache = new AtomicReference[Option[Process]]( None )
@@ -142,6 +149,9 @@ private [sbtethereum] final class Mutables (
   }
 
   private [sbtethereum]
+  def mlogToggle() : Unit = MLogToggler.toggle()
+
+  private [sbtethereum]
   def reset() : Unit = {
     MainSignersManager.reset()
     withSessionSolidityCompilers( _.set( None ) )
@@ -155,6 +165,7 @@ private [sbtethereum] final class Mutables (
     NonceOverrides.reset()
     OneTimeWarner.resetAll()
     withLocalGanache( _.set( None ) )
+    MLogToggler.reset()
   }
 }
 
