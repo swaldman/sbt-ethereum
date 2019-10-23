@@ -175,6 +175,8 @@ object Parsers {
 
   private [sbtethereum] val RawEtherscanApiKeyParser = NotSpace
 
+  private [sbtethereum] val RawMLogDetailPrefixParser = StringBasic
+
   private [sbtethereum] def intParser( tabHelp : String ) = token( RawIntParser, tabHelp )
 
   private [sbtethereum] def etherscanApiKeyParser( tabHelp : String ) = token( RawEtherscanApiKeyParser, tabHelp )

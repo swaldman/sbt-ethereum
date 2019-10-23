@@ -60,7 +60,7 @@ private [sbtethereum] final class Mutables (
   val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
 
   // MT: internally thread-safe
-  private val MLogToggler = new util.MLogToggler.withMutableDetailPrefixes
+  val MLogToggler = new util.MLogToggler.withMutableDetailPrefixes
 
   // MT: protected by LocalGanache's lock
   private val LocalGanache = new AtomicReference[Option[Process]]( None )
@@ -145,9 +145,6 @@ private [sbtethereum] final class Mutables (
   ) : CautiousSigner = {
     MainSignersManager.findUpdateCacheCautiousSigner(state, log, is, chainId, address, priceFeed, currencyCode, description, autoRelockSeconds )
   }
-
-  private [sbtethereum]
-  def mlogToggle() : Unit = MLogToggler.toggle()
 
   private [sbtethereum]
   def reset() : Unit = {

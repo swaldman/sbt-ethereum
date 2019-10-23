@@ -7,26 +7,26 @@ import com.mchange.v2.log.{FallbackMLog,MLevel,MLog}
 import scala.collection._
 
 object MLogToggler {
-  private val DefaultDetailPrefixes = immutable.Set(
+  private val DefaultDetailPrefixes = immutable.SortedSet(
     "com.mchange.sc.v1.sbtethereum",
     "com.mchange.sc.v1.consuela",
     "com.mchange.sc.v2.jsonrpc"
   )
   class withMutableDetailPrefixes extends MLogToggler {
     //MT protected with this' lock
-    private [this] var _detailPrefixes : immutable.Set[String] = DefaultDetailPrefixes
+    private [this] var _detailPrefixes : immutable.SortedSet[String] = DefaultDetailPrefixes
 
     def detailPrefixes : immutable.Set[String] = this.synchronized( _detailPrefixes )
 
-    def updateDetailPrefixes( prefixes : immutable.Set[String] ) : Unit = this.synchronized {
+    private def updateDetailPrefixes( prefixes : immutable.SortedSet[String] ) : Unit = this.synchronized {
       this._detailPrefixes = prefixes
     }
 
-    def appendDetailPrefix( prefix : String ) : Unit = this.synchronized {
+    def addDetailPrefix( prefix : String ) : Unit = this.synchronized {
       this._detailPrefixes = (this._detailPrefixes + prefix)
     }
 
-    def clearDetailPrefixes() : Unit = updateDetailPrefixes( immutable.Set.empty[String] )
+    def clearDetailPrefixes() : Unit = updateDetailPrefixes( immutable.SortedSet.empty[String] )
 
     def resetDetailPrefixes() : Unit = updateDetailPrefixes( DefaultDetailPrefixes )
 
@@ -66,16 +66,19 @@ abstract class MLogToggler {
 
   var replaced : MLog = null;
 
-  def toggle() : Unit = this.synchronized {
+  /** @return true if we are debugging, ie using our FallbackMLog, false otherwise */
+  def toggle() : Boolean = this.synchronized {
     val current = MLog.instance()
     if ( current == fallback ) {
       assert( replaced != null, s"We should have a reference to the MLog instance we replaced!" )
       MLog.forceMLog( replaced );
       replaced = null;
+      false
     }
     else {
       assert( replaced == null, s"The default MLog is in use, we should not hold a replacement." )
       replaced = MLog.forceMLog( fallback )
+      true
     }
   }
 

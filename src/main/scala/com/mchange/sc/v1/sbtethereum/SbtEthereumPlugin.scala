@@ -422,7 +422,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethUpdateSessionSolidityCompilers = taskKey[immutable.SortedMap[String,Compiler.Solidity]]("Finds and tests potential Solidity compilers to see which is available.")
 
     // mlog tasks
-    val mlogToggle = taskKey[Unit]("Toggles diversion of MLog (extra logging) output to stderr, rather than 'sbt-ethereum.log', for quick debugging.")
+    val mlogToggle              = taskKey[Unit] ("Toggles diversion of MLog (extra logging) output to stderr, rather than 'sbt-ethereum.log', for quick debugging.")
+    val mlogDebugPrefixesAdd    = inputKey[Unit]("Adds a prefix for loggers whose below-INFO log messages will be printed to stderr when mlogging is toggled for debugging.")
+    val mlogDebugPrefixesClear  = taskKey[Unit] ("Clears all (including all default) prefixes for loggers whose below-INFO log messages will be printed to stderr when mlogging is toggled for debugging.")
+    val mlogDebugPrefixesDrop   = inputKey[Unit]("Drops a prefix for loggers whose below-INFO log messages will be printed to stderr when mlogging is toggled for debugging.")
+    val mlogDebugPrefixesReset  = taskKey[Unit] ("Resets to a default set prefixes for loggers whose below-INFO log messages will be printed to stderr when mlogging is toggled for debugging.")
 
     // unprefixed keys
 
@@ -1143,6 +1147,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     xethUpdateSessionSolidityCompilers in Compile := { xethUpdateSessionSolidityCompilersTask.value },
 
     mlogToggle := { mlogToggleTask.value },
+
+    mlogDebugPrefixesAdd := { mlogDebugPrefixesAddTask.evaluated },
+
+    mlogDebugPrefixesClear := { mlogDebugPrefixesClearTask.value },
+
+    mlogDebugPrefixesDrop := { mlogDebugPrefixesDropTask.evaluated },
+
+    mlogDebugPrefixesReset := { mlogDebugPrefixesResetTask.value },
 
     compileSolidity in Compile := { compileSolidityTask( Compile ).value },
 
@@ -2185,7 +2197,43 @@ object SbtEthereumPlugin extends AutoPlugin {
   // mlog tasks
 
   private def mlogToggleTask : Initialize[Task[Unit]] = Def.task {
-    Mutables.mlogToggle()
+    val log = streams.value.log
+    val debugging = Mutables.MLogToggler.toggle()
+    def debuggingMessageFragment = {
+      val detailPrefixes = Mutables.MLogToggler.detailPrefixes.mkString(", ")
+      s"stderr for debugging, with detailed logging for ${detailPrefixes}."
+    }
+    log.info( "MLog output toggled to " + (if (debugging) debuggingMessageFragment else "its default destination (usually sbt-ethereum.log)."))
+  }
+
+  private def mlogDebugPrefixesAddTask : Initialize[InputTask[Unit]] = Def.inputTask {
+    val log = streams.value.log
+    val prefix = (Space ~> RawMLogDetailPrefixParser).parsed
+    Mutables.MLogToggler.addDetailPrefix( prefix )
+    val detailPrefixes = Mutables.MLogToggler.detailPrefixes.mkString(", ")
+    log.info( s"Debug prefix ${prefix} added. Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+  }
+
+  private def mlogDebugPrefixesClearTask : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+    Mutables.MLogToggler.clearDetailPrefixes()
+    assert( Mutables.MLogToggler.detailPrefixes.isEmpty, "After clearing, detailPrefixes should be empty." )
+    log.info( "Debug prefixes cleared. Use 'mlogDebugPrefixesAdd' to define some." )
+  }
+
+  private def mlogDebugPrefixesDropTask : Initialize[InputTask[Unit]] = Def.inputTask {
+    val log = streams.value.log
+    val prefix = (Space ~> RawMLogDetailPrefixParser).examples( Mutables.MLogToggler.detailPrefixes, true ).parsed
+    Mutables.MLogToggler.addDetailPrefix( prefix )
+    val detailPrefixes = Mutables.MLogToggler.detailPrefixes.mkString(", ")
+    log.info( s"Debug prefix ${prefix} added. Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+  }
+
+  private def mlogDebugPrefixesResetTask : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+    Mutables.MLogToggler.resetDetailPrefixes()
+    val detailPrefixes = Mutables.MLogToggler.detailPrefixes.mkString(", ")
+    log.info( s"Debug prefixes reset. Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
   }
 
   // eth tasks
