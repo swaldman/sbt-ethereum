@@ -93,39 +93,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val MaxUnlockedAddresses = 3
 
-  private val SbtKeyLoggerNamePrefix = "sbtkey."
-
-  /* 
-   * we generally echo sbt task output through an MLog logger so that these end up in sbt-ethereum.log as
-   * well as on the console
-   * 
-   * but we don't want these to get to the stderr-outputting fallback logger when we have this turned on
-   * debugging. these messages are logged to the console already, we don't need them to be logged there
-   * twice.
-   */
-  private val FallbackMLogFilter = new com.mchange.v2.log.FallbackMLog.Filter {
-    private val DetailPackages = immutable.Set(
-      "com.mchange.sc.v1.sbtethereum",
-      "com.mchange.sc.v1.consuela",
-      "com.mchange.sc.v2.jsonrpc"
-    )
-
-    private def logDetails( name : String ) = {
-      name != null && DetailPackages.find( pfx => name.startsWith( pfx ) ).nonEmpty
-    }
-
-    def isLoggable( level : com.mchange.v2.log.MLevel, loggerName : String, srcClass : String, srcMeth : String, msg : String, params : Array[Object], t : Throwable) : Boolean = {
-      val loggerNameOkay = loggerName == null || !loggerName.startsWith( SbtKeyLoggerNamePrefix )
-      loggerNameOkay && ( level.isLoggable( com.mchange.v2.log.MLevel.INFO ) || logDetails( loggerName ) )
-    }
-  }
-
   private val Mutables = new mutables.Mutables (
     scheduler            = MainScheduler,
     keystoresV3          = OnlyShoeboxKeystoreV3,
     publicTestAddresses  = PublicTestAddresses,
-    maxUnlockedAddresses = MaxUnlockedAddresses,
-    fallbackMLogFilter   = FallbackMLogFilter
+    maxUnlockedAddresses = MaxUnlockedAddresses
   )
 
   private def resetAllState() : Unit = {

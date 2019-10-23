@@ -48,6 +48,8 @@ package object sbtethereum {
     lazy val formatted   : String = s"${denominated} ${denomination.unitName}"
   }
 
+  private [sbtethereum] val SbtKeyLoggerNamePrefix = "sbtkey."
+
   private [sbtethereum] val Zero256 = Unsigned256( 0 )
   private [sbtethereum] val One256  = Unsigned256( 1 )
 

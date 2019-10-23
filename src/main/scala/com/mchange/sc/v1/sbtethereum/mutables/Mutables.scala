@@ -5,7 +5,6 @@ import compile.Compiler
 import signer._
 import util.warner._
 import util.ChainIdMutable
-import util.MLogToggler
 
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc, EthAddress, EthPrivateKey}
 
@@ -25,8 +24,7 @@ private [sbtethereum] final class Mutables (
   scheduler            : Scheduler,
   keystoresV3          : immutable.Seq[File],
   publicTestAddresses  : immutable.Map[EthAddress,EthPrivateKey],
-  maxUnlockedAddresses : Int,
-  fallbackMLogFilter   : FallbackMLog.Filter
+  maxUnlockedAddresses : Int
 ) {
   // MT: internally thread-safe
   private val MainSignersManager = new SignersManager( scheduler, keystoresV3, publicTestAddresses, this.abiOverridesForChain, maxUnlockedAddresses )
@@ -62,7 +60,7 @@ private [sbtethereum] final class Mutables (
   val OneTimeWarner = new OneTimeWarner[OneTimeWarnerKey]
 
   // MT: internally thread-safe
-  private val MLogToggler = new MLogToggler( fallbackMLogFilter )
+  private val MLogToggler = new util.MLogToggler.withMutableDetailPrefixes
 
   // MT: protected by LocalGanache's lock
   private val LocalGanache = new AtomicReference[Option[Process]]( None )
