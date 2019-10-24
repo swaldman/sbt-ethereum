@@ -4,7 +4,7 @@ import sbt._
 import sbt.Keys._
 import sbt.plugins.JvmPlugin
 import sbt.Def.Initialize
-import sbt.complete.DefaultParsers.Space // all other parsers from util.Parser
+import sbt.complete.DefaultParsers.{token,Space} // all other parsers from util.Parser
 
 import sjsonnew._
 import BasicJsonProtocol._
@@ -426,7 +426,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mlogDebugPrefixesAdd    = inputKey[Unit]("Adds a prefix for loggers whose below-INFO log messages will be printed to stderr when mlogging is toggled for debugging.")
     val mlogDebugPrefixesClear  = taskKey[Unit] ("Clears all (including all default) prefixes for loggers whose below-INFO log messages will be printed to stderr when mlogging is toggled for debugging.")
     val mlogDebugPrefixesDrop   = inputKey[Unit]("Drops a prefix for loggers whose below-INFO log messages will be printed to stderr when mlogging is toggled for debugging.")
+    val mlogDebugPrefixesList   = taskKey[Unit] ("Lists the current set of prefixes for loggers whose below-INFO log messages will be printed to stderr when mlogging is toggled for debugging.")
     val mlogDebugPrefixesReset  = taskKey[Unit] ("Resets to a default set prefixes for loggers whose below-INFO log messages will be printed to stderr when mlogging is toggled for debugging.")
+
+    // xmlog tasks
+    val xmlogFindCacheDebugPrefixes         = taskKey[immutable.SortedSet[String]]("Finds and caches the debug prefixes.")
+    val xmlogTriggerDirtyDebugPrefixesCache = taskKey[Unit]("A no-op that triggers refresh of debug prefixes cache.")
 
     // unprefixed keys
 
@@ -1154,7 +1159,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     mlogDebugPrefixesDrop := { mlogDebugPrefixesDropTask.evaluated },
 
+    mlogDebugPrefixesList := { mlogDebugPrefixesListTask.value },
+
     mlogDebugPrefixesReset := { mlogDebugPrefixesResetTask.value },
+
+    xmlogFindCacheDebugPrefixes := { (xmlogFindCacheDebugPrefixesTask.storeAs(xmlogFindCacheDebugPrefixes).triggeredBy( xmlogTriggerDirtyDebugPrefixesCache)).value },
+
+    xmlogTriggerDirtyDebugPrefixesCache := Def.task{},
 
     compileSolidity in Compile := { compileSolidityTask( Compile ).value },
 
@@ -1254,8 +1265,9 @@ object SbtEthereumPlugin extends AutoPlugin {
         val state5 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state4    )
         val state6 = attemptAdvanceStateWithTask( xethFindCacheRichParserInfo in Compile,              state5    )
         val state7 = attemptAdvanceStateWithTask( xethFindCacheRichParserInfo in Test,                 state6    )
-        val state8 = attemptAdvanceStateWithTask( xethOnLoadBanner,                                    state7    )
-        state8
+        val state8 = attemptAdvanceStateWithTask( xmlogFindCacheDebugPrefixes,                         state7    )
+        val state9 = attemptAdvanceStateWithTask( xethOnLoadBanner,                                    state8    )
+        state9
       }
       newF
     },
@@ -2206,34 +2218,89 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( "MLog output toggled to " + (if (debugging) debuggingMessageFragment else "its default destination (usually sbt-ethereum.log)."))
   }
 
-  private def mlogDebugPrefixesAddTask : Initialize[InputTask[Unit]] = Def.inputTask {
+  private def xmlogFindCacheDebugPrefixesTask : Initialize[Task[immutable.SortedSet[String]]] = Def.task {
+    Mutables.MLogToggler.detailPrefixes
+  }
+
+  private def mlogDebugPrefixesAddTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
     val log = streams.value.log
     val prefix = (Space ~> RawMLogDetailPrefixParser).parsed
-    Mutables.MLogToggler.addDetailPrefix( prefix )
+    val check = Mutables.MLogToggler.addDetailPrefix( prefix )
     val detailPrefixes = Mutables.MLogToggler.detailPrefixes.mkString(", ")
-    log.info( s"Debug prefix ${prefix} added. Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+    if (check) {
+      log.info( s"Debug prefix ${prefix} added." )
+      log.info( s"Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+      xmlogTriggerDirtyDebugPrefixesCache
+    }
+    else {
+      log.warn( s"Debug prefix '${prefix}' was already in the set. No change has been made.")
+      log.warn( s"Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+      EmptyTask
+    }
   }
 
-  private def mlogDebugPrefixesClearTask : Initialize[Task[Unit]] = Def.task {
+  private def mlogDebugPrefixesClearTask : Initialize[Task[Unit]] = Def.taskDyn {
     val log = streams.value.log
-    Mutables.MLogToggler.clearDetailPrefixes()
+    val check = Mutables.MLogToggler.clearDetailPrefixes()
     assert( Mutables.MLogToggler.detailPrefixes.isEmpty, "After clearing, detailPrefixes should be empty." )
-    log.info( "Debug prefixes cleared. Use 'mlogDebugPrefixesAdd' to define some." )
+    if ( check ) {
+      log.info( "Debug prefixes cleared. Use 'mlogDebugPrefixesAdd' to define some." )
+      xmlogTriggerDirtyDebugPrefixesCache
+    }
+    else {
+      log.info( "Debug prefixes were already empty. Nothing to be done." )
+      EmptyTask
+    }
   }
 
-  private def mlogDebugPrefixesDropTask : Initialize[InputTask[Unit]] = Def.inputTask {
-    val log = streams.value.log
-    val prefix = (Space ~> RawMLogDetailPrefixParser).examples( Mutables.MLogToggler.detailPrefixes, true ).parsed
-    Mutables.MLogToggler.addDetailPrefix( prefix )
-    val detailPrefixes = Mutables.MLogToggler.detailPrefixes.mkString(", ")
-    log.info( s"Debug prefix ${prefix} added. Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+  private def mlogDebugPrefixesDropTask : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser( xmlogFindCacheDebugPrefixes ) { (s : State, mbPrefixSet : Option[immutable.SortedSet[String]] ) =>
+      mbPrefixSet match {
+        case Some( prefixSet ) => (token(Space) ~> token(RawMLogDetailPrefixParser).examples( prefixSet, true ))
+        case None              => (token(Space) ~> token(RawMLogDetailPrefixParser))
+      }
+    }
+    Def.inputTaskDyn {
+      val log = streams.value.log
+      val prefix = parser.parsed
+      val check = Mutables.MLogToggler.removeDetailPrefix( prefix )
+      val detailPrefixes = Mutables.MLogToggler.detailPrefixes.mkString(", ")
+      if (check) {
+        log.info( s"Debug prefix ${prefix} dropped." )
+        log.info( s"Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+        xmlogTriggerDirtyDebugPrefixesCache
+      }
+      else {
+        log.warn( s"Debug prefix '${prefix}' was not in the set to be dropped. No change has been made." )
+        log.warn( s"Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+        EmptyTask
+      }
+    }
   }
 
-  private def mlogDebugPrefixesResetTask : Initialize[Task[Unit]] = Def.task {
+  private def mlogDebugPrefixesListTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    Mutables.MLogToggler.resetDetailPrefixes()
+    log.info( "mlog debug-to-stderr prefixes:" )
+    Mutables.MLogToggler.detailPrefixes.foreach { prefix =>
+      log.info( s"  + ${prefix}" )
+    }
+  }
+  
+
+  private def mlogDebugPrefixesResetTask : Initialize[Task[Unit]] = Def.taskDyn {
+    val log = streams.value.log
+    val check = Mutables.MLogToggler.resetDetailPrefixes()
     val detailPrefixes = Mutables.MLogToggler.detailPrefixes.mkString(", ")
-    log.info( s"Debug prefixes reset. Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+    if ( check ) {
+      log.info(  "Debug prefixes reset to built-in defaults." )
+      log.info( s"Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+      xmlogTriggerDirtyDebugPrefixesCache
+    }
+    else {
+      log.info(  "Debug prefixes were already just built-in defaults. Nothing to do" )
+      log.info( s"Current logger prefixes set for detailed debugging: ${detailPrefixes}." )
+      EmptyTask
+    }
   }
 
   // eth tasks

@@ -16,19 +16,29 @@ object MLogToggler {
     //MT protected with this' lock
     private [this] var _detailPrefixes : immutable.SortedSet[String] = DefaultDetailPrefixes
 
-    def detailPrefixes : immutable.Set[String] = this.synchronized( _detailPrefixes )
+    def detailPrefixes : immutable.SortedSet[String] = this.synchronized( _detailPrefixes )
 
-    private def updateDetailPrefixes( prefixes : immutable.SortedSet[String] ) : Unit = this.synchronized {
-      this._detailPrefixes = prefixes
+    private def updateDetailPrefixes( prefixes : immutable.SortedSet[String] ) : Boolean = this.synchronized {
+      if ( this._detailPrefixes != prefixes ) {
+        this._detailPrefixes = prefixes
+        true
+      }
+      else {
+        false
+      }
     }
 
-    def addDetailPrefix( prefix : String ) : Unit = this.synchronized {
-      this._detailPrefixes = (this._detailPrefixes + prefix)
+    def addDetailPrefix( prefix : String ) : Boolean = this.synchronized {
+      updateDetailPrefixes(this._detailPrefixes + prefix)
     }
 
-    def clearDetailPrefixes() : Unit = updateDetailPrefixes( immutable.SortedSet.empty[String] )
+    def removeDetailPrefix( prefix : String ) : Boolean = this.synchronized {
+      updateDetailPrefixes(this._detailPrefixes - prefix)
+    }
 
-    def resetDetailPrefixes() : Unit = updateDetailPrefixes( DefaultDetailPrefixes )
+    def clearDetailPrefixes() : Boolean = updateDetailPrefixes( immutable.SortedSet.empty[String] )
+
+    def resetDetailPrefixes() : Boolean = updateDetailPrefixes( DefaultDetailPrefixes )
 
     private def logDetails( name : String ) = this.synchronized {
       name != null && _detailPrefixes.find( pfx => name.startsWith( pfx ) ).nonEmpty

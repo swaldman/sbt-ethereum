@@ -39,6 +39,17 @@ object SJsonNewFormats {
     }
   }
 
+  implicit val StringKeyedSortedSetFormat = new JsonFormat[immutable.SortedSet[String]]{
+    val inner = setFormat[String]
+
+    def write[J](m : immutable.SortedSet[String], builder : Builder[J]): Unit = {
+      inner.write(m, builder)
+    }
+    def read[J](jsOpt : Option[J], unbuilder : Unbuilder[J]) : immutable.SortedSet[String] = {
+      immutable.TreeSet.empty[String] ++ inner.read( jsOpt, unbuilder )
+    }
+  }
+
   implicit val EthAddressIso = rlpSerializingIso[EthAddress]
 
   implicit val EthHashIso = rlpSerializingIso[EthHash]
