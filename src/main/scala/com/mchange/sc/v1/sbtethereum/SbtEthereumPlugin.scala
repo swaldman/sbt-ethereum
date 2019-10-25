@@ -175,8 +175,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   object autoImport {
 
     // settings
-    val enscfgNameServiceAddress        = settingKey[EthAddress]("The address of the ENS name service smart contract")
-    val enscfgNameServicePublicResolver = settingKey[EthAddress]("The address of a publically accessible resolver (if any is available) that can be used to map names to addresses.")
+    val enscfgNameServiceAddress         = settingKey[EthAddress]("The address of the ENS name service smart contract")
+    val enscfgNameServiceDefaultResolver = settingKey[String]("The address, or end-name, or even local alias of an accessible resolver (if any is available) that can be used to map names to addresses.")
 
     val ethcfgAutoDeployContracts           = settingKey[Seq[String]] ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
     val ethcfgBaseCurrencyCode              = settingKey[String]      ("Currency code for currency in which prices of ETH and other tokens should be displayed.")
@@ -474,7 +474,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     enscfgNameServiceAddress in Compile := ens.StandardNameServiceAddress,
 
-    enscfgNameServicePublicResolver in Compile := ens.StandardNameServicePublicResolver,
+    enscfgNameServiceDefaultResolver in Compile := ens.StandardNameServiceDefaultPublicResolverName,
 
     // ethcfg settings
 
@@ -1303,6 +1303,24 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val EmptyTask : Initialize[Task[Unit]] = Def.task( () )
 
+  private def fetchDefaultDefaultResolverAddress( config : Configuration ) : Initialize[Task[Option[EthAddress]]] = Def.task {
+    val log = streams.value.log
+    val mbResolverNameOrAddress = ( config / enscfgNameServiceDefaultResolver).?.value
+    val rpi = ( config / xethFindCacheRichParserInfo ).value
+    mbResolverNameOrAddress.flatMap { resolverNameOrAddress => 
+      val addressParser = createAddressParser( "<you-shouldn't-be-seeing-this>", Some(rpi) )
+      sbt.complete.Parser.parse( resolverNameOrAddress, addressParser ) match {
+        case Left( whatev ) => {
+          log.warn( s"Could not interpret putative address '${resolverNameOrAddress}', error: '${whatev}'." )
+          None
+        }
+        case Right( address ) => {
+          Some(address)
+        }
+      }
+    }
+  }
+
   private def logSessionInfoTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=false)(config).value
@@ -1601,7 +1619,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId              = findNodeChainIdTask(warn=true)(config).value
       val ensClient            = ( config / xensClient).value
       val is                   = interactionService.value
-      val mbDefaultResolver    = ( config / enscfgNameServicePublicResolver).?.value
+      val mbDefaultResolver    = fetchDefaultDefaultResolverAddress( config ).value
       val ( epp, address )     = parser.parsed
       val ensName              = epp.fullName
       val nonceOverride        = logFetchNonceOverrideBigInt( Some( log ), chainId )
@@ -1613,12 +1631,12 @@ object SbtEthereumPlugin extends AutoPlugin {
         case e : ens.NoResolverSetException => {
           val defaultResolver = mbDefaultResolver.getOrElse( throw e )
           val setAndRetry = {
-            log.warn( s"No resolver has been set for '${ensName}'. If you wish, you can attach it to the default public resolver and then set the address." )
+            log.warn( s"No resolver has been set for '${ensName}'. If you wish, you can attach it to the default resolver and then set the address." )
             nonceOverride.foreach { nonce =>
               log.warn( s"Note: The currently set nonce override of ${nonce} will be ignored. To control the nonce, set the resolver separately, then retry." )
             }
             kludgeySleepForInteraction()
-            queryYN( is, s"Do you wish to use the default public resolver '${hexString(defaultResolver)}'? [y/n] " ) // syncOut internal
+            queryYN( is, s"Do you wish to use the default resolver '${hexString(defaultResolver)}'? [y/n] " ) // syncOut internal
           }
           if ( setAndRetry ) {
             log.info( s"Preparing transaction to set the resolver." )

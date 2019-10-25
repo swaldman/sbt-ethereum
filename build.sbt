@@ -32,7 +32,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   sbtPlugin := true,
   libraryDependencies ++= Seq(
     consuelaArtifact,
-    "com.mchange"    %% "etherscan-utils"       % "0.0.4",
+    "com.mchange"    %% "etherscan-utils"       % "0.0.5-SNAPSHOT" changing(),
     "com.mchange"    %% "mlog-scala"            % "0.3.13",
     "com.mchange"    %% "literal"               % "0.1.0",
     "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
