@@ -10,8 +10,11 @@ import sbt.complete.{FixedSetExamples,Parser}
 import sbt.complete.DefaultParsers._
 
 import com.mchange.sc.v1.consuela._
+import com.mchange.sc.v1.consuela.bitcoin.BtcAddress
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc,specification,EthAddress,EthChainId,EthHash}
 import specification.Denominations
+
+import com.mchange.sc.v1.consuela.slip.Slip44
 
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v2.ens.NoResolverSetException
@@ -44,6 +47,8 @@ object Parsers {
   private val ZWSP = "\u200B" // HACK: we add zero-width space to parser examples lists where we don't want autocomplete to apply to unique examples
 
   private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
+
+  private val RawBtcAddressParser = NotSpace.flatMap( chars => Failable( success( BtcAddress( chars.mkString ) ) ).recover( f => failure( f.message ) ).assert )
 
   private [sbtethereum] val RawAddressAliasParser = ID
 
@@ -573,6 +578,79 @@ object Parsers {
       failure( "Failed to retrieve RichParserInfo." )
     }
   }
+
+  private val MulticoinSupportedSymbols = "ETH" :: "BTC" :: Nil
+
+  private val Slip44CoinParser = {
+    val special = {
+      for {
+        symbol <- (MulticoinSupportedSymbols ++ MulticoinSupportedSymbols.map( _.toLowerCase )).map( literal ).reduceLeft( _ | _ )
+      }
+      yield {
+        symbol.toLowerCase match {
+          // see https://github.com/satoshilabs/slips/blob/master/slip-0044.md
+          case "eth" => ( Some("ETH"), Slip44.Index.Ethereum )
+          case "btc" => ( Some("BTC"), Slip44.Index.Bitcoin )
+          case _     => sys.error( s"Cannot parse unexpected coin symbol '${symbol}'" )
+        }
+      }
+    }
+    special | RawIntParser.map( i => ( None, i ) )
+  }
+
+  private val TokenedBinaryAddressFormatParser = token(literal("binary-format:") ~> RawBytesParser.map( bytes => ( None, bytes ) )).examples( "binary-format:<hex>", "bc1<bech32-data>", "<base58-data>" )
+
+  private def multicoinAddressParserFor( slip44Index : Int, rpi : RichParserInfo ) : Parser[Tuple2[Option[AnyRef],immutable.Seq[Byte]]] = {
+    slip44Index match {
+      case Slip44.Index.Ethereum => createAddressParser( "<eth-address>", Some(rpi) ).map( addr => ( Some(addr), addr.bytes.widen ) ) | TokenedBinaryAddressFormatParser
+      case Slip44.Index.Bitcoin  =>  RawBtcAddressParser.examples("<btc-address>").map( addr => ( Some(addr), addr.toScriptPubKey ) ) | TokenedBinaryAddressFormatParser
+      case _ =>  TokenedBinaryAddressFormatParser
+    }
+  }
+
+  private [sbtethereum]
+  def genMulticoinEnsPathParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,Option[String],Int)] = {
+    mbRpi.map { rpi =>
+
+      // grr... Parser doesn't support pattern matches in for
+      for {
+        _ <- token(Space)
+        coinTup  <- token( Slip44CoinParser ).examples( MulticoinSupportedSymbols : _*)
+        mbCoinSymbol = coinTup._1
+        coinId       = coinTup._2
+        _ <- token(Space)
+        ensPath <- ensPathParser( rpi.exampleNameServiceTld )
+      }
+      yield {
+        Tuple3( ensPath, mbCoinSymbol, coinId )
+      }
+    } getOrElse {
+      failure( "Failed to retrieve RichParserInfo." )
+    }
+  }
+
+  private [sbtethereum]
+  def genMulticoinEnsPathAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,Option[String],Int,Option[AnyRef],immutable.Seq[Byte])] = {
+    mbRpi.map { rpi =>
+
+      // grr... Parser doesn't support pattern matches in for
+      for {
+        mainTup <- genMulticoinEnsPathParser( state, mbRpi )
+        ensPath      = mainTup._1
+        mbCoinSymbol = mainTup._2
+        coinId       = mainTup._3
+        _ <- token(Space)
+        addressTup <- multicoinAddressParserFor( coinId, rpi )
+      }
+      yield {
+        val ( mbAddress, addressBinary ) = addressTup
+        Tuple5( ensPath, mbCoinSymbol, coinId, mbAddress, addressBinary )
+      }
+    } getOrElse {
+      failure( "Failed to retrieve RichParserInfo." )
+    }
+  }
+  
 
   private [sbtethereum] def genAddressParser(tabHelp : String)( state : State, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
     Space ~> createAddressParser( tabHelp, mbRpi )

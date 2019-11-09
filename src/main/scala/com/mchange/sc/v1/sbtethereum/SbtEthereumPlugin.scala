@@ -43,6 +43,7 @@ import com.mchange.v2.log.log4j2.MLogAppender
 import com.mchange.sc.v2.util.Platform
 import com.mchange.sc.v1.log.MLevel._
 import com.mchange.sc.v1.consuela._
+import com.mchange.sc.v1.consuela.bitcoin.BtcAddress
 import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.consuela.ethereum._
 import jsonrpc.{Abi,Client,MapStringCompilationContractFormat}
@@ -55,6 +56,7 @@ import com.mchange.sc.v1.consuela.ethereum.stub
 import com.mchange.sc.v1.consuela.ethereum.jsonrpc.Invoker
 import com.mchange.sc.v1.consuela.ethereum.clients
 import com.mchange.sc.v1.consuela.ethereum.encoding.RLP
+import com.mchange.sc.v1.consuela.slip.Slip44
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.texttable
 import scala.annotation.tailrec
@@ -218,20 +220,22 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // tasks
 
-    val ensAddressLookup    = inputKey[Option[EthAddress]]("Prints the address given ens name should resolve to, if one has been set.")
-    val ensAddressSet       = inputKey[Unit]              ("Sets the address a given ens name should resolve to.")
-    val ensMigrateRegistrar = inputKey[Unit]              ("Migrates a name from a predecessor registar (e.g. the original auction registrar) to any successor registrar.")
-    val ensNameExtend       = inputKey[Unit]              ("Extends the registration period of a given ENS name.")
-    val ensNameHashes       = inputKey[Unit]              ("Prints the name hash and label hash associated with an ENS name.")
-    val ensNamePrice        = inputKey[Unit]              ("Estimate the cost of renting (registering / renewing) a name for a period of time.")
-    val ensNameRegister     = inputKey[Unit]              ("Registers a given ENS name.")
-    val ensNameStatus       = inputKey[Unit]              ("Prints the current status of a given name.")
-    val ensOwnerLookup      = inputKey[Option[EthAddress]]("Prints the address of the owner of a given name, if the name has an owner.")
-    val ensOwnerSet         = inputKey[Unit]              ("Sets the owner of a given name to an address.")
-    val ensResolverLookup   = inputKey[Option[EthAddress]]("Prints the address of the resolver associated with a given name.")
-    val ensResolverSet      = inputKey[Unit]              ("Sets the resolver for a given name to an address.")
-    val ensSubnodeCreate    = inputKey[Unit]              ("Creates a subnode (if it does not already exist) beneath an existing ENS name with the current sender as its owner.")
-    val ensSubnodeOwnerSet  = inputKey[Unit]              ("Sets the owner of a name beneath an ENS name (creating the 'subnode' if it does not already exist).")
+    val ensAddressLookup          = inputKey[Option[EthAddress]]               ("Prints the address given ens name should resolve to, if one has been set.")
+    val ensAddressSet             = inputKey[Unit]                             ("Sets the address a given ens name should resolve to.")
+    val ensAddressMulticoinLookup = inputKey[Option[(Int,immutable.Seq[Byte])]]("For a specified, not-necessarily-Ethereum coin, prints the address given ens name should resolve to, if one has been set.")
+    val ensAddressMulticoinSet    = inputKey[Unit]                             ("For a specified, not-necessarily-Ethereum coin, sets the address a given ens name should resolve to.")
+    val ensMigrateRegistrar       = inputKey[Unit]                             ("Migrates a name from a predecessor registar (e.g. the original auction registrar) to any successor registrar.")
+    val ensNameExtend             = inputKey[Unit]                             ("Extends the registration period of a given ENS name.")
+    val ensNameHashes             = inputKey[Unit]                             ("Prints the name hash and label hash associated with an ENS name.")
+    val ensNamePrice              = inputKey[Unit]                             ("Estimate the cost of renting (registering / renewing) a name for a period of time.")
+    val ensNameRegister           = inputKey[Unit]                             ("Registers a given ENS name.")
+    val ensNameStatus             = inputKey[Unit]                             ("Prints the current status of a given name.")
+    val ensOwnerLookup            = inputKey[Option[EthAddress]]               ("Prints the address of the owner of a given name, if the name has an owner.")
+    val ensOwnerSet               = inputKey[Unit]                             ("Sets the owner of a given name to an address.")
+    val ensResolverLookup         = inputKey[Option[EthAddress]]               ("Prints the address of the resolver associated with a given name.")
+    val ensResolverSet            = inputKey[Unit]                             ("Sets the resolver for a given name to an address.")
+    val ensSubnodeCreate          = inputKey[Unit]                             ("Creates a subnode (if it does not already exist) beneath an existing ENS name with the current sender as its owner.")
+    val ensSubnodeOwnerSet        = inputKey[Unit]                             ("Sets the owner of a name beneath an ENS name (creating the 'subnode' if it does not already exist).")
 
     val etherscanApiKeyDrop  = taskKey[Unit]  ("Removes the API key for etherscan services from the sbt-ethereum database.")
     val etherscanApiKeyPrint = taskKey[Unit]  ("Reveals the currently set API key for etherscan services, if any.")
@@ -566,6 +570,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     ensAddressSet in Compile := { ensAddressSetTask( Compile ).evaluated },
 
     ensAddressSet in Test := { ensAddressSetTask( Test ).evaluated },
+
+    ensAddressMulticoinLookup in Compile := { ensAddressMulticoinLookupTask( Compile ).evaluated },
+
+    ensAddressMulticoinLookup in Test := { ensAddressMulticoinLookupTask( Test ).evaluated },
+
+    ensAddressMulticoinSet in Compile := { ensAddressMulticoinSetTask( Compile ).evaluated },
+
+    ensAddressMulticoinSet in Test := { ensAddressMulticoinSetTask( Test ).evaluated },
 
     ensMigrateRegistrar in Compile := { ensMigrateRegistrarTask( Compile ).evaluated },
 
@@ -1610,6 +1622,123 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def recoverMulticoinAddressObj( coinId : Int, addressBin : immutable.Seq[Byte] ) : Option[AnyRef] = {
+    coinId match {
+      case Slip44.Index.Ethereum => Some( EthAddress( addressBin ) )
+      case Slip44.Index.Bitcoin  => Some( BtcAddress.recoverFromScriptPubKey( addressBin ).assert.text )
+      case _                     => None
+    }
+  }
+
+  private def findMessageCoinPrefix( coinId : Int, mbCoinSymbol : Option[String] ) : String = {
+    mbCoinSymbol match {
+      case Some( symbol ) => s"For coin '${symbol}' with SLIP-44 Index ${coinId}, "
+      case None           => s"For coin with SLIP-44 Index ${coinId}, "
+    }
+  }
+
+  private def formatMulticoinAddress( ethChainId : Int, mbAddressObj : Option[AnyRef], addressBin : immutable.Seq[Byte] ) : String = {
+    mbAddressObj match {
+      case Some( addressObj ) => s"${formatMulticoinAddressObj( ethChainId, addressObj )} (${binaryFormatMulticoinAddress(addressBin)})"
+      case None               => binaryFormatMulticoinAddress(addressBin)
+    }
+  }
+
+  private def ensAddressMulticoinLookupTask( config : Configuration ) : Initialize[InputTask[Option[(Int,immutable.Seq[Byte])]]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genMulticoinEnsPathParser )
+
+    Def.inputTask {
+      val log = streams.value.log
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+      val ensClient = ( config / xensClient).value
+      val (epp, mbSymbol, coinId ) = parser.parsed
+      val path = epp.fullName
+      try {
+        val mbAddressBin = ensClient.multicoinAddress( path, coinId )
+        val mbAddressObj = mbAddressBin.flatMap( addressBin => recoverMulticoinAddressObj( coinId, addressBin ) )
+
+        val coinPrefix = findMessageCoinPrefix( coinId, mbSymbol )
+
+        def formattedAddress( addressBin : immutable.Seq[Byte] ) = formatMulticoinAddress( chainId, mbAddressObj, addressBin )
+
+        mbAddressBin match {
+          case Some( addressBin ) => {
+            log.info( s"${coinPrefix}the name '${path}' resolves to address ${formattedAddress( addressBin )}." )
+            Some( Tuple2( coinId, addressBin ) )
+          }
+          case None => {
+            log.info( s"${coinPrefix}the name '${path}' does not currently resolve to any address." )
+            None
+          }
+        }
+      }
+      catch {
+        case e : ens.UnsupportedInterfaceException => {
+          log.error( s"'${path}' uses a resolver that does not support multicoin addresses. The lookup failed." )
+          throw nst( e )
+        }
+      }
+    }
+  }
+
+  private def withSetResolverIfNecessary[T](
+    log               : sbt.Logger,
+    is                : sbt.InteractionService,
+    mbDefaultResolver : Option[EthAddress],
+    ensClient         : ens.Client,
+    ensName           : String,
+    lazySigner        : EthSigner,
+    nonceOverride     : Option[BigInt],
+    opDesc            : String
+  )( op : =>T ) : T = {
+    try {
+      op
+    }
+    catch {
+      case e : ens.NoResolverSetException => {
+        val defaultResolver = mbDefaultResolver.getOrElse( throw e )
+        val setAndRetry = {
+          log.warn( s"No resolver has been set for '${ensName}'. If you wish, you can attach it to the default resolver and then set the address." )
+          nonceOverride.foreach { nonce =>
+            log.warn( s"Note: The currently set nonce override of ${nonce} will be ignored. To control the nonce, set the resolver separately, then retry." )
+          }
+          kludgeySleepForInteraction()
+          queryYN( is, s"Do you wish to use the default resolver '${hexString(defaultResolver)}'? [y/n] " ) // syncOut internal
+        }
+        if ( setAndRetry ) {
+          log.info( s"Preparing transaction to set the resolver." )
+          ensClient.setResolver( lazySigner, ensName, defaultResolver )
+          log.info( s"Resolver for '${ensName}' set to public resolver '${hexString( defaultResolver )}'." )
+
+          // await propogation back to us that the resolver has actually been set
+          log.info( "Verifiying resolver." )
+          var resolverSet = false
+          while ( !resolverSet ) {
+            try {
+              Thread.sleep(1000)
+              val mbFound = ensClient.resolver( ensName )
+              mbFound.foreach { found =>
+                assert( found == defaultResolver, s"Huh? The resolver we just set to ${hexString(defaultResolver)} was found to be ${hexString(found)}. Bailing." )
+                resolverSet = true
+              }
+            }
+            catch {
+              case _ : ens.NoResolverSetException => {
+                syncOut( println( "Waiting for resolver." ) )
+                /* continue */
+              }
+            }
+          }
+          log.info( s"Retrying ${opDesc}." )
+          op
+        }
+        else {
+          throw e
+        }
+      }
+    }
+  }
+
   private def ensAddressSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathAddressParser )
 
@@ -1624,56 +1753,56 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ensName              = epp.fullName
       val nonceOverride        = logFetchNonceOverrideBigInt( Some( log ), chainId )
 
-      try {
+      withSetResolverIfNecessary( log, is, mbDefaultResolver, ensClient, ensName, lazySigner, nonceOverride, "setting of address" ) {
         ensClient.setAddress( lazySigner, ensName, address, forceNonce = nonceOverride )
+        log.info( s"The name '${ensName}' now resolves to ${verboseAddress(chainId, address)}." )
       }
-      catch {
-        case e : ens.NoResolverSetException => {
-          val defaultResolver = mbDefaultResolver.getOrElse( throw e )
-          val setAndRetry = {
-            log.warn( s"No resolver has been set for '${ensName}'. If you wish, you can attach it to the default resolver and then set the address." )
-            nonceOverride.foreach { nonce =>
-              log.warn( s"Note: The currently set nonce override of ${nonce} will be ignored. To control the nonce, set the resolver separately, then retry." )
-            }
-            kludgeySleepForInteraction()
-            queryYN( is, s"Do you wish to use the default resolver '${hexString(defaultResolver)}'? [y/n] " ) // syncOut internal
-          }
-          if ( setAndRetry ) {
-            log.info( s"Preparing transaction to set the resolver." )
-            ensClient.setResolver( lazySigner, ensName, defaultResolver )
-            log.info( s"Resolver for '${ensName}' set to public resolver '${hexString( defaultResolver )}'." )
+    }
+  }
 
-            // await propogation back to us that the resolver has actually been set
-            log.info( "Verifiying resolver." )
-            var resolverSet = false
-            var tick = false
-            while ( !resolverSet ) {
-              try {
-                Thread.sleep(1000)
-                val mbFound = ensClient.resolver( ensName )
-                mbFound.foreach { found =>
-                  assert( found == defaultResolver, s"Huh? The resolver we just set to ${hexString(defaultResolver)} was found to be ${hexString(found)}. Bailing." )
-                  resolverSet = true
-                }
-              }
-              catch {
-                case _ : ens.NoResolverSetException => {
-                  tick = true
-                  syncOut( print( '.' ) )
-                  /* continue */
-                }
-              }
-            }
-            if (tick) syncOut( println() )
-            log.info( s"Preparing transaction to set address." )
-            ensClient.setAddress( lazySigner, ensName, address )
-          }
-          else {
-            throw e
+  private def formatMulticoinAddressObj( chainId : Int, addressObj : AnyRef ) : String = {
+    addressObj match {
+      case ethAddress : EthAddress => verboseAddress( chainId, ethAddress )
+      case btcAddress : BtcAddress => btcAddress.text
+      case other                   => other.toString
+    }
+  }
+
+  private def binaryFormatMulticoinAddress( binaddr : immutable.Seq[Byte] ) = s"binary-format:${binaddr.hex}"
+
+  private def ensAddressMulticoinSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genMulticoinEnsPathAddressParser )
+
+    Def.inputTask {
+      val log                                                     = streams.value.log
+      val lazySigner                                              = findCurrentSenderLazySignerTask( config ).value
+      val chainId                                                 = findNodeChainIdTask(warn=true)(config).value
+      val ensClient                                               = ( config / xensClient).value
+      val is                                                      = interactionService.value
+      val mbDefaultResolver                                       = fetchDefaultDefaultResolverAddress( config ).value
+      val ( epp, mbCoinSymbol, coinId, mbAddressObj, addressBin ) = parser.parsed
+      val ensName                                                 = epp.fullName
+      val nonceOverride                                           = logFetchNonceOverrideBigInt( Some( log ), chainId )
+
+      withSetResolverIfNecessary( log, is, mbDefaultResolver, ensClient, ensName, lazySigner, nonceOverride, "setting of multicoin address" ) {
+        if ( mbAddressObj.isEmpty ) {
+          log.warn( s"Hand-entered binary formats are very dangerous." )
+          val check = queryYN( is, s"Are you sure you want to set the address for coin with SLIP-44 Index ${coinId} to raw binary data ${hexString(addressBin)}? [y/n] " )
+          if (! check) aborted( s"User aborted dangerous setting of hand-entered address ${hexString(addressBin)} for coin with SLIP-44 Index ${coinId} on ${ensName}." )
+        }
+        try {
+          ensClient.setMulticoinAddress( lazySigner, ensName, coinId, addressBin, forceNonce = nonceOverride )
+          val coinIdPart = findMessageCoinPrefix( coinId, mbCoinSymbol )
+          val addressPart = formatMulticoinAddress( chainId, mbAddressObj, addressBin )
+
+          log.info( s"${coinIdPart}the name '${ensName}' now resolves to ${addressPart}." )
+        }
+        catch {
+          case e : ens.UnsupportedInterfaceException => {
+            log.error( s"'${ensName}' uses a resolver that does not support multicoin addresses. The attempt to set the address could not be completed." )
           }
         }
       }
-      log.info( s"The name '${ensName}' now resolves to ${verboseAddress(chainId, address)}." )
     }
   }
 
@@ -1773,7 +1902,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def markupEnsRent( rawRent : BigInt ) : BigInt = rounded( BigDecimal( rawRent ) * BigDecimal(1 + EnsRegisterRenewMarkup) )
 
-    private def ensNameRegisterTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+  private def ensNameRegisterTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathMbAddressMbSecretParser )
 
     Def.inputTask {
@@ -1860,9 +1989,11 @@ object SbtEthereumPlugin extends AutoPlugin {
               println( s"  But you will need to drop the nonce override with 'ethTransactionNonceOverrideDrop' or set it to ${cno+1}." )
             }
             println( s"The registration must be completed after a minimum of ${minSeconds} seconds, but within a maximum of ${maxSeconds} seconds (${maxHours} hours) or the commitment will be lost." )
+            val check = queryYN( is, "Do you understand? [y/n] " )
+            if (!check) aborted( "User does not understand." )
             println(  "Preparing commitment transaction..." )
-            rmd.commit( lazySigner, commitment, forceNonce = commitmentNonceOverride )
           }
+          rmd.commit( lazySigner, commitment, forceNonce = commitmentNonceOverride )
           log.info( s"Temporary commitment of name '${name}' for registrant ${verboseAddress(chainId,registrant)} has succeeded!" )
           ( minSeconds, commitment )
         }
@@ -1890,13 +2021,22 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
         mbWait.foreach { waitSeconds =>
+          val msecs = ((waitSeconds * 1000) * 12)/10
           syncOut {
             println
             println( s"We must wait a minimum of ${waitSeconds} seconds before we can complete the registration." )
-            println( "We'll add 10% to be sure. Please wait.")
+            println( s"We'll add 20% to that to be sure. Waiting ${msecs} msecs. Please wait.")
           }
-          Thread.sleep( ((waitSeconds * 1000) * 11)/10 )
+          Thread.sleep( msecs )
+          syncOut {
+            println( "Our long wait is over! Let's register '${epp.fullName}'." )
+            println()
+            println( "IF THIS FAILS FOR ANY REASON, COMPLETE IT MANUALLY BY EXECUTING" )
+            println()
+            println(s"   > ensNameRegister ${epp.fullName} ${hexString(registrant)} ${hexString(secret)}")
+          }
         }
+        log.debug( s"Calling doNameRegister( $durationInSeconds, $paymentInWei, ${hexString(secret)} )" )
         doNameRegister( durationInSeconds, paymentInWei, secret )
       }
 
