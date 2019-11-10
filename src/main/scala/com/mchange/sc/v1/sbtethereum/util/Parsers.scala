@@ -31,6 +31,9 @@ import scala.util.control.NonFatal
 
 import play.api.libs.json._
 
+import java.time.Instant
+import java.time.format.DateTimeFormatter.{ISO_INSTANT, ISO_OFFSET_DATE_TIME}
+
 // XXX: This whole mess needs to be reorganized, using readable for-comprehension parsers,
 //      and strict conventions about spaces and tokens
 
@@ -44,11 +47,15 @@ private [sbtethereum]
 object Parsers {
   private implicit lazy val logger = mlogger( this )
 
+  private def transformOrFail[T]( raw : Parser[String], xform : String => T ) : Parser[T] = raw.flatMap( s => Failable( success( xform(s) ) ).recover( f => failure( f.message ) ).assert )
+
   private val ZWSP = "\u200B" // HACK: we add zero-width space to parser examples lists where we don't want autocomplete to apply to unique examples
 
   private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
 
-  private val RawBtcAddressParser = NotSpace.flatMap( chars => Failable( success( BtcAddress( chars.mkString ) ) ).recover( f => failure( f.message ) ).assert )
+  //private val RawBtcAddressParser = NotSpace.flatMap( chars => Failable( success( BtcAddress( chars.mkString ) ) ).recover( f => failure( f.message ) ).assert )
+
+  private val RawBtcAddressParser = transformOrFail( NotSpace, BtcAddress(_) )
 
   private [sbtethereum] val RawAddressAliasParser = ID
 
@@ -181,6 +188,12 @@ object Parsers {
   private [sbtethereum] val RawEtherscanApiKeyParser = NotSpace
 
   private [sbtethereum] val RawMLogDetailPrefixParser = StringBasic
+
+  private [sbtethereum] val RawIsoInstantEpochMillisParser     = transformOrFail( NotSpace, s => Instant.from( ISO_INSTANT.parse(s) ).toEpochMilli() )
+
+  private [sbtethereum] val RawIsoOffsetLocalEpochMillisParser = transformOrFail( NotSpace, s => Instant.from( ISO_OFFSET_DATE_TIME.parse(s) ).toEpochMilli() )
+
+  private [sbtethereum] val RawPermissiveIsoEpochMillisParser  = RawIsoInstantEpochMillisParser | RawIsoOffsetLocalEpochMillisParser 
 
   private [sbtethereum] def intParser( tabHelp : String ) = token( RawIntParser, tabHelp )
 
@@ -559,6 +572,10 @@ object Parsers {
     _genEnsPathXxxAddressParser("<resolver-address-hex>")( state, mbRpi )
   }
 
+  private [sbtethereum] def genEnsPathResolverMaybeAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,Option[EthAddress])] = {
+    _genEnsPathXxxMaybeAddressParser("[optional-resolver-address-hex]")( state, mbRpi )
+  }
+
   private [sbtethereum] def genEnsPathTransfereeAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,EthAddress)] = {
     _genEnsPathXxxAddressParser("<transferee-address-hex>")( state, mbRpi )
   }
@@ -573,6 +590,21 @@ object Parsers {
       }
       yield {
         Tuple2( ensPath, address )
+      }
+    } getOrElse {
+      failure( "Failed to retrieve RichParserInfo." )
+    }
+  }
+
+  private def _genEnsPathXxxMaybeAddressParser( example : String )( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,Option[EthAddress])] = {
+    mbRpi.map { rpi =>
+      for {
+        _ <- Space
+        ensPath <- ensPathParser( rpi.exampleNameServiceTld )
+        mbAddress <- (Space ~> createAddressParser( example, mbRpi )).?
+      }
+      yield {
+        Tuple2( ensPath, mbAddress )
       }
     } getOrElse {
       failure( "Failed to retrieve RichParserInfo." )
@@ -926,9 +958,6 @@ object Parsers {
       token(Space) ~> (literal("abi:") ~> token(NotSpace)).examples( rpi.abiAliases.keySet.map( "abi:" + _ ) )
     }
   }
-  
-
-  
 }
 
 

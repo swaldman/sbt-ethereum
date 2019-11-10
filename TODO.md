@@ -54,7 +54,7 @@ Other
 
 * Make it possible to specify an optional Chain ID in ethNodeChainIdUrlDefaultSet
 
-* Utilities -- unixtime, denomination conversions, etc
+* Utilities -- denomination conversions, durations, etc
 
 * Support multiple shoeboxes and user-definable locations
 

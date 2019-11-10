@@ -374,6 +374,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionUnsignedRaw       = inputKey[EthTransaction.Unsigned]("Prepare a raw message transaction to be signed elsewhere.")
     val ethTransactionUnsignedEtherSend = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
 
+    val ethUtilHashKeccak256 = inputKey[Unit]("Logs the Keccack256 hash of a bytestring given as hex.")
+    val ethUtilTimeIsoNow    = taskKey[Unit]("Logs in ISO_INSTANT format the current time (useful as a template for inputs to other time utilities)")
+    val ethUtilTimeUnix      = inputKey[Unit]("Accepts a given ISO_INSTANT formatted timestamp, or uses NOW if none is given, and logs this time in UNIX epoch seconds and milliseconds.")
+
     // erc20 tasks
     val erc20AllowancePrint       = inputKey[Erc20.Balance]("Prints the allowance of an address to operate on ERC20 tokens owned by a different address.")
     val erc20AllowanceSet         = inputKey[Client.TransactionReceipt]("Approves ability to transfer tokens an account's tokens by a third-party account." )
@@ -1016,6 +1020,12 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionView in Compile := { ethTransactionViewTask( Compile ).evaluated },
 
     ethTransactionView in Test := { ethTransactionViewTask( Test ).evaluated },
+
+    ethUtilHashKeccak256 := { ethUtilHashKeccak256Task.evaluated },
+
+    ethUtilTimeIsoNow := { ethUtilTimeIsoNowTask.value },
+
+    ethUtilTimeUnix := { ethUtilTimeUnixTask.evaluated },
 
     // erc20 tasks
 
@@ -2029,7 +2039,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
           Thread.sleep( msecs )
           syncOut {
-            println( "Our long wait is over! Let's register '${epp.fullName}'." )
+            println( s"Our long wait is over! Let's register '${epp.fullName}'." )
             println()
             println( "IF THIS FAILS FOR ANY REASON, COMPLETE IT MANUALLY BY EXECUTING" )
             println()
@@ -2290,16 +2300,33 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ensResolverSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathResolverAddressParser )
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genEnsPathResolverMaybeAddressParser )
 
     Def.inputTask {
-      val log           = streams.value.log
-      val lazySigner    = findCurrentSenderLazySignerTask( config ).value
-      val chainId       = findNodeChainIdTask(warn=true)(config).value
-      val ensClient     = ( config / xensClient).value
-      val nonceOverride = logFetchNonceOverrideBigInt( Some( log ), chainId )
-      val ( ensParsedPath, resolverAddress ) = parser.parsed
+      val log               = streams.value.log
+      val mbDefaultResolver = fetchDefaultDefaultResolverAddress( config ).value 
+      val lazySigner        = findCurrentSenderLazySignerTask( config ).value
+      val chainId           = findNodeChainIdTask(warn=true)(config).value
+      val ensClient         = ( config / xensClient).value
+      val nonceOverride     = logFetchNonceOverrideBigInt( Some( log ), chainId )
+      val ( ensParsedPath, mbResolverAddress ) = parser.parsed
       val ensName = ensParsedPath.fullName
+      val resolverAddress = {
+        ( mbResolverAddress, mbDefaultResolver ) match {
+          case ( Some( specifiedAddress ), _ ) => {
+            specifiedAddress
+          }
+          case ( None, Some( defaultResolver ) ) => {
+            log.warn( s"No resolver specified. Using default public resolver '${hexString(defaultResolver)}'." )
+            defaultResolver
+          }
+          case ( None, None ) => {
+            val msg = s"No resolver specified, and no default logger is available."
+            log.error( msg )
+            throw new SbtEthereumException( msg )
+          }
+        }
+      }
 
       ensClient.setResolver( lazySigner, ensName, resolverAddress, forceNonce = nonceOverride )
       log.info( s"The name '${ensName}' is now set to be resolved by a contract at ${verboseAddress(chainId, resolverAddress)}." )
@@ -5445,6 +5472,45 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       Await.result( f_out, timeout )
     }
+  }
+
+  private val ethUtilHashKeccak256Task : Initialize[InputTask[Unit]] = Def.inputTask {
+    val log = streams.value.log
+    val bytesToHash = (Space ~> bytesParser("<hex-string>")).parsed
+    val hashed = hash.Keccak256.hash( bytesToHash ).bytes
+    log.info( hexString( hashed ) )
+  }
+
+  private val ethUtilTimeIsoNowTask : Initialize[Task[Unit]] = Def.task {
+    import java.time._
+    import java.time.format._
+
+    try {
+      val log = streams.value.log
+      val now = Instant.now()
+      val isoInstant = DateTimeFormatter.ISO_INSTANT.format( now )
+      val isoOffset  = DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone( ZoneId.systemDefault() ).format( now )
+      log.info( s"${isoInstant} (UTC) or ${isoOffset} (local)" )
+    }
+    catch {
+      case t : Throwable => {
+        t.printStackTrace
+        throw t
+      }
+    }
+  }
+
+  private val MaybeSpecifiedMillisParser = (Space ~> token(RawPermissiveIsoEpochMillisParser, "[optional-ISO-timestamp]")).?
+
+  private val ethUtilTimeUnixTask : Initialize[InputTask[Unit]] = Def.inputTask {
+    val log = streams.value.log
+    val mbMillis = MaybeSpecifiedMillisParser.parsed
+    val millis = mbMillis.getOrElse( System.currentTimeMillis )
+    val seconds = millis / 1000
+
+    val clockSuffix = mbMillis.fold(" (according to the system clock)")(_ => "")
+    
+    log.info( s"${seconds} seconds, or ${millis} milliseconds, into the UNIX epoch${clockSuffix}" )
   }
 
   // erc20 task definitions
