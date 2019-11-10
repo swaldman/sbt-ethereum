@@ -220,22 +220,22 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     // tasks
 
-    val ensAddressLookup          = inputKey[Option[EthAddress]]               ("Prints the address given ens name should resolve to, if one has been set.")
-    val ensAddressSet             = inputKey[Unit]                             ("Sets the address a given ens name should resolve to.")
-    val ensAddressMulticoinLookup = inputKey[Option[(Int,immutable.Seq[Byte])]]("For a specified, not-necessarily-Ethereum coin, prints the address given ens name should resolve to, if one has been set.")
-    val ensAddressMulticoinSet    = inputKey[Unit]                             ("For a specified, not-necessarily-Ethereum coin, sets the address a given ens name should resolve to.")
-    val ensMigrateRegistrar       = inputKey[Unit]                             ("Migrates a name from a predecessor registar (e.g. the original auction registrar) to any successor registrar.")
-    val ensNameExtend             = inputKey[Unit]                             ("Extends the registration period of a given ENS name.")
-    val ensNameHashes             = inputKey[Unit]                             ("Prints the name hash and label hash associated with an ENS name.")
-    val ensNamePrice              = inputKey[Unit]                             ("Estimate the cost of renting (registering / renewing) a name for a period of time.")
-    val ensNameRegister           = inputKey[Unit]                             ("Registers a given ENS name.")
-    val ensNameStatus             = inputKey[Unit]                             ("Prints the current status of a given name.")
-    val ensOwnerLookup            = inputKey[Option[EthAddress]]               ("Prints the address of the owner of a given name, if the name has an owner.")
-    val ensOwnerSet               = inputKey[Unit]                             ("Sets the owner of a given name to an address.")
-    val ensResolverLookup         = inputKey[Option[EthAddress]]               ("Prints the address of the resolver associated with a given name.")
-    val ensResolverSet            = inputKey[Unit]                             ("Sets the resolver for a given name to an address.")
-    val ensSubnodeCreate          = inputKey[Unit]                             ("Creates a subnode (if it does not already exist) beneath an existing ENS name with the current sender as its owner.")
-    val ensSubnodeOwnerSet        = inputKey[Unit]                             ("Sets the owner of a name beneath an ENS name (creating the 'subnode' if it does not already exist).")
+    val ensAddressLookup           = inputKey[Option[EthAddress]]               ("Prints the address given ens name should resolve to, if one has been set.")
+    val ensAddressSet              = inputKey[Unit]                             ("Sets the address a given ens name should resolve to.")
+    val ensAddressMultichainLookup = inputKey[Option[(Int,immutable.Seq[Byte])]]("For a specified, not-necessarily-Ethereum coin, prints the address given ens name should resolve to, if one has been set.")
+    val ensAddressMultichainSet    = inputKey[Unit]                             ("For a specified, not-necessarily-Ethereum coin, sets the address a given ens name should resolve to.")
+    val ensMigrateRegistrar        = inputKey[Unit]                             ("Migrates a name from a predecessor registar (e.g. the original auction registrar) to any successor registrar.")
+    val ensNameExtend              = inputKey[Unit]                             ("Extends the registration period of a given ENS name.")
+    val ensNameHashes              = inputKey[Unit]                             ("Prints the name hash and label hash associated with an ENS name.")
+    val ensNamePrice               = inputKey[Unit]                             ("Estimate the cost of renting (registering / renewing) a name for a period of time.")
+    val ensNameRegister            = inputKey[Unit]                             ("Registers a given ENS name.")
+    val ensNameStatus              = inputKey[Unit]                             ("Prints the current status of a given name.")
+    val ensOwnerLookup             = inputKey[Option[EthAddress]]               ("Prints the address of the owner of a given name, if the name has an owner.")
+    val ensOwnerSet                = inputKey[Unit]                             ("Sets the owner of a given name to an address.")
+    val ensResolverLookup          = inputKey[Option[EthAddress]]               ("Prints the address of the resolver associated with a given name.")
+    val ensResolverSet             = inputKey[Unit]                             ("Sets the resolver for a given name to an address.")
+    val ensSubnodeCreate           = inputKey[Unit]                             ("Creates a subnode (if it does not already exist) beneath an existing ENS name with the current sender as its owner.")
+    val ensSubnodeOwnerSet         = inputKey[Unit]                             ("Sets the owner of a name beneath an ENS name (creating the 'subnode' if it does not already exist).")
 
     val etherscanApiKeyDrop  = taskKey[Unit]  ("Removes the API key for etherscan services from the sbt-ethereum database.")
     val etherscanApiKeyPrint = taskKey[Unit]  ("Reveals the currently set API key for etherscan services, if any.")
@@ -571,13 +571,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ensAddressSet in Test := { ensAddressSetTask( Test ).evaluated },
 
-    ensAddressMulticoinLookup in Compile := { ensAddressMulticoinLookupTask( Compile ).evaluated },
+    ensAddressMultichainLookup in Compile := { ensAddressMultichainLookupTask( Compile ).evaluated },
 
-    ensAddressMulticoinLookup in Test := { ensAddressMulticoinLookupTask( Test ).evaluated },
+    ensAddressMultichainLookup in Test := { ensAddressMultichainLookupTask( Test ).evaluated },
 
-    ensAddressMulticoinSet in Compile := { ensAddressMulticoinSetTask( Compile ).evaluated },
+    ensAddressMultichainSet in Compile := { ensAddressMultichainSetTask( Compile ).evaluated },
 
-    ensAddressMulticoinSet in Test := { ensAddressMulticoinSetTask( Test ).evaluated },
+    ensAddressMultichainSet in Test := { ensAddressMultichainSetTask( Test ).evaluated },
 
     ensMigrateRegistrar in Compile := { ensMigrateRegistrarTask( Compile ).evaluated },
 
@@ -1622,7 +1622,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def recoverMulticoinAddressObj( coinId : Int, addressBin : immutable.Seq[Byte] ) : Option[AnyRef] = {
+  private def recoverMultichainAddressObj( coinId : Int, addressBin : immutable.Seq[Byte] ) : Option[AnyRef] = {
     coinId match {
       case Slip44.Index.Ethereum => Some( EthAddress( addressBin ) )
       case Slip44.Index.Bitcoin  => Some( BtcAddress.recoverFromScriptPubKey( addressBin ).assert.text )
@@ -1637,15 +1637,15 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def formatMulticoinAddress( ethChainId : Int, mbAddressObj : Option[AnyRef], addressBin : immutable.Seq[Byte] ) : String = {
+  private def formatMultichainAddress( ethChainId : Int, mbAddressObj : Option[AnyRef], addressBin : immutable.Seq[Byte] ) : String = {
     mbAddressObj match {
-      case Some( addressObj ) => s"${formatMulticoinAddressObj( ethChainId, addressObj )} (${binaryFormatMulticoinAddress(addressBin)})"
-      case None               => binaryFormatMulticoinAddress(addressBin)
+      case Some( addressObj ) => s"${formatMultichainAddressObj( ethChainId, addressObj )}, or ${binaryFormatMultichainAddress(addressBin)}"
+      case None               => binaryFormatMultichainAddress(addressBin)
     }
   }
 
-  private def ensAddressMulticoinLookupTask( config : Configuration ) : Initialize[InputTask[Option[(Int,immutable.Seq[Byte])]]] = {
-    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genMulticoinEnsPathParser )
+  private def ensAddressMultichainLookupTask( config : Configuration ) : Initialize[InputTask[Option[(Int,immutable.Seq[Byte])]]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genMultichainEnsPathParser )
 
     Def.inputTask {
       val log = streams.value.log
@@ -1654,12 +1654,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       val (epp, mbSymbol, coinId ) = parser.parsed
       val path = epp.fullName
       try {
-        val mbAddressBin = ensClient.multicoinAddress( path, coinId )
-        val mbAddressObj = mbAddressBin.flatMap( addressBin => recoverMulticoinAddressObj( coinId, addressBin ) )
+        val mbAddressBin = ensClient.multichainAddress( path, coinId )
+        val mbAddressObj = mbAddressBin.flatMap( addressBin => recoverMultichainAddressObj( coinId, addressBin ) )
 
         val coinPrefix = findMessageCoinPrefix( coinId, mbSymbol )
 
-        def formattedAddress( addressBin : immutable.Seq[Byte] ) = formatMulticoinAddress( chainId, mbAddressObj, addressBin )
+        def formattedAddress( addressBin : immutable.Seq[Byte] ) = formatMultichainAddress( chainId, mbAddressObj, addressBin )
 
         mbAddressBin match {
           case Some( addressBin ) => {
@@ -1674,7 +1674,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       catch {
         case e : ens.UnsupportedInterfaceException => {
-          log.error( s"'${path}' uses a resolver that does not support multicoin addresses. The lookup failed." )
+          log.error( s"'${path}' uses a resolver that does not support multichain addresses. The lookup failed." )
           throw nst( e )
         }
       }
@@ -1760,18 +1760,18 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def formatMulticoinAddressObj( chainId : Int, addressObj : AnyRef ) : String = {
+  private def formatMultichainAddressObj( chainId : Int, addressObj : AnyRef ) : String = {
     addressObj match {
-      case ethAddress : EthAddress => verboseAddress( chainId, ethAddress )
+      case ethAddress : EthAddress => hexString( ethAddress ) //verboseAddress( chainId, ethAddress )
       case btcAddress : BtcAddress => btcAddress.text
       case other                   => other.toString
     }
   }
 
-  private def binaryFormatMulticoinAddress( binaddr : immutable.Seq[Byte] ) = s"binary-format:${binaddr.hex}"
+  private def binaryFormatMultichainAddress( binaddr : immutable.Seq[Byte] ) = s"binary-format:${binaddr.hex}"
 
-  private def ensAddressMulticoinSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genMulticoinEnsPathAddressParser )
+  private def ensAddressMultichainSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(config / xethFindCacheRichParserInfo)( genMultichainEnsPathAddressParser )
 
     Def.inputTask {
       val log                                                     = streams.value.log
@@ -1784,22 +1784,22 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ensName                                                 = epp.fullName
       val nonceOverride                                           = logFetchNonceOverrideBigInt( Some( log ), chainId )
 
-      withSetResolverIfNecessary( log, is, mbDefaultResolver, ensClient, ensName, lazySigner, nonceOverride, "setting of multicoin address" ) {
+      withSetResolverIfNecessary( log, is, mbDefaultResolver, ensClient, ensName, lazySigner, nonceOverride, "setting of multichain address" ) {
         if ( mbAddressObj.isEmpty ) {
-          log.warn( s"Hand-entered binary formats are very dangerous." )
+          log.warn( s"Hand-entered binary formats are very dangerous. Funds sent to misspecified addresses will be likely be lost and unspendable." )
           val check = queryYN( is, s"Are you sure you want to set the address for coin with SLIP-44 Index ${coinId} to raw binary data ${hexString(addressBin)}? [y/n] " )
           if (! check) aborted( s"User aborted dangerous setting of hand-entered address ${hexString(addressBin)} for coin with SLIP-44 Index ${coinId} on ${ensName}." )
         }
         try {
-          ensClient.setMulticoinAddress( lazySigner, ensName, coinId, addressBin, forceNonce = nonceOverride )
+          ensClient.setMultichainAddress( lazySigner, ensName, coinId, addressBin, forceNonce = nonceOverride )
           val coinIdPart = findMessageCoinPrefix( coinId, mbCoinSymbol )
-          val addressPart = formatMulticoinAddress( chainId, mbAddressObj, addressBin )
+          val addressPart = formatMultichainAddress( chainId, mbAddressObj, addressBin )
 
           log.info( s"${coinIdPart}the name '${ensName}' now resolves to ${addressPart}." )
         }
         catch {
           case e : ens.UnsupportedInterfaceException => {
-            log.error( s"'${ensName}' uses a resolver that does not support multicoin addresses. The attempt to set the address could not be completed." )
+            log.error( s"'${ensName}' uses a resolver that does not support multichain addresses. The attempt to set the address could not be completed." )
           }
         }
       }

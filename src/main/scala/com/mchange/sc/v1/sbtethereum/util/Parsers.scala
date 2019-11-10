@@ -579,12 +579,12 @@ object Parsers {
     }
   }
 
-  private val MulticoinSupportedSymbols = "ETH" :: "BTC" :: Nil
+  private val MultichainSupportedSymbols = "ETH" :: "BTC" :: Nil
 
   private val Slip44CoinParser = {
     val special = {
       for {
-        symbol <- (MulticoinSupportedSymbols ++ MulticoinSupportedSymbols.map( _.toLowerCase )).map( literal ).reduceLeft( _ | _ )
+        symbol <- (MultichainSupportedSymbols ++ MultichainSupportedSymbols.map( _.toLowerCase )).map( literal ).reduceLeft( _ | _ )
       }
       yield {
         symbol.toLowerCase match {
@@ -600,7 +600,7 @@ object Parsers {
 
   private val TokenedBinaryAddressFormatParser = token(literal("binary-format:") ~> RawBytesParser.map( bytes => ( None, bytes ) )).examples( "binary-format:<hex>", "bc1<bech32-data>", "<base58-data>" )
 
-  private def multicoinAddressParserFor( slip44Index : Int, rpi : RichParserInfo ) : Parser[Tuple2[Option[AnyRef],immutable.Seq[Byte]]] = {
+  private def multichainAddressParserFor( slip44Index : Int, rpi : RichParserInfo ) : Parser[Tuple2[Option[AnyRef],immutable.Seq[Byte]]] = {
     slip44Index match {
       case Slip44.Index.Ethereum => createAddressParser( "<eth-address>", Some(rpi) ).map( addr => ( Some(addr), addr.bytes.widen ) ) | TokenedBinaryAddressFormatParser
       case Slip44.Index.Bitcoin  =>  RawBtcAddressParser.examples("<btc-address>").map( addr => ( Some(addr), addr.toScriptPubKey ) ) | TokenedBinaryAddressFormatParser
@@ -609,13 +609,13 @@ object Parsers {
   }
 
   private [sbtethereum]
-  def genMulticoinEnsPathParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,Option[String],Int)] = {
+  def genMultichainEnsPathParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,Option[String],Int)] = {
     mbRpi.map { rpi =>
 
       // grr... Parser doesn't support pattern matches in for
       for {
         _ <- token(Space)
-        coinTup  <- token( Slip44CoinParser ).examples( MulticoinSupportedSymbols : _*)
+        coinTup  <- token( Slip44CoinParser ).examples( MultichainSupportedSymbols : _*)
         mbCoinSymbol = coinTup._1
         coinId       = coinTup._2
         _ <- token(Space)
@@ -630,17 +630,17 @@ object Parsers {
   }
 
   private [sbtethereum]
-  def genMulticoinEnsPathAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,Option[String],Int,Option[AnyRef],immutable.Seq[Byte])] = {
+  def genMultichainEnsPathAddressParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[(ens.ParsedPath,Option[String],Int,Option[AnyRef],immutable.Seq[Byte])] = {
     mbRpi.map { rpi =>
 
       // grr... Parser doesn't support pattern matches in for
       for {
-        mainTup <- genMulticoinEnsPathParser( state, mbRpi )
+        mainTup <- genMultichainEnsPathParser( state, mbRpi )
         ensPath      = mainTup._1
         mbCoinSymbol = mainTup._2
         coinId       = mainTup._3
         _ <- token(Space)
-        addressTup <- multicoinAddressParserFor( coinId, rpi )
+        addressTup <- multichainAddressParserFor( coinId, rpi )
       }
       yield {
         val ( mbAddress, addressBinary ) = addressTup

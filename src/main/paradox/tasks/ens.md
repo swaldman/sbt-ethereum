@@ -68,6 +68,161 @@ A transaction with hash '0x9d9bf7abeb5d9f94d6181c220a60c46c58cab030d07acc7d46986
 
 @@@
 
+
+
+
+
+
+
+
+
+
+### ensAddressMultichainLookup
+
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ensAddressMultichainLookup <BTC|ETH|slip44-index> <ens-name>.eth
+```
+_For a specified coin, which may not be Ethereum_, looks up the the cryptocurrency address assocaited with an ENS name .
+Coins identified by their `Index` in [SLIP-44](https://github.com/satoshilabs/slips/blob/master/slip-0044.md). 
+
+_**Note that this address is distinct from the Ethereum address that owns the name!**_
+
+_sbt-ethereum_ currently offers complete support only for BTC and ETH addresses. It will print those in their conventional formats.
+Other coins' addresses may be looked up, but the addresses will be returned as raw hex binary, prepended with the tag `binary-format:`
+
+See [EIP 2304](https://eips.ethereum.org/EIPS/eip-2304) for specification of multichain address associations in ENS, including different coins' binary formats.
+
+**Example (BTC):**
+```
+> ensAddressMultichainLookup BTC exigent.eth
+[info] For coin 'BTC' with SLIP-44 Index 0, the name 'exigent.eth' resolves to address 18cjh41Ljp7CPzFZfrX45sdX9yKtaKXtPd, or binary-format:76a914538b134f052afc31504391632474579f2e62cf9288ac.
+[success] Total time: 1 s, completed Nov 9, 2019 4:15:47 PM
+```
+
+**Example (arbitrary coin):**
+```
+> ensAddressMultichainLookup 1140810366 exigent.eth
+[info] For coin with SLIP-44 Index 1140810366, the name 'exigent.eth' resolves to address binary-format:0123456789abcdef.
+[success] Total time: 1 s, completed Nov 9, 2019 4:45:23 PM
+```
+
+@@@
+
+### ensAddressMultichainSet
+
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ensAddressMultichainSet <BTC|ETH|slip44-index> <ens-name>.eth <address-as-hex-or-ens-or-alias>
+```
+
+_For a specified coin, which may not be Ethereum_, defines the the cryptocurrency address that will be assocaited with an ENS name .
+Coins identified by their `Index` in [SLIP-44](https://github.com/satoshilabs/slips/blob/master/slip-0044.md). 
+
+_**Note that this address is distinct from the Ethereum address that owns the name!**_
+
+_sbt-ethereum_ currently offers complete support only for BTC and ETH addresses. It will accept those in their conventional formats.
+Other coins' addresses may be defined, but the addresses must be set as raw hex binary, prepended with the tag `binary-format:`
+
+See [EIP 2304](https://eips.ethereum.org/EIPS/eip-2304) for specification of multichain address associations in ENS, including different coins' binary formats.
+
+**Example (BTC):**
+```
+> ensAddressMultichainSet BTC exigent.eth 18cjh41Ljp7CPzFZfrX45sdX9yKtaKXtPd
+
+==> T R A N S A C T I O N   S I G N A T U R E   R E Q U E S T
+==>
+==> The transaction would be a message with...
+==>   To:    0x226159d592e2b063810a10ebf6dcbada94ed68b8 (with aliases ['ens-public-resolver-2019-10-24'] on chain with ID 1)
+==>   From:  0x465e79b940bc2157e4259ff6b2d92f454497f1e4 (with aliases ['default-sender','testing0'] on chain with ID 1)
+==>   Data:  0x8b95dd71f7af8227451695ae1890a0be783975f51704cbd3f1df6c3687838bd39d309b2700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000001976a914538b134f052afc31504391632474579f2e62cf9288ac00000000000000
+==>   Value: 0 ether
+==>
+==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
+==>   Function called: setAddr(bytes32,uint256,bytes)
+==>     Arg 1 [name=node, type=bytes32]: 0xf7af8227451695ae1890a0be783975f51704cbd3f1df6c3687838bd39d309b27
+==>     Arg 2 [name=coinType, type=uint256]: 0
+==>     Arg 3 [name=a, type=bytes]: 0x76a914538b134f052afc31504391632474579f2e62cf9288ac
+==>
+==> The nonce of the transaction would be 518.
+==>
+==> $$$ The transaction you have requested could use up to 50605 units of gas.
+==> $$$ You would pay 1 gwei for each unit of gas, for a maximum cost of 0.000050605 ether.
+==> $$$ This is worth 0.01 USD (according to Coinbase at 4:34 PM).
+
+Would you like to sign this transaction? [y/n] y
+
+[info] Unlocking address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (on chain with ID 1, aliases ['default-sender','testing0'])
+Enter passphrase or hex private key for address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4': *******************
+
+[info] A transaction with hash '0x655416cf3e854589cd9f394b4c60bcbd26f8e8b8135d5dfb0d4a7cba0c1dcd80' has been submitted.
+[info] Waiting up to 5 minutes for the transaction to be mined.
+[info] For coin 'BTC' with SLIP-44 Index 0, the name 'exigent.eth' now resolves to 18cjh41Ljp7CPzFZfrX45sdX9yKtaKXtPd, or binary-format:76a914538b134f052afc31504391632474579f2e62cf9288ac.
+[success] Total time: 86 s, completed Nov 9, 2019 4:35:52 PM
+```
+
+**Example (arbitrary coin):**
+```
+> ensAddressMultichainSet 1140810366 exigent.eth binary-format:0123456789abcdef
+[warn] Hand-entered binary formats are very dangerous.
+Are you sure you want to set the address for coin with SLIP-44 Index 1140810366 to raw binary data 0x0123456789abcdef? [y/n] y
+
+==> T R A N S A C T I O N   S I G N A T U R E   R E Q U E S T
+==>
+==> The transaction would be a message with...
+==>   To:    0x226159d592e2b063810a10ebf6dcbada94ed68b8 (with aliases ['ens-public-resolver-2019-10-24'] on chain with ID 1)
+==>   From:  0x465e79b940bc2157e4259ff6b2d92f454497f1e4 (with aliases ['default-sender','testing0'] on chain with ID 1)
+==>   Data:  0x8b95dd71f7af8227451695ae1890a0be783975f51704cbd3f1df6c3687838bd39d309b270000000000000000000000000000000000000000000000000000000043ff627e000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000080123456789abcdef000000000000000000000000000000000000000000000000
+==>   Value: 0 ether
+==>
+==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
+==>   Function called: setAddr(bytes32,uint256,bytes)
+==>     Arg 1 [name=node, type=bytes32]: 0xf7af8227451695ae1890a0be783975f51704cbd3f1df6c3687838bd39d309b27
+==>     Arg 2 [name=coinType, type=uint256]: 1140810366
+==>     Arg 3 [name=a, type=bytes]: 0x0123456789abcdef
+==>
+==> The nonce of the transaction would be 519.
+==>
+==> $$$ The transaction you have requested could use up to 61538 units of gas.
+==> $$$ You would pay 1.1 gwei for each unit of gas, for a maximum cost of 0.0000676918 ether.
+==> $$$ This is worth 0.01 USD (according to Coinbase at 4:42 PM).
+
+Would you like to sign this transaction? [y/n] y
+
+Enter passphrase or hex private key for address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4': *******************
+
+[info] Unlocking address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (on chain with ID 1, aliases ['default-sender','testing0'])
+[info] A transaction with hash '0x742624af4f4fa58f89bb5d431f8bc799be710a75e2538793251d4438ecf35f03' has been submitted.
+[info] Waiting up to 5 minutes for the transaction to be mined.
+[info] For coin with SLIP-44 Index 1140810366, the name 'exigent.eth' now resolves to binary-format:0123456789abcdef.
+[success] Total time: 130 s, completed Nov 9, 2019 4:44:35 PM
+```
+
+@@@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ### ensMigrateRegistrar
 
 @@@ div { .keydesc}
