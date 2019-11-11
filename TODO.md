@@ -34,7 +34,17 @@ Security
 
 Other
 
+* Try backslash elimination on filepaths
+
+* Build replace pending transaction task
+
+* Check gas prices not being properly passed along on Windows
+
+* Inorporate mixed-case address checksums for ETH addresses
+
 * ENS drop methods (that set eg addresses to empty strings, rather than replacing them only with valid addresses)
+
+* ENS drop / replacement should print wants replaced
 
 * Define a setting for stub generations to skip
 
