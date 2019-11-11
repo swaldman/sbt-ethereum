@@ -23,10 +23,10 @@ private [sbtethereum]
 object InteractiveQuery {
   private type I[T] = T
 
-  private val ( _yellow, _red, _reset ) = {
+  private val (( _yellow, _red, _reset ), runningWindows) = {
     Platform.Current match {
-      case Some( Platform.Windows ) => ("","","")
-      case _                        => ( Console.YELLOW, Console.RED, Console.RESET )
+      case Some( Platform.Windows ) => (("","",""), true)
+      case _                        => (( Console.YELLOW, Console.RED, Console.RESET ), false)
     }
   }
 
@@ -37,9 +37,10 @@ object InteractiveQuery {
   private def warn( s : String ) : Unit = println( s"${YELLOW}${s}${RESET}" )
   private def error( s : String ) : Unit = println( s"${RED}${s}${RESET}" )
 
+  // Users of this function should wrap it in syncOut... can't be wrapped internally because tail recursion.
   @tailrec
   private def _queryGoodFile[F[_]]( is : sbt.InteractionService, wrap : File => F[File] )( query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : File => String, noEntryDefault : => F[File] ) : F[File] = {
-    val filepath = is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim
+    val filepath = normalizeInteractedFilePath( is.readLine( query, mask = false).getOrElse( throwCantReadInteraction ).trim )
     if ( filepath.nonEmpty ) {
       val file = new File( filepath ).getAbsoluteFile()
       if (!goodFile(file)) {
@@ -56,14 +57,24 @@ object InteractiveQuery {
   }
 
   private [sbtethereum]
-  def queryOptionalGoodFile( is : sbt.InteractionService, query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : File => String ) : Option[File] = {
+  def queryOptionalGoodFile( is : sbt.InteractionService, query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : File => String ) : Option[File] = syncOut {
     _queryGoodFile[Option]( is, Some(_) )( query, goodFile, notGoodFileRetryPrompt, None )
   }
 
 
   private [sbtethereum]
-  def queryMandatoryGoodFile( is : sbt.InteractionService, query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : File => String ) : File = {
+  def queryMandatoryGoodFile( is : sbt.InteractionService, query : String, goodFile : File => Boolean, notGoodFileRetryPrompt : File => String ) : File = syncOut {
     _queryGoodFile[I]( is, identity )( query, goodFile, notGoodFileRetryPrompt, queryMandatoryGoodFile( is, query, goodFile, notGoodFileRetryPrompt ) )
+  }
+
+  private [sbtethereum]
+  def normalizeInteractedFilePath( filepath : String ) : String = {
+    if ( !runningWindows && filepath.indexOf("\\ ") >= 0 ) {
+      filepath.replaceAll("""\\\ """, " ")
+    }
+    else {
+      filepath
+    }
   }
 
   private [sbtethereum]

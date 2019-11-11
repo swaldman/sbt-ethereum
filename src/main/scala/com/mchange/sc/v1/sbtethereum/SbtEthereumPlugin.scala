@@ -4257,7 +4257,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
     def promptForNewBackupDir( promptToSave : Boolean = true ) : File = {
-      val rawPath = assertReadLine( is, "Enter the path of the directory into which you wish to create a backup: ", mask = false ) // syncOut internal
+      val rawPath = normalizeInteractedFilePath( assertReadLine( is, "Enter the path of the directory into which you wish to create a backup: ", mask = false ) ) // syncOut internal
       if ( rawPath.isEmpty ) throw new OperationAbortedByUserException( s"No directory provided. Backup aborted." )
       val checkAbsolute = new File( rawPath )
       val putativeDir = {
@@ -4457,7 +4457,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     def promptViaBackupOrDir() : Option[File] = {
       val rawPath = {
-        assertReadLine( is, "Enter the path to a directory containing sbt-ethereum shoebox backup files or a backup file directly (or return to abort): ", mask = false )
+        normalizeInteractedFilePath( assertReadLine( is, "Enter the path to a directory containing sbt-ethereum shoebox backup files or a backup file directly (or return to abort): ", mask = false ) )
       }
       if ( rawPath.isEmpty ) {
         None
