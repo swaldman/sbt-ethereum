@@ -141,20 +141,20 @@ First, let's manually copy and paste our contract's ABI from _Etherscan_. Let's 
 
 Now that we have access to the ABI, we can import it into our _sbt-ethereum_ shoebox database:
 ```
-sbt:eth-command-line> ethContractAbiDefaultImport fortune
+sbt:eth-command-line> ethContractAbiImport fortune
 [warn] No Etherscan API key has been set, so you will have to directly paste the ABI.
 [warn] Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeyImport'.
 Contract ABI: 
 ```
-The `ethContractAbiDefaultImport` command requires the address we want to associate the ABI with as an argument. We could have
+The `ethContractAbiImport` command requires the address we want to associate the ABI with as an argument. We could have
 supplied the long hex address but why? We've defined an easy to use alias `fortune`. (Remember, always, to use tab
 completion so _sbt-ethereum_'s long names don't drive you nuts. Typing `ethC<tab>A<tab>I<tab> f<tab>` would get us there!)
 
-`ethContractAbiDefaultImport` is an _interactive command_. It is prompting us for what it needs, in this case the contract ABI.
+`ethContractAbiImport` is an _interactive command_. It is prompting us for what it needs, in this case the contract ABI.
 We copy and paste that from the _Etherscan_ page. Yes it is long (many are much longer). Copy the whole thing, or use the "Copy"
 button on the upper right of the ABI on the _Etherscan_ page. After you have pasted it in, hit `<return>`.
 ```
-sbt:eth-command-line> ethContractAbiDefaultImport fortune
+sbt:eth-command-line> ethContractAbiImport fortune
 [warn] No Etherscan API key has been set, so you will have to directly paste the ABI.
 [warn] Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeyImport'.
 Contract ABI: [{"constant":false,"inputs":[{"name":"fortune","type":"string"}],"name":"addFortune","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[{"name":"","type":"uint256"}],"name":"fortunes","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"drawFortune","outputs":[{"name":"fortune","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"countFortunes","outputs":[{"name":"count","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"inputs":[{"name":"initialFortune","type":"string"}],"payable":false,"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"name":"author","type":"address"},{"indexed":false,"name":"fortune","type":"string"}],"name":"FortuneAdded","type":"event"}]

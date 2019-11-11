@@ -33,7 +33,7 @@ java version "1.8.0_172"
 Java(TM) SE Runtime Environment (build 1.8.0_172-b11)
 Java HotSpot(TM) 64-Bit Server VM (build 25.172-b11, mixed mode)
 ```
-The exact version numbers don't matter, as long as they begin with "1.8" or "11".
+The exact version number doesn't matter, as long as it begins with "11", or begins with "1.8" (and is not older than `1.8.0_101`).
 
 @@@ div {.tight}
 
@@ -75,7 +75,17 @@ the applications actually deployed on the blockchain. _sbt-ethereum_ can automat
 easy to interact with deployed, verified, smart contracts.
 
 To get an _etherscan_ API key, you'll need to [create an account](https://etherscan.io/), then click on "MY ACCOUNT", then "API-KEYs" under the "Developers" menu.
-Finally click "Create Api Key". Later [**TK**] we'll see how to import this key into your _sbt-ethereum_ database, which will make it extremely easy to work
+Finally click "Create Api Key".
+
+Once you have created your etherscan API key, just run
+
+```
+> etherscanApiKeySet <your-etherscan-api-key>
+```
+
+You will now be able to automatically import ABIs when you run @ref:[`ethContractAbiImport`](../tasks/eth/contract/abi.md#ethcontractabiimport) or @ref:[`ethContractAbiDefaultImport`](../tasks/eth/contract/abi.md#ethcontractabidefaultimport).
+
+Later [**TK**] we'll see how to import this key into your _sbt-ethereum_ database, which will make it extremely easy to work
 with published smart contracts.
 
 
