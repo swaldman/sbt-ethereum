@@ -11,7 +11,16 @@ You can also use the version of "bash" that comes with some versions of Windows 
 
 To work with _sbt-ethereum_, you'll need a _Java 8 or 11 runtime_ installed on your computer.
 
- <p><u>More recent non-"long-term-support" versions like Java 13 are not supported!</u></p>
+@@@ warning
+
+Early versions of Java 8 [did not include](https://stackoverflow.com/questions/34110426/does-java-support-lets-encrypt-certificates)
+some important certificate authorities. _sbt-ethereum_ fails to launch because its dependencies fail to download over `https`.
+
+Please use a version of Java 8 no older than Java 8u101 (`"1.8.0_101"`).
+
+@@@
+
+ <p><u>Non-"long-term-support" versions like Java 12 and 13 are not supported!</u></p>
 
 To see whether you already have an appropriate JVM installed,
 type
