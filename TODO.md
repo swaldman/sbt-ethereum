@@ -34,6 +34,8 @@ Security
 
 Other
 
+* Allow retries rather than failinng on bad credential entry
+
 * Build replace pending transaction task
 
 * Check gas prices not being properly passed along on Windows
