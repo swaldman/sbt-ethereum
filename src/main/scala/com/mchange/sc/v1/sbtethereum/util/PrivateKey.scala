@@ -35,7 +35,7 @@ private [sbtethereum] object PrivateKey {
       }
       catch {
         case NonFatal(e) => {
-          WARNING.log( s"Converting an Exception that occurred while trying to interpret a credential as hex into a BadCredentialException.", e )
+          DEBUG.log( s"Converting an Exception that occurred while trying to interpret a credential as hex into a BadCredentialException.", e )
           throw new BadCredentialException(address)
         }
       }
@@ -78,9 +78,9 @@ private [sbtethereum] object PrivateKey {
       mbGood match {
         case Some( succeeded ) => succeeded.assert
         case None              => {
-          log.warn( "Tried and failed to decode a private key from multiple wallets." )
+          DEBUG.log( "Tried and failed to decode a private key from multiple wallets." )
           lazyAllAttempts.foreach { underachiever =>
-            log.warn( s"Failed to decode private key from wallet: ${underachiever.assertFailed.message}" )
+            DEBUG.log( s"Failed to decode private key from wallet: ${underachiever.assertFailed.message}" )
           }
           throw new BadCredentialException()
         }

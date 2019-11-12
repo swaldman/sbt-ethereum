@@ -4,6 +4,7 @@ import sbt._
 
 import java.io.File
 
+import scala.annotation.tailrec
 import scala.collection._
 import scala.util.control.NonFatal
 import scala.concurrent.duration._
@@ -14,7 +15,7 @@ import com.mchange.sc.v3.failable._
 
 import com.mchange.sc.v1.log.MLevel._
 
-import com.mchange.sc.v1.sbtethereum.{PriceFeed,util,syncOut}
+import com.mchange.sc.v1.sbtethereum.{BadCredentialException,PriceFeed,util,syncOut}
 import util.Formatting._
 import util.InteractiveQuery._
 import util.PrivateKey._
@@ -195,15 +196,25 @@ private [sbtethereum] class SignersManager(
     // it also slows down automated attempts to guess passwords, i guess...
     Thread.sleep(1000)
 
-    val aliasesPart = commaSepAliasesForAddress( chainId, address ).fold( _ => "" )( _.fold("")( commasep => s", aliases $commasep" ) )
+    log.info( s"Unlocking address ${verboseAddress( chainId, address )}." )
 
-    log.info( s"Unlocking address '0x${address.hex}' (on chain with ID ${chainId}$aliasesPart)" )
+    @tailrec
+    def readRound : EthPrivateKey = {
+      try {
+        val credential = readCredential( is, address )
+        val wallets = walletsForAddress( address, keystoresV3 )
+        findPrivateKey( log, address, wallets, credential )
+      }
+      catch {
+        case bce : BadCredentialException => {
+          DEBUG.log( "Bad credential supplied for '${hexString(address)}'.", bce )
+          syncOut( println( s"Bad credential for address '${hexString(address)}'. Please try again. <ctrl-d> aborts." ) )
+          readRound
+        }
+      }
+    }
 
-    val credential = syncOut( newLineAfter = true )( readCredential( is, address ) )
-
-    val wallets = walletsForAddress( address, keystoresV3 )
-
-    findPrivateKey( log, address, wallets, credential )
+    readRound
   }
 
   private def findCheckCachePrivateKey(

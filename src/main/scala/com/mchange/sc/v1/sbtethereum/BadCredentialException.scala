@@ -10,10 +10,11 @@ object BadCredentialException {
 
 import BadCredentialException._
 
-class BadCredentialException( mbAddress : Option[EthAddress] ) extends SbtEthereumException( s"The credential provided failed as a passcode and could not be interpreted as a hex private key${clause(mbAddress)}." ) {
-  this.setStackTrace( Array.empty[StackTraceElement] )
+class BadCredentialException( mbAddress : Option[EthAddress], cause : Throwable )
+    extends SbtEthereumException( s"The credential provided failed as a passcode and could not be interpreted as a hex private key${clause(mbAddress)}.", cause ) {
+  // this.setStackTrace( Array.empty[StackTraceElement] )
 
-  def this( address : EthAddress ) = this( Some( address ) )
+  def this( address : EthAddress, cause : Throwable = null ) = this( Some( address ), cause )
 
-  def this()                       = this( None )
+  def this() = this( None, null )
 }

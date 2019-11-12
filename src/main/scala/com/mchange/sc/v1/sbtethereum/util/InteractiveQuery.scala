@@ -216,7 +216,7 @@ object InteractiveQuery {
   private [sbtethereum]
   def readCredential( is : sbt.InteractionService, address : EthAddress, acceptHexPrivateKey : Boolean = true ) : String = syncOut {
     val hpkPart = if (acceptHexPrivateKey) " or hex private key" else ""
-    val out = is.readLine(s"Enter passphrase${hpkPart} for address '0x${address.hex}': ", mask = true).getOrElse(throw new Exception("Failed to read a credential")) // fail if we can't get a credential
+    val out = is.readLine(s"Enter passphrase${hpkPart} for address '0x${address.hex}': ", mask = true).getOrElse(aborted("No credential supplied by user."))
     out
   }
 
