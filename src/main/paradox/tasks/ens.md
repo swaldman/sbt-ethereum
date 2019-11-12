@@ -385,25 +385,27 @@ that prior commitment.
 
 **Example:**
 ```
-> ensNameRegister shiningmonkey.eth
+> ensNameRegister smartelephant.eth
+[warn] Using hard-coded, backstop node URL 'https://ethjsonrpc.mchange.com/', which may not be reliable.
+[warn] Please use 'ethNodeUrlDefaultSet` to define a node URL (for chain with ID 1) to which you have reliable access.
 For how long would you like to rent the name (ex: "3 years")? 1 month
 
-In order to rent 'shiningmonkey.eth' for 1 months, it would cost approximately 0.002214545176742268 ether (2214545176742268 wei).
-To be sure the renewal succeeds, we'll mark it up a bit to 0.002325272435579381 ether (2325272435579381 wei). Any "change" will be returned.
-This corresponds to approximately 0.43 USD (at a rate of 186.985 USD per ETH, retrieved at 3:55 AM from Coinbase)
+In order to rent 'smartelephant.eth' for 1 months, it would cost approximately 0.002240969031475373 ether (2240969031475373 wei).
+To be sure the renewal succeeds, we'll mark it up a bit to 0.002353017483049142 ether (2353017483049142 wei). Any "change" will be returned.
+This corresponds to approximately 0.44 USD (at a rate of 185.485 USD per ETH, retrieved at 1:55 AM from Coinbase)
 Is that okay? [y/n] y
 
-In order to register 'shiningmonkey.eth', two transactions will be performed...
+In order to register 'smartelephant.eth', two transactions will be performed...
      (1) a commitment transaction
      (2) a registration transaction
 You will need to approve both transactions.
-A 60 second pause will be required between the two transactions.
+A pause of about 60 seconds will be required between the two transactions.
 
 Establishing registration commitment.
-The random "secret" to which we are committing is '0xd810a889707262f7e66715b0c4456f4a53b18ec596dd354a95245a3260eac4b5'.
+The random "secret" to which we are committing is '0x0e17ebdaf2948be6f1018484b16f1c92a09a21d6b08b6564065b276eb4370b58'.
 If we sadly time out while waiting for the transaction to mine, if it does eventually successfully mine...
   you can continue where you left off with
-    'ensNameRegister shiningmonkey.eth 0x465e79b940bc2157e4259ff6b2d92f454497f1e4 0xd810a889707262f7e66715b0c4456f4a53b18ec596dd354a95245a3260eac4b5'
+    'ensNameRegister smartelephant.eth 0x465e79b940bc2157e4259ff6b2d92f454497f1e4 0x0e17ebdaf2948be6f1018484b16f1c92a09a21d6b08b6564065b276eb4370b58'
 The registration must be completed after a minimum of 60 seconds, but within a maximum of 86400 seconds (24.0 hours) or the commitment will be lost.
 Do you understand? [y/n] y
 Preparing commitment transaction...
@@ -413,71 +415,72 @@ Preparing commitment transaction...
 ==> The transaction would be a message with...
 ==>   To:    0xb22c1c159d12461ea124b0deb4b5b93020e6ad16 (with aliases ['ens-controller-2019-11-10'] on chain with ID 1)
 ==>   From:  0x465e79b940bc2157e4259ff6b2d92f454497f1e4 (with aliases ['default-sender','testing0'] on chain with ID 1)
-==>   Data:  0xf14fcbc85c3d678924e8af8ed722e61c0cfa370192b1b42082ecd7e08627c2c34b0acd72
+==>   Data:  0xf14fcbc88db07713f0e2fcc3c484a600e9e7383248a6c9820ae516371a5e603abffc0669
 ==>   Value: 0 ether
 ==>
 ==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
 ==>   Function called: commit(bytes32)
-==>     Arg 1 [name=commitment, type=bytes32]: 0x5c3d678924e8af8ed722e61c0cfa370192b1b42082ecd7e08627c2c34b0acd72
+==>     Arg 1 [name=commitment, type=bytes32]: 0x8db07713f0e2fcc3c484a600e9e7383248a6c9820ae516371a5e603abffc0669
 ==>
-==> The nonce of the transaction would be 522.
+==> The nonce of the transaction would be 541.
 ==>
-==> $$$ The transaction you have requested could use up to 53206 units of gas.
-==> $$$ You would pay 1.5 gwei for each unit of gas, for a maximum cost of 0.000079809 ether.
-==> $$$ This is worth 0.01 USD (according to Coinbase at 4:00 AM).
+==> $$$ The transaction you have requested could use up to 53130 units of gas.
+==> $$$ You would pay 2 gwei for each unit of gas, for a maximum cost of 0.00010626 ether.
+==> $$$ This is worth 0.02 USD (according to Coinbase at 1:56 AM).
 
 Would you like to sign this transaction? [y/n] y
 
+[info] Unlocking address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (on chain with ID 1, aliases ['default-sender','testing0'])
 Enter passphrase or hex private key for address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4': *******************
 
-[info] Unlocking address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (on chain with ID 1, aliases ['default-sender','testing0'])
-[info] A transaction with hash '0xcff728065868a22d65afa9b39e4ca665de33c0a4b9dad3f239580807c7fce8f5' has been submitted.
+[info] A transaction with hash '0xe04d52115c53cebb0d6379818dafcced214845f54ded8e6a9cd97f9fd420fa38' has been submitted.
 [info] Waiting up to 5 minutes for the transaction to be mined.
-[info] Temporary commitment of name 'shiningmonkey' for registrant '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (with aliases ['default-sender','testing0'] on chain with ID 1) has succeeded!
+[info] Temporary commitment of name 'smartelephant' for registrant '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (with aliases ['default-sender','testing0'] on chain with ID 1) has succeeded!
 
-We must wait a minimum of 60 seconds before we can complete the registration.
-We'll add 20% to that to be sure. Waiting 72000 msecs. Please wait.
-Our long wait is over! Let's register 'shiningmonkey.eth'.
+We must wait about 70 seconds before we can complete the registration.
+Please wait.
+Our long wait is over! Let's register 'smartelephant.eth'.
 
 IF THIS FAILS FOR ANY REASON, COMPLETE IT MANUALLY BY EXECUTING
 
-   > ensNameRegister shiningmonkey.eth 0x465e79b940bc2157e4259ff6b2d92f454497f1e4 0xd810a889707262f7e66715b0c4456f4a53b18ec596dd354a95245a3260eac4b5
+   > ensNameRegister smartelephant.eth 0x465e79b940bc2157e4259ff6b2d92f454497f1e4 0x0e17ebdaf2948be6f1018484b16f1c92a09a21d6b08b6564065b276eb4370b58
 
-Now finalizing the registration of name 'shiningmonkey' for registrant 'EthAddress(ByteSeqExact20(0x465e79b940bc2157e4259ff6b2d92f454497f1e4))'.
+Now finalizing the registration of name 'smartelephant' for registrant 'EthAddress(ByteSeqExact20(0x465e79b940bc2157e4259ff6b2d92f454497f1e4))'.
 If we sadly time out while waiting for the transaction to mine, it still may eventually succeed.
-Use 'ensNameStatus shiningmonkey.eth' to check.
+Use 'ensNameStatus smartelephant.eth' to check.
 
 ==> T R A N S A C T I O N   S I G N A T U R E   R E Q U E S T
 ==>
 ==> The transaction would be a message with...
 ==>   To:    0xb22c1c159d12461ea124b0deb4b5b93020e6ad16 (with aliases ['ens-controller-2019-11-10'] on chain with ID 1)
 ==>   From:  0x465e79b940bc2157e4259ff6b2d92f454497f1e4 (with aliases ['default-sender','testing0'] on chain with ID 1)
-==>   Data:  0x85f6d1550000000000000000000000000000000000000000000000000000000000000080000000000000000000000000465e79b940bc2157e4259ff6b2d92f454497f1e40000000000000000000000000000000000000000000000000000000000282072d810a889707262f7e66715b0c4456f4a53b18ec596dd354a95245a3260eac4b5000000000000000000000000000000000000000000000000000000000000000d7368696e696e676d6f6e6b657900000000000000000000000000000000000000
-==>   Value: 0.002325272435579381 ether
+==>   Data:  0x85f6d1550000000000000000000000000000000000000000000000000000000000000080000000000000000000000000465e79b940bc2157e4259ff6b2d92f454497f1e400000000000000000000000000000000000000000000000000000000002820720e17ebdaf2948be6f1018484b16f1c92a09a21d6b08b6564065b276eb4370b58000000000000000000000000000000000000000000000000000000000000000d736d617274656c657068616e7400000000000000000000000000000000000000
+==>   Value: 0.002353017483049142 ether
 ==>
 ==> According to the ABI currently associated with the 'to' address, this message would amount to the following method call...
 ==>   Function called: register(string,address,uint256,bytes32)
-==>     Arg 1 [name=name, type=string]: "shiningmonkey"
+==>     Arg 1 [name=name, type=string]: "smartelephant"
 ==>     Arg 2 [name=owner, type=address]: 0x465e79b940bc2157e4259ff6b2d92f454497f1e4
 ==>     Arg 3 [name=duration, type=uint256]: 2629746
-==>     Arg 4 [name=secret, type=bytes32]: 0xd810a889707262f7e66715b0c4456f4a53b18ec596dd354a95245a3260eac4b5
+==>     Arg 4 [name=secret, type=bytes32]: 0x0e17ebdaf2948be6f1018484b16f1c92a09a21d6b08b6564065b276eb4370b58
 ==>
-==> The nonce of the transaction would be 523.
+==> The nonce of the transaction would be 542.
 ==>
 ==> $$$ The transaction you have requested could use up to 183595 units of gas.
 ==> $$$ You would pay 1.5 gwei for each unit of gas, for a maximum cost of 0.0002753925 ether.
-==> $$$ This is worth 0.05 USD (according to Coinbase at 4:03 AM).
-==> $$$ You would also send 0.002325272435579381 ether (0.43 USD), for a maximum total cost of 0.002600664935579381 ether (0.49 USD).
+==> $$$ This is worth 0.05 USD (according to Coinbase at 1:58 AM).
+==> $$$ You would also send 0.002353017483049142 ether (0.44 USD), for a maximum total cost of 0.002628409983049142 ether (0.49 USD).
 
 Would you like to sign this transaction? [y/n] y
 
-Using sender address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (with aliases ['default-sender','testing0'] on chain with ID 1), which is already unlocked. OK? [y/n] y
+Using sender address '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (with aliases ['default-sender','testing0'] on chain with ID 1), which is already unlocked.
+Is that okay? [y/n] y
 
-[info] A transaction with hash '0x1b37306843372abac93625320ab3d30d868dc78a455448e1ec9cb223dc56b2c3' has been submitted.
+[info] A transaction with hash '0x1850d91bc4b718e93b7d2a86dece3e9863e68d546466a2c392e649d6b7c1ef93' has been submitted.
 [info] Waiting up to 5 minutes for the transaction to be mined.
-[info] Name 'shiningmonkey.eth' has been successfully registered to '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (with aliases ['default-sender','testing0'] on chain with ID 1)!
-[info] The registration is valid until 'Tue, 10 Dec 2019 14:33:11 -0800'
-[success] Total time: 288 s, completed Nov 10, 2019 4:04:29 AM
+[info] Name 'smartelephant.eth' has been successfully registered to '0x465e79b940bc2157e4259ff6b2d92f454497f1e4' (with aliases ['default-sender','testing0'] on chain with ID 1)!
+[info] The registration is valid until 'Thu, 12 Dec 2019 12:27:48 -0800'
+[success] Total time: 172 s, completed Nov 12, 2019, 1:59:00 AM
 ```
 
 @@@

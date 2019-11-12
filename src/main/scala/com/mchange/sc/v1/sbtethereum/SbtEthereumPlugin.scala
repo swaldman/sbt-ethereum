@@ -1988,7 +1988,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             println( s"     (1) a commitment transaction" )
             println( s"     (2) a registration transaction" )
             println(  "You will need to approve both transactions." )
-            println( s"A ${minSeconds} second pause will be required between the two transactions." )
+            println( s"A pause of about ${minSeconds} seconds will be required between the two transactions." )
             println()
             println(  "Establishing registration commitment." )
             println( s"""The random "secret" to which we are committing is '${hexString(commitment.secret)}'.""" )
