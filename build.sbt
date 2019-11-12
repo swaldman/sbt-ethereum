@@ -6,7 +6,7 @@ val consuelaApiBase = settingKey[String]("Base of consuela API docs")
 val updateSite = taskKey[Unit]("Updates the project website on tickle")
 
 ThisBuild / organization := "com.mchange"
-ThisBuild / version := "0.3.5-SNAPSHOT"
+ThisBuild / version := "0.3.5"
 
 ThisBuild / resolvers += ("releases" at nexusStaging)
 ThisBuild / resolvers += ("snapshots" at nexusSnapshots)
@@ -36,7 +36,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
     "com.mchange"    %% "mlog-scala"            % "0.3.13",
     "com.mchange"    %% "literal"               % "0.1.0",
     "com.mchange"    %% "danburkert-continuum"  % "0.3.99",
-    "com.mchange"    %% "ens-scala"             % "0.2.3-SNAPSHOT",
+    "com.mchange"    %% "ens-scala"             % "0.2.3",
     "com.mchange"    %% "texttable"             % "0.0.2",
     "com.mchange"    %  "mchange-commons-java"  % "0.2.19",
     "com.mchange"    %  "c3p0"                  % "0.9.5.4",
