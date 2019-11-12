@@ -386,8 +386,6 @@ that prior commitment.
 **Example:**
 ```
 > ensNameRegister smartelephant.eth
-[warn] Using hard-coded, backstop node URL 'https://ethjsonrpc.mchange.com/', which may not be reliable.
-[warn] Please use 'ethNodeUrlDefaultSet` to define a node URL (for chain with ID 1) to which you have reliable access.
 For how long would you like to rent the name (ex: "3 years")? 1 month
 
 In order to rent 'smartelephant.eth' for 1 months, it would cost approximately 0.002240969031475373 ether (2240969031475373 wei).
