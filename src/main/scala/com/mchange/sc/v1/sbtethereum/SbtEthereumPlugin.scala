@@ -2020,24 +2020,58 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.info( s"The registration is valid until '${formatInstantOrUnknown(rmd.nameExpires(name))}'" )
         }
 
+        def waitInMillisFromCommitment( commitment : ens.Commitment, paddingSeconds : Long, mbMinWaitSeconds : Option[Long] = None ) : Option[Long] = {
+          val minWaitMillis = mbMinWaitSeconds.getOrElse( rmd.minCommitmentAgeInSeconds.toLong ) * 1000
+          val commitmentTimestampMillis = {
+            var ts = rmd.commitmentTimestamp( commitment ).toEpochMilli
+            var retryCount = 0
+            while( ts == 0 && retryCount < 3) {
+              syncOut {
+                if ( retryCount == 0 ) {
+                  println( "Hmmm. Even though our commitment transaction seemed to succeed, we cannot find a timestamp for it." )
+                  println( "It may have been reorganized out of the chain, in which case it should appear shortly." )
+                }
+                println( s"Waiting 15 seconds for missing commitment timestamp (attempt ${retryCount + 1}/3)." )
+              }
+              Thread.sleep( 15000 )
+              ts = rmd.commitmentTimestamp( commitment ).toEpochMilli
+              retryCount += 1
+            }
+            if ( ts == 0 ) {
+              bail( s"Cannot find a timestamp for commitment '${commitment}'!" )
+            }
+            else {
+              ts
+            }
+          }
+          val nowMillis = Instant.now().toEpochMilli
+          val paddingMillis = paddingSeconds * 1000
+          val readyMillis = commitmentTimestampMillis + minWaitMillis + paddingMillis
+          val remainingMillis = readyMillis - nowMillis
+          if ( remainingMillis <= 0 ) None else Some( remainingMillis )
+        }
+
         val ( durationInSeconds, paymentInWei ) = doQueryDurationInSecondsPaymentInWei
-        val ( mbWait, secret ) = {
+        val paddingSeconds = 20
+        val ( mbWaitMillis, secret ) = {
           mbSecret match {
-            case Some( secret ) => ( None, secret )
+            case Some( secret ) => {
+              val commitment = rmd.makeCommitment( name, registrant, Some( secret ) )
+              ( waitInMillisFromCommitment( commitment, paddingSeconds, None ), secret )
+            }
             case None => {
-              val ( wait, commitment ) = doNameCommit
-              ( Some( wait ), commitment.secret.widen )
+              val ( minWaitSeconds, commitment ) = doNameCommit
+              ( waitInMillisFromCommitment( commitment, paddingSeconds, Some( minWaitSeconds ) ), commitment.secret.widen )
             }
           }
         }
-        mbWait.foreach { waitSeconds =>
-          val msecs = ((waitSeconds * 1000) * 12)/10
+        mbWaitMillis.foreach { waitMillis =>
           syncOut {
             println
-            println( s"We must wait a minimum of ${waitSeconds} seconds before we can complete the registration." )
-            println( s"We'll add 20% to that to be sure. Waiting ${msecs} msecs. Please wait.")
+            println( s"We must wait about ${waitMillis / 1000} seconds before we can complete the registration." )
+            println( s"Please wait.")
           }
-          Thread.sleep( msecs )
+          Thread.sleep( waitMillis )
           syncOut {
             println( s"Our long wait is over! Let's register '${epp.fullName}'." )
             println()

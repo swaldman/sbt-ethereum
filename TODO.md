@@ -38,7 +38,7 @@ Other
 
 * Check gas prices not being properly passed along on Windows
 
-* Inorporate mixed-case address checksums for ETH addresses
+* Incorporate mixed-case address checksums for ETH addresses
 
 * ENS drop methods (that set eg addresses to empty strings, rather than replacing them only with valid addresses)
 
