@@ -236,7 +236,10 @@ private [sbtethereum] class SignersManager(
       case Some( UnlockedAddress( Address, privateKey, autoRelockTimeMillis ) ) if (now < autoRelockTimeMillis ) => {
         val ok = {
           if ( userValidateIfCached ) {
-            syncOut( newLineAfter = true )( queryYN( is, s"Using sender address ${verboseAddress( chainId, address )}, which is already unlocked. OK? [y/n] " ) )
+            syncOut( newLineAfter = true ) {
+              println( s"Using sender address ${verboseAddress( chainId, address )}, which is already unlocked." )
+              queryYN( is, s"Is that okay? [y/n] " )
+            }
           } else {
             true
           }

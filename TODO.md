@@ -34,8 +34,6 @@ Security
 
 Other
 
-* Try backslash elimination on filepaths
-
 * Build replace pending transaction task
 
 * Check gas prices not being properly passed along on Windows
