@@ -194,7 +194,7 @@ private [sbtethereum] object Schema_h2 {
               }
             }
             pkToAbiHash.foreach { case ( pk, abiHash ) =>
-              stmt.executeUpdate( s"UPDATE known_compilations SET abi_hash = '${abiHash.hex}' WHERE full_code_hash = '${pk}'" )
+              stmt.executeUpdate( s"UPDATE known_compilations SET abi_hash = '${abiHash.hex.toLowerCase}' WHERE full_code_hash = '${pk}'" )
             }
             stmt.executeUpdate( "ALTER TABLE known_compilations DROP COLUMN abi_definition" )
             stmt.executeUpdate( "ALTER TABLE known_compilations ADD FOREIGN KEY (abi_hash) REFERENCES normalized_abis ( abi_hash )" )
@@ -218,7 +218,7 @@ private [sbtethereum] object Schema_h2 {
               }
             }
             pkToAbiHash.foreach { case ( pk, abiHash ) =>
-              stmt.executeUpdate( s"UPDATE memorized_abis SET abi_hash = '${abiHash.hex}' WHERE chain_id = ${pk._1} AND contract_address = '${pk._2}'" )
+              stmt.executeUpdate( s"UPDATE memorized_abis SET abi_hash = '${abiHash.hex.toLowerCase}' WHERE chain_id = ${pk._1} AND contract_address = '${pk._2}'" )
             }
             stmt.executeUpdate( "ALTER TABLE memorized_abis DROP COLUMN abi_definition" )
             stmt.executeUpdate( "ALTER TABLE memorized_abis ADD FOREIGN KEY (abi_hash) REFERENCES normalized_abis ( abi_hash )" )
@@ -360,13 +360,13 @@ private [sbtethereum] object Schema_h2 {
 
       def select( conn : Connection, baseCodeHash : EthHash ) : Option[String] = {
         borrow( conn.prepareStatement( SelectSql ) ) { ps =>
-          ps.setString(1, baseCodeHash.hex)
+          ps.setString(1, baseCodeHash.hex.toLowerCase)
           borrow( ps.executeQuery() )( getMaybeSingleString )
         }
       }
       def upsert( conn : Connection, baseCode : String ) : Unit = {
         borrow( conn.prepareStatement( UpsertSql ) ) { ps =>
-          ps.setString( 1, EthHash.hash( baseCode.decodeHex ).hex )
+          ps.setString( 1, EthHash.hash( baseCode.decodeHex ).hex.toLowerCase )
           ps.setString( 2, baseCode )
           ps.executeUpdate()
         }
@@ -570,7 +570,7 @@ private [sbtethereum] object Schema_h2 {
         }
 
         borrow( conn.prepareStatement( SelectSql ) ) { ps =>
-          ps.setString(1, fullCodeHash.hex)
+          ps.setString(1, fullCodeHash.hex.toLowerCase)
           borrow( ps.executeQuery() )( getMaybeSingleValue( extract ) )
         }
       }
@@ -595,8 +595,8 @@ private [sbtethereum] object Schema_h2 {
       ) : Unit = {
         import Json.{toJson,stringify}
         borrow( conn.prepareStatement( UpsertSql ) ) { ps =>
-          ps.setString( 1, fullCodeHash.hex )
-          ps.setString( 2, baseCodeHash.hex )
+          ps.setString( 1, fullCodeHash.hex.toLowerCase )
+          ps.setString( 2, baseCodeHash.hex.toLowerCase )
           ps.setString( 3, codeSuffix )
           setMaybeString( Types.VARCHAR )( ps,  4, mbName )
           setMaybeString( Types.CLOB )   ( ps,  5, mbSource )
@@ -604,7 +604,7 @@ private [sbtethereum] object Schema_h2 {
           setMaybeString( Types.VARCHAR )( ps,  7, mbLanguageVersion )
           setMaybeString( Types.VARCHAR )( ps,  8, mbCompilerVersion )
           setMaybeString( Types.VARCHAR )( ps,  9, mbCompilerOptions )
-          setMaybeString( Types.CHAR )   ( ps, 10, mbAbiHash.map( _.hex ) )
+          setMaybeString( Types.CHAR )   ( ps, 10, mbAbiHash.map( _.hex.toLowerCase ) )
           setMaybeString( Types.CLOB )   ( ps, 11, mbUserDoc.map( ud => stringify( toJson( ud ) ) ) )
           setMaybeString( Types.CLOB )   ( ps, 12, mbDeveloperDoc.map( dd => stringify( toJson( dd ) ) ) )
           setMaybeString( Types.CLOB )   ( ps, 13, mbMetadata )
@@ -767,7 +767,7 @@ private [sbtethereum] object Schema_h2 {
       def select( conn : Connection, chainId : Int, contractAddress : EthAddress ) : Option[DeployedCompilation] = {
         borrow( conn.prepareStatement( SelectSql ) ) { ps =>
           ps.setInt(1, chainId)
-          ps.setString(2, contractAddress.hex)
+          ps.setString(2, contractAddress.hex.toLowerCase)
           borrow( ps.executeQuery() )( getMaybeSingleValue( extract ) )
         }
       }
@@ -786,7 +786,7 @@ private [sbtethereum] object Schema_h2 {
       def allForFullCodeHash( conn : Connection, chainId : Int, fullCodeHash : EthHash ) : immutable.Set[DeployedCompilation] = {
         borrow( conn.prepareStatement( AllForFullCodeHashSql ) ) { ps =>
           ps.setInt(1, chainId)
-          ps.setString(2, fullCodeHash.hex)
+          ps.setString(2, fullCodeHash.hex.toLowerCase)
           borrow( ps.executeQuery() ) { rs =>
             var out = immutable.Set.empty[DeployedCompilation]
             while ( rs.next() ) out = out + extract( rs )
@@ -797,7 +797,7 @@ private [sbtethereum] object Schema_h2 {
 
       def allForFullCodeHashAnyChainId( conn : Connection, fullCodeHash : EthHash ) : immutable.Set[DeployedCompilation] = {
         borrow( conn.prepareStatement( AllForFullCodeHashAnyChainIdSql ) ) { ps =>
-          ps.setString(1, fullCodeHash.hex)
+          ps.setString(1, fullCodeHash.hex.toLowerCase)
           borrow( ps.executeQuery() ) { rs =>
             var out = immutable.Set.empty[DeployedCompilation]
             while ( rs.next() ) out = out + extract( rs )
@@ -819,13 +819,13 @@ private [sbtethereum] object Schema_h2 {
         val timestamp = new Timestamp( System.currentTimeMillis )
         borrow( conn.prepareStatement( InsertSql ) ) { ps =>
           ps.setInt      ( 1, chainId )
-          ps.setString   ( 2, contractAddress.hex )
-          ps.setString   ( 3, bcas.baseCodeHash.hex )
-          ps.setString   ( 4, bcas.fullCodeHash.hex )
-          ps.setString   ( 5, deployerAddress.hex )
-          ps.setString   ( 6, transactionHash.hex )
+          ps.setString   ( 2, contractAddress.hex.toLowerCase )
+          ps.setString   ( 3, bcas.baseCodeHash.hex.toLowerCase )
+          ps.setString   ( 4, bcas.fullCodeHash.hex.toLowerCase )
+          ps.setString   ( 5, deployerAddress.hex.toLowerCase )
+          ps.setString   ( 6, transactionHash.hex.toLowerCase )
           ps.setTimestamp( 7, timestamp )
-          ps.setString   ( 8, constructorInputs.hex )
+          ps.setString   ( 8, constructorInputs.hex.toLowerCase )
           ps.executeUpdate()
         }
       }
@@ -899,7 +899,7 @@ private [sbtethereum] object Schema_h2 {
       def select( conn : Connection, chainId : Int, contractAddress : EthAddress ) : Option[EthHash] = {
         borrow( conn.prepareStatement( SelectSql ) ){ ps =>
           ps.setInt(1, chainId )
-          ps.setString(2, contractAddress.hex )
+          ps.setString(2, contractAddress.hex.toLowerCase )
           borrow( ps.executeQuery() ){ rs =>
             val mbAbiHashHex = getMaybeSingleString( rs )
             mbAbiHashHex.map( hex => EthHash.withBytes( hex.decodeHexAsSeq ) )
@@ -909,15 +909,15 @@ private [sbtethereum] object Schema_h2 {
       def insert( conn : Connection, chainId : Int, contractAddress : EthAddress, abiHash : EthHash ) : Unit = {
         borrow( conn.prepareStatement( InsertSql ) ) { ps =>
           ps.setInt( 1, chainId )
-          ps.setString( 2, contractAddress.hex )
-          ps.setString( 3, abiHash.hex )
+          ps.setString( 2, contractAddress.hex.toLowerCase )
+          ps.setString( 3, abiHash.hex.toLowerCase )
           ps.executeUpdate()
         }
       }
       def delete( conn : Connection, chainId : Int, contractAddress : EthAddress ) : Boolean = {
         borrow( conn.prepareStatement( DeleteSql ) ) { ps =>
           ps.setInt( 1, chainId )
-          ps.setString( 2, contractAddress.hex )
+          ps.setString( 2, contractAddress.hex.toLowerCase )
           ps.executeUpdate() == 1
         }
       }
@@ -970,7 +970,7 @@ private [sbtethereum] object Schema_h2 {
       def selectByAddress( conn : Connection, chainId : Int, address : EthAddress ) : immutable.Seq[String] = {
         borrow( conn.prepareStatement( "SELECT alias FROM address_aliases WHERE chain_id = ? AND address = ? ORDER BY alias DESC" ) ) { ps =>
           ps.setInt(1, chainId)
-          ps.setString(2, address.hex)
+          ps.setString(2, address.hex.toLowerCase)
           borrow( ps.executeQuery() ){ rs =>
             @tailrec
             def prepend( accum : List[String] ) : List[String] = if ( rs.next() ) prepend( rs.getString(1) :: accum ) else accum
@@ -1001,7 +1001,7 @@ private [sbtethereum] object Schema_h2 {
         borrow( conn.prepareStatement( s"$verb INTO address_aliases ( chain_id, alias, address ) VALUES ( ?, ?, ? )" ) ) { ps =>
           ps.setInt( 1, chainId )
           ps.setString( 2, alias )
-          ps.setString( 3, address.hex )
+          ps.setString( 3, address.hex.toLowerCase )
           ps.executeUpdate()
         }
       }
@@ -1049,7 +1049,7 @@ private [sbtethereum] object Schema_h2 {
       def selectByAbiHash( conn : Connection, chainId : Int, abiHash : EthHash ) : immutable.Seq[String] = {
         borrow( conn.prepareStatement( "SELECT alias FROM abi_aliases WHERE chain_id = ? AND abi_hash = ? ORDER BY alias DESC" ) ) { ps =>
           ps.setInt(1, chainId)
-          ps.setString(2, abiHash.hex)
+          ps.setString(2, abiHash.hex.toLowerCase)
           borrow( ps.executeQuery() ){ rs =>
             @tailrec
             def prepend( accum : List[String] ) : List[String] = if ( rs.next() ) prepend( rs.getString(1) :: accum ) else accum
@@ -1074,7 +1074,7 @@ private [sbtethereum] object Schema_h2 {
         borrow( conn.prepareStatement( s"$verb INTO abi_aliases ( chain_id, alias, abi_hash ) VALUES ( ?, ?, ? )" ) ) { ps =>
           ps.setInt( 1, chainId )
           ps.setString( 2, alias )
-          ps.setString( 3, abiHash.hex )
+          ps.setString( 3, abiHash.hex.toLowerCase )
           ps.executeUpdate()
         }
       }
@@ -1108,7 +1108,7 @@ private [sbtethereum] object Schema_h2 {
 
       def select( conn : Connection, abiHash : EthHash ) : Option[Abi] = {
         borrow( conn.prepareStatement( SelectSql ) ) { ps =>
-          ps.setString(1, abiHash.hex)
+          ps.setString(1, abiHash.hex.toLowerCase)
           borrow( ps.executeQuery() )( getMaybeSingleString ).map( abiText => Json.parse( abiText ).as[Abi] )
         }
       }
@@ -1116,7 +1116,7 @@ private [sbtethereum] object Schema_h2 {
         val ( abiText, abiHash ) = abiTextHash( abi )
 
         borrow( conn.prepareStatement( UpsertSql ) ) { ps =>
-          ps.setString( 1, abiHash.hex )
+          ps.setString( 1, abiHash.hex.toLowerCase )
           ps.setString( 2, abiText )
           ps.executeUpdate()
         }
@@ -1124,7 +1124,7 @@ private [sbtethereum] object Schema_h2 {
         ( abiHash, abiText )
       }
       def contains( conn : Connection, abiHash : EthHash ) : Boolean = borrow( conn.prepareStatement( ContainsSql ) ){ ps =>
-        ps.setString( 1, abiHash.hex )
+        ps.setString( 1, abiHash.hex.toLowerCase )
         borrow( ps.executeQuery() )( _.next() )
       }
     }
@@ -1171,7 +1171,7 @@ private [sbtethereum] object Schema_h2 {
       def insertDefaultSenderAddress( conn : Connection, chainId : Int, senderAddress : EthAddress ) : Unit = {
         borrow( conn.prepareStatement( "INSERT INTO chain_default_sender_addresses( chain_id, sender_address ) VALUES( ?, ? )" ) ) { ps =>
           ps.setInt(1, chainId)
-          ps.setString(2, senderAddress.hex)
+          ps.setString(2, senderAddress.hex.toLowerCase)
           ps.executeUpdate()
         }
       }
@@ -1261,11 +1261,11 @@ private [sbtethereum] object Schema_h2 {
       }
 
       def insert( conn : Connection, chainId : Int, bidHash : EthHash, simpleName : String, bidderAddress : EthAddress, valueInWei : BigInt, salt : immutable.Seq[Byte], tld : String, ensAddress : EthAddress ) : Unit = {
-        val bidHashStr       = bidHash.hex
-        val bidderAddressStr = bidderAddress.hex
+        val bidHashStr       = bidHash.hex.toLowerCase
+        val bidderAddressStr = bidderAddress.hex.toLowerCase
         val valueInWeiStr    = valueInWei.toString
-        val saltStr          = salt.hex
-        val ensAddressStr    = ensAddress.hex
+        val saltStr          = salt.hex.toLowerCase
+        val ensAddressStr    = ensAddress.hex.toLowerCase
 
         borrow( conn.prepareStatement( "INSERT INTO ens_bid_store ( chain_id, bid_hash, simple_name, bidder_address, value_in_wei, salt, when_bid, tld, ens_address ) VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ? )" ) ) { ps =>
           ps.setInt( 1, chainId )
@@ -1284,7 +1284,7 @@ private [sbtethereum] object Schema_h2 {
       private def markTrue( field : String )( conn : Connection, chainId : Int, bidHash : EthHash ) : Unit = {
         borrow( conn.prepareStatement( s"UPDATE ens_bid_store SET ${field} = TRUE WHERE chain_id = ? AND bid_hash = ?" ) ) { ps =>
           ps.setInt( 1, chainId )
-          ps.setString( 2, bidHash.hex )
+          ps.setString( 2, bidHash.hex.toLowerCase )
           ps.executeUpdate()
         }
       }
@@ -1329,7 +1329,7 @@ private [sbtethereum] object Schema_h2 {
       def selectByBidHash( conn : Connection, chainId : Int, bidHash : EthHash ) : Option[RawBid] = {
         borrow( conn.prepareStatement( BaseSelect + "WHERE chain_id = ? AND bid_hash = ?" ) ) { ps =>
           ps.setInt(1, chainId)
-          ps.setString(2, bidHash.hex)
+          ps.setString(2, bidHash.hex.toLowerCase)
           borrow( ps.executeQuery() )( getMaybeSingleValue( extract ) )
         }
       }
@@ -1338,7 +1338,7 @@ private [sbtethereum] object Schema_h2 {
         borrow( conn.prepareStatement( BaseSelect + "WHERE chain_id = ? AND simple_name = ? AND bidder_address = ?" ) ) { ps =>
           ps.setInt(1, chainId)
           ps.setString(2, simpleName)
-          ps.setString(3, bidderAddress.hex)
+          ps.setString(3, bidderAddress.hex.toLowerCase)
           borrow( ps.executeQuery() ){ rs =>
             @tailrec
             def build( accum : List[RawBid] ) : List[RawBid] = {
