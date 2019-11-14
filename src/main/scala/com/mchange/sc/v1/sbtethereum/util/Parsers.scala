@@ -51,7 +51,14 @@ object Parsers {
 
   private val ZWSP = "\u200B" // HACK: we add zero-width space to parser examples lists where we don't want autocomplete to apply to unique examples
 
-  private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
+  // use rawAddressParserMaybeWithChainId( None ) instead of RawAddressParser
+  // private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
+
+  private val RawAddressParserAsString = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( _.mkString )
+
+  private def rawAddressParserMaybeWithChainId( mbChainId : Option[EthChainId] ) = {
+    transformOrFail( RawAddressParserAsString, addrStr => EthAddress.parse( addrStr, mbChainId, true ) )
+  }
 
   //private val RawBtcAddressParser = NotSpace.flatMap( chars => Failable( success( BtcAddress( chars.mkString ) ) ).recover( f => failure( f.message ) ).assert )
 
@@ -135,7 +142,7 @@ object Parsers {
   private [sbtethereum]
   def reset() : Unit = EnsAddressCache.reset()
 
-  private def createSimpleAddressParser( tabHelp : String ) = token( RawAddressParser, tabHelp )
+  private def createSimpleAddressParser( tabHelp : String, mbChainId : Option[EthChainId] ) = token( rawAddressParserMaybeWithChainId( mbChainId ).examples( tabHelp, ZWSP ) )
 
   private def rawAddressAliasParser( aliases : SortedMap[String,EthAddress] ) : Parser[String] = {
     aliases.keys.foldLeft( failure("not a known alias") : Parser[String] )( ( nascent, next ) => nascent | literal( next ) )
@@ -153,6 +160,7 @@ object Parsers {
   def createAddressParser( tabHelp : String, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = {
     mbRpi match {
       case Some( rpi ) => {
+        val mbChainId = if ( rpi.chainId >= 0 ) Some( EthChainId( rpi.chainId ) ) else None
         val aliases = rpi.addressAliases
         val tld = rpi.exampleNameServiceTld
         val ensParser = ensPathToAddressParserSelective( pathPredicate = CouldBeNonTldEns, pathPredicateFailureDesc = "Cannot be, but required to be, non-TLD ENS name" )( rpi ).examples( s"<ens-name>.${tld}" )
@@ -161,10 +169,11 @@ object Parsers {
         // token(OptSpace) ~> token( RawAddressParser | rawAliasedAddressParser( aliases ) | ensParser ).examples( allExamples : _* )
 
         // extra example ZWSP to prevent tab completion on just "<" if there are no aliases and all the tab-help looks like <whatever>
-        token( RawAddressParser.examples( tabHelp, ZWSP ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensParser )
+        val anyAddressParser = rawAddressParserMaybeWithChainId( mbChainId ).examples( tabHelp, ZWSP ) | rawAliasedAddressParser( aliases ).examples( aliases.keySet, false ) | ensParser
+        token( anyAddressParser )!!!(s"Could not parse address as hex string (if mixed case, the checksum may have failed!), as a known address alias, or as an ENS name under top-level domain '${tld}'.")
       }
       case None => {
-        createSimpleAddressParser( tabHelp )
+        createSimpleAddressParser( tabHelp, None )
       }
     }
   }
@@ -452,7 +461,7 @@ object Parsers {
     val sample = s"<${displayName}, of type ${input.`type`}>"
     val defaultExamples = FixedSetExamples( immutable.Set( sample, ZWSP ) )
     input.`type` match {
-      case "address" if mbRpi.nonEmpty => createAddressParser( sample, mbRpi ).map( _.hex )
+      case "address" if mbRpi.nonEmpty => createAddressParser( sample, mbRpi ).map( _.hex.toLowerCase )
       case BytesN_Regex( len )         => token( rawFixedLengthByteStringAsStringParser( len.toInt ) ).examples( defaultExamples )
       case "bytes"                     => token( RawBytesAsHexStringParser ).examples( defaultExamples )
       case "string"                    => token( RawStringInputParser ).examples( defaultExamples )
@@ -555,7 +564,8 @@ object Parsers {
   ) : Parser[String] = {
     token(Space) ~> (
       mbRpi.map { rpi =>
-        token( ( RawAddressParser.map( _.hex ) | rawAddressAliasParser( rpi.addressAliases ) ) | ID ).examples( rpi.addressAliases.keySet + "<eth-address-hex>", false )
+        val mbChainId = if ( rpi.chainId >= 0 ) Some( EthChainId( rpi.chainId ) ) else None
+        token( ( rawAddressParserMaybeWithChainId( mbChainId ).map( _.hex.toLowerCase ) | rawAddressAliasParser( rpi.addressAliases ) ) | ID ).examples( rpi.addressAliases.keySet + "<eth-address-hex>", false )
       }.getOrElse( failure( "Failed to retrieve RichParserInfo." ) )
     )
   }
