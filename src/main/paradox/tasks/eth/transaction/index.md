@@ -237,10 +237,14 @@ See @ref:[gas commands page](gas.md), or choose a command below:
 
 Creates and submits a transaction representing a function call to a smart contract for which a @ref:[contract abi](../contract/abi.md) is available.
 
+Restricted to mutators, functions that might modify the blockchain.
+
+For read-only operations (functions marked `pure` or `view`), use @ref:[`ethTransactionView`](#ethtransactionview).
+
 **Example:**
 ```
 > ethTransactionInvoke pingpong <tab>
-count   ping    pong    
+ping    pong    
 > ethTransactionInvoke pingpong ping <tab>
 <payload, of type string>   ​                            
 > ethTransactionInvoke pingpong ping "Whoops!"
@@ -296,6 +300,22 @@ A transaction with hash '0xc31664e9cb83a29cfb6049c161a98253c6b57201c97dbef663771
 [info]                                  )
 [success] Total time: 63 s, completed Mar 24, 2019 1:14:36 PM
 ```
+@@@
+
+### ethTransactionInvokeAny
+
+@@@ div {.keydesc}
+
+**Usage:**
+```
+> ethTransactionInvokeAny <contract-address-as-hex-or-ens-or-alias> <name-of-function-to-call> [<function-argument> <function-argument>...]
+```
+
+Creates and submits a transaction representing a function call to a smart contract for which a @ref:[contract abi](../contract/abi.md) is available.
+
+Same as @ref:[`ethTransactionInvoke`](#ethtransactioninvoke), except _**not**_ restricted to mutators (functions that might modify the blockchain).
+You can, if you wish, submit a call to a read-only (`pure` or `view`) method as an Ethereum transaction with this task.
+It's not clear why you'd ever want to do that, though. The task is defined to ensure a kind of completeness.
 
 @@@
 

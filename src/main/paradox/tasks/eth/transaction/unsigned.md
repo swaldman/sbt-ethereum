@@ -40,12 +40,14 @@ Enter the path to a (not-yet-existing) file into which to write the binary unsig
 
 Creates an unsigned transaction representing a function call to a smart contract for which a @ref:[contract abi](../contract/abi.md) is available.
 
+Restricted to mutators, functions that might modify the blockchain.
+
 Prints the transaction as hex, and optionally saves it in binary format as a file.
 
 **Example:**
 ```
 > ethTransactionUnsignedInvoke fortune <tab>
-addFortune      countFortunes   drawFortune     fortunes
+addFortune
 > ethTransactionUnsignedInvoke fortune addFortune <tab>
 <fortune, of type string>
 > ethTransactionUnsignedInvoke fortune addFortune "The day after tommorow will be a pretty good day."
@@ -58,6 +60,25 @@ Enter the path to a (not-yet-existing) file into which to write the binary unsig
 [info] Unsigned transaction saved as '/tmp/new-fortune.bin'.
 [success] Total time: 58 s, completed Mar 24, 2019 12:56:29 PM
 ```
+
+@@@
+
+### ethTransactionUnsignedInvokeAny
+
+@@@ div {.keydesc}
+
+**Usage:**
+```
+> ethTransactionUnsignedInvokeAny <contract-address-as-hex-or-ens-or-alias> <name-of-function-to-call> [<function-argument> <function-argument>...]
+```
+
+Same as @ref:[`ethTransactionUnsignedInvoke`](#ethtransactionunsignedinvoke), except _**not**_ restricted to mutators (functions that might modify the blockchain).
+You can, if you wish, create a transaction for a call to a read-only (`pure` or `view`) method with this task.
+It's not clear why you'd ever want to do that, though. The task is defined for a kind of completeness.
+
+Creates an unsigned transaction representing a function call to a smart contract for which a @ref:[contract abi](../contract/abi.md) is available.
+
+Prints the transaction as hex, and optionally saves it in binary format as a file.
 
 @@@
 

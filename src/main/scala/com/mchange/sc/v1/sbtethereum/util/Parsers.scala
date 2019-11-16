@@ -414,7 +414,15 @@ object Parsers {
 
   private [sbtethereum] def ethHashParser( exampleStr : String ) : Parser[EthHash] = token(literal("0x").? ~> Parser.repeat( HexDigit, 64, 64 ), exampleStr).map( chars => EthHash.withBytes( chars.mkString.decodeHex ) )
 
-  private [sbtethereum] def functionParser( abi : jsonrpc.Abi, restrictToConstants : Boolean ) : Parser[jsonrpc.Abi.Function] = {
+  private [sbtethereum] final object FunctionFilter {
+    val RestrictToConstants    : jsonrpc.Abi.Function => Boolean = fcn => fcn.constant
+    val NoFilter               : jsonrpc.Abi.Function => Boolean = fcn => true
+    val RestrictToNonconstants : jsonrpc.Abi.Function => Boolean = fcn => !fcn.constant
+  }
+
+  private val DummyFunction = jsonrpc.Abi.Function("<dummy-function-you-should-never-see>",immutable.Seq.empty,immutable.Seq.empty,true,false,"pure")
+
+  private [sbtethereum] def functionParser( abi : jsonrpc.Abi, functionFilter : jsonrpc.Abi.Function => Boolean ) : Parser[jsonrpc.Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )
 
     val overloadedNamesToFunctions = namesToFunctions.filter( _._2.length > 1 )
@@ -428,16 +436,14 @@ object Parsers {
 
     val processedNamesToFunctions = {
       val raw = (qualifiedOverloadedNamesToFunctions ++ nonoverloadedNamesToFunctions).toMap
-      if ( restrictToConstants ) {
-        raw.filter( _._2.constant )
-      } else {
-        raw
-      }
+      raw.filter( tup => functionFilter(tup._2 ) )
     }
 
-    val baseParser = processedNamesToFunctions.keySet.foldLeft( failure("not a function name") : Parser[String] )( ( nascent, next ) => nascent | literal( next ) )
+    // use ZWSP so if all function names start with one letter, or there's just one, we don't begin completion
+    val baseParser = processedNamesToFunctions.keySet.foldLeft( literal(ZWSP) )( ( nascent, next ) => nascent | literal( next ) ) 
 
-    baseParser.map( processedNamesToFunctions )
+    // but ZWSP must "succeed" (even though it should be pretty difficult to type). so we map it to a dummy function
+    baseParser.flatMap( name => processedNamesToFunctions.get( name ).fold( success( DummyFunction ) : Parser[jsonrpc.Abi.Function] )( success ) )
   }
 
   // modified from DQuote parser in https://github.com/sbt/sbt/blob/develop/internal/util-complete/src/main/scala/sbt/internal/util/complete/Parsers.scala
@@ -474,8 +480,8 @@ object Parsers {
     inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => token(Space) ~> next.map( str => partial :+ str ) ) )
   }
 
-  private def functionAndInputsParser( abi : jsonrpc.Abi, restrictToConstants : Boolean, mbRpi : Option[RichParserInfo] ) : Parser[(jsonrpc.Abi.Function, immutable.Seq[String])] = {
-    token( functionParser( abi, restrictToConstants ) ).flatMap( function => inputsParser( function.inputs, mbRpi ).map( seq => ( function, seq ) ) )
+  private def functionAndInputsParser( abi : jsonrpc.Abi, functionFilter : jsonrpc.Abi.Function => Boolean, mbRpi : Option[RichParserInfo] ) : Parser[(jsonrpc.Abi.Function, immutable.Seq[String])] = {
+    token( functionParser( abi, functionFilter ) ).flatMap( function => inputsParser( function.inputs, mbRpi ).map( seq => ( function, seq ) ) )
   }
 
   private [sbtethereum] val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
@@ -814,7 +820,7 @@ object Parsers {
   ) : Parser[Either[EthAddress,EthHash]] = _genContractAddressOrCodeHashParser( "" )( state, mbRpi )
 
 
-  private [sbtethereum] def genAbiMaybeWarningFunctionInputsParser( restrictedToConstants : Boolean )(
+  private [sbtethereum] def genAbiMaybeWarningFunctionInputsParser( functionFilter : jsonrpc.Abi.Function => Boolean )(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[(jsonrpc.Abi, Option[String], jsonrpc.Abi.Function, immutable.Seq[String])] = {
@@ -828,11 +834,11 @@ object Parsers {
       }
     }
     abiMaybeWarningParser.flatMap {
-      case ( abi, mbWarning ) => token(Space) ~> functionAndInputsParser(abi, restrictedToConstants, mbRpi ).map { case ( function, inputs ) => ( abi, mbWarning, function, inputs ) }
+      case ( abi, mbWarning ) => token(Space) ~> functionAndInputsParser(abi, functionFilter, mbRpi ).map { case ( function, inputs ) => ( abi, mbWarning, function, inputs ) }
     }
   }
 
-  private [sbtethereum] def genAddressFunctionInputsAbiParser( restrictedToConstants : Boolean )(
+  private [sbtethereum] def genAddressFunctionInputsAbiParser( functionFilter : jsonrpc.Abi.Function => Boolean )(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[(EthAddress, jsonrpc.Abi.Function, immutable.Seq[String], jsonrpc.Abi, AbiLookup)] = {
@@ -843,7 +849,7 @@ object Parsers {
           _                    <- Space
           abiLookup            =  abiLookupForAddressDefaultEmpty( rpi.chainId, address, rpi.abiOverrides )
           abi                  =  abiLookup.resolveAbi( None ).get
-          functionInputsTuple  <- functionAndInputsParser( abi, restrictedToConstants, mbRpi ) // Parser doesn't support withFilter for pattern matching
+          functionInputsTuple  <- functionAndInputsParser( abi, functionFilter, mbRpi ) // Parser doesn't support withFilter for pattern matching
         }
         yield {
           val ( function, inputs ) = functionInputsTuple
@@ -856,11 +862,11 @@ object Parsers {
       }
     }
   }
-  private [sbtethereum] def genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants : Boolean  )(
+  private [sbtethereum] def genAddressFunctionInputsAbiMbValueInWeiParser( functionFilter : jsonrpc.Abi.Function => Boolean  )(
     state : State,
     mbRpi : Option[RichParserInfo]
   ) : Parser[((EthAddress, jsonrpc.Abi.Function, immutable.Seq[String], jsonrpc.Abi, AbiLookup), Option[BigInt])] = {
-    genAddressFunctionInputsAbiParser( restrictedToConstants )( state, mbRpi ).flatMap { afia =>
+    genAddressFunctionInputsAbiParser( functionFilter )( state, mbRpi ).flatMap { afia =>
       if ( afia._2.payable ) {
         (Space ~> valueInWeiParser("[ETH to pay, optional]")).?.flatMap( mbv => success(  ( afia, mbv ) ) ) // useless flatmap rather than map
       } else {

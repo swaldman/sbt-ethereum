@@ -353,9 +353,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionGasPriceOverrideDrop  = taskKey [Unit] ("Removes any previously set gas price override, reverting to the usual automatic marked-up default.")
     val ethTransactionGasPriceOverridePrint = taskKey [Unit] ("Displays the current gas price override, if set.")
 
-    val ethTransactionInvoke = inputKey[Client.TransactionReceipt]("Calls a function on a deployed smart contract")
-    val ethTransactionLookup = inputKey[Client.TransactionReceipt]("Looks up (and potentially waits for) the transaction associated with a given transaction hash.")
-    val ethTransactionMock   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Mocks a call to any function. Burns no Ether, makes no persistent changes, returns a simulated result.")
+    val ethTransactionInvoke    = inputKey[Client.TransactionReceipt]("Submits a transaction to invokes a non-constant function on a deployed smart contract")
+    val ethTransactionInvokeAny = inputKey[Client.TransactionReceipt]("Submits a transaction to invoke any function on a deployed smart contract")
+    val ethTransactionLookup    = inputKey[Client.TransactionReceipt]("Looks up (and potentially waits for) the transaction associated with a given transaction hash.")
+    val ethTransactionMock      = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Mocks a call to any function. Burns no Ether, makes no persistent changes, returns a simulated result.")
 
     val ethTransactionNonceOverride      = inputKey[Unit]("Basically an alias to 'ethTransactionNonceOverrideSet'.")
     val ethTransactionNonceOverrideDrop  = taskKey[Unit]("Removes any nonce override that may have been set.")
@@ -370,9 +371,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val ethTransactionView   = inputKey[(Abi.Function,immutable.Seq[Decoded.Value])] ("Makes a call to a constant function, consulting only the local copy of the blockchain. Burns no Ether. Returns the latest available result.")
 
-    val ethTransactionUnsignedInvoke    = inputKey[EthTransaction.Unsigned]("Prepare a method-invokation transaction to be signed elsewhere.")
-    val ethTransactionUnsignedRaw       = inputKey[EthTransaction.Unsigned]("Prepare a raw message transaction to be signed elsewhere.")
-    val ethTransactionUnsignedEtherSend = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
+    val ethTransactionUnsignedInvoke     = inputKey[EthTransaction.Unsigned]("Prepare a method-invokation transaction, for a nonconstant method (not 'pure' or 'view'), to be signed elsewhere.")
+    val ethTransactionUnsignedInvokeAny  = inputKey[EthTransaction.Unsigned]("Prepare a method-invokation transaction (for any method, even those marked 'pure' or 'view') to be signed elsewhere.")
+    val ethTransactionUnsignedRaw        = inputKey[EthTransaction.Unsigned]("Prepare a raw message transaction to be signed elsewhere.")
+    val ethTransactionUnsignedEtherSend  = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
 
     val ethUtilHashKeccak256 = inputKey[Unit]("Logs the Keccack256 hash of a bytestring given as hex.")
     val ethUtilTimeIsoNow    = taskKey[Unit]("Logs in ISO_INSTANT format the current time (useful as a template for inputs to other time utilities)")
@@ -964,6 +966,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionInvoke in Compile := { ethTransactionInvokeTask( Compile ).evaluated },
 
     ethTransactionInvoke in Test := { ethTransactionInvokeTask( Test ).evaluated },
+
+    ethTransactionInvokeAny in Compile := { ethTransactionInvokeAnyTask( Compile ).evaluated },
+
+    ethTransactionInvokeAny in Test := { ethTransactionInvokeAnyTask( Test ).evaluated },
 
     ethTransactionLookup in Compile := { ethTransactionLookupTask( Compile ).evaluated },
 
@@ -2992,7 +2998,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractAbiCallEncodeTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAbiMaybeWarningFunctionInputsParser( restrictedToConstants = false ) )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAbiMaybeWarningFunctionInputsParser( FunctionFilter.NoFilter ) )
 
     Def.inputTask {
       val chainId = findNodeChainIdTask(warn=true)(config).value
@@ -4907,8 +4913,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     log.info( s"Gas price override set on chain with ID ${chainId}, ${formatGasPriceTweak( ovr )}." )
   }
 
+  private def ethTransactionInvokeAnyTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
+    ethTransactionInvokeTask( config, FunctionFilter.NoFilter )
+  }
+
   private def ethTransactionInvokeTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
+    ethTransactionInvokeTask( config, FunctionFilter.RestrictToNonconstants )
+  }
+
+  private def ethTransactionInvokeTask( config : Configuration, functionFilter : jsonrpc.Abi.Function => Boolean ) : Initialize[InputTask[Client.TransactionReceipt]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiMbValueInWeiParser( functionFilter ) )
 
     Def.inputTask {
       val s = state.value
@@ -4966,7 +4980,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethTransactionMockTask( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[Decoded.Value])]] = {
-    ethTransactionViewMockTask( restrictToConstants = false )( config )
+    ethTransactionViewMockTask( FunctionFilter.NoFilter )( config )
   }
 
   private def ethTransactionNonceOverrideDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
@@ -5173,7 +5187,13 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethTransactionUnsignedInvokeTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Unsigned]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = false ) )
+    ethTransactionUnsignedInvokeTask( config, FunctionFilter.RestrictToNonconstants )
+  }
+  private def ethTransactionUnsignedInvokeAnyTask( config : Configuration ) : Initialize[InputTask[EthTransaction.Unsigned]] = {
+    ethTransactionUnsignedInvokeTask( config, FunctionFilter.NoFilter )
+  }
+  private def ethTransactionUnsignedInvokeTask( config : Configuration, functionFilter : jsonrpc.Abi.Function => Boolean ) : Initialize[InputTask[EthTransaction.Unsigned]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiMbValueInWeiParser( functionFilter ) )
 
     Def.inputTask {
       val s = state.value
@@ -5441,11 +5461,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
 
   private def ethTransactionViewTask( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[Decoded.Value])]] = {
-    ethTransactionViewMockTask( restrictToConstants = true )( config )
+    ethTransactionViewMockTask( FunctionFilter.RestrictToConstants )( config )
   }
 
-  private def ethTransactionViewMockTask( restrictToConstants : Boolean )( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[Decoded.Value])]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiMbValueInWeiParser( restrictedToConstants = restrictToConstants ) )
+  private def ethTransactionViewMockTask( functionFilter : jsonrpc.Abi.Function => Boolean )( config : Configuration ) : Initialize[InputTask[(Abi.Function,immutable.Seq[Decoded.Value])]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiMbValueInWeiParser( functionFilter ) )
 
     Def.inputTask {
       val log = streams.value.log
@@ -6076,7 +6096,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def xethInvokeDataTask( config : Configuration ) : Initialize[InputTask[immutable.Seq[Byte]]] = {
-    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiParser( restrictedToConstants = false ) )
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genAddressFunctionInputsAbiParser( FunctionFilter.NoFilter ) )
 
     Def.inputTask {
       val log = streams.value.log
