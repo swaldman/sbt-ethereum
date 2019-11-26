@@ -24,12 +24,46 @@ import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 import com.mchange.sc.v1.sbtethereum.util.Abi.{abiHash, abiTextHash}
 import play.api.libs.json.Json
 
-object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
+import com.mchange.sc.v1.log.MLevel._
+
+private [sbtethereum]
+object Database {
+  private implicit lazy val logger : com.mchange.sc.v1.log.MLogger = mlogger( this )
+
+  private [sbtethereum]
+  case class CompilationInfo (
+    codeHash          : EthHash,
+    code              : String,
+    mbName            : Option[String],
+    mbSource          : Option[String],
+    mbLanguage        : Option[String],
+    mbLanguageVersion : Option[String],
+    mbCompilerVersion : Option[String],
+    mbCompilerOptions : Option[String],
+    mbAbiHash         : Option[EthHash],
+    mbAbi             : Option[Abi],
+    mbUserDoc         : Option[Compilation.Doc.User],
+    mbDeveloperDoc    : Option[Compilation.Doc.Developer],
+    mbMetadata        : Option[String],
+    mbAst             : Option[String],
+    mbProjectName     : Option[String]
+  )
+
+  private [sbtethereum]
+  final case class ContractsSummaryRow( mb_chain_id : Option[Int], contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
+
+  private [sbtethereum]
+  final case class Dump( timestamp : Long, schemaVersion : Int, file : File )
+}
+private [sbtethereum]
+class Database( parent : Shoebox ) extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
+  import Database._
+
   import Schema_h2._
 
   private val DirName = "database"
 
-  private [shoebox] lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=shoebox.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => shoebox.Directory), dirName=DirName )
+  private [shoebox] lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=parent.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => parent.Directory), dirName=DirName )
 
   private val UncheckedDataSourceManager = AutoResource[Unit,Failable[ComboPooledDataSource]]( (), _ => h2.initializeDataSource( false ), _.map( _.close() ) )
   private val CheckedDataSourceManager   = AutoResource[Unit,Failable[ComboPooledDataSource]]( (), _ => h2.initializeDataSource( true ),  _.map( _.close() ) )
@@ -210,7 +244,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     val ( compiledContracts, stubsWithDups ) = compilations.partition { case ( name, compilation ) => compilation.code.decodeHex.length > 0 }
 
     stubsWithDups.foreach { case ( name, compilation ) =>
-      DEBUG.log( s"Contract '$name' is a stub or abstract contract, and so has not been incorporated into shoebox compilations." )( shoebox.logger )
+      DEBUG.log( s"Contract '$name' is a stub or abstract contract, and so has not been incorporated into shoebox compilations." )
     }
 
     def updateKnownContracts( conn : Connection ) : Failable[Boolean] = {
@@ -353,25 +387,6 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   }
 
   private [sbtethereum]
-  case class CompilationInfo (
-    codeHash          : EthHash,
-    code              : String,
-    mbName            : Option[String],
-    mbSource          : Option[String],
-    mbLanguage        : Option[String],
-    mbLanguageVersion : Option[String],
-    mbCompilerVersion : Option[String],
-    mbCompilerOptions : Option[String],
-    mbAbiHash         : Option[EthHash],
-    mbAbi             : Option[Abi],
-    mbUserDoc         : Option[Compilation.Doc.User],
-    mbDeveloperDoc    : Option[Compilation.Doc.Developer],
-    mbMetadata        : Option[String],
-    mbAst             : Option[String],
-    mbProjectName     : Option[String]
-  )
-
-  private [sbtethereum]
   def compilationInfoForCodeHash( codeHash : EthHash ) : Failable[Option[CompilationInfo]] =  {
     DataSource.flatMap { ds =>
       Failable {
@@ -424,9 +439,6 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
       }
     }
   }
-
-  private [sbtethereum]
-  case class ContractsSummaryRow( mb_chain_id : Option[Int], contract_address : String, name : String, deployer_address : String, code_hash : String, txn_hash : String, timestamp : String )
 
   private [sbtethereum]
   def contractsSummary : Failable[immutable.Seq[ContractsSummaryRow]] = {
@@ -655,8 +667,6 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
   private [sbtethereum]
   def schemaVersionInconsistentUnchecked : Failable[Boolean] = getSchemaVersionUnchecked().map( _.get == Schema_h2.InconsistentSchemaVersion )
 
-  final case class Dump( timestamp : Long, schemaVersion : Int, file : File )
-
   def dumpDatabaseH2( conn : Connection, schemaVersion : Int ) : Failable[Dump] = h2.dump( conn, schemaVersion )
 
   def dump() : Failable[Dump] = {
@@ -696,16 +706,23 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
     val SchemaVersion = Schema_h2.SchemaVersion
 
-    private [shoebox] lazy val DirectoryManager           = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DirName )
-    private [shoebox] lazy val DumpsDirectoryManager      = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=DumpsDirName )
-    private [shoebox] lazy val SupersededDirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.Directory), dirName=SupersededDirName )
+    private [shoebox]
+    lazy val DirectoryManager           = AutoResource.UserOnlyDirectory( rawParent=Database.this.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.this.Directory), dirName=DirName )
+
+    private [shoebox]
+    lazy val DumpsDirectoryManager      = AutoResource.UserOnlyDirectory( rawParent=Database.this.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.this.Directory), dirName=DumpsDirName )
+
+    private [shoebox]
+    lazy val SupersededDirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Database.this.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Database.this.Directory), dirName=SupersededDirName )
 
     private [shoebox]
     lazy val DumpsDir_ExistenceAndPermissionsUnenforced : Failable[File] = DumpsDirectoryManager.existenceAndPermissionsUnenforced
+
     lazy val DumpsDir                                   : Failable[File] = DumpsDirectoryManager.existenceAndPermissionsEnforced
 
     private [shoebox]
     lazy val SupersededDir_ExistenceAndPermissionsUnenforced : Failable[File] = SupersededDirectoryManager.existenceAndPermissionsUnenforced
+
     lazy val SupersededDir                                   : Failable[File] = SupersededDirectoryManager.existenceAndPermissionsEnforced
 
     def reset() : Unit = {
@@ -738,7 +755,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
           ds.setDriverClass( "org.h2.Driver" )
           ds.setJdbcUrl( jdbcUrl )
           ds.setTestConnectionOnCheckout( true )
-          if ( ensureSchema ) Schema_h2.ensureSchema( ds )
+          if ( ensureSchema ) Schema_h2.ensureSchema( Database.this, ds )
           ds
         } catch {
           case t : Throwable =>
@@ -786,7 +803,7 @@ object Database extends PermissionsOverrideSource with AutoResource.UserOnlyDire
 
       // create a zip file of the superseded database before overwriting
       val superseded = new File( SupersededDir.assert, s"h2-superseded-${InFilenameTimestamp.generate()}.zip" )
-      Backup.zip( superseded, h2.Directory.assert, _ => true )
+      parent.backupManager.zip( superseded, h2.Directory.assert, _ => true )
 
       borrow( conn.createStatement() ) { stmt =>
         stmt.executeUpdate("DROP ALL OBJECTS")

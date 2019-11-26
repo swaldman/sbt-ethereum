@@ -9,12 +9,18 @@ import com.mchange.sc.v3.failable.logging._
 import com.mchange.sc.v1.consuela.ethereum.{clients, wallet}
 import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 
-object Keystore extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
+import com.mchange.sc.v1.log.MLevel._
+
+object Keystore {
+  implicit lazy val logger : com.mchange.sc.v1.log.MLogger = mlogger( this )
+}
+class Keystore( parent : Shoebox ) extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
+  import Keystore.logger
 
   val DirName = "keystore"
 
   private [shoebox]
-  lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=shoebox.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => shoebox.Directory), dirName=DirName )
+  lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=parent.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => parent.Directory), dirName=DirName )
 
   def reset() : Unit = {
     DirectoryManager.reset()
@@ -28,7 +34,7 @@ object Keystore extends PermissionsOverrideSource with AutoResource.UserOnlyDire
     val DirName = "V3"
 
     private [shoebox]
-    lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Keystore.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Keystore.Directory), dirName=DirName )
+    lazy val DirectoryManager = AutoResource.UserOnlyDirectory( rawParent=Keystore.this.Directory_ExistenceAndPermissionsUnenforced, enforcedParent=(() => Keystore.this.Directory), dirName=DirName )
 
     def reset() : Unit = DirectoryManager.reset()
 

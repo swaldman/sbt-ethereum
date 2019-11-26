@@ -17,38 +17,38 @@ import com.mchange.sc.v1.sbtethereum.util.Abi.abiHash
  * 
  *  Standard aliases still include the "standard:" prefix, however. 
  */ 
-object AbiAliasHashManager {
+class AbiAliasHashManager( parent : Shoebox ) {
 
   private [sbtethereum]
   def createUpdateAbiAlias( chainId : Int, alias : String, abiHash : EthHash ) : Failable[Unit] = {
     require( noStandardPrefix( alias ), "Can't create or update new standard ABI aliases. (These should be hardcoded into 'sbt-ethereum'.)" )
-    shoebox.Database.createUpdateAbiAlias( chainId, alias, abiHash )
+    parent.database.createUpdateAbiAlias( chainId, alias, abiHash )
   }
 
   private [sbtethereum]
   def createUpdateAbiAlias( chainId : Int, alias : String, abi : jsonrpc.Abi ) : Failable[Unit] = {
     require( noStandardPrefix( alias ), "Can't create or update new standard ABI aliases. (These should be hardcoded into 'sbt-ethereum'.)" )
-    shoebox.Database.createUpdateAbiAlias( chainId, alias, abi )
+    parent.database.createUpdateAbiAlias( chainId, alias, abi )
   }
 
   private [sbtethereum]
   def findAllAbiAliases( chainId : Int ) : Failable[immutable.SortedMap[String,EthHash]] = {
-    shoebox.Database.findAllAbiAliases( chainId ).map( _ ++ StandardPrefixedAliasesToStandardAbiHashes )
+    parent.database.findAllAbiAliases( chainId ).map( _ ++ StandardPrefixedAliasesToStandardAbiHashes )
   }
 
   private [sbtethereum]
   def findAbiHashByAbiAlias( chainId : Int, alias : String ) : Failable[Option[EthHash]] = {
-    shoebox.Database.findAbiHashByAbiAlias( chainId, alias ).map( mbDbHash => mbDbHash orElse StandardPrefixedAliasesToStandardAbiHashes.get( alias ) )
+    parent.database.findAbiHashByAbiAlias( chainId, alias ).map( mbDbHash => mbDbHash orElse StandardPrefixedAliasesToStandardAbiHashes.get( alias ) )
   }
 
   private [sbtethereum]
   def findAbiByAbiAlias( chainId : Int, alias : String ) : Failable[Option[jsonrpc.Abi]] = {
-    shoebox.Database.findAbiByAbiAlias( chainId, alias ).map( mbDbAbi => mbDbAbi orElse StandardPrefixedAliasesToStandardAbiHashes.get( alias ).flatMap( stdhash => StandardAbisByHash.get( stdhash ) ) )
+    parent.database.findAbiByAbiAlias( chainId, alias ).map( mbDbAbi => mbDbAbi orElse StandardPrefixedAliasesToStandardAbiHashes.get( alias ).flatMap( stdhash => StandardAbisByHash.get( stdhash ) ) )
   }
 
   private [sbtethereum]
   def findAbiAliasesByAbiHash( chainId : Int, abiHash : EthHash ) : Failable[immutable.Seq[String]] = {
-    shoebox.Database.findAbiAliasesByAbiHash( chainId, abiHash ).map( aliases => aliases ++ StandardAbiHashesToStandardPrefixedAliases.get( abiHash ).toSeq )
+    parent.database.findAbiAliasesByAbiHash( chainId, abiHash ).map( aliases => aliases ++ StandardAbiHashesToStandardPrefixedAliases.get( abiHash ).toSeq )
   }
 
   private [sbtethereum]
@@ -56,7 +56,7 @@ object AbiAliasHashManager {
 
   private [sbtethereum]
   def hasAbiAliases( chainId : Int, abiHash : EthHash ) : Failable[Boolean] = {
-    shoebox.Database.hasAbiAliases( chainId, abiHash ).map( dbHas => dbHas || StandardAbiHashesToStandardPrefixedAliases.contains( abiHash ) )
+    parent.database.hasAbiAliases( chainId, abiHash ).map( dbHas => dbHas || StandardAbiHashesToStandardPrefixedAliases.contains( abiHash ) )
   }
 
   private [sbtethereum]
@@ -65,11 +65,11 @@ object AbiAliasHashManager {
   private [sbtethereum]
   def dropAbiAlias( chainId : Int, alias : String ) : Failable[Boolean] = {
     require( noStandardPrefix( alias ), "Can't drop standard ABI aliases. (These are hardcoded into 'sbt-ethereum'.)" )
-    shoebox.Database.dropAbiAlias( chainId, alias )
+    parent.database.dropAbiAlias( chainId, alias )
   }
 
   private [sbtethereum]
   def findAbiByAbiHash( abiHash : EthHash ) : Failable[Option[jsonrpc.Abi]] = {
-    shoebox.Database.findAbiByAbiHash( abiHash ).map( mbAbi => mbAbi orElse StandardAbisByHash.get( abiHash ) )
+    parent.database.findAbiByAbiHash( abiHash ).map( mbAbi => mbAbi orElse StandardAbisByHash.get( abiHash ) )
   }
 }

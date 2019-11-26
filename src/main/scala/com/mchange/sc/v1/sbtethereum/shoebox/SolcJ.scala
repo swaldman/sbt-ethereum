@@ -9,10 +9,18 @@ import com.mchange.sc.v1.consuela.io.ensureUserOnlyDirectory
 import com.mchange.sc.v3.failable._
 import com.mchange.sc.v3.failable.logging._
 
-object SolcJ extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
+import com.mchange.sc.v1.log.MLevel._
+
+object SolcJ {
+  implicit lazy val logger : com.mchange.sc.v1.log.MLogger = mlogger( this )
+}
+class SolcJ( parent : Shoebox ) extends PermissionsOverrideSource with AutoResource.UserOnlyDirectory.Owner {
+  import SolcJ.logger
+
   val DirName = "solcJ"
 
-  private [shoebox] lazy val DirectoryManager = AutoResource.UserOnlyDirectory( shoebox.Directory_ExistenceAndPermissionsUnenforced, () => shoebox.Directory, DirName )
+  private [shoebox]
+  lazy val DirectoryManager = AutoResource.UserOnlyDirectory( parent.Directory_ExistenceAndPermissionsUnenforced, () => parent.Directory, DirName )
 
   def userReadOnlyFiles   : immutable.Set[File] = immutable.Set.empty[File]
 
@@ -24,7 +32,7 @@ object SolcJ extends PermissionsOverrideSource with AutoResource.UserOnlyDirecto
       }
       f.exists() && f.isFile() && goodName
     }
-    SolcJ.Directory_ExistenceAndPermissionsUnenforced.map { dir =>
+    this.Directory_ExistenceAndPermissionsUnenforced.map { dir =>
       if ( dir.exists() && dir.canRead() ) recursiveListBeneath(dir).filter( solcExecutable ).toSet else immutable.Set.empty[File]
     }.xwarn( "Failed to read SolcJ directory.").getOrElse( immutable.Set.empty[File] )
   }

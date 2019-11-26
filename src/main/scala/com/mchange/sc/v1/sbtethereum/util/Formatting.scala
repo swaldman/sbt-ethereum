@@ -2,7 +2,7 @@ package com.mchange.sc.v1.sbtethereum.util
 
 import Abi.abiLookupForAddress
 
-import com.mchange.sc.v1.sbtethereum.{shoebox, syncOut, EthValue, LineSep, PriceFeed, SbtEthereumException}
+import com.mchange.sc.v1.sbtethereum.{syncOut, EthValue, LineSep, PriceFeed, SbtEthereumException, SbtEthereumPlugin}
 
 import com.mchange.sc.v1.consuela._
 
@@ -112,14 +112,14 @@ object Formatting {
   def mbWithNonceClause( nonceOverride : Option[Unsigned256] ) = nonceOverride.fold("")( n => s"with nonce ${n.widen} " )
 
   def commaSepAliasesForAddress( chainId : Int, address : EthAddress ) : Failable[Option[String]] = {
-    shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
+    SbtEthereumPlugin.activeShoebox.addressAliasManager.findAddressAliasesByAddress( chainId, address ).map( seq => if ( seq.isEmpty ) None else Some( seq.mkString( "['","','", "']" ) ) )
   }
   def leftwardAliasesArrowOrEmpty( chainId : Int, address : EthAddress ) : Failable[String] = {
     commaSepAliasesForAddress( chainId, address ).map( _.fold("")( aliasesStr => s" <-- ${aliasesStr}" ) )
   }
   def jointAliasesPartAddressAbi( chainId : Int, address : EthAddress, abiHash : EthHash ) : Option[String] = {
-    val addressAliases = shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).assert
-    val abiAliases = shoebox.AbiAliasHashManager.findAbiAliasesByAbiHash( chainId, abiHash ).assert
+    val addressAliases = SbtEthereumPlugin.activeShoebox.addressAliasManager.findAddressAliasesByAddress( chainId, address ).assert
+    val abiAliases = SbtEthereumPlugin.activeShoebox.abiAliasHashManager.findAbiAliasesByAbiHash( chainId, abiHash ).assert
     def aliasList( s : Seq[String] ) : String = s.mkString("['","','","']")
     def pAbi( abiAlias : String ) : String = "abi:" + abiAlias
     def abiAliasList( s : Seq[String] ) : String = aliasList( s.map( pAbi ) )

@@ -5,7 +5,7 @@ import com.mchange.sc.v3.failable._
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.{EthHash, EthTransaction}
 
-object TransactionLog extends ShoeboxLog[ ( Int, String, EthTransaction.Signed, EthHash ) ]("transaction-log") {
+class TransactionLog( parent : Shoebox ) extends ShoeboxLog[ ( Int, String, EthTransaction.Signed, EthHash ) ](parent, "transaction-log") {
   def toLine( timestamp : String, tuple : ( Int, String, EthTransaction.Signed, EthHash ) ) : String = {
     val ( chainId, jsonRpcUrl, txn, transactionHash ) = tuple
     val ( ttype, payloadKey, payload ) = txn match {

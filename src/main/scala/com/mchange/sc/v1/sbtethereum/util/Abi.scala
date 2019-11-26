@@ -1,6 +1,6 @@
 package com.mchange.sc.v1.sbtethereum.util
 
-import com.mchange.sc.v1.sbtethereum.{nst, shoebox, AbiUnknownException}
+import com.mchange.sc.v1.sbtethereum.{nst, AbiUnknownException, SbtEthereumPlugin}
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
 import play.api.libs.json.Json
 
@@ -24,13 +24,13 @@ private [sbtethereum] object Abi {
 
   def abiFromAbiSource( source : AbiSource ) : Option[ ( jsonrpc.Abi, Option[AbiLookup] ) ] = {
     source match {
-      case AliasSource( chainId, alias ) => shoebox.AbiAliasHashManager.findAbiByAbiAlias( chainId, alias ).assert.map( abi => ( abi, None ) )
+      case AliasSource( chainId, alias ) => SbtEthereumPlugin.activeShoebox.abiAliasHashManager.findAbiByAbiAlias( chainId, alias ).assert.map( abi => ( abi, None ) )
       case AddressSource( chainId, address, abiOverrides ) => {
         val lookup = abiLookupForAddress( chainId, address, abiOverrides )
         lookup.resolveAbi( None ).map( abi => ( abi, Some( lookup ) ) )
       }
       case HashSource( hash ) => {
-        val mbAbi = shoebox.AbiAliasHashManager.findAbiByAbiHash( hash ).assert orElse shoebox.Database.compilationInfoForCodeHash( hash ).assert.flatMap( _.mbAbi )
+        val mbAbi = SbtEthereumPlugin.activeShoebox.abiAliasHashManager.findAbiByAbiHash( hash ).assert orElse SbtEthereumPlugin.activeShoebox.database.compilationInfoForCodeHash( hash ).assert.flatMap( _.mbAbi )
         mbAbi.map( abi => Tuple2( abi, None ) )
       }
     }
@@ -75,8 +75,8 @@ private [sbtethereum] object Abi {
     AbiLookup(
       address,
       abiOverrides.get(address),
-      shoebox.Database.getImportedContractAbi( chainId, address ).assert,        // throw an Exception if there's a database problem
-      shoebox.Database.deployedContractInfoForAddress( chainId, address ).assert.flatMap( _.mbAbi ), // again, throw if database problem
+      SbtEthereumPlugin.activeShoebox.database.getImportedContractAbi( chainId, address ).assert,        // throw an Exception if there's a database problem
+      SbtEthereumPlugin.activeShoebox.database.deployedContractInfoForAddress( chainId, address ).assert.flatMap( _.mbAbi ), // again, throw if database problem
       defaultBuilder
     )
   }

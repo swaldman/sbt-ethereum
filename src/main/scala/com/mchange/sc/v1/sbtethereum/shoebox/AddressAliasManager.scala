@@ -9,11 +9,11 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum.EthAddress
 import com.mchange.sc.v3.failable._
 
-object AddressAliasManager {
+class AddressAliasManager( parent : Shoebox ) {
   private val SyntheticAliases = immutable.Set( DefaultSenderAlias ) // XXX: in theory, we should just use the keyset of the map below. but that seems like a pain for now
 
   private def synthetics( chainId : Int ) : Failable[immutable.SortedMap[String,EthAddress]] = {
-    shoebox.Database.findDefaultSenderAddress( chainId ) map { mbSenderAddress =>
+    parent.database.findDefaultSenderAddress( chainId ) map { mbSenderAddress =>
       mbSenderAddress match {
         case Some( address ) => immutable.SortedMap( DefaultSenderAlias -> address )
         case None            => immutable.SortedMap.empty
@@ -28,14 +28,14 @@ object AddressAliasManager {
   private [sbtethereum] 
   def insertAddressAlias( chainId : Int, alias : String, address : EthAddress ) : Failable[Unit] = {
     require( !SyntheticAliases( alias ), s"'${alias}' is reserved as a synthetic alias. You can't directly define it." )
-    shoebox.Database.insertAddressAlias( chainId, alias, address )
+    parent.database.insertAddressAlias( chainId, alias, address )
   }
 
 
   private [sbtethereum] 
   def findAllAddressAliases( chainId : Int ) : Failable[immutable.SortedMap[String,EthAddress]] = {
     for {
-      dbAliases <- shoebox.Database.findAllAddressAliases( chainId )
+      dbAliases <- parent.database.findAllAddressAliases( chainId )
       syntheticAliases <- synthetics( chainId )
     }
     yield {
@@ -47,7 +47,7 @@ object AddressAliasManager {
   def findAddressByAddressAlias( chainId : Int, alias : String ) : Failable[Option[EthAddress]] = {
     for {
       mbSynthAlias <- synthetics( chainId ).map( _.get( alias ) )
-      mbDbAlias <- shoebox.Database.findAddressByAddressAlias( chainId, alias )
+      mbDbAlias <- parent.database.findAddressByAddressAlias( chainId, alias )
     }
     yield {
       mbSynthAlias orElse mbDbAlias
@@ -57,7 +57,7 @@ object AddressAliasManager {
   private [sbtethereum] 
   def findAddressAliasesByAddress( chainId : Int, address : EthAddress ) : Failable[immutable.Seq[String]] = {
     for {
-      dbAliases <- shoebox.Database.findAddressAliasesByAddress( chainId, address )
+      dbAliases <- parent.database.findAddressAliasesByAddress( chainId, address )
       synths <- syntheticsByAddress( chainId, address ).map( theMap => theMap.map( _._1 ).toSeq )
     }
     yield {
@@ -72,12 +72,12 @@ object AddressAliasManager {
 
   private [sbtethereum] 
   def hasNonSyntheticAddressAliases( chainId : Int, address : EthAddress ) : Failable[Boolean] = {
-    shoebox.Database.findAddressAliasesByAddress( chainId, address ).map( _.nonEmpty )
+    parent.database.findAddressAliasesByAddress( chainId, address ).map( _.nonEmpty )
   }
 
   private [sbtethereum] 
   def dropAddressAlias( chainId : Int, alias : String ) : Failable[Boolean] = {
     require( !SyntheticAliases( alias ), s"'${alias}' is reserved as a synthetic alias. You can't directly remove it." )
-    shoebox.Database.dropAddressAlias( chainId, alias )
+    parent.database.dropAddressAlias( chainId, alias )
   }
 }

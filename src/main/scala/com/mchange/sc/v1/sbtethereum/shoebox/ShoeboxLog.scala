@@ -10,7 +10,7 @@ import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.consuela.ethereum.{EthHash, EthTransaction}
 import scala.io.Codec
 
-abstract class ShoeboxLog[T]( logName : String ) {
+abstract class ShoeboxLog[T]( parent : Shoebox, logName : String ) {
   private val TimestampPattern = "yyyy-MM-dd'T'HH:mm:ssZ"
 
   lazy val File : Failable[File] = {
@@ -18,7 +18,7 @@ abstract class ShoeboxLog[T]( logName : String ) {
       if (file.exists()) setUserOnlyFilePermissions( file ) else createUserOnlyEmptyFile( file )
       file
     }
-    Directory.map(dir => new java.io.File(dir, logName) ).flatMap( prepare )
+    parent.Directory.map(dir => new java.io.File(dir, logName) ).flatMap( prepare )
   }
 
   def toLine( timestamp : String, t : T ) : String

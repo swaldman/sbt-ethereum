@@ -33,7 +33,10 @@ import java.security.SecureRandom
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.Date
+import java.util.concurrent.atomic.AtomicReference
+
 import play.api.libs.json.{JsObject, Json}
+
 import com.mchange.sc.v1.etherscan
 import com.mchange.sc.v3.failable._
 import com.mchange.sc.v3.failable.logging._
@@ -95,16 +98,23 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val MaxUnlockedAddresses = 3
 
-  private val Mutables = new mutables.Mutables (
+  // Make sure this is lazy, and we need to run init tasks before we can touch activeShoebox,
+  // necessary to discover OnlyShoeboxKeystoresV3
+  private lazy val Mutables = new mutables.Mutables (
     scheduler            = MainScheduler,
     keystoresV3          = OnlyShoeboxKeystoreV3,
     publicTestAddresses  = PublicTestAddresses,
     maxUnlockedAddresses = MaxUnlockedAddresses
   )
 
+  // MT: protected by ShoeboxHolder's lock
+  private val ShoeboxHolder = new AtomicReference[Option[shoebox.Shoebox]]( None )
+
   private def resetAllState() : Unit = {
     Mutables.reset()
-    shoebox.reset()
+    ShoeboxHolder.synchronized {
+      ShoeboxHolder.get().foreach( _.reset() )
+    }
   }
 
   private val BufferSize = 4096
@@ -170,8 +180,10 @@ object SbtEthereumPlugin extends AutoPlugin {
    * The goal is to make sure that all wallets SBT ethereum ever uses
    * are available in the shoebox (so that backing up the shoebox is
    * sufficient to back up the wallets.
+   * 
+   * Make sure this is lazy, and we need to run init tasks before we can touch activeShoebox
    */ 
-  lazy val OnlyShoeboxKeystoreV3 = shoebox.Keystore.V3.Directory.map( dir => immutable.Seq( dir ) ).assert
+  lazy val OnlyShoeboxKeystoreV3 = activeShoebox.keystore.V3.Directory.map( dir => immutable.Seq( dir ) ).assert
 
   object autoImport {
 
@@ -196,6 +208,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgNodeUrl                       = settingKey[String]      ("URL of the Ethereum JSON-RPC service the build should work with")
     val ethcfgScalaStubsPackage             = settingKey[String]      ("Package into which Scala stubs of Solidity compilations should be generated")
     val ethcfgAddressSender                 = settingKey[String]      ("The address from which transactions will be sent")
+    val ethcfgShoeboxDirectory              = settingKey[String]      ("Path (relative or absolute) to the directory which will be used as the persistent sbt-ethereum shoebox.")
     val ethcfgSolidityCompilerOptimize      = settingKey[Boolean]     ("Sets whether the Solidity compiler should run its optimizer on generated code, if supported.")
     val ethcfgSolidityCompilerOptimizerRuns = settingKey[Int]         ("Sets the number of optimization runs the Solidity compiler will execute, if supported and 'ethcfgSolidityCompilerOptimize' is set to 'true'.")
     val ethcfgSoliditySource                = settingKey[File]        ("Solidity source code directory")
@@ -416,7 +429,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethNamedAbis = taskKey[immutable.Map[String,TimestampedAbi]]("Loads any named ABIs from the 'xethcfgNamedAbiSource' directory")
     val xethOnLoadAutoImportWalletsV3 = taskKey[Unit]("Import any not-yet-imported wallets from directories specified in 'ethcfgKeystoreAutoImportLocationsV3'")
     val xethOnLoadBanner = taskKey[Unit]( "Prints the sbt-ethereum post-initialization banner." )
-    val xethOnLoadRecoverInconsistentSchema = taskKey[Unit]( "Checks to see if the shoebox database schema is in an inconsistent state, and offers to recover a consistent version from dump." )
+    val xethOnLoadShoeboxInitVerifyRecover = taskKey[Unit]( "Initializes shoebox and database. Checks to see if the shoebox database schema is in an inconsistent state, and offers to recover a consistent version from dump." )
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executed in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
     val xethShoeboxRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's shoebox to its required user-only values.")
@@ -1138,7 +1151,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethOnLoadBanner := { xethOnLoadBannerTask.value },
 
-    xethOnLoadRecoverInconsistentSchema := { xethOnLoadRecoverInconsistentSchemaTask.value },
+    xethOnLoadShoeboxInitVerifyRecover := { xethOnLoadShoeboxInitVerifyRecoverTask.value },
 
     xethOnLoadSolicitCompilerInstall := { xethOnLoadSolicitCompilerInstallTask.value },
 
@@ -1285,7 +1298,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val origF : State => State = (onLoad in Global).value
       val newF  : State => State = ( state : State ) => {
         val lastState = origF( state )
-        val state1 = attemptAdvanceStateWithTask( xethOnLoadRecoverInconsistentSchema,                 lastState )
+        val state1 = attemptAdvanceStateWithTask( xethOnLoadShoeboxInitVerifyRecover,                  lastState )
         val state2 = attemptAdvanceStateWithTask( xethOnLoadAutoImportWalletsV3,                       state1    )
         val state3 = attemptAdvanceStateWithTask( xethOnLoadSolicitWalletV3Generation,                 state2    )
         val state4 = attemptAdvanceStateWithTask( xethOnLoadSolicitCompilerInstall,                    state3    )
@@ -1436,7 +1449,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           address
         }
         case None => {
-          val mbDbAddressSender = shoebox.Database.findDefaultSenderAddress( chainId ).assert
+          val mbDbAddressSender = activeShoebox.database.findDefaultSenderAddress( chainId ).assert
           (config/ethcfgAddressSender).?.value match {
             case Some( addressStr ) => {
               val address = EthAddress( addressStr )
@@ -1500,7 +1513,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       case None => {
         val mbDbNodeChainId = {
           config match {
-            case Compile => shoebox.Database.getDefaultChainId().assert
+            case Compile => activeShoebox.database.getDefaultChainId().assert
             case Test    => None // default chain IDs not supported for Test. modifications must be embedded in build
             case _       => None
           }
@@ -1555,7 +1568,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         Some( url )
       }
       case None => {
-        val mbDbNodeUrl = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
+        val mbDbNodeUrl = activeShoebox.database.findDefaultJsonRpcUrl( chainId ).assert
         (config/ethcfgNodeUrl).?.value match {
           case Some( url ) => {
             if ( warn ) {
@@ -1603,7 +1616,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val chainId = findNodeChainIdTask(warn=true)(config).value
 
     ( tle : Invoker.TransactionLogEntry, ec : ExecutionContext ) => Future (
-      shoebox.TransactionLog.logTransaction( chainId, tle.jsonRpcUrl, tle.transaction, tle.transactionHash ).get
+      activeShoebox.transactionLog.logTransaction( chainId, tle.jsonRpcUrl, tle.transaction, tle.transactionHash ).get
     )( ec )
   }
 
@@ -2400,7 +2413,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   // etherscan tasks
 
   private def etherscanApiKeyDropTask : Initialize[Task[Unit]] = Def.task {
-    val deleted = shoebox.Database.deleteEtherscanApiKey().assert
+    val deleted = activeShoebox.database.deleteEtherscanApiKey().assert
     syncOut {
       if ( deleted ) {
         println("Etherscan API key successfully dropped.")
@@ -2414,14 +2427,14 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def etherscanApiKeySetTask : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val apiKey = (Space ~> etherscanApiKeyParser("<etherscan-api-key>")).parsed
-    shoebox.Database.setEtherscanApiKey( apiKey ).assert
+    activeShoebox.database.setEtherscanApiKey( apiKey ).assert
     syncOut {
       println("Etherscan API key successfully set.")
     }
   }
 
   private def etherscanApiKeyPrintTask : Initialize[Task[Unit]] = Def.task {
-    val mbApiKey = shoebox.Database.getEtherscanApiKey().assert
+    val mbApiKey = activeShoebox.database.getEtherscanApiKey().assert
     syncOut {
       mbApiKey match {
         case Some( apiKey ) => println( s"The currently set Etherscan API key is ${apiKey}" )
@@ -2543,7 +2556,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val ensureAliases = (xethFindCacheRichParserInfo in config)
 
       val alias = parser.parsed
-      val check = shoebox.AddressAliasManager.dropAddressAlias( chainId, alias ).get // assert no database problem
+      val check = activeShoebox.addressAliasManager.dropAddressAlias( chainId, alias ).get // assert no database problem
       if (check) log.info( s"Alias '${alias}' successfully dropped (for chain with ID ${chainId}).")
       else log.warn( s"Alias '${alias}' is not defined (on blockchain with ID ${chainId}), and so could not be dropped." )
 
@@ -2556,7 +2569,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log      = streams.value.log
     val chainId  = findNodeChainIdTask(warn=true)(config).value
-    val faliases = shoebox.AddressAliasManager.findAllAddressAliases( chainId )
+    val faliases = activeShoebox.addressAliasManager.findAllAddressAliases( chainId )
     faliases.fold( _ => log.warn("Could not read aliases from shoebox database.") ) { aliases =>
       syncOut {
         aliases.foreach { case (alias, address) => println( s"${alias} -> ${verboseAddress(chainId, address)}" ) }
@@ -2571,13 +2584,13 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val aliasOrAddress = parser.parsed
-      val mbAddressForAlias = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, aliasOrAddress ).assert
+      val mbAddressForAlias = activeShoebox.addressAliasManager.findAddressByAddressAlias( chainId, aliasOrAddress ).assert
       val mbEntryAsAddress = Failable( EthAddress( aliasOrAddress ) ).toOption
 
       mbAddressForAlias match {
         case Some( addressForAlias ) => syncOut( println( s"The alias '${aliasOrAddress}' points to address ${verboseAddress( chainId, addressForAlias )}." ) )
         case None => {
-          val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, addr ).get )
+          val aliasesForAddress = mbEntryAsAddress.toSeq.flatMap( addr => activeShoebox.addressAliasManager.findAddressAliasesByAddress( chainId, addr ).get )
           syncOut {
             ( mbEntryAsAddress, aliasesForAddress ) match {
               case ( Some( entryAsAddress ),        Seq() ) => println( s"The address '${hexString(entryAsAddress)}' is not associated with any aliases." )
@@ -2646,7 +2659,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     if (goodHexAddress(alias)) {
       throw new SbtEthereumException( s"You cannot use what would be a legitimate Ethereum hex address as an alias. Bad attempted alias: '${alias}'" )
     }
-    val oldValue = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, alias ).assert
+    val oldValue = activeShoebox.addressAliasManager.findAddressByAddressAlias( chainId, alias ).assert
 
     val shouldUpdate = {
       oldValue match {
@@ -2661,7 +2674,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( s"User chose not to replace previously defined alias '${alias}' (for chain with ID ${chainId}). It continues to point to '${hexString(differentAddress)}'." )
           }
           else {
-            val didDrop = shoebox.AddressAliasManager.dropAddressAlias( chainId, alias ).assert
+            val didDrop = activeShoebox.addressAliasManager.dropAddressAlias( chainId, alias ).assert
             assert( didDrop, "Expected deletion of address alias '${alias}' did not in fact delete any rows!" )
             true
           }
@@ -2673,7 +2686,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     if ( shouldUpdate ) {
-      val check = shoebox.AddressAliasManager.insertAddressAlias( chainId, alias, address )
+      val check = activeShoebox.addressAliasManager.insertAddressAlias( chainId, alias, address )
       check.fold( _.vomit ){ _ =>
         log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
       }
@@ -2750,7 +2763,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val effective = f_effective.assert
       val mbOverride = Mutables.SenderOverrides.get( chainId )
       val mbBuildSetting = (config/ethcfgAddressSender).?.value
-      val mbShoeboxDefault = shoebox.Database.findDefaultSenderAddress( chainId ).assert
+      val mbShoeboxDefault = activeShoebox.database.findDefaultSenderAddress( chainId ).assert
 
       log.info( s"The current effective sender address is ${verboseAddress(chainId, effective)}." )
 
@@ -2825,7 +2838,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressSenderDefaultPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val mbAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
+    val mbAddress = activeShoebox.database.findDefaultSenderAddress( chainId ).assert
     mbAddress match {
       case Some( address ) => {
         log.info( s"The default sender address for chain with ID ${chainId} is '${hexString(address)}'." )
@@ -2844,20 +2857,20 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val newAddress = parser.parsed
-      val oldAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
+      val oldAddress = activeShoebox.database.findDefaultSenderAddress( chainId ).assert
       oldAddress.foreach { address =>
         val overwrite = syncOut {
           println( s"A default sender address has already been set for chain with ID ${chainId}: '${hexString(address)}'." )
           queryYN( is, s"Do you wish to replace it? [y/n] " )
         }
         if ( overwrite ) {
-          shoebox.Database.dropDefaultSenderAddress( chainId ).assert
+          activeShoebox.database.dropDefaultSenderAddress( chainId ).assert
         }
         else {
           throw new OperationAbortedByUserException( s"User chose not to replace previously set default sender address for chain with ID ${chainId}, which remains '${hexString(address)}'." )
         }
       }
-      shoebox.Database.setDefaultSenderAddress( chainId, newAddress ).assert
+      activeShoebox.database.setDefaultSenderAddress( chainId, newAddress ).assert
       log.info( s"Successfully set default sender address for chain with ID ${chainId} to ${verboseAddress(chainId, newAddress)}." )
       log.info( s"You can use the synthetic alias '${DefaultSenderAlias}' to refer to this address." )
       Def.taskDyn {
@@ -2869,10 +2882,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethAddressSenderDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.taskDyn {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val oldAddress = shoebox.Database.findDefaultSenderAddress( chainId ).assert
+    val oldAddress = activeShoebox.database.findDefaultSenderAddress( chainId ).assert
     oldAddress match {
       case Some( senderAddress ) => {
-        val check = shoebox.Database.dropDefaultSenderAddress( chainId ).assert
+        val check = activeShoebox.database.dropDefaultSenderAddress( chainId ).assert
         assert( check, "Huh? We had a an old senderAddress value, but trying to delete it failed to delete any rows?" )
         log.info( s"Previously, the default sender address for chain with ID ${chainId} was ${verboseAddress(chainId, senderAddress)}.")
         log.info(  "It has now been successfully dropped." )
@@ -2938,7 +2951,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val dropMeAbiAlias = parser.parsed
-      shoebox.AbiAliasHashManager.dropAbiAlias( chainId, dropMeAbiAlias )
+      activeShoebox.abiAliasHashManager.dropAbiAlias( chainId, dropMeAbiAlias )
       log.info( s"Abi alias 'abi:${dropMeAbiAlias}' successfully dropped." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -2948,7 +2961,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethContractAbiAliasListTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val abiAliases = shoebox.AbiAliasHashManager.findAllAbiAliases( chainId ).assert
+    val abiAliases = activeShoebox.abiAliasHashManager.findAllAbiAliases( chainId ).assert
     val columns = immutable.Vector( "ABI Alias", "ABI Hash" ).map( texttable.Column.apply( _ ) )
 
     def extract( tup : Tuple2[String,EthHash] ) : Seq[String] = {
@@ -2969,7 +2982,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val ( newAbiAlias, abiSource ) = parser.parsed
       val ( abi : Abi, sourceDesc : String) = standardSortAbiAndSourceDesc( log, abiSource )
-      shoebox.AbiAliasHashManager.createUpdateAbiAlias( chainId, newAbiAlias, abi )
+      activeShoebox.abiAliasHashManager.createUpdateAbiAlias( chainId, newAbiAlias, abi )
       log.info( s"Abi alias 'abi:${newAbiAlias}' successfully bound to ABI found via ${sourceDesc}." )
       Def.taskDyn {
         xethTriggerDirtyAliasCache
@@ -3019,11 +3032,11 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = findNodeChainIdTask(warn=true)(config).value
       val log = streams.value.log
       val address = parser.parsed
-      val found = shoebox.Database.deleteImportedContractAbi( chainId, address ).get // throw an Exception if there's a database issue
+      val found = activeShoebox.database.deleteImportedContractAbi( chainId, address ).get // throw an Exception if there's a database issue
       if ( found ) {
         log.info( s"Previously imported or set ABI for contract with address '0x${address.hex}' (on chain with ID ${chainId}) has been dropped." )
       } else {
-        val mbDeployment = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get  // throw an Exception if there's a database issue
+        val mbDeployment = activeShoebox.database.deployedContractInfoForAddress( chainId, address ).get  // throw an Exception if there's a database issue
         mbDeployment match {
           case Some( _ ) => throw new SbtEthereumException( s"Contract at address '0x${address.hex}' (on chain with ID ${chainId}) is not an imported ABI but our own deployment. Cannot drop." )
           case None      => throw new SbtEthereumException( s"We have not set or imported an ABI for the contract at address '0x${address.hex}' (on chain with ID ${chainId})." )
@@ -3055,7 +3068,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       // Note the we sort `abi` before binding to the val
       val ( abi : Abi, sourceDesc : String) = standardSortAbiAndSourceDesc( log, abiSource )
 
-      val mbKnownCompilation = shoebox.Database.deployedContractInfoForAddress( chainId, toLinkAddress ).assert
+      val mbKnownCompilation = activeShoebox.database.deployedContractInfoForAddress( chainId, toLinkAddress ).assert
       mbKnownCompilation match {
         case Some( knownCompilation ) => {
           knownCompilation.mbAbiHash match {
@@ -3086,7 +3099,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       def finishUpdate = {
         log.info( s"The ABI previously associated with ${sourceDesc} ABI has been associated with address ${hexString(toLinkAddress)}." )
-        if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, toLinkAddress ).assert ) {
+        if (! activeShoebox.addressAliasManager.hasNonSyntheticAddressAliases( chainId, toLinkAddress ).assert ) {
           kludgeySleepForInteraction()
           syncOut {
             interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(toLinkAddress)}', now associated with the newly matched ABI", toLinkAddress )
@@ -3110,7 +3123,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User chose not to delete a currently associated ABI, which shadows an original compilation-derived ABI." )
           }
           else {
-            shoebox.Database.deleteImportedContractAbi( chainId, toLinkAddress ).assert // throw an Exception if there's a database issue
+            activeShoebox.database.deleteImportedContractAbi( chainId, toLinkAddress ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
@@ -3124,7 +3137,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association (which itself shadowed an original compilation-derived ABI)." )
           }
           else {
-            shoebox.Database.resetImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            activeShoebox.database.resetImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
@@ -3134,7 +3147,7 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association." )
           }
           else {
-            shoebox.Database.resetImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            activeShoebox.database.resetImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
@@ -3144,12 +3157,12 @@ object SbtEthereumPlugin extends AutoPlugin {
             throw new OperationAbortedByUserException( "User aborted ethContractAbiDefaultSet in order not to replace an existing association (which itself overrode an original compilation-derived ABI)." )
           }
           else {
-            shoebox.Database.setImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+            activeShoebox.database.setImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
             finishUpdate
           }
         }
         case AbiLookup( toLinkAddress, _, None, None, _ ) => {
-          shoebox.Database.setImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
+          activeShoebox.database.setImportedContractAbi( chainId, toLinkAddress, abi ).assert // throw an Exception if there's a database issue
           finishUpdate
         }
         case unexpected => throw new SbtEthereumException( s"Unexpected AbiLookup: ${unexpected}" )
@@ -3313,12 +3326,12 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val mbRegex = regexParser( defaultToCaseInsensitive = true ).parsed
 
-    val importedAddresses = shoebox.Database.getImportedContractAbiAddresses( chainId ).get
-    val deployedContracts = shoebox.Database.allDeployedContractInfosForChainId( chainId ).get
+    val importedAddresses = activeShoebox.database.getImportedContractAbiAddresses( chainId ).get
+    val deployedContracts = activeShoebox.database.allDeployedContractInfosForChainId( chainId ).get
 
     val allRecords = {
       val importedRecords = {
-        val tups = importedAddresses.map( address => Tuple2( address, shoebox.Database.getImportedContractAbiHash( chainId, address ).assert ) )
+        val tups = importedAddresses.map( address => Tuple2( address, activeShoebox.database.getImportedContractAbiHash( chainId, address ).assert ) )
         def checkTup( tup : Tuple2[EthAddress,Option[EthHash]] ) : Boolean = {
           val out = tup._2.nonEmpty
           if (!out) log.warn( s"No ABI hash associated with imported ABI for address ${hexString(tup._1)}?!?" )
@@ -3387,7 +3400,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val is = interactionService.value
       val timeout = xethcfgAsyncOperationTimeout.value
       val address = parser.parsed
-      val mbKnownCompilation = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get
+      val mbKnownCompilation = activeShoebox.database.deployedContractInfoForAddress( chainId, address ).get
       mbKnownCompilation match {
         case Some( knownCompilation ) => {
           knownCompilation.mbAbiHash match {
@@ -3417,7 +3430,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       val abi = {
         val mbEtherscanAbi : Option[Abi] = {
-          val fmbApiKey = shoebox.Database.getEtherscanApiKey()
+          val fmbApiKey = activeShoebox.database.getEtherscanApiKey()
           fmbApiKey match {
             case Succeeded( mbApiKey ) => {
               mbApiKey match {
@@ -3469,9 +3482,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
         }
       }
-      shoebox.Database.resetImportedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
+      activeShoebox.database.resetImportedContractAbi( chainId, address, abi  ).get // throw an Exception if there's a database issue
       log.info( s"A default ABI is now known for the contract at address ${hexString(address)}" )
-      if (! shoebox.AddressAliasManager.hasNonSyntheticAddressAliases( chainId, address ).assert ) {
+      if (! activeShoebox.addressAliasManager.hasNonSyntheticAddressAliases( chainId, address ).assert ) {
         interactiveSetAliasForAddress( chainId )( s, log, is, s"the address '${hexString(address)}', now associated with the newly imported default ABI", address ) // internal syncOut
       }
       Def.taskDyn {
@@ -3482,7 +3495,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def ethContractCompilationCullTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    val fcount = shoebox.Database.cullUndeployedCompilations()
+    val fcount = activeShoebox.database.cullUndeployedCompilations()
     val count = fcount.get
     log.info( s"Removed $count undeployed compilations from the shoebox database." )
   }
@@ -3543,7 +3556,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       source match {
         case Left( address ) => {
-          val mbinfo = shoebox.Database.deployedContractInfoForAddress( chainId, address ).get // throw any db problem
+          val mbinfo = activeShoebox.database.deployedContractInfoForAddress( chainId, address ).get // throw any db problem
           syncOut {
             mbinfo.fold( println( s"Contract with address ${verboseAddress( chainId, address )} not found. Perhaps try a different Chain ID?" ) ) { info =>
               section( s"Contract Address (on blockchain with ID ${info.chainId})", Some( info.contractAddress.hex ), true )
@@ -3570,7 +3583,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
         case Right( hash ) => {
-          val mbinfo = shoebox.Database.compilationInfoForCodeHash( hash ).get // throw any db problem
+          val mbinfo = activeShoebox.database.compilationInfoForCodeHash( hash ).get // throw any db problem
           syncOut{
             mbinfo.fold( println( s"Contract with code hash '$hash' not found." ) ) { info =>
               section( "Code Hash", Some( hash.hex ), true )
@@ -3588,7 +3601,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               section( "Metadata", info.mbMetadata )
               section( "AST", info.mbAst )
               section( "Project Name", info.mbProjectName )
-              addressSection( "Deployments", shoebox.Database.chainIdContractAddressesForCodeHash( hash ).get )
+              addressSection( "Deployments", activeShoebox.database.chainIdContractAddressesForCodeHash( hash ).get )
             }
           }
         }
@@ -3601,7 +3614,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethContractCompilationListTask : Initialize[Task[Unit]] = Def.task {
-    val contractsSummary = shoebox.Database.contractsSummary.assert // throw for any db problem
+    val contractsSummary = activeShoebox.database.contractsSummary.assert // throw for any db problem
     val columns = immutable.Vector( "Chain ID", "Contract Address", "Name", "Code Hash", "Deployment Timestamp" ).map( texttable.Column.apply( _ ) )
 
     def extract( csr : shoebox.Database.ContractsSummaryRow ) : Seq[String] = {
@@ -3683,7 +3696,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val combined = combinedKeystoresMultiMap( keystoresV3 )
 
     val out = {
-      def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( shoebox.AddressAliasManager.findAddressAliasesByAddress( chainId, address ).get : _* )
+      def aliasesSet( address : EthAddress ) : immutable.SortedSet[String] = immutable.TreeSet( activeShoebox.addressAliasManager.findAddressAliasesByAddress( chainId, address ).get : _* )
       immutable.TreeMap( combined.map { case ( address : EthAddress, _ ) => ( address, aliasesSet( address ) ) }.toSeq : _* )( Ordering.by( _.hex ) )
     }
     val cap = "+" + dashspan(44) + "+"
@@ -3742,7 +3755,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val w = readV3Wallet( is ) // syncOut internal
     val address = w.address // a very cursory check of the wallet, NOT full validation
-    shoebox.Keystore.V3.storeWallet( w ).get // asserts success
+    activeShoebox.keystore.V3.storeWallet( w ).get // asserts success
     log.info( s"Imported JSON wallet for address '0x${address.hex}', but have not validated it.")
     log.info( s"Consider validating the JSON using 'ethKeystoreWalletV3Validate 0x${address.hex}'." )
     interactiveOptionalCreateAliasTask( config, address ) // syncOut internal
@@ -3775,8 +3788,8 @@ object SbtEthereumPlugin extends AutoPlugin {
         readConfirmCredential(is, "Enter passphrase for new wallet: ")
       }
       val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( privateKey ), random = entropySource )
-      shoebox.Keystore.V3.storeWallet( w ).get // asserts success
-      log.info( s"Wallet created and imported into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
+      activeShoebox.keystore.V3.storeWallet( w ).get // asserts success
+      log.info( s"Wallet created and imported into sbt-ethereum shoebox: '${activeShoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
       log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
       interactiveOptionalCreateAliasTask( config, address ) // syncOut internal
     }
@@ -3858,7 +3871,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val versionToInstall = mbVersion.getOrElse( SolcJInstaller.DefaultSolcJVersion )
 
     log.info( s"Installing local solidity compiler into the sbt-ethereum shoebox. This may take a few minutes." )
-    val check = shoebox.SolcJ.Directory.flatMap { rootSolcJDir =>
+    val check = activeShoebox.solcJ.Directory.flatMap { rootSolcJDir =>
       Failable {
         val versionDir = new File( rootSolcJDir, versionToInstall )
         if ( versionDir.exists() ) {
@@ -3911,11 +3924,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     assert( config == Compile, "Only the Compile confg is supported for now." )
 
     val log = streams.value.log
-    val oldValue = shoebox.Database.getDefaultChainId().assert
+    val oldValue = activeShoebox.database.getDefaultChainId().assert
     oldValue match {
       case Some( id ) => {
         config match {
-          case Compile => shoebox.Database.deleteDefaultChainId().assert
+          case Compile => activeShoebox.database.deleteDefaultChainId().assert
           case Test    => throw new UnexpectedConfigurationException( config )
           case _       => throw new UnexpectedConfigurationException( config )
         }
@@ -3940,7 +3953,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       val chainId = parser.parsed
       config match {
         case Compile => {
-          shoebox.Database.setDefaultChainId(chainId).assert
+          activeShoebox.database.setDefaultChainId(chainId).assert
         }
         case Test => throw new UnexpectedConfigurationException( config ) 
         case _    => throw new UnexpectedConfigurationException( config )
@@ -3956,7 +3969,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val mbChainId = {
       config match {
-        case Compile => shoebox.Database.getDefaultChainId().assert
+        case Compile => activeShoebox.database.getDefaultChainId().assert
         case Test    => throw new UnexpectedConfigurationException( config )
         case _       => throw new UnexpectedConfigurationException( config )
       }
@@ -4047,7 +4060,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbBuildSetting = (config / ethcfgNodeChainId).?.value
     val mbShoeboxDefault = {
       config match {
-        case Compile => shoebox.Database.getDefaultChainId().assert
+        case Compile => activeShoebox.database.getDefaultChainId().assert
         case Test    => None // shoebox default chain ID only supported in Compile
         case _       => None
       }
@@ -4102,7 +4115,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeUrlDefaultPrintTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val mbJsonRpcUrl = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
+    val mbJsonRpcUrl = activeShoebox.database.findDefaultJsonRpcUrl( chainId ).assert
     mbJsonRpcUrl match {
       case Some( url ) => {
         log.info( s"The default node json-rpc URL for chain with ID ${chainId} is '${url}'." )
@@ -4118,19 +4131,19 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
     val newUrl = (Space ~> urlParser( "<json-rpc-url>" )).parsed
-    val oldValue = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
+    val oldValue = activeShoebox.database.findDefaultJsonRpcUrl( chainId ).assert
     oldValue.foreach { url =>
       val overwrite = syncOut {
         println( s"A default node json-rpc URL for chain with ID ${chainId} has already been set: '${url}'." )
         queryYN( is, s"Do you wish to replace it? [y/n] " )
       }
       if ( overwrite ) {
-        shoebox.Database.dropDefaultJsonRpcUrl( chainId ).assert
+        activeShoebox.database.dropDefaultJsonRpcUrl( chainId ).assert
       }
       else {
         throw new OperationAbortedByUserException( s"User chose not to replace previously set default node json-rpc URL for chain with ID ${chainId}, which remains '${url}'." )
       }
-      shoebox.Database.setDefaultJsonRpcUrl( chainId, newUrl ).assert
+      activeShoebox.database.setDefaultJsonRpcUrl( chainId, newUrl ).assert
     }
     log.info( s"Successfully set default node json-rpc URL for chain with ID ${chainId} to ${newUrl}." )
   }
@@ -4138,10 +4151,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeUrlDefaultDropTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val oldValue = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
+    val oldValue = activeShoebox.database.findDefaultJsonRpcUrl( chainId ).assert
     oldValue match {
       case Some( url ) => {
-        val check = shoebox.Database.dropDefaultJsonRpcUrl( chainId ).assert
+        val check = activeShoebox.database.dropDefaultJsonRpcUrl( chainId ).assert
         assert( check, "Huh? We had a an old jsonRpcUrl value, but trying to delete it failed to delete any rows?" )
         log.info( s"The default node json-rpc URL for chain with ID ${chainId} was '${url}', but it has now been successfully dropped." )
       }
@@ -4190,7 +4203,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val mbOverride = Mutables.NodeUrlOverrides.get( chainId )
     val mbBuildSetting = (config/ethcfgNodeUrl).?.value
-    val mbShoeboxDefault = shoebox.Database.findDefaultJsonRpcUrl( chainId ).assert
+    val mbShoeboxDefault = activeShoebox.database.findDefaultJsonRpcUrl( chainId ).assert
 
     val pfx = configPrefix( config )
 
@@ -4241,7 +4254,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   def ethShoeboxDatabaseDumpCreateTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
-    val dump = shoebox.Database.dump().assert
+    val dump = activeShoebox.database.dump().assert
     log.info( s"sbt-ethereum shoebox database dump successfully created at '${dump.file.getCanonicalPath}'." )
   }
 
@@ -4257,7 +4270,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       mbNumber.map( num => numberedFiles(num) )
     }
 
-    val dumpsByMostRecent = shoebox.Database.dumpsOrderedByMostRecent.assert
+    val dumpsByMostRecent = activeShoebox.database.dumpsOrderedByMostRecent.assert
     if ( dumpsByMostRecent.isEmpty ) {
       log.warn( "No sbt-ethereum shoebox database dumps are available." )
     }
@@ -4265,15 +4278,15 @@ object SbtEthereumPlugin extends AutoPlugin {
       val mbDump = interactiveListAndSelectDump( dumpsByMostRecent ) // syncOut internal
       mbDump match {
         case Some( dump ) => {
-          shoebox.Database.restoreFromDump( dump ).assert
-          log.info( s"Restore from dump successful. (Prior, replaced database should have backed up into '${shoebox.Database.supersededByDumpDirectory.assert}'." )
+          activeShoebox.database.restoreFromDump( dump ).assert
+          log.info( s"Restore from dump successful. (Prior, replaced database should have backed up into '${activeShoebox.database.supersededByDumpDirectory.assert}'." )
         }
         case None => throw new OperationAbortedByUserException( "User aborted replacement of the sbt-ethereum shoebox database from a previously generated dump file." )
       }
     }
   }
 
-  private def updateBackupDir( f : File ) : Unit = shoebox.Database.setShoeboxBackupDir( f.getAbsolutePath )
+  private def updateBackupDir( f : File ) : Unit = activeShoebox.database.setShoeboxBackupDir( f.getAbsolutePath )
 
   /*
    * Consider renaming this something like xethShoeboxDoBackup (key and task), then
@@ -4322,7 +4335,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       if ( promptToSave ) {
         val makeDefault = {
-          val currentDefault = shoebox.Database.getShoeboxBackupDir.assert
+          val currentDefault = activeShoebox.database.getShoeboxBackupDir.assert
           val replacingPart = {
             currentDefault match {
               case Some( path ) => s" (replacing current default '${path}')"
@@ -4338,7 +4351,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     var databaseFailureDetected = false
     val dir = {
-      val fmbPrior = shoebox.Database.getShoeboxBackupDir().xwarn("An error occurred while trying to read the default shoebox backup directory from the database.")
+      val fmbPrior = activeShoebox.database.getShoeboxBackupDir().xwarn("An error occurred while trying to read the default shoebox backup directory from the database.")
       fmbPrior match {
         case ok : Succeeded[Option[String]] => {
           ok.result match {
@@ -4379,7 +4392,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
       }
     }
-    shoebox.Backup.perform( Some( log ), databaseFailureDetected, dir )
+    activeShoebox.backupManager.perform( Some( log ), databaseFailureDetected, dir )
   }
 
   private def ethShoeboxRestoreTask : Initialize[Task[Unit]] = Def.taskDyn {
@@ -4387,13 +4400,13 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is = interactionService.value
     val log = streams.value.log
 
-    def interactiveListAndSelectBackup( backupFiles : immutable.SortedSet[shoebox.Backup.BackupFile] ) : Option[File] = {
+    def interactiveListAndSelectBackup( backupFiles : immutable.SortedSet[shoebox.BackupManager.BackupFile] ) : Option[File] = {
       if ( backupFiles.isEmpty ) {
         log.warn( "No sbt-ethereum shoebox backup files found." )
         None
       }
       else {
-        val numberedFiles = immutable.TreeMap.empty[Int,shoebox.Backup.BackupFile] ++ Stream.from(1).zip( backupFiles )
+        val numberedFiles = immutable.TreeMap.empty[Int,shoebox.BackupManager.BackupFile] ++ Stream.from(1).zip( backupFiles )
         syncOut {
           println( "The following sbt-ethereum shoebox backup files have been found:" )
           numberedFiles.foreach { case ( n, bf ) => println( s"\t${n}. ${bf.file.getCanonicalPath}" ) }
@@ -4403,7 +4416,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def interactiveMostRecentOrList( mostRecent : shoebox.Backup.BackupFile, fullList : immutable.SortedSet[shoebox.Backup.BackupFile] ) : Option[File] = {
+    def interactiveMostRecentOrList( mostRecent : shoebox.BackupManager.BackupFile, fullList : immutable.SortedSet[shoebox.BackupManager.BackupFile] ) : Option[File] = {
       val use = queryYN( is, s"'${mostRecent.file}' is the most recent sbt-ethereum shoebox backup file found. Use it? [y/n] " )
       if ( use ) {
         Some( mostRecent.file )
@@ -4413,7 +4426,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
     }
 
-    def interactiveSelectFromBackupsOrderedByMostRecent( backupFiles : immutable.SortedSet[shoebox.Backup.BackupFile] ) : Option[File] = {
+    def interactiveSelectFromBackupsOrderedByMostRecent( backupFiles : immutable.SortedSet[shoebox.BackupManager.BackupFile] ) : Option[File] = {
       if ( backupFiles.isEmpty ) {
         log.warn( s"No sbt-ethereum shoebox backup files found." )
         None
@@ -4455,7 +4468,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         None
       }
       else if ( backupFileOrDirectory.isFile ) {
-        val mbBackupFile = shoebox.Backup.attemptAsBackupFile( backupFileOrDirectory )
+        val mbBackupFile = activeShoebox.backupManager.attemptAsBackupFile( backupFileOrDirectory )
         mbBackupFile foreach { bf =>
           if (! bf.dbDumpSucceeded ) {
             log.warn( s"Although the database files were backup up as-is, the database from this backup could not be dumped to SQL text, which may indicate corruption." )
@@ -4466,12 +4479,12 @@ object SbtEthereumPlugin extends AutoPlugin {
       else if ( backupFileOrDirectory.isDirectory ) {
         val dir = backupFileOrDirectory
         if ( dir.canRead() ) {
-          val backupFiles = shoebox.Backup.backupFilesOrderedByMostRecent( dir.listFiles )
+          val backupFiles = activeShoebox.backupManager.backupFilesOrderedByMostRecent( dir.listFiles )
           if ( backupFiles.isEmpty ) {
             syncOut( println( s"No backup files found in '${backupFileOrDirectory}'." ) )
             val recurse = queryYN( is, "Do you want to recursively search subdirectories for backups? [y/n] " )
             if ( recurse ) {
-              val recursiveBackupFiles = shoebox.Backup.backupFilesOrderedByMostRecent( recursiveListBeneath( dir ) )
+              val recursiveBackupFiles = activeShoebox.backupManager.backupFilesOrderedByMostRecent( recursiveListBeneath( dir ) )
               interactiveSelectFromBackupsOrderedByMostRecent( recursiveBackupFiles )
             }
             else {
@@ -4524,7 +4537,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
 
     val mbBackupFile = {
-      shoebox.Database.getShoeboxBackupDir().xwarn("An error occurred while trying to read the default shoebox backup directory from the database.") match {
+      activeShoebox.database.getShoeboxBackupDir().xwarn("An error occurred while trying to read the default shoebox backup directory from the database.") match {
         case Succeeded( Some( dirPath ) ) => {
           val dir = new File( dirPath )
           if ( dir.isDirectory() && dir.exists() && dir.canRead() ) {
@@ -4547,7 +4560,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     mbBackupFile match {
       case Some( backupFile ) => {
         resetAllState()
-        shoebox.Backup.restore( Some( log ), backupFile )
+        activeShoebox.backupManager.restore( Some( log ), backupFile )
         val extract = Project.extract(s)
         val (_, result) = extract.runTask( xethOnLoadSolicitCompilerInstall, s)
       }
@@ -4699,7 +4712,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
               if (! ephemeralDeployment ) {
                 val dbCheck = {
-                  shoebox.Database.insertNewDeployment( chainId, ca, codeHex, sender, txnHash, inputsBytes )
+                  activeShoebox.database.insertNewDeployment( chainId, ca, codeHex, sender, txnHash, inputsBytes )
                 }
                 if ( dbCheck.isFailed ) {
                   dbCheck.xwarn("Could not insert information about deployed contract into the shoebox database.")
@@ -5903,8 +5916,8 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethFindCacheRichParserInfoTask( config : Configuration ) : Initialize[Task[RichParserInfo]] = Def.task {
     val chainId                      = findNodeChainIdTask(warn=false)(config).value
     val mbJsonRpcUrl                 = maybeFindNodeUrlTask(warn=false)(config).value
-    val addressAliases               = shoebox.AddressAliasManager.findAllAddressAliases( chainId ).assert
-    val abiAliases                   = shoebox.AbiAliasHashManager.findAllAbiAliases( chainId ).assert
+    val addressAliases               = activeShoebox.addressAliasManager.findAllAddressAliases( chainId ).assert
+    val abiAliases                   = activeShoebox.abiAliasHashManager.findAllAbiAliases( chainId ).assert
     val abiOverrides                 = Mutables.abiOverridesForChain( chainId )
     val nameServiceAddress           = (config / enscfgNameServiceAddress).value
     val exampleNameServiceTld        = if ( chainId == 1 ) "eth" else "test"
@@ -6166,8 +6179,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     kludgeySleepForInteraction()
     val passphrase = readConfirmCredential(is, "Enter passphrase for new wallet: ") // syncOut internal
     val w = wallet.V3.generatePbkdf2( passphrase = passphrase, c = c, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-    val out = shoebox.Keystore.V3.storeWallet( w ).get // asserts success
-    log.info( s"Wallet generated into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
+    val out = activeShoebox.keystore.V3.storeWallet( w ).get // asserts success
+    log.info( s"Wallet generated into sbt-ethereum shoebox: '${activeShoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
     log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
     out
   }
@@ -6188,8 +6201,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     kludgeySleepForInteraction()
     val passphrase = readConfirmCredential(is, "Enter passphrase for new wallet: ") // syncOut internal
     val w = wallet.V3.generateScrypt( passphrase = passphrase, n = n, r = r, p = p, dklen = dklen, privateKey = Some( keyPair.pvt ), random = entropySource )
-    val out = shoebox.Keystore.V3.storeWallet( w ).get // asserts success
-    log.info( s"Wallet generated into sbt-ethereum shoebox: '${shoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
+    val out = activeShoebox.keystore.V3.storeWallet( w ).get // asserts success
+    log.info( s"Wallet generated into sbt-ethereum shoebox: '${activeShoebox.Directory.assert}'. Please backup, via 'ethShoeboxBackup' or manually." )
     log.info( s"Consider validating the wallet using 'ethKeystoreWalletV3Validate 0x${w.address.hex}'." )
     out
   }
@@ -6409,7 +6422,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     // val mbCurrentSender   = (xethFindCurrentSender in Compile).value
     
     log.info( s"sbt-ethereum-${generated.SbtEthereum.Version} successfully initialized (built ${SbtEthereum.BuildTimestamp})" )
-    // log.info( s"sbt-ethereum shoebox: '${shoebox.Directory.assert}' <-- Please backup, via 'ethShoeboxBackup' or manually" )
+    // log.info( s"sbt-ethereum shoebox: '${activeShoebox.Directory.assert}' <-- Please backup, via 'ethShoeboxBackup' or manually" )
     // log.info( s"sbt-ethereum main json-rpc endpoint configured to '${mainEthNodeUrl}'" )
     // log.info( s"sbt-ethereum test json-rpc endpoint configured to '${testEthNodeUrl}'" )
     // mbCurrentSender foreach { currentSender => 
@@ -6421,7 +6434,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethOnLoadAutoImportWalletsV3Task : Initialize[Task[Unit]] = Def.task {
     val log         = streams.value.log
     val importFroms = ethcfgKeystoreAutoImportLocationsV3.value
-    shoebox.Keystore.V3.Directory.foreach { keyStoreDir =>
+    activeShoebox.keystore.V3.Directory.foreach { keyStoreDir =>
       importFroms.foreach { importFrom =>
         if ( importFrom.exists() && importFrom.isDirectory() && importFrom.canRead() ) {
           val imported = clients.geth.KeyStore.importAll( keyStoreDir = keyStoreDir, srcDir = importFrom ).assert
@@ -6433,8 +6446,15 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def xethOnLoadRecoverInconsistentSchemaTask : Initialize[Task[Unit]] = Def.task {
-    val schemaOkay = shoebox.Database.DataSource
+  private def xethOnLoadShoeboxInitVerifyRecoverTask : Initialize[Task[Unit]] = Def.task {
+    val overrideShoeboxDirPath = ethcfgShoeboxDirectory.?.value
+
+    ShoeboxHolder.synchronized {
+      ShoeboxHolder.get().foreach( _.reset() )
+      ShoeboxHolder.set( Some( new shoebox.Shoebox( overrideShoeboxDirPath ) ) )
+    }
+
+    val schemaOkay = activeShoebox.database.DataSource
     val log        = streams.value.log
     val is         = interactionService.value
 
@@ -6443,18 +6463,18 @@ object SbtEthereumPlugin extends AutoPlugin {
       SEVERE.log( msg, schemaOkay.assertThrowable )
       log.error( msg )
 
-      if ( shoebox.Database.schemaVersionInconsistentUnchecked.assert ) {
-        val mbLastSuccessful = shoebox.Database.getLastSuccessfulSbtEthereumVersionUnchecked().assert
+      if ( activeShoebox.database.schemaVersionInconsistentUnchecked.assert ) {
+        val mbLastSuccessful = activeShoebox.database.getLastSuccessfulSbtEthereumVersionUnchecked().assert
 
         log.error( "The sbt-ethereum shoebox database schema is in an inconsistent state (probably because an upgrade failed)." )
-        val mbLastDump = shoebox.Database.latestDumpIfAny.assert
+        val mbLastDump = activeShoebox.database.latestDumpIfAny.assert
         mbLastDump match {
           case Some( dump ) => {
             val dumpTime = formatInstant( dump.timestamp )
             kludgeySleepForInteraction()
             val recover = queryYN( is, s"The most recent sbt-ethereum shoebox database dump available was taken at ${dumpTime}. Attempt recovery? [y/n] " )
             if ( recover ) {
-              val attemptedRecovery = shoebox.Database.restoreFromDump( dump )
+              val attemptedRecovery = activeShoebox.database.restoreFromDump( dump )
               if ( attemptedRecovery.isFailed ) {
                 val msg = s"Could not restore the database from dump file '${dump.file.getCanonicalPath}'."
                 val t = attemptedRecovery.assertThrowable
@@ -6463,12 +6483,12 @@ object SbtEthereumPlugin extends AutoPlugin {
                 throw t
               }
               else {
-                shoebox.Database.reset()
-                val fmbPostRecoverySchemaVersionUnchecked = shoebox.Database.getSchemaVersionUnchecked()
-                val targetSchemaVersion = shoebox.Database.TargetSchemaVersion
+                activeShoebox.database.reset()
+                val fmbPostRecoverySchemaVersionUnchecked = activeShoebox.database.getSchemaVersionUnchecked()
+                val targetSchemaVersion = activeShoebox.database.TargetSchemaVersion
 
-                val schemaOkayNow = shoebox.Database.DataSource.isSucceeded
-                val inconsistent   = shoebox.Database.schemaVersionInconsistentUnchecked.assert
+                val schemaOkayNow = activeShoebox.database.DataSource.isSucceeded
+                val inconsistent   = activeShoebox.database.schemaVersionInconsistentUnchecked.assert
 
                 ( schemaOkayNow, inconsistent ) match {
                   case ( true, false ) => log.info( "Recovery of sbt-ethereum shoebox database succeeded." )
@@ -6538,10 +6558,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val testTimeout = xethcfgAsyncOperationTimeout.value
 
     val currentDefaultCompilerVersion = SolcJInstaller.DefaultSolcJVersion
-    val currentSolcJDirectory         = shoebox.SolcJ.Directory
+    val currentSolcJDirectory         = activeShoebox.solcJ.Directory
 
     if ( currentSolcJDirectory.isFailed ) {
-      log.warn( s"Cannot find or create '${shoebox.SolcJ.DirName}' directory in the sbt-ethereum shoebox directory. This is not a good sign." )
+      log.warn( s"Cannot find or create '${activeShoebox.solcJ.DirName}' directory in the sbt-ethereum shoebox directory. This is not a good sign." )
     }
     else {
       val DirSolcJ = currentSolcJDirectory.get
@@ -6597,7 +6617,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethShoeboxRepairPermissionsTask : Initialize[Task[Unit]] = Def.task {
     val log   = streams.value.log
     log.info( "Repairing shoebox permissions..." )
-    shoebox.repairPermissions().assert
+    activeShoebox.repairPermissions().assert
     log.info( "Shoebox permissions repaired." )
   }
 
@@ -6623,7 +6643,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     try {
       val check = {
-        shoebox.Database.UncheckedDataSource.map { ds =>
+        activeShoebox.database.UncheckedDataSource.map { ds =>
           borrow( ds.getConnection() ) { conn =>
             borrow( conn.createStatement() ) { stmt =>
               borrow( stmt.executeQuery( query ) ) { rs =>
@@ -6659,7 +6679,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     try {
       val check = {
-        shoebox.Database.UncheckedDataSource.map { ds =>
+        activeShoebox.database.UncheckedDataSource.map { ds =>
           borrow( ds.getConnection() ) { conn =>
             borrow( conn.createStatement() ) { stmt =>
               val rows = stmt.executeUpdate( update )
@@ -6724,7 +6744,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val projectName  = name.value
     val compilations = (xethLoadCurrentCompilationsKeepDups in Compile).value // we want to "know" every contract we've seen, which might include contracts with multiple names
 
-    shoebox.Database.updateContractDatabase( compilations, Some( projectName ) ).get
+    activeShoebox.database.updateContractDatabase( compilations, Some( projectName ) ).get
   }
 
   private def xethUpdateSessionSolidityCompilersTask : Initialize[Task[immutable.SortedMap[String,Compiler.Solidity]]] = Def.task {
@@ -6758,7 +6778,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       check( Compiler.Solidity.LocalPathSolcKey, Compiler.Solidity.LocalPathSolc )
     }
     def checkLocalShoeboxSolc( version : String ) = {
-      shoebox.SolcJ.Directory.toOption.flatMap { rootSolcJDir =>
+      activeShoebox.solcJ.Directory.toOption.flatMap { rootSolcJDir =>
         check( s"${LocalSolc.KeyPrefix}${version}", Compiler.Solidity.LocalSolc( Some( new File( rootSolcJDir, version ) ) ) )
       }
     }
@@ -6801,6 +6821,11 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private [sbtethereum]
   def ensAddressCache = Mutables.EnsAddressCache
+
+  private [sbtethereum]
+  def activeShoebox = ShoeboxHolder.synchronized {
+    ShoeboxHolder.get().get // we're asserting the shoebox has been initialized, during onLoad task
+  }
 
   // helper functions
 
@@ -6925,7 +6950,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
 
-  private def mbDefaultSender( chainId : Int ) : Option[EthAddress] = shoebox.Database.findDefaultSenderAddress( chainId ).get
+  private def mbDefaultSender( chainId : Int ) : Option[EthAddress] = activeShoebox.database.findDefaultSenderAddress( chainId ).get
 
   private def installLocalSolcJ( log : sbt.Logger, rootSolcJDir : File, versionToInstall : String, testTimeout : Duration ) : Unit = {
     val versionDir = new File( rootSolcJDir, versionToInstall )
@@ -7022,7 +7047,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def interactiveSetAliasForAddress( chainId : Int )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
     def rawFetch : String = is.readLine( s"Enter an optional alias for ${describedAddress} (or [return] for none): ", mask = false ).getOrElse( throwCantReadInteraction ).trim()
     def validate( alias : String ) : Boolean = parsesAsAddressAlias( alias )
-    def inUse( alias : String ) : Boolean = shoebox.AddressAliasManager.findAddressByAddressAlias( chainId, alias ).assert.nonEmpty
+    def inUse( alias : String ) : Boolean = activeShoebox.addressAliasManager.findAddressByAddressAlias( chainId, alias ).assert.nonEmpty
 
     @tailrec
     def query : Option[String] = {
@@ -7043,7 +7068,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val mbAlias = syncOut( query )
     mbAlias match {
       case Some( alias ) => {
-        val check = shoebox.AddressAliasManager.insertAddressAlias( chainId, alias, address )
+        val check = activeShoebox.addressAliasManager.insertAddressAlias( chainId, alias, address )
         check.fold( _.vomit ){ _ =>
           log.info( s"Alias '${alias}' now points to address '0x${address.hex}' (for chain with ID ${chainId})." )
         }

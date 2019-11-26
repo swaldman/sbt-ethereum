@@ -14,9 +14,12 @@ import com.mchange.sc.v1.log.MLevel._
 import java.time.Instant
 import scala.collection._
 
-object Backup {
-
+object BackupManager {
   private implicit lazy val logger = mlogger( this )
+  final case class BackupFile( file : File, timestamp : Long, dbDumpSucceeded : Boolean )
+}
+class BackupManager( parent : Shoebox ) {
+  import BackupManager._
 
   private val fsep = File.separator
 
@@ -25,8 +28,6 @@ object Backup {
   private def parseTimestamp( ts : String ) : Long = InFilenameTimestamp.parse( ts ).toEpochMilli
 
   val BackupFileRegex = """sbt\-ethereum\-shoebox\-backup\-(\p{Alnum}+)(-DB-DUMP-FAILED)?\.zip$""".r
-
-  final case class BackupFile( file : File, timestamp : Long, dbDumpSucceeded : Boolean )
 
   private def _attemptAsBackupFile( f : File ) : Option[BackupFile] = {
     BackupFileRegex.findFirstMatchIn(f.getName()) match {
@@ -61,7 +62,7 @@ object Backup {
 
     val dbDumpSucceeded = {
       info( "Creating SQL dump of sbt-ethereum shoebox database..." )
-      val fsuccess = Database.dump() map { dbDump =>
+      val fsuccess = parent.database.dump() map { dbDump =>
         info( s"Successfully created SQL dump of the sbt-ethereum shoebox database: '${dbDump.file}'" )
         true
       } recover { failed : Failed[_] =>
@@ -73,18 +74,18 @@ object Backup {
 
     val outFile = new File( backupsDir, backupFileName( dbDumpSucceeded ) )
 
-    val solcJCanonicalPrefix = SolcJ.Directory_ExistenceAndPermissionsUnenforced.assert.getCanonicalFile().getPath
+    val solcJCanonicalPrefix = parent.solcJ.Directory_ExistenceAndPermissionsUnenforced.assert.getCanonicalFile().getPath
 
     def canonicalFileFilter( cf : File ) : Boolean = {
       !cf.getPath.startsWith( solcJCanonicalPrefix )
     }
 
-    shoebox.reset()
+    parent.reset()
     info("Waiting five seconds for shoebox database connections to shut down...")
     Thread.sleep(5000)
 
     info( s"Backing up sbt-ethereum shoebox. Reinstallable compilers will be excluded." )
-    zip( outFile, shoebox.Directory_ExistenceAndPermissionsUnenforced.assert, canonicalFileFilter _ )
+    zip( outFile, parent.Directory_ExistenceAndPermissionsUnenforced.assert, canonicalFileFilter _ )
     info( s"sbt-ethereum shoebox successfully backed up to '${outFile}'." )
 
     if ( priorDatabaseFailureDetected || !dbDumpSucceeded ) {
@@ -101,12 +102,12 @@ object Backup {
       mbLog.foreach( _.warn( msg ) )
       FINE.log( "Logged in sbt at WARNING: " + msg )
     }
-    val shoeboxDir         = shoebox.Directory_ExistenceAndPermissionsUnenforced.assert
+    val shoeboxDir         = parent.Directory_ExistenceAndPermissionsUnenforced.assert
     val shoeboxName        = shoeboxDir.getName
     val shoeboxParent      = shoeboxDir.getParentFile
     val oldShoeboxRenameTo = shoeboxName + s"-superseded-${timestamp}"
 
-    shoebox.reset()
+    parent.reset()
     info("Waiting five seconds for shoebox database connections to shut down...")
     Thread.sleep(5000)
 
@@ -129,7 +130,7 @@ object Backup {
       val msg = s"Something strange happened. After restoring from a backup, the expected shoebox directory '${shoeboxDir}' does not exist. Please inspect parent directory '${shoeboxParent}'."
       throw nst( new SbtEthereumException( msg ) )
     } else {
-      shoebox.repairPermissions
+      parent.repairPermissions
       info( s"sbt-ethereum shoebox restored from '${backupZipFile}" )
     }
   }

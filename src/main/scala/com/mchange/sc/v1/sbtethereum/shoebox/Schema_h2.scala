@@ -42,7 +42,9 @@ private [sbtethereum] object Schema_h2 {
   val SchemaVersion = 7
 
   // should be executed in a transaction, although it looks like in h2 DDL commands autocommit anyway :(
-  def ensureSchema( dataSource : DataSource ): Boolean = {
+
+  private [sbtethereum]
+  def ensureSchema( schemaOwner : Database, dataSource : DataSource ): Boolean = {
     borrowTransact( dataSource.getConnection() ) { conn =>
       borrow( conn.createStatement() ){ stmt =>
         stmt.executeUpdate( Table.Metadata.CreateSql )
@@ -60,7 +62,7 @@ private [sbtethereum] object Schema_h2 {
         stmt.executeUpdate( Table.ChainDefaultJsonRpcUrls.CreateSql )
         stmt.executeUpdate( Table.ChainDefaultSenderAddresses.CreateSql )
       }
-      Table.Metadata.ensureSchemaVersion( conn )
+      Table.Metadata.ensureSchemaVersion( schemaOwner, conn )
       Table.Metadata.updateLastSuccessfulSbtEthereumVersion( conn )
       true
     }
@@ -247,14 +249,14 @@ private [sbtethereum] object Schema_h2 {
     if ( next != versionTo ) migrateUpTo( conn, next, versionFrom )
   }
 
-  private def migrateSchema( conn : Connection, versionFrom : Int, versionTo : Int ) : Unit = {
+  private def migrateSchema( schemaOwner : Database, conn : Connection, versionFrom : Int, versionTo : Int ) : Unit = {
     // we don't check whether versionFrom is the current version in the database, because
     // we should have just gotten the current version from the database
 
     require( versionFrom >= 0, s"Please restore database from dump! Valid schema versions begin are non-negative, version $versionFrom is invalid, may indicate database corruption." )
     require( versionFrom < versionTo, s"We can only upmigrate schemas, can't transition from $versionFrom to $versionTo" )
 
-    shoebox.Database.dumpDatabaseH2( conn, versionFrom ).get // throw if something goes wrong
+    schemaOwner.dumpDatabaseH2( conn, versionFrom ).get // throw if something goes wrong
 
     DEBUG.log( s"Migrating sbt-ethereum database schema from version $versionFrom to version $versionTo." )
     Table.Metadata.upsert( conn, Table.Metadata.Key.SchemaVersion, InconsistentSchemaVersion.toString )
@@ -295,12 +297,12 @@ private [sbtethereum] object Schema_h2 {
     final object Metadata {
       val CreateSql = "CREATE TABLE IF NOT EXISTS metadata ( key VARCHAR(64) PRIMARY KEY, value VARCHAR(64) NOT NULL )"
 
-      def ensureSchemaVersion( conn : Connection ) : Unit = {
+      def ensureSchemaVersion( schemaOwner : Database, conn : Connection ) : Unit = {
         val currentVersion = select( conn, Key.SchemaVersion )
         currentVersion.fold( upsert( conn, Key.SchemaVersion, SchemaVersion.toString ) ){ versionStr =>
           val v = versionStr.toInt
           if ( v < SchemaVersion ) {
-            migrateSchema( conn, v, SchemaVersion )
+            migrateSchema( schemaOwner, conn, v, SchemaVersion )
           } else if ( v > SchemaVersion ) {
             val lastSuccessfulVersion = select( conn, Key.LastSuccessfulSbtEthereumVersion ).getOrElse( "<<Version Unknown>>" )
             throw new SchemaVersionException(

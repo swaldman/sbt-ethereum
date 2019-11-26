@@ -9,7 +9,7 @@ import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, EthTransaction}
 
 final case class BidLogRecord( bid : ens.Bid, chainId : Int, tld : String, nameServiceAddress : EthAddress )
 
-object BidLog extends ShoeboxLog[ BidLogRecord ]("bid-log") {
+class BidLog( parent : Shoebox ) extends ShoeboxLog[ BidLogRecord ](parent, "bid-log") {
   def toLine( timestamp : String, record : BidLogRecord ) : String = {
     val BidLogRecord( bid, chainId, tld, nameServiceAddress ) = record
     val a = s"${timestamp}:chainId=${chainId};tld=${tld};nameServiceAdress=${nameServiceAddress.hex}:"
