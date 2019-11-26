@@ -105,7 +105,6 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def resetAllState() : Unit = {
     Mutables.reset()
     shoebox.reset()
-    util.Parsers.reset()
   }
 
   private val BufferSize = 4096
@@ -6798,6 +6797,11 @@ object SbtEthereumPlugin extends AutoPlugin {
     ResolveCompileSolidity.doResolveCompile( log, compiler, optimizerRuns, includeLocations, solSource, solDestination )
   }
 
+  // external (within sbtethereum) API
+
+  private [sbtethereum]
+  def ensAddressCache = Mutables.EnsAddressCache
+
   // helper functions
 
   private def loadWalletsV3( log : sbt.Logger, chainId : Int, address : EthAddress ) : immutable.Set[wallet.V3] = {
@@ -7110,3 +7114,5 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   override val projectSettings = ethDefaults
 }
+
+

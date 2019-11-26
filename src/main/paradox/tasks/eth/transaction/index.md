@@ -314,8 +314,8 @@ A transaction with hash '0xc31664e9cb83a29cfb6049c161a98253c6b57201c97dbef663771
 Creates and submits a transaction representing a function call to a smart contract for which a @ref:[contract abi](../contract/abi.md) is available.
 
 Same as @ref:[`ethTransactionInvoke`](#ethtransactioninvoke), except _**not**_ restricted to mutators (functions that might modify the blockchain).
-You can, if you wish, submit a call to a read-only (`pure` or `view`) method as an Ethereum transaction with this task.
-It's not clear why you'd ever want to do that, though. The task is defined to ensure a kind of completeness.
+You can, if you wish, submit an Ethereum transaction embedding a call to a read-only (`pure` or `view`) method with this task.
+It's not clear why you'd ever want to do that, though. The task is defined for a kind of completeness.
 
 @@@
 

@@ -80,68 +80,6 @@ object Parsers {
     ( literal("0x").? ~> Parser.repeat( HexDigit, charLen, charLen ) ).map( chars => chars.mkString )
   }
 
-  private final object EnsAddressCache {
-    private val TTL     = 300000 // 300 secs, 5 mins, maybe someday make this sensitive to ENS TTLs
-    private val MaxSize = 100
-
-    private final case class Key( jsonRpcUrl : String, chainId : Int, nameServiceAddress : EthAddress, path : String )
-
-    // MT: synchronized on EnsAddressCache's lock
-    private val cache = mutable.HashMap.empty[Key,Tuple2[Failable[EthAddress],Long]]
-
-    private def doLookup( ensClient : ens.Client, key : Key ) : ( Failable[EthAddress], Long ) = {
-      TRACE.log( s"doLookup( $key )" )
-      val ts = System.currentTimeMillis()
-      try {
-        Tuple2( ensClient.address( key.path ).toFailable( s"No address has been associated with ENS name '${key.path}'." ), ts )
-      }
-      catch {
-        case NonFatal( nfe ) => ( Failable.fail( s"Exception while looking up ENS name '${key.path}': ${nfe}", includeStackTrace = false ), ts )
-      }
-    }
-
-    // called only from synchronized lookup(...)
-    private def update( key : Key ) : Tuple2[Failable[EthAddress],Long] = {
-      val chainId = if ( key.chainId >= 0 ) Some( EthChainId( key.chainId )  ) else None
-      val ensClient = ens.Client( jsonRpcUrl = key.jsonRpcUrl, chainId = chainId, nameServiceAddress = key.nameServiceAddress )
-      val updated = doLookup( ensClient, key )
-      cache += Tuple2( key, updated )
-      //println( s"update: ${updated} (path=${key.path})" )
-      updated
-    }
-
-    def lookup( rpi : RichParserInfo, path : String ) : Failable[EthAddress] = {
-      this.synchronized {
-        Failable.flatCreate {
-          def assertJsonRpcUrl = {
-            rpi.mbJsonRpcUrl.getOrElse( throw new Exception("No jsonRpcUrl available in RichParserInfo: ${rpi}") )
-          }
-          val key = Key( assertJsonRpcUrl, rpi.chainId, rpi.nameServiceAddress, path )
-          val ( result, timestamp ) = {
-            val out = {
-              cache.get( key ) match {
-                case Some( tup ) => if ( System.currentTimeMillis() > tup._2 + TTL ) update( key ) else tup
-                case None        => update( key )
-              }
-            }
-            if ( cache.size > MaxSize ) { // an ugly, but easy, way to bound the size of the cache
-              cache.clear()
-              cache += Tuple2( key, out )
-            }
-            out
-          }
-          // println( s"${path} => ${result}" )
-          result
-        }
-      }
-    }
-
-    def reset() : Unit = this.synchronized( cache.clear() )
-  }
-
-  private [sbtethereum]
-  def reset() : Unit = EnsAddressCache.reset()
-
   private def createSimpleAddressParser( tabHelp : String, mbChainId : Option[EthChainId] ) = token( rawAddressParserMaybeWithChainId( mbChainId ).examples( tabHelp, ZWSP ) )
 
   private def rawAddressAliasParser( aliases : SortedMap[String,EthAddress] ) : Parser[String] = {
@@ -337,7 +275,7 @@ object Parsers {
 
   private [sbtethereum] def ensPathToAddressParser( rpi : RichParserInfo ) : Parser[EthAddress] = {
     ensPathParser( rpi.exampleNameServiceTld ).flatMap { epp =>
-      val faddress = EnsAddressCache.lookup( rpi, epp.fullName )
+      val faddress = SbtEthereumPlugin.ensAddressCache.lookup( rpi, epp.fullName )
       if ( faddress.isSucceeded ) success( faddress.get ) else failure( faddress.assertFailed.toString )
     }
   }
@@ -353,7 +291,7 @@ object Parsers {
       _       <- if (pathPredicate( rawPath )) success( rawPath ) else failure(s"ENS address ruled out by simple path predicate -- ${pathPredicateFailureDesc}.")
       epp      = ens.ParsedPath( rawPath )
       _       <- if (parsedPathPredicate( epp )) success( epp ) else failure(s"ENS address ruled out by parsed path predicate -- ${parsedPathPredicateFailureDesc}.")
-      faddress = EnsAddressCache.lookup( rpi, epp.fullName )
+      faddress = SbtEthereumPlugin.ensAddressCache.lookup( rpi, epp.fullName )
       address <- if (faddress.isSucceeded) success( faddress.get ) else failure("Failed to find an address for putative ENS path.")
     }
     yield {
@@ -480,7 +418,11 @@ object Parsers {
     inputs.map( parserMaker ).foldLeft( success( immutable.Seq.empty[String] ) )( (nascent, next) => nascent.flatMap( partial => token(Space) ~> next.map( str => partial :+ str ) ) )
   }
 
-  private def functionAndInputsParser( abi : jsonrpc.Abi, functionFilter : jsonrpc.Abi.Function => Boolean, mbRpi : Option[RichParserInfo] ) : Parser[(jsonrpc.Abi.Function, immutable.Seq[String])] = {
+  private def functionAndInputsParser(
+    abi : jsonrpc.Abi,
+    functionFilter : jsonrpc.Abi.Function => Boolean,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[(jsonrpc.Abi.Function, immutable.Seq[String])] = {
     token( functionParser( abi, functionFilter ) ).flatMap( function => inputsParser( function.inputs, mbRpi ).map( seq => ( function, seq ) ) )
   }
 

@@ -1,5 +1,6 @@
 package com.mchange.sc.v1.sbtethereum.api
 
+import com.mchange.sc.v1.sbtethereum.SbtEthereumPlugin
 import com.mchange.sc.v1.sbtethereum.util.{Parsers => UP}
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash}
 

@@ -62,6 +62,9 @@ private [sbtethereum] final class Mutables (
   // MT: internally thread-safe
   val MLogToggler = new util.MLogToggler.withMutableDetailPrefixes
 
+  // MT: internally thread-safe
+  val EnsAddressCache = new util.EnsAddressCache
+
   // MT: protected by LocalGanache's lock
   private val LocalGanache = new AtomicReference[Option[Process]]( None )
 
@@ -161,6 +164,7 @@ private [sbtethereum] final class Mutables (
     OneTimeWarner.resetAll()
     withLocalGanache( _.set( None ) )
     MLogToggler.reset()
+    EnsAddressCache.reset()
   }
 }
 
