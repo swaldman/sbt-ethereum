@@ -30,7 +30,7 @@ private [sbtethereum] object SignersManager {
 }
 private [sbtethereum] class SignersManager(
   scheduler : Scheduler, // careful with the scheduler, which will embed references to the internal state
-  keystoresV3 : immutable.Seq[File],
+  keystoresV3Finder : () => immutable.Seq[File],
   publicTestAddresses : immutable.Map[EthAddress,EthPrivateKey],
   abiOverridesForChain : Int => immutable.Map[EthAddress,jsonrpc.Abi],
   maxUnlocked : Int
@@ -46,6 +46,15 @@ private [sbtethereum] class SignersManager(
     // MT: protected by State's lock
     private val currentAddresses = mutable.Map.empty[EthAddress,UnlockedAddress]
     private val addressesByRelockTime = mutable.SortedMap.empty[Long,UnlockedAddress] // we ensure unlock times are unique!
+    private var mbKeystoresV3 : Option[immutable.Seq[File]] = None
+
+    private [SignersManager]
+    def keystoresV3 = State.synchronized {
+      if ( mbKeystoresV3.isEmpty ) {
+        mbKeystoresV3 = Some( keystoresV3Finder() )
+      }
+      mbKeystoresV3.get
+    }
 
     private [SignersManager]
     def checkWithoutValidating( address : EthAddress ) : Option[UnlockedAddress] = State.synchronized {
@@ -96,6 +105,7 @@ private [sbtethereum] class SignersManager(
       DEBUG.log( s"Resetting SignersManager [${SignersManager.this}]" )
       currentAddresses.clear()
       addressesByRelockTime.clear()
+      mbKeystoresV3 = None
     }
 
     // should only be called while holding State's lock
@@ -202,7 +212,7 @@ private [sbtethereum] class SignersManager(
     def readRound : EthPrivateKey = {
       try {
         val credential = readCredential( is, address )
-        val wallets = walletsForAddress( address, keystoresV3 )
+        val wallets = walletsForAddress( address, State.keystoresV3 )
         findPrivateKey( log, address, wallets, credential )
       }
       catch {

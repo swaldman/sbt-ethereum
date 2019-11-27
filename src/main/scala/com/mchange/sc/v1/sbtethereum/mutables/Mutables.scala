@@ -22,12 +22,12 @@ import java.util.concurrent.atomic.AtomicReference
 
 private [sbtethereum] final class Mutables (
   scheduler            : Scheduler,
-  keystoresV3          : immutable.Seq[File],
+  keystoresV3Finder    : () => immutable.Seq[File],
   publicTestAddresses  : immutable.Map[EthAddress,EthPrivateKey],
   maxUnlockedAddresses : Int
 ) {
   // MT: internally thread-safe
-  private val MainSignersManager = new SignersManager( scheduler, keystoresV3, publicTestAddresses, this.abiOverridesForChain, maxUnlockedAddresses )
+  private val MainSignersManager = new SignersManager( scheduler, keystoresV3Finder, publicTestAddresses, this.abiOverridesForChain, maxUnlockedAddresses )
 
   // MT: protected by SessionSolidityCompilers' lock
   private val SessionSolidityCompilers = new AtomicReference[Option[immutable.Map[String,Compiler.Solidity]]]( None )
