@@ -3,6 +3,7 @@ package com.mchange.sc.v1.sbtethereum.util
 import com.mchange.sc.v1.sbtethereum._
 import util.Abi._
 import util.Spawn._
+import util.InteractiveQuery.normalizeInteractedFilePath
 
 import sbt.State
 
@@ -427,6 +428,8 @@ object Parsers {
   }
 
   private [sbtethereum] val DbQueryParser : Parser[String] = (any.*).map( _.mkString.trim )
+
+  private [sbtethereum] val AnyFilePathParser : Parser[String] = any.*.string.map( raw => normalizeInteractedFilePath( raw.trim ) )
 
   // XXX: We add case-insensitive flags only to "naive" regexs when defaultToCaseInsensitive is true.
   //      The intent is that users who explicitly set flags should have them unmolested. But we don't

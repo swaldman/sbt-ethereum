@@ -8,33 +8,84 @@ import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.sbtethereum.recursiveListIncluding
 import com.mchange.sc.v2.util.Platform
 import com.mchange.sc.v3.failable._
+import com.mchange.sc.v3.failable.logging._
 
 import com.mchange.sc.v1.log.MLevel._
 
 private [sbtethereum]
 object Shoebox {
-  implicit lazy val logger : com.mchange.sc.v1.log.MLogger = mlogger( this )
-}
-
-private [sbtethereum]
-class Shoebox( shoeboxDirPathOverride : Option[String] ) extends PermissionsOverrideSource {
-  import Shoebox.logger
+  private implicit lazy val logger : com.mchange.sc.v1.log.MLogger = mlogger( this )
 
   private val SystemProperty      = "sbt.ethereum.shoebox"
   private val EnvironmentVariable = "SBT_ETHEREUM_SHOEBOX"
 
-  private [shoebox]
-  lazy val Directory_ExistenceAndPermissionsUnenforced : Failable[File] = {
+  private def mkdirsAndPermission( f : File ) : Boolean = {
+    val check = f.mkdirs()
+    if ( check ) {
+      setUserOnlyDirectoryPermissions( f ).xwarn().isSucceeded
+    }
+    else {
+      false
+    }
+  }
+
+  // side-effecting!
+  // tries to create the directory if it's not already there, so it can warn if not creatable
+  def whyBadShoeboxDir( f : File ) : Option[String] = {
+    if (f.exists()) {
+      if (! f.isDirectory) {
+        Some( s"Putative shoebox directory '${f}' exists but is not a directory!" )
+      }
+      else if (! (f.canRead() && f.canWrite())) {
+        Some( s"Putative shoebox directory '${f}' exists but is not readable and writable by the current user!" )
+      }
+      else {
+        None
+      }
+    }
+    else if (! mkdirsAndPermission(f)) {
+      Some( s"Putative shoebox directory '${f}' does not exist and could not be created!" )
+    }
+    else {
+      None
+    }
+  }
+
+  def findWarnMaybeOverriddenPlatformDefaultDirectory : Failable[File] = {
+
+    def mbProperty = Option( System.getProperty( SystemProperty ) ).map { value =>
+      WARNING.log( s"Platform default shoebox directory overridden by system property '${SystemProperty}' to '${value}'." )
+      new File( value )
+    }
+
+    def mbEnvVar = Option( System.getenv( EnvironmentVariable ) ).map { value =>
+      WARNING.log( s"Platform default shoebox directory overridden by system property '${SystemProperty}' to '${value}'." )
+      new File( value )
+    }
+
     def defaultLocation = {
       Platform.Current
         .toFailable( "Could not detect the platform to determine the shoebox directory" )
         .flatMap( _.appSupportDirectory( "sbt-ethereum" ) )
     }
 
-    val mbProperty = Option( System.getProperty( SystemProperty ) )
-    val mbEnvVar   = Option( System.getenv( EnvironmentVariable ) )
+    (mbProperty orElse mbEnvVar).fold( defaultLocation )( dir => Failable.succeed( dir ) )
+  }
+}
 
-    (shoeboxDirPathOverride orElse mbProperty orElse mbEnvVar).fold( defaultLocation )( dir => Failable.succeed( new File( dir ) ) )
+private [sbtethereum]
+class Shoebox( shoeboxDirPathOverride : Option[String] ) extends PermissionsOverrideSource {
+  import Shoebox._
+
+  private [shoebox]
+  lazy val Directory_ExistenceAndPermissionsUnenforced : Failable[File] = {
+    val raw = shoeboxDirPathOverride.fold( findWarnMaybeOverriddenPlatformDefaultDirectory )( dir => Failable.succeed( new File( dir ) ) )
+    raw.flatMap { dir =>
+      whyBadShoeboxDir( dir ) match {
+        case Some( problem ) => Failable.fail( problem )
+        case None            => Failable.succeed( dir )
+      }
+    }
   }
 
   lazy val Directory = Directory_ExistenceAndPermissionsUnenforced.flatMap( ensureUserOnlyDirectory )
