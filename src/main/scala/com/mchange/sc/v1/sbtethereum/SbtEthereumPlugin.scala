@@ -4394,9 +4394,38 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethShoeboxDirectoryPrintTask : Initialize[Task[Unit]] = Def.task {
-    val location = activeShoebox.Directory.get.getAbsolutePath
+    val mbProjectConfiguredPath = ethcfgShoeboxDirectory.?.value
+    val mbProjectConfiguredCanonicalFile = mbProjectConfiguredPath.map( dirpath => (new File(dirpath)).getCanonicalFile )
+
+    val location = activeShoebox.Directory.assert.getAbsoluteFile
+
+    val locationCanonicalFile = location.getCanonicalFile
+
+    val mbByPropertyCanonicalFile      = shoebox.Shoebox.MaybeLocationByProperty.map( _.getCanonicalFile )
+    val mbByEnvVarCanonicalFile        = shoebox.Shoebox.MaybeLocationByEnvVar.map( _.getCanonicalFile )
+    val mbPlatformDefaultCanonicalFile = shoebox.Shoebox.PlatformDefaultLocation.map( _.getCanonicalFile )
+
+    def mbIsX( mbXCanonicalFile : Option[File] ) : Option[Boolean] = mbXCanonicalFile.map( _ == locationCanonicalFile )
+
+    val mbIsProjectConfigured = mbIsX( mbProjectConfiguredCanonicalFile        )
+    val mbIsProperty          = mbIsX( mbByPropertyCanonicalFile               )
+    val mbIsEnvVar            = mbIsX( mbByEnvVarCanonicalFile                 )
+    val mbIsPlatformDefault   = mbIsX( mbPlatformDefaultCanonicalFile.toOption )
+
+    val isUnknownLocation = !(List( mbIsProjectConfigured, mbIsProperty, mbIsEnvVar, mbIsPlatformDefault ).exists( _ == Some( true ) ) )
+
+    def zzn( b : Boolean ) = if (b) "is" else "IS NOT"
+    def ifnotshow( b : Boolean, mbf : Option[_] )   : String = if (b) "" else s", '${mbf.get}'"
+
     syncOut {
-      println( s"The current shoebox directory is '${location}'.")
+      println( s"The current shoebox directory is '${location}'." )
+      mbIsProjectConfigured foreach ( b => println( s" -> This location ${zzn(b)} the location configured via sbt setting 'ethcfgShoeboxDirectory'${ifnotshow(b,mbProjectConfiguredPath)}." ) )
+      mbIsProperty          foreach ( b => println( s" -> This location ${zzn(b)} the location configured via system property '${shoebox.Shoebox.SystemProperty}'${ifnotshow(b,shoebox.Shoebox.MaybeLocationByProperty)}." ) )
+      mbIsEnvVar            foreach ( b => println( s" -> This location ${zzn(b)} the location configured via environment variable '${shoebox.Shoebox.EnvironmentVariable}'${ifnotshow(b,shoebox.Shoebox.MaybeLocationByEnvVar)}." ) )
+      mbIsPlatformDefault   foreach ( b => println( s" -> This location ${zzn(b)} the platform-default shoebox directory${ifnotshow(b,shoebox.Shoebox.PlatformDefaultLocation.toOption)}." ) )
+      if ( isUnknownLocation ) {
+        println( s" -> This is not a preconfigured shoebox location, was likely set by the user via 'ethShoeboxSwitch'." )
+      }
     }
   }
 

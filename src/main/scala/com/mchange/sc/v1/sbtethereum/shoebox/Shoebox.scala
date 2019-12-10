@@ -16,8 +16,8 @@ private [sbtethereum]
 object Shoebox {
   private implicit lazy val logger : com.mchange.sc.v1.log.MLogger = mlogger( this )
 
-  private val SystemProperty      = "sbt.ethereum.shoebox"
-  private val EnvironmentVariable = "SBT_ETHEREUM_SHOEBOX"
+  val SystemProperty      = "sbt.ethereum.shoebox"
+  val EnvironmentVariable = "SBT_ETHEREUM_SHOEBOX"
 
   private def mkdirsAndPermission( f : File ) : Boolean = {
     val check = f.mkdirs()
@@ -51,25 +51,24 @@ object Shoebox {
     }
   }
 
+  lazy val MaybeLocationByProperty = Option( System.getProperty( SystemProperty ) ).map { value =>
+    WARNING.log( s"Platform default shoebox directory overridden by system property '${SystemProperty}' to '${value}'." )
+    new File( value )
+  }
+
+  lazy val MaybeLocationByEnvVar = Option( System.getenv( EnvironmentVariable ) ).map { value =>
+    WARNING.log( s"Platform default shoebox directory overridden by system property '${SystemProperty}' to '${value}'." )
+    new File( value )
+  }
+
+  lazy val PlatformDefaultLocation = {
+    Platform.Current
+      .toFailable( "Could not detect the platform to determine the shoebox directory" )
+      .flatMap( _.appSupportDirectory( "sbt-ethereum" ) )
+  }
+
   def findWarnMaybeOverriddenPlatformDefaultDirectory : Failable[File] = {
-
-    def mbProperty = Option( System.getProperty( SystemProperty ) ).map { value =>
-      WARNING.log( s"Platform default shoebox directory overridden by system property '${SystemProperty}' to '${value}'." )
-      new File( value )
-    }
-
-    def mbEnvVar = Option( System.getenv( EnvironmentVariable ) ).map { value =>
-      WARNING.log( s"Platform default shoebox directory overridden by system property '${SystemProperty}' to '${value}'." )
-      new File( value )
-    }
-
-    def defaultLocation = {
-      Platform.Current
-        .toFailable( "Could not detect the platform to determine the shoebox directory" )
-        .flatMap( _.appSupportDirectory( "sbt-ethereum" ) )
-    }
-
-    (mbProperty orElse mbEnvVar).fold( defaultLocation )( dir => Failable.succeed( dir ) )
+    (MaybeLocationByProperty orElse MaybeLocationByEnvVar).fold( PlatformDefaultLocation )( dir => Failable.succeed( dir ) )
   }
 }
 
