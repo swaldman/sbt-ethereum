@@ -34,7 +34,7 @@ Security
 
 Other
 
-* Allow retries rather than failinng on bad credential entry
+* Allow retries rather than failing on bad credential entry
 
 * Build replace pending transaction task
 
@@ -63,8 +63,6 @@ Other
 * Make it possible to specify an optional Chain ID in ethNodeChainIdUrlDefaultSet
 
 * Utilities -- denomination conversions, durations, etc
-
-* Support multiple shoeboxes and user-definable locations
 
 * Make price feed more robust to scheduler failure. (Why are there sometimes scheduler failures?)
 

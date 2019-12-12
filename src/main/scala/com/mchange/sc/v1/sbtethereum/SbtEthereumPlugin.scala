@@ -2568,9 +2568,21 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log      = streams.value.log
     val chainId  = findNodeChainIdTask(warn=true)(config).value
     val faliases = activeShoebox.addressAliasManager.findAllAddressAliases( chainId )
+    val columns = immutable.Vector( "Alias", "Address" ).map( texttable.Column.apply( _ ) )
+
+    def extract( tup : Tuple2[String,EthAddress] ) : Seq[String] = {
+      val ( alias, address ) = tup
+      alias :: hexString(address) :: Nil
+    }
+    def annotation( tup : Tuple2[String,EthAddress] ) : String = {
+      val ( alias, address ) = tup
+      val extraAliases = immutable.SortedSet( this.activeShoebox.addressAliasManager.findAddressAliasesByAddress( chainId, address ).get : _* ) - alias
+      if (extraAliases.isEmpty) "" else s""" <-- also ${extraAliases.mkString(", ")}"""
+    }
+    
     faliases.fold( _ => log.warn("Could not read aliases from shoebox database.") ) { aliases =>
       syncOut {
-        aliases.foreach { case (alias, address) => println( s"${alias} -> ${verboseAddress(chainId, address)}" ) }
+        texttable.printTable( columns, extract )( aliases.map( as => texttable.Row(as,annotation(as)) ) )
       }
     }
   }
