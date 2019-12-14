@@ -256,6 +256,20 @@ If not set, no Scala stubs will be generated.
 
 @@@
 
+### ethcfgShoeboxDirectory
+
+@@@ div { .keydesc }
+
+**Type:** `String`
+
+**Default:** _Unset_
+
+Path (absolute or relative to project root) to the directory of the @ref:[shoebox](../tasks/eth/shoebox/index.md) this project should use.
+
+If unset, the @ref:[platform default shoebox location](../tasks/eth/shoebox/index.md#platform-default-shoebox-directory) is used.
+
+@@@
+
 ### ethcfgSolidityCompilerOptimize      
 
 @@@ div { .keydesc }

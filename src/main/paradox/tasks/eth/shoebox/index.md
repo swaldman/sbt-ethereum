@@ -16,17 +16,47 @@ The "shoebox" is where sbt-ethereum stashes, on a per user basis...
 5. Local installations of Solidity compilers
 @@@
 
+#### Platform default shoebox directory
+
 @@@ div {.tight}
-The shoebox is a directory, placed at
+The shoebox is a directory, By default it is placed at
 
 - Windows: `%APPDATA%\sbt-ethereum`
 - Mac: `~/Library/sbt-ethereum`
 - Other Unix: `~/.sbt-ethereum`
 @@@
 
-(You can, if you wish, just backup and restore this directory directly.)
+You can override what shoebox directory a project uses with the setting @ref[`ethcfgShoeboxDirectory`](../../../settings/index.md#ethcfgshoeboxdirectory).
+
+_sbt-ethereum_ will also honor the system property `sbt.ethereum.shoebox` or the environment variable `SBT_ETHEREUM_SHOEBOX`. If more than one location is
+configured, the sbt setting takes priority, then the system property, then the environment variable.
+
+You can switch what shoebox a session uses at runtime with @ref:[`ethShoeboxDirectorySwitch`](#ethshoeboxdirectoryswitch).
+
+Changing shoeboxes usually
+changes identity and history: different shoeboxes are usually configured with different @ref:[default senders](../address/sender.md), have different @ref:[address aliases](../address/alias.md)
+defined, etc. They usually contain different @ref[wallets](../keystore/index.md).
+
+@@@ note
+
+**Use the default shoebox**
+
+For most purposes, using only the platform default directory is fine.
+Usually, you'll just do that.
+
+Consider using multiple shoeboxes only if the default shoebox becomes unwieldy,
+or if you with to interact with the _Ethereum_ blockchain wth multiple distinct "personalities",
+each with its own separately configured environment.
+
+@@@
+
+_**Shoeboxes should be carefully (and privately!) backed up!**_
+
+You can, if you wish, just backup and restore a shoebox directory directly.
 
 But _sbt-ethereum_ offers conveniences for backing its shoebox up as a zip file, and restoring from its own backups, very conveniently.
+
+Different shoeboxes should be associated with different default backup directories!
 
 @@@ note
 
@@ -111,6 +141,72 @@ Which database dump should we restore? (Enter a number, or hit enter to abort) 1
 
 @@@
 
+### ethShoeboxDatabaseDumpRestore
+
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ethShoeboxDatabaseDumpRestore
+```
+Restores an SQL-text dump created by [`ethShoeboxDatabaseDumpCreate`](#ethshoeboxdatabasedumpcreate) from the dump directory inside the shoebox base directory.
+
+**Example:**
+```
+> ethShoeboxDatabaseDumpRestore
+The following sbt-ethereum shoebox database dump files have been found:
+	1. /Users/testuser/Library/Application Support/sbt-ethereum/database/h2-dumps/sbt-ethereum-v7-20190324T01h21m21s194msPDT.sql
+	2. /Users/testuser/Library/Application Support/sbt-ethereum/database/h2-dumps/sbt-ethereum-v7-20190324T00h59m16s496msPDT.sql
+	3. /Users/testuser/Library/Application Support/sbt-ethereum/database/h2-dumps/sbt-ethereum-v7-20190318T23h28m02s982msPDT.sql
+Which database dump should we restore? (Enter a number, or hit enter to abort) 1
+[info] Restore from dump successful. (Prior, replaced database should have backed up into '/Users/testuser/Library/Application Support/sbt-ethereum/database/h2-superseded'.
+[success] Total time: 24 s, completed Mar 24, 2019 1:24:49 AM
+```
+
+@@@
+
+### ethShoeboxDirectoryPrint
+
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ethShoeboxDirectoryPrint
+```
+
+Prints the current session's shoebox directory location, with information about how it has been configured.
+
+**Example:**
+```
+> ethShoeboxDirectoryPrint
+The current shoebox directory is '/Users/swaldman/tmp/test-shoebox1'.
+ -> This location IS NOT the platform-default shoebox directory, '/Users/swaldman/Library/Application Support/sbt-ethereum'.
+ -> This is not a preconfigured shoebox location, was likely set by the user via 'ethShoeboxSwitch'.
+[success] Total time: 0 s, completed Dec 13, 2019 8:21:33 PM
+```
+
+@@@
+
+### ethShoeboxDirectorySwitch
+
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ethShoeboxDirectorySwitch <path-to-alternative-shoebox-directory>
+```
+
+Resets the current session to use the given shoebox directory.
+
+**Example:**
+```
+> ethShoeboxDirectorySwitch /Users/swaldman/tmp/test-shoebox1
+[info] Restarting session with shoebox directory '/Users/swaldman/tmp/test-shoebox1'.
+[success] Total time: 0 s, completed Dec 13, 2019 8:19:23 PM
+```
+
+@@@
+
 ### ethShoeboxRestore
 
 @@@ div { .keydesc}
@@ -126,7 +222,7 @@ _**Note: Paths must be absolute. _sbt-ethereum_ does not resolve '~' or other sh
 
 **Example:**
 ```
-sbt:eth-command-line> ethShoeboxRestore
+> ethShoeboxRestore
 Search default backup directory '/Volumes/Backups/sbt-ethereum' for backups? [y/n] y
 '/Volumes/Backups/sbt-ethereum/sbt-ethereum-shoebox-backup-20190324T00h59m16s521msPDT.zip' is the most recent sbt-ethereum shoebox backup file found. Use it? [y/n] y
 [warn] Superseded existing shoebox directory renamed to '/Users/testuser/Library/Application Support/sbt-ethereum-superseded-20190324T01h17m55s372msPDT'. Consider deleting, eventually.
