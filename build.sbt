@@ -39,7 +39,7 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
     "com.mchange"    %% "ens-scala"             % "0.2.3",
     "com.mchange"    %% "texttable"             % "0.0.2",
     "com.mchange"    %  "mchange-commons-java"  % "0.2.19",
-    "com.mchange"    %  "c3p0"                  % "0.9.5.4",
+    "com.mchange"    %  "c3p0"                  % "0.9.5.5",
     "com.h2database" %  "h2"                    % "1.4.192",
     "ch.qos.logback" %  "logback-classic"       % "1.1.7"
   ),
