@@ -55,7 +55,18 @@ This documentation site is built with [Lightbend Paradox](https://developer.ligh
 
 This whole application is built on top of [sbt](https://www.scala-sbt.org), which is a weird but amazing tool.
 
-This site uses Google Web Fonts [_Source Sans Pro_](https://fonts.google.com/specimen/Source+Sans+Pro) and [_Ubuntu Mono_](https://fonts.google.com/specimen/Ubuntu+Mono) (which are hosted locally to protect your privacy).
+_sbt-ethereum_'s [giter8 templates](http://www.foundweekends.org/giter8/) embed [Paul Phillips' sbt-launcher](https://github.com/paulp/sbt-extras).
 
+This site uses Google Web Fonts [_Source Sans Pro_](https://fonts.google.com/specimen/Source+Sans+Pro) and [_Ubuntu Mono_](https://fonts.google.com/specimen/Ubuntu+Mono),
+and Google [Prettify](https://github.com/google/code-prettify) library for code syntax highlighting. These resources are hosted locally to protect your privacy.
+
+@@@ div { #googleLicenses }
+
+"[The open source fonts](https://developers.google.com/fonts/faq#can_i_use_fonts_from_the_google_fonts_catalog_on_any_page) in the Google Fonts catalog are published under 
+licenses that allow you to use them on any website, whether it’s commercial or personal." Google Prettify is licensed under [Apache 2.0](https://github.com/google/code-prettify/blob/f1c3473acd1e8ea8c8c1a60c56e89f5cdd06f915/COPYING).
+
+@@@
+
+Thanks especially to you for reading this far, and for using _sbt-ethereum_!
 
 

@@ -455,6 +455,13 @@ ul li {
 		  color: rgb(0,0,180);
 }
 
+#googleLicenses {
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-left: 1em;
+    font-size: 9pt;
+}
+
 .optional {
     display: none;
     border: 1px solid black;

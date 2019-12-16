@@ -3,7 +3,9 @@
     <title>$page.title$</title>
     <link rel="stylesheet" type="text/css" href="$page.base$css/docs.css"/>
     <link rel="stylesheet" type="text/css" href="$page.base$css/fonts.css"/>
+    <link rel="stylesheet" type="text/css" href="$page.base$css/prettify/prettify.css"/>
     <script src="$page.base$js/docs.js"></script>
+    <script src="$page.base$js/prettify/prettify.js"></script>
   </head>
   <body onload="init()">
     <div id="navigationColumn">

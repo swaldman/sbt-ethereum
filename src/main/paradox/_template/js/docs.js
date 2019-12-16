@@ -132,6 +132,9 @@ function init() {
     copyTocSecondLevelList( "ethTransactionToc", 2, "unsignedList" );
 
     showNavigationParentListOfActive()
+
+    // initialize prettify
+    PR.prettyPrint()
 }
 
 /* Detailed tab completion tutorial? <a id="uasc_optional_1_triangle" class="optional-triangle" href="javascript:toggleVisibilityWithTriangle('uasc_optional_1', 'uasc_optional_1_triangle')">&#x25B6;</a> */
