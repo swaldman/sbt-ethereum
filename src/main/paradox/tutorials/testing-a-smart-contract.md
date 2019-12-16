@@ -131,7 +131,7 @@ In that directory, create a file called `TimelockSpec.scala`. (By convention, _S
 ending in "Spec".)
 
 Define the following contents for that file:
-```
+```scala
 package timelock
 
 import org.specs2._
@@ -216,24 +216,57 @@ that, it'll look like magic without understanding the contents of the `Testing` 
 generated as test-only code (as part of the `Test` configuration) into our @ref:[`ethcfgScalaStubsPackage`](../settings/index.md#ethcfgscalastubspackage), 
 and which offers utilities that are helpful for testing code. Let's take a look at that:
 
-```
+```scala
 package timelock
 
 import com.mchange.sc.v1.consuela.ethereum.EthPrivateKey
-import com.mchange.sc.v1.consuela.ethereum.stub
+import com.mchange.sc.v1.consuela.ethereum.{jsonrpc, stub, EthAddress, EthHash}
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations
+
+import stub.sol
+
+import scala.concurrent.{Await,Future}
+import scala.concurrent.duration._
+
+import scala.collection._
 
 object Testing {
   val EthJsonRpcUrl : String                          = "http://localhost:58545"
   val TestSender    : IndexedSeq[stub.Sender.Signing] = stub.Test.Sender
   val DefaultSender : stub.Sender.Signing             = TestSender(0)
   val Faucet        : stub.Sender.Signing             = DefaultSender
-
+  
   val EntropySource = new java.security.SecureRandom()
-
+  
+  /** A variety of utilities often useful within tests. */
   trait Context extends Denominations {
     implicit val scontext = stub.Context.fromUrl( EthJsonRpcUrl )
+    implicit val icontext = scontext.icontext
+    implicit val econtext = icontext.econtext
+    
     def createRandomSender() : stub.Sender.Signing = stub.Sender.Basic( EthPrivateKey( EntropySource ) )
+    
+    def asyncBalance( address : EthAddress )  : Future[BigInt] = jsonrpc.Invoker.getBalance( address )
+    def asyncBalance( sender  : stub.Sender ) : Future[BigInt] = sender.asyncBalance()
+    
+    def awaitBalance( address : EthAddress )                                      : BigInt = awaitBalance( address, Duration.Inf )
+    def awaitBalance( address : EthAddress,  duration : Duration )                : BigInt = Await.result( asyncBalance( address ), duration )
+    def awaitBalance( sender  : stub.Sender, duration : Duration = Duration.Inf ) : BigInt = sender.awaitBalance( duration )
+    
+    def asyncFundAddress( address : EthAddress, amountInWei : BigInt ) : Future[EthHash] = Faucet.sendWei( address, sol.UInt256( amountInWei ) )
+    def awaitFundAddress( address : EthAddress, amountInWei : BigInt, duration : Duration = Duration.Inf ) : EthHash = Await.result( asyncFundAddress( address, amountInWei ), duration )
+    
+    def asyncFundSender( sender : stub.Sender, amountInWei : BigInt )  : Future[EthHash] = asyncFundAddress( sender.address, amountInWei )
+    def awaitFundSender( sender : stub.Sender, amountInWei : BigInt, duration : Duration = Duration.Inf ) : EthHash = awaitFundAddress( sender.address, amountInWei, duration )
+    
+    def asyncFundAddresses( destinations : Seq[Tuple2[EthAddress,BigInt]] ) : Future[immutable.Seq[EthHash]] = {
+      destinations.foldLeft( Future.successful( immutable.Seq.empty : immutable.Seq[EthHash] ) ){ case ( accum, Tuple2( addr, amt ) ) => accum.flatMap( seq => asyncFundAddress( addr, amt ).map( seq :+ _ ) ) }
+    }
+    def awaitFundAddresses( destinations : Seq[Tuple2[EthAddress,BigInt]] ) : immutable.Seq[EthHash] = awaitFundAddresses( destinations, Duration.Inf )
+    def awaitFundAddresses( destinations : Seq[Tuple2[EthAddress,BigInt]], duration : Duration ) : immutable.Seq[EthHash] = Await.result( asyncFundAddresses( destinations ), duration )
+    
+    def asyncFundSenders( destinations : Seq[Tuple2[stub.Sender,BigInt]] ) : Future[immutable.Seq[EthHash]] = asyncFundAddresses( destinations.map { case ( sender, amt ) => ( sender.address, amt ) } )
+    def awaitFundSenders( destinations : Seq[Tuple2[stub.Sender,BigInt]], duration : Duration = Duration.Inf ) : immutable.Seq[EthHash] = Await.result( asyncFundSenders( destinations ), duration )
   }
   trait AutoSender extends Context {
     implicit val DefaultSender : stub.Sender.Signing = Testing.DefaultSender
