@@ -30,7 +30,7 @@ object AutoResource {
   class UserOnlyDirectory( rawParent : Failable[File], enforcedParent : ()=>Failable[File], dirName : String ) extends AutoResource[UserOnlyDirectory.Spec,Failable[File]](
     UserOnlyDirectory.Spec( rawParent, enforcedParent, dirName ),
     spec => spec.enforcedParent().map( new File( _, dirName ) ).flatMap( ensureUserOnlyDirectory ),
-    _ => Failable.succeed( () ) // directories don't need cleanup
+    _ => Failable.unit // directories don't need cleanup
   ) {
     def existenceAndPermissionsEnforced        = this.active
     lazy val existenceAndPermissionsUnenforced = rawParent.map( new File( _, dirName ) )

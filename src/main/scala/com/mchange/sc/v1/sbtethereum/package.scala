@@ -36,6 +36,7 @@ package object sbtethereum {
 
   final class PingFailedException( msg : String, cause : Throwable = null ) extends SbtEthereumException( msg )
   final class NodeUrlNotAvailableException( msg : String, cause : Throwable = null) extends SbtEthereumException( msg, cause )
+  final class InvokerContextNotAvailableException( msg : String, cause : Throwable = null) extends SbtEthereumException( msg, cause )
   final class SenderNotAvailableException( msg : String, cause : Throwable = null) extends SbtEthereumException( msg, cause )
   final class CannotReadDirectoryException( msg : String, cause : Throwable = null ) extends SbtEthereumException( msg, cause )
   final class OperationAbortedByUserException( msg : String ) extends SbtEthereumException( s"Aborted by user: ${msg}", null, noStackTrace = true )

@@ -1362,32 +1362,48 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def logSessionInfoTask( config : Configuration ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=false)(config).value
-    val nodeUrl = findNodeUrlTask(warn=false)(config).value
+    val mbNodeUrl = maybeFindNodeUrlTask(warn=false)( config ).value
     val mbSender = (config / ethAddressSender).value
+    val mbInvokerContext = maybeFindInvokerContextTask( config, warn=false ).value
 
-    implicit val icontext = xethInvokerContextTask( config, warn=false).value
-
-    log.info( s"The session is now active on chain with ID ${chainId}, with node URL '${nodeUrl}'." )
-    mbSender match {
-      case Some( sender ) => log.info( s"The current session sender is ${verboseAddress( chainId, sender )}." )
-      case None           => {
-        log.warn( "There is no sender available for the current session." )
-        log.warn( "Consider using 'ethAddressSenderDefaultSet' or 'ethAddressSenderOverrideSet' to define one." )
-      }
-    }
-    val fut = Invoker.currentDefaultGasPrice map { defaultGasPrice =>
-      log.info( s"The current default gas price according to your node is ${formatInGWei(defaultGasPrice)}. (THIS MAY CHANGE AT ANY TIME.)" )
-      Mutables.GasPriceTweakOverrides.get( chainId ).foreach { tweak =>
-        log.info(s" + Your current session includes an override of the gas price, ${formatGasPriceTweak(tweak)}.")
-        log.info(s" + So, the actual price you would pay is ${formatInGWei(tweak.compute(defaultGasPrice))}.")
+    def logSender() = {
+      mbSender match {
+        case Some( sender ) => log.info( s"The current session sender is ${verboseAddress( chainId, sender )}." )
+        case None           => {
+          log.warn( "There is no sender available for the current session." )
+          log.warn( "Consider using 'ethAddressSenderDefaultSet' or 'ethAddressSenderOverrideSet' to define one." )
+        }
       }
     }
 
-    try {
-      Await.result( fut, 10.seconds )
-    }
-    catch {
-      case NonFatal(t) => log.warn( s"Unable to retrieve the current default gas price from our node: ${t}" )
+    mbNodeUrl match {
+      case Some( nodeUrl ) => {
+        log.info( s"The session is now active on chain with ID ${chainId}, with node URL '${nodeUrl}'." )
+        logSender()
+        
+        mbInvokerContext.foreach { implicit icontext =>
+          val fut = Invoker.currentDefaultGasPrice map { defaultGasPrice =>
+            log.info( s"The current default gas price according to your node is ${formatInGWei(defaultGasPrice)}. (THIS MAY CHANGE AT ANY TIME.)" )
+            Mutables.GasPriceTweakOverrides.get( chainId ).foreach { tweak =>
+              log.info(s" + Your current session includes an override of the gas price, ${formatGasPriceTweak(tweak)}.")
+              log.info(s" + So, the actual price you would pay is ${formatInGWei(tweak.compute(defaultGasPrice))}.")
+            }
+          }
+          try {
+            Await.result( fut, 10.seconds )
+          }
+          catch {
+            case NonFatal(t) => log.warn( s"Unable to retrieve the current default gas price from our node: ${t}" )
+          }
+        }
+      }
+      case None => {
+        log.info( s"The session is now active on chain with ID ${chainId}." )
+        log.warn( "No node URL has been defined -- not as a persistent default, nor as a session override, nor as an sbt setting or hardcoded value." )
+        log.warn( "Please define a node URL for this chain, via 'ethNodeChainIdDefaultSet' or 'ethNodeChainIdOverride'." )
+        log.warn( "All attempts to interact with the blockchain will fail until a node URL is defined!" )
+        logSender()
+      }
     }
     Mutables.logWarnOverrides( log, chainId )
   }
@@ -1597,7 +1613,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def findNodeUrlTask( warn : Boolean )( config : Configuration ) : Initialize[Task[String]] = Def.task {
     val mbNodeUrl = maybeFindNodeUrlTask( warn )( config ).value
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    mbNodeUrl.getOrElse( throw new NodeUrlNotAvailableException( s"No 'ethNodeUrl' for chain with ID '${chainId}' is curretly available." ) )
+    mbNodeUrl.getOrElse( throw new NodeUrlNotAvailableException( s"No 'ethNodeUrl' for chain with ID '${chainId}' is currently available." ) )
   }
 
   private def findCurrentSenderLazySignerTask( config : Configuration ) : Initialize[Task[LazySigner]] = Def.task {
@@ -6189,11 +6205,20 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
-  private def xethInvokerContextTask( config : Configuration, warn : Boolean ) : Initialize[Task[Invoker.Context]] = Def.task {
+  private def xethInvokerContextTask( config : Configuration, warn : Boolean ) : Initialize[Task[Invoker.Context]] = Def.taskDyn {
+    maybeFindInvokerContextTask( config, warn ).map { mbContext =>
+      mbContext.getOrElse {
+        throw new InvokerContextNotAvailableException( s"Could not instantiate an Invoker context. Please ensure that you have a node URL defined for the current chain ID. Try 'eth'." )
+      }
+    }
+  }
+
+  // for now, the only expected cause of a None return value would be no jsonRpcUrl available for the current chain
+  private def maybeFindInvokerContextTask( config : Configuration, warn : Boolean ) : Initialize[Task[Option[Invoker.Context]]] = Def.task {
 
     val log = streams.value.log
 
-    val jsonRpcUrl    = findNodeUrlTask(warn=true)(config).value
+    val mbJsonRpcUrl  = maybeFindNodeUrlTask(warn=true)(config).value // will fail with the reasonable Exception if not available
 
     val pollPeriod    = ethcfgTransactionReceiptPollPeriod.value
     val timeout       = ethcfgTransactionReceiptTimeout.value
@@ -6216,19 +6241,22 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val transactionLogger = findTransactionLoggerTask( config ).value
 
-    val approver = transactionApprover( log, rawChainId, is, currencyCode )
+    mbJsonRpcUrl.map { jsonRpcUrl =>
 
-    Invoker.Context.fromUrl(
-      jsonRpcUrl = jsonRpcUrl,
-      chainId = eip155ChainId,
-      gasPriceTweak = gasPriceTweak,
-      gasLimitTweak = gasLimitTweak,
-      pollPeriod = pollPeriod,
-      pollTimeout = timeout,
-      httpTimeout = httpTimeout,
-      transactionApprover = approver,
-      transactionLogger = transactionLogger
-    )
+      val approver = transactionApprover( log, rawChainId, is, currencyCode )
+
+      Invoker.Context.fromUrl(
+        jsonRpcUrl = jsonRpcUrl,
+        chainId = eip155ChainId,
+        gasPriceTweak = gasPriceTweak,
+        gasLimitTweak = gasLimitTweak,
+        pollPeriod = pollPeriod,
+        pollTimeout = timeout,
+        httpTimeout = httpTimeout,
+        transactionApprover = approver,
+        transactionLogger = transactionLogger
+      )
+    }
   }
 
   private def xethKeystoreWalletV3CreateDefaultTask : Initialize[Task[wallet.V3]] = xethKeystoreWalletV3CreateScryptTask
