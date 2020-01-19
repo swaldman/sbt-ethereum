@@ -6518,6 +6518,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     // val mbCurrentSender   = (xethFindCurrentSender in Compile).value
     
     log.info( s"sbt-ethereum-${generated.SbtEthereum.Version} successfully initialized (built ${SbtEthereum.BuildTimestamp})" )
+    log.info( s" + shoebox directory: '${activeShoebox.Directory.assert.getAbsolutePath}'" )
+
     // log.info( s"sbt-ethereum shoebox: '${activeShoebox.Directory.assert}' <-- Please backup, via 'ethShoeboxBackup' or manually" )
     // log.info( s"sbt-ethereum main json-rpc endpoint configured to '${mainEthNodeUrl}'" )
     // log.info( s"sbt-ethereum test json-rpc endpoint configured to '${testEthNodeUrl}'" )
@@ -7145,7 +7147,8 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
 
-  private def interactiveSetAliasForAddress( chainId : Int )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
+  private [sbtethereum]
+  def interactiveSetAliasForAddress( chainId : Int )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
     def rawFetch : String = is.readLine( s"Enter an optional alias for ${describedAddress} (or [return] for none): ", mask = false ).getOrElse( throwCantReadInteraction ).trim()
     def validate( alias : String ) : Boolean = parsesAsAddressAlias( alias )
     def inUse( alias : String ) : Boolean = activeShoebox.addressAliasManager.findAddressByAddressAlias( chainId, alias ).assert.nonEmpty
