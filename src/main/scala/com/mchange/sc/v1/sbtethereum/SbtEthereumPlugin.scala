@@ -4476,6 +4476,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val is  = interactionService.value
 
+    val mbHardConfiguredSender = ethcfgAddressSender.?.value.map( EthAddress.apply )
+
     val rawShoeboxPath = (Space ~> AnyFilePathParser).parsed
     val shoeboxFile = new File( rawShoeboxPath ).getAbsoluteFile
 
@@ -4489,7 +4491,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       case Some( warning ) => bail( warning )
       case None            => {
         log.info( s"Restarting session with shoebox directory '${shoeboxFile}'." )
-        doShoeboxResetInitVerifyRecover( log, is, Some( shoeboxFile.getAbsolutePath ) )
+        doShoeboxResetInitVerifyRecover( log, is, Some( shoeboxFile.getAbsolutePath ), mbHardConfiguredSender )
       }
     }
   }
@@ -6565,7 +6567,9 @@ object SbtEthereumPlugin extends AutoPlugin {
     val is                     = interactionService.value
     val overrideShoeboxDirPath = ethcfgShoeboxDirectory.?.value
 
-    doShoeboxResetInitVerifyRecover( log, is, overrideShoeboxDirPath )
+    val mbHardConfiguredSender = ethcfgAddressSender.?.value.map( EthAddress.apply )
+
+    doShoeboxResetInitVerifyRecover( log, is, overrideShoeboxDirPath, mbHardConfiguredSender )
   }
 
   private val xethOnLoadSolicitCompilerInstallTask : Initialize[Task[Unit]] = Def.taskDyn {
@@ -6869,10 +6873,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   // helper functions
 
-  private def doShoeboxResetInitVerifyRecover( log : sbt.Logger, is : sbt.InteractionService, overrideShoeboxDirPath : Option[String] ) : Unit = {
+  private def doShoeboxResetInitVerifyRecover( log : sbt.Logger, is : sbt.InteractionService, overrideShoeboxDirPath : Option[String], hardConfiguredSender : Option[EthAddress] ) : Unit = {
     ShoeboxHolder.synchronized {
       resetAllState()
-      ShoeboxHolder.set( Some( new shoebox.Shoebox( overrideShoeboxDirPath ) ) )
+      ShoeboxHolder.set( Some( new shoebox.Shoebox( overrideShoeboxDirPath, hardConfiguredSender ) ) )
     }
 
     val schemaOkay = activeShoebox.database.DataSource

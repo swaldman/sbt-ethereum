@@ -10,14 +10,20 @@ import com.mchange.sc.v1.consuela.ethereum.EthAddress
 import com.mchange.sc.v3.failable._
 
 class AddressAliasManager( parent : Shoebox ) {
-  private val SyntheticAliases = immutable.Set( DefaultSenderAlias ) // XXX: in theory, we should just use the keyset of the map below. but that seems like a pain for now
+  private val AllSyntheticAliases = immutable.Set( DefaultSenderAlias, HardConfiguredSenderAlias )
 
   private def synthetics( chainId : Int ) : Failable[immutable.SortedMap[String,EthAddress]] = {
-    parent.database.findDefaultSenderAddress( chainId ) map { mbSenderAddress =>
-      mbSenderAddress match {
-        case Some( address ) => immutable.SortedMap( DefaultSenderAlias -> address )
-        case None            => immutable.SortedMap.empty
+    val f_withDefaultSender = {
+      parent.database.findDefaultSenderAddress( chainId ) map { mbSenderAddress =>
+        mbSenderAddress match {
+          case Some( address ) => immutable.SortedMap( DefaultSenderAlias -> address )
+          case None            => immutable.SortedMap.empty[String,EthAddress]
+        }
       }
+    }
+    parent.hardConfiguredSender match {
+      case Some( address ) => f_withDefaultSender.map( inner => inner + ( HardConfiguredSenderAlias -> address ) )
+      case None            => f_withDefaultSender
     }
   }
 
@@ -27,7 +33,7 @@ class AddressAliasManager( parent : Shoebox ) {
 
   private [sbtethereum] 
   def insertAddressAlias( chainId : Int, alias : String, address : EthAddress ) : Failable[Unit] = {
-    require( !SyntheticAliases( alias ), s"'${alias}' is reserved as a synthetic alias. You can't directly define it." )
+    require( !AllSyntheticAliases( alias ), s"'${alias}' is reserved as a synthetic alias. You can't directly define it." )
     parent.database.insertAddressAlias( chainId, alias, address )
   }
 
@@ -77,7 +83,7 @@ class AddressAliasManager( parent : Shoebox ) {
 
   private [sbtethereum] 
   def dropAddressAlias( chainId : Int, alias : String ) : Failable[Boolean] = {
-    require( !SyntheticAliases( alias ), s"'${alias}' is reserved as a synthetic alias. You can't directly remove it." )
+    require( !AllSyntheticAliases( alias ), s"'${alias}' is reserved as a synthetic alias. You can't directly remove it." )
     parent.database.dropAddressAlias( chainId, alias )
   }
 }

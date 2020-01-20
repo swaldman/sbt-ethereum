@@ -4,6 +4,7 @@ import java.io.File
 
 import scala.collection._
 
+import com.mchange.sc.v1.consuela.ethereum.EthAddress
 import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.sbtethereum.recursiveListIncluding
 import com.mchange.sc.v2.util.Platform
@@ -73,7 +74,7 @@ object Shoebox {
 }
 
 private [sbtethereum]
-class Shoebox( shoeboxDirPathOverride : Option[String] ) extends PermissionsOverrideSource {
+class Shoebox( shoeboxDirPathOverride : Option[String], val hardConfiguredSender : Option[EthAddress] ) extends PermissionsOverrideSource {
   import Shoebox._
 
   private [shoebox]

@@ -57,7 +57,8 @@ package object sbtethereum {
   private [sbtethereum] val MainnetChainId          =  1
   private [sbtethereum] val DefaultEphemeralChainId = -1 // negative chain IDs revert to non-identified pre-EIP-155 behavior and are ephemeral, do not permit aliases or compilation info to be stored
 
-  private [sbtethereum] val DefaultSenderAlias = "default-sender"
+  private [sbtethereum] val DefaultSenderAlias        = "default-sender"
+  private [sbtethereum] val HardConfiguredSenderAlias = "hard-configured-sender"
 
   private [sbtethereum] val HomeDir = new java.io.File( sys.props( "user.home" ) ).getAbsoluteFile
 
