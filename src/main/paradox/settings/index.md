@@ -243,6 +243,26 @@ particular URL, you can set this. It will override any value set with @ref:[ethN
 
 @@@
 
+### ethcfgPublicInsecureTestAccounts
+
+@@@ div { .keydesc }
+
+**Type:** `Set[EthPrivateKey]]`
+
+**Default:** an empty set
+
+Private keys provided in this setting will be treated as test accounts, accessible directly without any unlocking within _sbt-ethereum_.
+
+**Example:**
+```
+import com.mchange.sc.v1.consuela.ethereum.EthPrivateKey
+
+ethcfgPublicInsecureTestAccounts := Set(
+  EthPrivateKey("0x7d3a2ee6be553c58e72e2adf38a96ae8e26eb7678f8c55772034720e96cab250") // 0xD72299b527f9a4bd075D2304C627d7CE21D32Cec
+)
+```
+@@@
+
 ### ethcfgScalaStubsPackage             
 
 @@@ div { .keydesc }
@@ -298,7 +318,7 @@ Defines for how many runs (how exhaustively) the Solidity compiler should try to
 
 @@@ div { .keydesc }
 
-**Type:** `File` (a diectory)
+**Type:** `File` (a directory)
 
 **Default:** `src/main/solidity` (or, for the `Test` configuration, `src/test/solidity`)
 
@@ -310,7 +330,7 @@ Defines where sbt-ethereum looks for Solidity files to compile. Defined in terms
 
 @@@ div { .keydesc }
 
-**Type:** `File` (a diectory)
+**Type:** `File` (a directory)
 
 **Default:** `target/ethereum/solidity`
 
@@ -318,11 +338,24 @@ Defines where Solidity compilation artifacts get stored. Defined in terms of the
 
 @@@
 
+### ethcfgSuppressInteractiveStartup
+
+@@@ div { .keydesc }
+
+**Type:** `Boolean`
+
+**Default:** `false`
+
+Ordinarily _sbt-ethereum_ asks to create a wallet if none are present and to install the current default Solidity compiler if it is not available on startup.
+Sometimes this is annoying. You can turn it off.
+
+@@@
+
 ### ethcfgTargetDir                     
 
 @@@ div { .keydesc }
 
-**Type:** `File` (a diectory)
+**Type:** `File` (a directory)
 
 **Default:** `target/ethereum`
 

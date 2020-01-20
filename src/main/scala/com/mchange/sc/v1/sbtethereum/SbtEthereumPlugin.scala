@@ -204,7 +204,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgNodeChainId                   = settingKey[Int]         ("The EIP-155 chain ID for the network with which the application will interact ('mainnet' = 1, 'ropsten' = 3, 'rinkeby' = 4, etc. id<0 for ephemeral chains)")
     val ethcfgNodeUrl                       = settingKey[String]      ("URL of the Ethereum JSON-RPC service the build should work with")
 
-    val ethcfgPublicInsecureTestAccounts    = settingKey[immutable.Set[EthPrivateKey]] ("Insecure private keys for accounts intended as test accounts." )
+    val ethcfgPublicInsecureTestAccounts    = settingKey[Set[EthPrivateKey]] ("Insecure private keys for accounts intended as test accounts." )
 
     val ethcfgScalaStubsPackage             = settingKey[String]      ("Package into which Scala stubs of Solidity compilations should be generated")
     val ethcfgShoeboxDirectory              = settingKey[String]      ("Path (relative or absolute) to the directory which will be used as the persistent sbt-ethereum shoebox.")
