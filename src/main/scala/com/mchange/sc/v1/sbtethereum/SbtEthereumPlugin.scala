@@ -1310,16 +1310,17 @@ object SbtEthereumPlugin extends AutoPlugin {
       val origF : State => State = (onLoad in Global).value
       val newF  : State => State = ( state : State ) => {
         val lastState = origF( state )
-        val state1 = attemptAdvanceStateWithTask( xethOnLoadShoeboxInitVerifyRecover,                  lastState )
-        val state2 = attemptAdvanceStateWithTask( xethOnLoadAutoImportWalletsV3,                       state1    )
-        val state3 = attemptAdvanceStateWithTask( xethOnLoadSolicitWalletV3Generation,                 state2    )
-        val state4 = attemptAdvanceStateWithTask( xethOnLoadSolicitCompilerInstall,                    state3    )
-        val state5 = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state4    )
-        val state6 = attemptAdvanceStateWithTask( xethFindCacheRichParserInfo in Compile,              state5    )
-        val state7 = attemptAdvanceStateWithTask( xethFindCacheRichParserInfo in Test,                 state6    )
-        val state8 = attemptAdvanceStateWithTask( xmlogFindCacheDebugPrefixes,                         state7    )
-        val state9 = attemptAdvanceStateWithTask( xethOnLoadBanner,                                    state8    )
-        state9
+        val state1  = attemptAdvanceStateWithTask( xethOnLoadShoeboxInitVerifyRecover,                  lastState )
+        val state2  = attemptAdvanceStateWithTask( xethOnLoadAutoImportWalletsV3,                       state1    )
+        val state3  = attemptAdvanceStateWithTask( xethOnLoadSolicitWalletV3Generation,                 state2    )
+        val state4  = attemptAdvanceStateWithTask( xethOnLoadSolicitCompilerInstall,                    state3    )
+        val state5  = attemptAdvanceStateWithTask( xethFindCacheSessionSolidityCompilerKeys in Compile, state4    )
+        val state6  = attemptAdvanceStateWithTask( xethFindCacheRichParserInfo in Compile,              state5    )
+        val state7  = attemptAdvanceStateWithTask( xethFindCacheRichParserInfo in Test,                 state6    )
+        val state8  = attemptAdvanceStateWithTask( xmlogFindCacheDebugPrefixes,                         state7    )
+        val state9  = attemptAdvanceStateWithTask( xethOnLoadUpdateMutables,                            state8    )
+        val state10 = attemptAdvanceStateWithTask( xethOnLoadBanner,                                    state9    )
+        state10
       }
       newF
     },
