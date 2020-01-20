@@ -187,6 +187,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val enscfgNameServiceAddress         = settingKey[EthAddress]("The address of the ENS name service smart contract")
     val enscfgNameServiceDefaultResolver = settingKey[String]("The address, or end-name, or even local alias of an accessible resolver (if any is available) that can be used to map names to addresses.")
 
+    val ethcfgAddressSender                 = settingKey[String]      ("The address from which transactions will be sent")
     val ethcfgAutoDeployContracts           = settingKey[Seq[String]] ("Names (and optional space-separated constructor args) of contracts compiled within this project that should be deployed automatically.")
     val ethcfgBaseCurrencyCode              = settingKey[String]      ("Currency code for currency in which prices of ETH and other tokens should be displayed.")
     val ethcfgEntropySource                 = settingKey[SecureRandom]("The source of randomness that will be used for key generation")
@@ -202,13 +203,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgNetcompileUrl                 = settingKey[String]      ("Optional URL of an eth-netcompile service, for more reliabe network-based compilation than that available over json-rpc.")
     val ethcfgNodeChainId                   = settingKey[Int]         ("The EIP-155 chain ID for the network with which the application will interact ('mainnet' = 1, 'ropsten' = 3, 'rinkeby' = 4, etc. id<0 for ephemeral chains)")
     val ethcfgNodeUrl                       = settingKey[String]      ("URL of the Ethereum JSON-RPC service the build should work with")
+
+    val ethcfgPublicInsecureTestAccounts    = settingKey[immutable.Set[EthPrivateKey]] ("Insecure private keys for accounts intended as test accounts." )
+
     val ethcfgScalaStubsPackage             = settingKey[String]      ("Package into which Scala stubs of Solidity compilations should be generated")
-    val ethcfgAddressSender                 = settingKey[String]      ("The address from which transactions will be sent")
     val ethcfgShoeboxDirectory              = settingKey[String]      ("Path (relative or absolute) to the directory which will be used as the persistent sbt-ethereum shoebox.")
     val ethcfgSolidityCompilerOptimize      = settingKey[Boolean]     ("Sets whether the Solidity compiler should run its optimizer on generated code, if supported.")
     val ethcfgSolidityCompilerOptimizerRuns = settingKey[Int]         ("Sets the number of optimization runs the Solidity compiler will execute, if supported and 'ethcfgSolidityCompilerOptimize' is set to 'true'.")
     val ethcfgSoliditySource                = settingKey[File]        ("Solidity source code directory")
     val ethcfgSolidityDestination           = settingKey[File]        ("Location for compiled solidity code and metadata")
+    val ethcfgSuppressInteractiveStartup    = settingKey[Boolean]     ("If set, sbt-ethereum won't ask to set up a wallet address and compiler on startup, if they are not present in the shoebox.")
     val ethcfgTargetDir                     = settingKey[File]        ("Location in target directory where ethereum artifacts will be placed")
     val ethcfgTransactionReceiptPollPeriod  = settingKey[Duration]    ("Length of period after which sbt-ethereum will poll and repoll for a Client.TransactionReceipt after a transaction")
     val ethcfgTransactionReceiptTimeout     = settingKey[Duration]    ("Length of period after which sbt-ethereum will give up on polling for a Client.TransactionReceipt after a transaction")
@@ -430,8 +434,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val xethOnLoadShoeboxInitVerifyRecover = taskKey[Unit]( "Initializes shoebox and database. Checks to see if the shoebox database schema is in an inconsistent state, and offers to recover a consistent version from dump." )
     val xethOnLoadSolicitCompilerInstall = taskKey[Unit]("Intended to be executed in 'onLoad', checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethOnLoadSolicitWalletV3Generation = taskKey[Unit]("Intended to be executd in 'onLoad', checks whether sbt-ethereum has any wallets available, if not offers to install one.")
+    val xethOnLoadUpdateMutables = taskKey[Unit]("Updates default state of mutables, if called for by this configuration.")
     val xethShoeboxRepairPermissions = taskKey[Unit]("Repairs filesystem permissions in sbt's shoebox to its required user-only values.")
     val xethSignerFinder = taskKey[(EthAddress, Option[String]) => EthSigner]("Finds a (cautious, interactive) signer that applications can use to sign documents for a known, unlockable EthAddress.")
+    val xethSolicitCompilerInstall = taskKey[Unit]("Checks whether the default Solidity compiler is installed and if not, offers to install it.")
     val xethSqlQueryShoeboxDatabase = inputKey[Unit]("Primarily for debugging. Query the internal shoebox database.")
     val xethSqlUpdateShoeboxDatabase = inputKey[Unit]("Primarily for development and debugging. Update the internal shoebox database with arbitrary SQL.")
     val xethStubEnvironment = taskKey[Tuple2[stub.Context, stub.Sender.Signing]]("Offers the elements you need to work with smart-contract stubs from inside an sbt-ethereum build.")
@@ -513,6 +519,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       findBackstopUrl(warn=false)( log, Test, chainId ).get 
     },
 
+    ethcfgPublicInsecureTestAccounts := immutable.Set.empty[EthPrivateKey],
+
     ethcfgEntropySource := new java.security.SecureRandom,
 
     ethcfgGasLimitMarkup := 0.2,
@@ -536,6 +544,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethcfgSolidityDestination in Compile := (ethcfgTargetDir in Compile).value / "solidity",
 
     ethcfgSolidityDestination in Test := (ethcfgTargetDir in Test).value / "solidity",
+
+    ethcfgSuppressInteractiveStartup := false,
 
     ethcfgTargetDir in Compile := (target in Compile).value / "ethereum",
 
@@ -1155,9 +1165,13 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     xethOnLoadSolicitWalletV3Generation := { xethOnLoadSolicitWalletV3GenerationTask.value },
 
+    xethOnLoadUpdateMutables := { xethOnLoadUpdateMutablesTask.value },
+
     xethNamedAbis in Compile := { xethNamedAbisTask( Compile ).value },
 
     xethNamedAbis in Test := { xethNamedAbisTask( Test ).value },
+
+    xethSolicitCompilerInstall := { xethSolicitCompilerInstallTask.value },
 
     xethTransactionCount in Compile := { xethTransactionCountTask( Compile ).value },
 
@@ -4646,7 +4660,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         resetAllState()
         activeShoebox.backupManager.restore( Some( log ), backupFile )
         val extract = Project.extract(s)
-        val (_, result) = extract.runTask( xethOnLoadSolicitCompilerInstall, s)
+        val (_, result) = extract.runTask( xethSolicitCompilerInstall, s)
       }
       case None => throw new OperationAbortedByUserException( s"No sbt-ethereum shoebox backup file selected. Restore aborted." )
     }
@@ -6553,7 +6567,14 @@ object SbtEthereumPlugin extends AutoPlugin {
     doShoeboxResetInitVerifyRecover( log, is, overrideShoeboxDirPath )
   }
 
-  private def xethOnLoadSolicitCompilerInstallTask : Initialize[Task[Unit]] = Def.task {
+  private val xethOnLoadSolicitCompilerInstallTask : Initialize[Task[Unit]] = Def.taskDyn {
+    val suppress = ethcfgSuppressInteractiveStartup.value
+    xethCheckCompilerInstallTask( suppress )
+  }
+
+  private val xethSolicitCompilerInstallTask : Initialize[Task[Unit]] = xethCheckCompilerInstallTask( suppressInteraction = false )
+
+  private def xethCheckCompilerInstallTask( suppressInteraction : Boolean ) : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
     val is  = interactionService.value
 
@@ -6574,9 +6595,14 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.info( s"""Solidity compiler directory '${DirSolcJ.getAbsolutePath}'.""" )
           log.info( s"""The following compiler versions currently appear to be installed: ${compilers.mkString(", ")}""" )
         }
-        kludgeySleepForInteraction()
-        val install = queryYN( is, s"The current default solidity compiler ['${currentDefaultCompilerVersion}'] is not installed. Install? [y/n] " )
-        if ( install ) installLocalSolcJ( log, DirSolcJ, currentDefaultCompilerVersion, testTimeout )
+        if (! suppressInteraction ) {
+          kludgeySleepForInteraction()
+          val install = queryYN( is, s"The current default solidity compiler ['${currentDefaultCompilerVersion}'] is not installed. Install? [y/n] " )
+          if ( install ) installLocalSolcJ( log, DirSolcJ, currentDefaultCompilerVersion, testTimeout )
+        }
+        else {
+          log.warn( s"The current default solidity compiler ['${currentDefaultCompilerVersion}'] is not installed. Please consider running 'ethLanguageSolidityCompilerInstall ${currentDefaultCompilerVersion}'." )
+        }
       }
     }
   }
@@ -6588,32 +6614,43 @@ object SbtEthereumPlugin extends AutoPlugin {
     val keystoresV3  = activeShoeboxKeystoreV3()
     val nontestConfig = Compile                                         // XXX: if you change this, change the hardcoded Compile value in the line below!
     val nontestChainId = findNodeChainIdTask(warn=true)(Compile).value  // XXX: note the hardcoding of Compile! illegal dynamic reference if i use nontestConfig
+    val suppressed = ethcfgSuppressInteractiveStartup.value
     val combined = combinedKeystoresMultiMap( keystoresV3 )
     if ( combined.isEmpty ) {
-      val checkInstall = queryYN( is, "There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] " )
-      if ( checkInstall ) {
-        val extract = Project.extract(s)
+      if ( !suppressed ) {
+        val checkInstall = queryYN( is, "There are no wallets in the sbt-ethereum keystore. Would you like to generate one? [y/n] " )
+        if ( checkInstall ) {
+          val extract = Project.extract(s)
 
-        // NOTE: we use the xeth version of the wallet V3 create task to skip querying for an alias,
-        //       since we instead query whetherthe new wallet should become the default sender
-        val (_, result) = extract.runTask(xethKeystoreWalletV3CreateDefault, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
+          // NOTE: we use the xeth version of the wallet V3 create task to skip querying for an alias,
+          //       since we instead query whetherthe new wallet should become the default sender
+          val (_, result) = extract.runTask(xethKeystoreWalletV3CreateDefault, s) // config doesn't really matter here, since we provide hex rather than a config-dependent alias
 
-        val address = result.address
+          val address = result.address
 
-        if ( mbDefaultSender( nontestChainId ).isEmpty ) {
-          val checkSetDefault = queryYN( is, s"Would you like the new address '${hexString(address)}' to be the default sender on chain with ID ${nontestChainId}? [y/n] " )
-          if ( checkSetDefault ) {
-            extract.runInputTask( nontestConfig / ethAddressSenderDefaultSet, s" ${address.hex}", s )
+          if ( mbDefaultSender( nontestChainId ).isEmpty ) {
+            val checkSetDefault = queryYN( is, s"Would you like the new address '${hexString(address)}' to be the default sender on chain with ID ${nontestChainId}? [y/n] " )
+            if ( checkSetDefault ) {
+              extract.runInputTask( nontestConfig / ethAddressSenderDefaultSet, s" ${address.hex}", s )
+            }
+            else {
+              log.info(s"No default sender has been defined. To create one later, use the command 'ethAddressSenderDefaultSet <address>'.")
+            }
           }
-          else {
-            log.info(s"No default sender has been defined. To create one later, use the command 'ethAddressSenderDefaultSet <address>'.")
-          }
+        }
+        else {
+          log.warn("No wallet created. To create one, try 'ethKeystoreWalletV3Create', 'ethKeystoreFromJsonImport', or 'ethKeystoreFromPrivateKeyImport'.")
         }
       }
       else {
-        log.info("No wallet created. To create one later, use the command 'ethKeystoreWalletV3Create'.")
+        log.warn("No wallets are defined in the sbt-ethereum shoebox keystore. To create one, try 'ethKeystoreWalletV3Create', 'ethKeystoreFromJsonImport', or 'ethKeystoreFromPrivateKeyImport'.")
       }
     }
+  }
+
+  private val xethOnLoadUpdateMutablesTask : Initialize[Task[Unit]] = Def.task {
+    val testAccounts = ethcfgPublicInsecureTestAccounts.value
+    testAccounts.foreach( Mutables.addPublicTestAccount )
   }
 
   private def xethShoeboxRepairPermissionsTask : Initialize[Task[Unit]] = Def.task {
@@ -6788,7 +6825,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       SolcJInstaller.SupportedVersions.map( checkLocalShoeboxSolc ).toSeq
     }
 
-    val raw = checkLocalShoeboxSolcs :+ localPath :+ ethJsonRpc :+ netcompile :+ defaultNetcompile
+    val raw = checkLocalShoeboxSolcs :+ localPath // :+ ethJsonRpc :+ netcompile :+ defaultNetcompile
 
     val out = immutable.SortedMap( raw.filter( _ != None ).map( _.get ) : _* )
     Mutables.withSessionSolidityCompilers( _.set( Some( out ) ) )

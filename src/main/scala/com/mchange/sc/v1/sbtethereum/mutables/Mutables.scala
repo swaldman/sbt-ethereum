@@ -122,6 +122,16 @@ private [sbtethereum] final class Mutables (
 
   // API for managing signers and private keys
   private [sbtethereum]
+  def addPublicTestAccount( address : EthAddress, key : EthPrivateKey ) : Unit = {
+    MainSignersManager.addPublicTestAddress( address, key )
+  }
+
+  private [sbtethereum]
+  def addPublicTestAccount( key : EthPrivateKey ) : Unit = {
+    MainSignersManager.addPublicTestAddress( key )
+  }
+
+  private [sbtethereum]
   def findUpdateCacheLazySigner(
     state                : sbt.State,
     log                  : sbt.Logger,

@@ -31,7 +31,7 @@ private [sbtethereum] object SignersManager {
 private [sbtethereum] class SignersManager(
   scheduler : Scheduler, // careful with the scheduler, which will embed references to the internal state
   keystoresV3Finder : () => immutable.Seq[File],
-  publicTestAddresses : immutable.Map[EthAddress,EthPrivateKey],
+  val initialPublicTestAddresses : immutable.Map[EthAddress,EthPrivateKey],
   abiOverridesForChain : Int => immutable.Map[EthAddress,jsonrpc.Abi],
   maxUnlocked : Int
 ) {
@@ -39,14 +39,30 @@ private [sbtethereum] class SignersManager(
 
   TRACE.log( s"Initializing SignersManager [${this}]" )
 
+  require(
+    initialPublicTestAddresses.forall { case (k,v) => v.address == k },
+    s"The public test address map's keys must be consistent with the provided address. Not true for at least one key: ${initialPublicTestAddresses.toSeq.map(tup => Tuple2(tup._1,tup._2.address))}"
+  )
+
   private val RelockMarginSeconds = 5
 
   object State {
 
-    // MT: protected by State's lock
+    // MT: protected by State's lock post construction
     private val currentAddresses = mutable.Map.empty[EthAddress,UnlockedAddress]
     private val addressesByRelockTime = mutable.SortedMap.empty[Long,UnlockedAddress] // we ensure unlock times are unique!
     private var mbKeystoresV3 : Option[immutable.Seq[File]] = None
+    private val publicTestAddresses : mutable.Map[EthAddress,EthPrivateKey] = mutable.Map.empty[EthAddress,EthPrivateKey] ++ initialPublicTestAddresses
+
+    private [SignersManager]
+    def addPublicTestAddress( key : EthPrivateKey ) : Unit = State.synchronized {
+      publicTestAddresses += ( key.address -> key )
+    }
+
+    private [SignersManager]
+    def privateKeyForPublicTestAddress( address : EthAddress ) : Option[EthPrivateKey] = State.synchronized {
+      publicTestAddresses.get( address )
+    }
 
     private [SignersManager]
     def keystoresV3 = State.synchronized {
@@ -106,6 +122,8 @@ private [sbtethereum] class SignersManager(
       currentAddresses.clear()
       addressesByRelockTime.clear()
       mbKeystoresV3 = None
+      publicTestAddresses.clear()
+      publicTestAddresses ++= initialPublicTestAddresses
     }
 
     // should only be called while holding State's lock
@@ -149,6 +167,21 @@ private [sbtethereum] class SignersManager(
     }
 
   }
+
+  private [sbtethereum]
+  def addPublicTestAddress( key : EthPrivateKey ) : Unit = State.addPublicTestAddress( key )
+
+  private [sbtethereum]
+  def addPublicTestAddress( address : EthAddress, key : EthPrivateKey ) : Unit = {
+    require( address == key.address, s"The key for a proposed public test address fails to match the given address. [given address: ${address}, key address: ${key.address}]" )
+    State.addPublicTestAddress( key )
+  }
+
+  private [sbtethereum]
+  def privateKeyForPublicTestAddress( address : EthAddress ) : Option[EthPrivateKey] = {
+    State.privateKeyForPublicTestAddress( address )
+  }
+  
 
   private [sbtethereum]
   def reset() : Unit = State.clear()
@@ -333,7 +366,14 @@ private [sbtethereum] class SignersManager(
     }
 
     // handle special cases for testing, then actually lookup and recache...
-    publicTestAddresses.get( address ) getOrElse realFindUpdateCache
+    privateKeyForPublicTestAddress( address ) match {
+      case Some( key ) => {
+        WARNING.log( s"Checking out private key for address '${hexString(address)}', which is an insecure public test address." )
+        WARNING.log( s"Don't imagine anything secured by this address is safe. Transfer any value mistakenly associated with it immediately!" )
+        key
+      }
+      case None => realFindUpdateCache
+    }
   }
 }
 
