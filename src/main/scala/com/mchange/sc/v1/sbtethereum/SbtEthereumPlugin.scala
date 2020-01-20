@@ -1415,7 +1415,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       case None => {
         log.info( s"The session is now active on chain with ID ${chainId}." )
         log.warn( "No node URL has been defined -- not as a persistent default, nor as a session override, nor as an sbt setting or hardcoded value." )
-        log.warn( "Please define a node URL for this chain, via 'ethNodeChainIdDefaultSet' or 'ethNodeChainIdOverride'." )
+        log.warn( "Please define a node URL for this chain, via 'ethNodeUrlDefaultSet' or 'ethNodeUrlOverride'." )
         log.warn( "All attempts to interact with the blockchain will fail until a node URL is defined!" )
         logSender()
       }
