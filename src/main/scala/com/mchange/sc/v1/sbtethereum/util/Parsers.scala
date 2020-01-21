@@ -81,7 +81,10 @@ object Parsers {
     ( literal("0x").? ~> Parser.repeat( HexDigit, charLen, charLen ) ).map( chars => chars.mkString )
   }
 
-  private def createSimpleAddressParser( tabHelp : String, mbChainId : Option[EthChainId] ) = token( rawAddressParserMaybeWithChainId( mbChainId ).examples( tabHelp, ZWSP ) )
+  private def createSimpleAddressParser( tabHelp : String, mbChainId : Option[EthChainId] ) : Parser[EthAddress] = token( rawAddressParserMaybeWithChainId( mbChainId ).examples( tabHelp, ZWSP ) )
+
+  private [sbtethereum]
+  def createSimpleAddressParser( tabHelp : String ) : Parser[EthAddress] = createSimpleAddressParser( tabHelp, None )
 
   private def rawAddressAliasParser( aliases : SortedMap[String,EthAddress] ) : Parser[String] = {
     aliases.keys.foldLeft( failure("not a known alias") : Parser[String] )( ( nascent, next ) => nascent | literal( next ) )

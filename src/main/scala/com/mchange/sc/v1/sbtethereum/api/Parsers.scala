@@ -12,8 +12,16 @@ object Parsers {
 
   implicit val RichParserInfoFormat = com.mchange.sc.v1.sbtethereum.util.SJsonNewFormats.RichParserInfoFormat
 
+  /**
+    *  Begins with a leading space!
+    */
   def genAddressParser( tabHelp : String )( state : State, mbRpi : Option[RichParserInfo] ) : Parser[EthAddress] = UP.genAddressParser( tabHelp )( state, mbRpi )
   // def genAliasWithAddressParser( state : sbt.State, mbRpi : Option[RichParserInfo] ) : Parser[(String,EthAddress)] = UP.genAliasWithAddressParser( state, mbRpi )
+
+  /**
+    *  NO leading space!
+    */
+  def hexAddressParser( tabHelp : String ) : Parser[EthAddress] = UP.createSimpleAddressParser( tabHelp )
 
   def ethHashParser( exampleStr : String ) : Parser[EthHash] = UP.ethHashParser( exampleStr )
 }
