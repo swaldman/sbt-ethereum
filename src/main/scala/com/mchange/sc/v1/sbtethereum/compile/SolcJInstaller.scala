@@ -32,15 +32,17 @@ object SolcJInstaller {
 
   private val OtherSolcjCompatibleSupportedVersion = {
     immutable.TreeMap (
-      "0.4.18" -> new URL( "http://repo1.maven.org/maven2/com/mchange/solcj-compat/0.4.18rev1/solcj-compat-0.4.18rev1.jar" ),
-      "0.4.22" -> new URL( "http://repo1.maven.org/maven2/com/mchange/solcj-compat/0.4.22rev1/solcj-compat-0.4.22rev1.jar" ),
-      "0.4.24" -> new URL( "http://repo1.maven.org/maven2/com/mchange/solcj-compat/0.4.24rev2/solcj-compat-0.4.24rev2.jar" ) // note the rev2, i screwed up rev1
+      "0.4.18" -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.4.18rev1/solcj-compat-0.4.18rev1.jar" ),
+      "0.4.22" -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.4.22rev1/solcj-compat-0.4.22rev1.jar" ),
+      "0.4.24" -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.4.24rev2/solcj-compat-0.4.24rev2.jar" ), // note the rev2, i screwed up rev1
+      "0.5.16" -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.5.16rev1/solcj-compat-0.5.16rev1.jar" ),
+      "0.6.2"  -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.6.2rev1/solcj-compat-0.6.2rev1.jar" )
     )
   }
 
   val SupportedVersions = SolcJSupportedVersions ++ OtherSolcjCompatibleSupportedVersion.keySet
 
-  val DefaultSolcJVersion = "0.5.7"
+  val DefaultSolcJVersion = "0.5.16"
 
   private def mbVersionUrl( version : String ) : Option[URL] = {
     if ( SolcJSupportedVersions( version ) ) {
