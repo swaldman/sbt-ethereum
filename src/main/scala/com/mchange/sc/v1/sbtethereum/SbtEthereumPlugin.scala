@@ -4184,8 +4184,8 @@ object SbtEthereumPlugin extends AutoPlugin {
       else {
         throw new OperationAbortedByUserException( s"User chose not to replace previously set default node json-rpc URL for chain with ID ${chainId}, which remains '${url}'." )
       }
-      activeShoebox.database.setDefaultJsonRpcUrl( chainId, newUrl ).assert
     }
+    activeShoebox.database.setDefaultJsonRpcUrl( chainId, newUrl ).assert
     log.info( s"Successfully set default node json-rpc URL for chain with ID ${chainId} to ${newUrl}." )
   }
 

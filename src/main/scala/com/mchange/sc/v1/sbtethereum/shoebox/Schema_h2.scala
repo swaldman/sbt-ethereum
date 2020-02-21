@@ -1147,6 +1147,7 @@ private [sbtethereum] object Schema_h2 {
         borrow( conn.prepareStatement( "INSERT INTO chain_default_json_rpc_urls( chain_id, json_rpc_url ) VALUES( ?, ? )" ) ) { ps =>
           ps.setInt(1, chainId)
           ps.setString(2, jsonRpcUrl)
+          DEBUG.log( s"set default URL statement: ${ps}" )
           ps.executeUpdate()
         }
       }
