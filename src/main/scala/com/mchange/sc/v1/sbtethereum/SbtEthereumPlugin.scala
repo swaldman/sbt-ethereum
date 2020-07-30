@@ -210,6 +210,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethcfgShoeboxDirectory              = settingKey[String]      ("Path (relative or absolute) to the directory which will be used as the persistent sbt-ethereum shoebox.")
     val ethcfgSolidityCompilerOptimize      = settingKey[Boolean]     ("Sets whether the Solidity compiler should run its optimizer on generated code, if supported.")
     val ethcfgSolidityCompilerOptimizerRuns = settingKey[Int]         ("Sets the number of optimization runs the Solidity compiler will execute, if supported and 'ethcfgSolidityCompilerOptimize' is set to 'true'.")
+    val ethcfgSolidityCompilerVersion       = settingKey[String]      ("The solidity compiler version that should be used for this project.")
     val ethcfgSoliditySource                = settingKey[File]        ("Solidity source code directory")
     val ethcfgSolidityDestination           = settingKey[File]        ("Location for compiled solidity code and metadata")
     val ethcfgSuppressInteractiveStartup    = settingKey[Boolean]     ("If set, sbt-ethereum won't ask to set up a wallet address and compiler on startup, if they are not present in the shoebox.")
@@ -313,6 +314,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethKeystoreWalletV3Validate             = inputKey[Unit] ("Verifies that a V3 wallet can be decoded for an address, and decodes to the expected address.")
 
     val ethLanguageSolidityCompilerInstall = inputKey[Unit] ("Installs a best-attempt platform-specific solidity compiler into the sbt-ethereum shoebox (or choose a supported version)")
+    val ethLanguageSolidityCompilerList    = inputKey[Unit] ("Lists installed and available solidity compilers.")
     val ethLanguageSolidityCompilerPrint   = taskKey [Unit] ("Displays currently active Solidity compiler")
     val ethLanguageSolidityCompilerSelect  = inputKey[Unit] ("Manually select among solidity compilers available to this project")
 
@@ -858,6 +860,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethKeystoreWalletV3Validate in Compile := { ethKeystoreWalletV3ValidateTask( Compile ).evaluated },
 
     ethKeystoreWalletV3Validate in Test := { ethKeystoreWalletV3ValidateTask( Test ).evaluated },
+
+    ethLanguageSolidityCompilerList := { ethLanguageSolidityCompilerListTask.value },
 
     ethLanguageSolidityCompilerSelect in Compile := { ethLanguageSolidityCompilerSelectTask.evaluated },
 
@@ -3902,6 +3906,16 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ethLanguageSolidityCompilerListTask : Initialize[Task[Unit]] = Def.task {
+    val log = streams.value.log
+
+    val installedKeys = (Compile / xethFindCacheSessionSolidityCompilerKeys).value
+
+    log.info( "Installed compilers:" )
+    installedKeys.foreach( key => log.info( "--> " + key ) )
+    log.info( "Versions available to install: " +  SolcJInstaller.SupportedVersions.mkString(", "))
+  }
+
   private def ethLanguageSolidityCompilerInstallTask : Initialize[InputTask[Unit]] = Def.inputTaskDyn {
     val log = streams.value.log
 
@@ -6041,6 +6055,10 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def xethFindCurrentSolidityCompilerTask : Initialize[Task[Compiler.Solidity]] = Def.task {
     import Compiler.Solidity._
 
+    val log = streams.value.log
+
+    val mbSpecifiedVersion = ethcfgSolidityCompilerVersion.?.value
+
     // val compilerKeys = xethFindCacheSessionSolidityCompilerKeys.value
     val sessionCompilers = Mutables.withSessionSolidityCompilers { ssc =>
       ssc.get.getOrElse( throw new Exception("Internal error -- caching compiler keys during onLoad should have forced sessionCompilers to be set, but it's not." ) )
@@ -6049,28 +6067,65 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val mbJsonRpcUrl = Some( findNodeUrlTask(warn=false)(Compile).value )
 
+    def matchesVersion( key : String, versionSpecifier : String ) : Boolean = {
+      key.startsWith( Compiler.Solidity.LocalSolc.KeyPrefix ) && key.dropWhile( c => !c.isDigit ).startsWith( versionSpecifier )
+    }
+
     Mutables.withCurrentSolidityCompiler { csc =>
+
       csc.get.map( _._2).getOrElse {
-        def latestLocalInstallVersion : Option[SemanticVersion] = {
-          val versions = (immutable.TreeSet.empty[SemanticVersion] ++ compilerKeys.map( LocalSolc.versionFromKey ).filter( _ != None ).map( _.get ))
-          if ( versions.size > 0 ) Some(versions.last) else None
+
+        mbSpecifiedVersion match {
+          case Some( specifiedVersion ) => {
+            val matchingKeys = sessionCompilers.keys.filter( key => matchesVersion( key, specifiedVersion ) )
+            matchingKeys.size match {
+              case 0 => log.warn( s"No solidity compiler with specified 'ethcfgSolidityCompilerVersion' of '${specifiedVersion}' is available. Please install a compatible compiler." )
+              case 1 => {
+                val key = matchingKeys.head
+                csc.set( Some( Tuple2( key, sessionCompilers(key) ) ) )
+                log.debug( s"Chose solidity compiler '${key}', per specified 'ethcfgSolidityCompilerVersion' of '${specifiedVersion}'." )
+              }
+              case _ => {
+                // choose the highest compatible available version
+                val versionToKey = immutable.TreeMap.empty[SemanticVersion,String] ++ matchingKeys.map( keyName => Tuple2( SemanticVersion( keyName.dropWhile( c => !c.isDigit ) ), keyName ) )
+                val chosenKey = versionToKey.last._2
+                val chosenCompiler = sessionCompilers( chosenKey )
+                csc.set( Some( Tuple2( chosenKey, chosenCompiler ) ) )
+                log.debug( s"Multiple installed compilers were consistent with specified 'ethcfgSolidityCompilerVersion' of '${specifiedVersion}':" )
+                versionToKey.foreach { case ( _, key) => log.debug( s"   ${key} matched." ) }
+                log.debug( s"Chose solidity compiler '${chosenKey}', per specified 'ethcfgSolidityCompilerVersion' of '${specifiedVersion}'." )
+              }
+            }
+          }
+          case None => /* ignore, try the next thing */
         }
-        def latestLocalInstallKey : Option[String] = latestLocalInstallVersion.map( version => s"${LocalSolc.KeyPrefix}${version.versionString}" )
 
-        val key = {
-          mbJsonRpcUrl.flatMap( jru => compilerKeys.find( key => key.startsWith(EthNetcompile.KeyPrefix) && key.endsWith( jru ) ) ) orElse  // use an explicitly set netcompile
-          compilerKeys.find( _ == LocalPathSolcKey ) orElse                                                                                 // use a local compiler on the path
-          latestLocalInstallKey orElse                                                                                                      // use the latest local compiler in the shoebox
-          compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse                                                                 // use the default eth-netcompile
-          compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) )                                                                         // use the (deprecated, mostly disappeared) json-rpc eth_CompileSolidity
-        }.getOrElse {
-          throw new Exception( s"Cannot find a usable solidity compiler. compilerKeys: ${compilerKeys}, sessionCompilers: ${sessionCompilers}" )
+        if ( csc.get.isEmpty ) {
+          def latestLocalInstallVersion : Option[SemanticVersion] = {
+            val versions = (immutable.TreeSet.empty[SemanticVersion] ++ compilerKeys.map( LocalSolc.versionFromKey ).filter( _ != None ).map( _.get ))
+            if ( versions.size > 0 ) Some(versions.last) else None
+          }
+          def latestLocalInstallKey : Option[String] = latestLocalInstallVersion.map( version => s"${LocalSolc.KeyPrefix}${version.versionString}" )
+
+          val key = {
+            mbJsonRpcUrl.flatMap( jru => compilerKeys.find( key => key.startsWith(EthNetcompile.KeyPrefix) && key.endsWith( jru ) ) ) orElse  // use an explicitly set netcompile
+            compilerKeys.find( _ == LocalPathSolcKey ) orElse                                                                                 // use a local compiler on the path
+            latestLocalInstallKey orElse                                                                                                      // use the latest local compiler in the shoebox
+            compilerKeys.find( _.startsWith(EthNetcompile.KeyPrefix) ) orElse                                                                 // use the default eth-netcompile
+            compilerKeys.find( _.startsWith( EthJsonRpc.KeyPrefix ) )                                                                         // use the (deprecated, mostly disappeared) json-rpc eth_CompileSolidity
+          }.getOrElse {
+            throw new Exception( s"Cannot find a usable solidity compiler. compilerKeys: ${compilerKeys}, sessionCompilers: ${sessionCompilers}" )
+          }
+          val compiler = sessionCompilers.get( key ).getOrElse( throw new Exception( s"Could not find a solidity compiler for key '$key'. sessionCompilers: ${sessionCompilers}" ) )
+
+          csc.set( Some( Tuple2( key, compiler ) ) )
+
+          compiler
         }
-        val compiler = sessionCompilers.get( key ).getOrElse( throw new Exception( s"Could not find a solidity compiler for key '$key'. sessionCompilers: ${sessionCompilers}" ) )
+        else {
+          csc.get.get._2
+        }
 
-        csc.set( Some( Tuple2( key, compiler ) ) )
-
-        compiler
       }
     }
   }

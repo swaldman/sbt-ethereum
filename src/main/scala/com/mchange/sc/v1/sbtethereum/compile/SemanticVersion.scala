@@ -8,11 +8,11 @@ import scala.math.max
 object SemanticVersion {
   private val Regex = """^(\d+)\.(\d+)\.(\d+)(?:\W*)?$""".r
 
-  implicit val DefaultOrdering: Ordering[SemanticVersion] = {
+  implicit val DefaultOrdering : Ordering[SemanticVersion] = {
     Ordering.by((sv : SemanticVersion) => ( sv.major, sv.minor, sv.patch ) )
   }
 
-  def apply( versionString : String ) : SemanticVersion= {
+  def apply( versionString : String ) : SemanticVersion = {
     versionString match {
       case Regex( major, minor, patch ) => SemanticVersion( major.toInt, minor.toInt, patch.toInt )
       case _                            => throw new BadSolidityVersionException( versionString )
