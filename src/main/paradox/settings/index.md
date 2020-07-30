@@ -314,6 +314,20 @@ Defines for how many runs (how exhaustively) the Solidity compiler should try to
 
 @@@
 
+### ethcfgSolidityCompilerVersion
+
+@@@ div { .keydesc }
+
+**Type:** `String`
+
+**Default:** _Unset_
+
+A full or prefix solidity compiler version that should be used to compile the Solidity files in thie project. For example, `0.5` will choose the latest installed `0.5.x` Solidity compiler,
+`0.5.16` chooses precisely that compiler. If unset, the installation's default compiler is used.
+This setting can be interactively overridden with @ref:[`ethLanguageSolidityCompilerSelect`](../tasks/eth/language/solidity.md#ethLanguageSolidityCompilerSelect).
+
+@@@
+
 ### ethcfgSoliditySource                
 
 @@@ div { .keydesc }

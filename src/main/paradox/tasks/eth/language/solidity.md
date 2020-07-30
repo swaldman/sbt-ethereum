@@ -30,6 +30,32 @@ _**Note: Use tab-completion to see available compiler versions!**_
 
 @@@
 
+### ethLanguageSolidityCompilerList
+
+@@@ div { .keydesc}
+
+**Usage:**
+```
+> ethLanguageSolidityCompilerList
+```
+
+Prints to the console the currently installed solidity compiler, as well as other versions available for installation.
+
+**Example:**
+```
+> ethLanguageSolidityCompilerList
+[info] Updating available solidity compiler set.
+[info] Installed compilers:
+[info] --> local-shoebox-solc-v0.4.25
+[info] --> local-shoebox-solc-v0.5.7
+[info] --> local-shoebox-solc-v0.5.16
+[info] --> local-shoebox-solc-v0.6.2
+[info] Versions available to install: 0.4.7, 0.4.8, 0.4.10, 0.4.18, 0.4.22, 0.4.24, 0.4.25, 0.5.7, 0.5.16, 0.6.2
+[success] Total time: 0 s, completed Jul 29, 2020, 11:26:06 PM
+```
+
+@@@
+
 ### ethLanguageSolidityCompilerPrint
 
 @@@ div { .keydesc}
@@ -51,7 +77,6 @@ Prints to the console the currently active solidity compiler.
 @@@
 
 ### ethLanguageSolidityCompilerSelect
-
 
 @@@ div { .keydesc}
 
