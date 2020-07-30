@@ -37,6 +37,28 @@ object Compiler {
   }
 
   final object Solidity {
+
+    final val KeyOrdering = new Ordering[String] {
+      def compare(x : String, y : String) : Int = {
+        (x.startsWith(LocalSolc.KeyPrefix), y.startsWith(LocalSolc.KeyPrefix)) match {
+          case ( true, true ) => {
+            val xVersionMb = LocalSolc.versionFromKey(x)
+            val yVersionMb = LocalSolc.versionFromKey(y)
+
+            ( xVersionMb, yVersionMb ) match {
+              case ( None, None )                         => Ordering.String.compare(x,y)
+              case ( Some( xVersion ), None )             => -1
+              case ( None, Some( yVersion ) )             =>  1
+              case ( Some( xVersion ), Some( yVersion ) ) => SemanticVersion.DefaultOrdering.compare( xVersion, yVersion )
+            }
+          }
+          case ( true, false )  => -1
+          case ( false, true )  =>  1
+          case ( false, false ) => Ordering.String.compare( x, y )
+        }
+      }
+    }
+
     def test( compiler : Compiler.Solidity, timeout : Duration )( implicit ec : ExecutionContext ) : Boolean = {
       try {
         val fcompilation: Future[Compilation] = {

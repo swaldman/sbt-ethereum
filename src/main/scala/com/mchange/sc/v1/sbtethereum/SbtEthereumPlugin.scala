@@ -3911,8 +3911,10 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     val installedKeys = (Compile / xethFindCacheSessionSolidityCompilerKeys).value
 
+    val orderedKeys = immutable.TreeSet.empty[String]( Compiler.Solidity.KeyOrdering ) ++ installedKeys
+
     log.info( "Installed compilers:" )
-    installedKeys.foreach( key => log.info( "--> " + key ) )
+    orderedKeys.foreach( key => log.info( "--> " + key ) )
     log.info( "Versions available to install: " +  SolcJInstaller.SupportedVersions.mkString(", "))
   }
 
