@@ -5083,7 +5083,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   }
 
   private def ethTransactionLookupTask( config : Configuration ) : Initialize[InputTask[Client.TransactionReceipt]] = {
-    val parser = ethHashParser( "<transaction-hash-hex>" )
+    val parser = Space ~> ethHashParser( "<transaction-hash-hex>" )
 
     Def.inputTask {
       val s = state.value
