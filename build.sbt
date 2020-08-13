@@ -16,7 +16,7 @@ ThisBuild / publishTo := {
   if (isSnapshot.value) Some("snapshots" at nexusSnapshots ) else Some("staging" at nexusStaging )
 }
 
-ThisBuild / scalaVersion := "2.12.10"
+ThisBuild / scalaVersion := "2.12.12"
 
 ThisBuild / scalacOptions ++= Seq(
   "-deprecation",
@@ -25,7 +25,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-Xlog-implicits" */
 )
 
-val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.3.3"
+val consuelaArtifact : ModuleID = "com.mchange" %% "consuela" % "0.3.4-SNAPSHOT" changing()
 
 lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
   name := "sbt-ethereum",
