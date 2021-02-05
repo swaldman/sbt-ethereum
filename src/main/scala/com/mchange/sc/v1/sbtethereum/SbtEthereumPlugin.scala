@@ -773,9 +773,9 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     ethContractAbiDefaultImport in Test := { ethContractAbiDefaultImportTask( Test ).evaluated },
 
-    ethContractAbiImport in Compile := { ethContractAbiDefaultImportTask( Compile ).evaluated },
+    ethContractAbiImport in Compile := { ethContractAbiImportTask( Compile ).evaluated },
 
-    ethContractAbiImport in Test := { ethContractAbiDefaultImportTask( Test ).evaluated },
+    ethContractAbiImport in Test := { ethContractAbiImportTask( Test ).evaluated },
 
     ethContractAbiOverride in Compile := { ethContractAbiOverrideSetTask( Compile ).evaluated },
 
@@ -3431,6 +3431,34 @@ object SbtEthereumPlugin extends AutoPlugin {
 
     syncOut {
       texttable.printTable( columns, extract, rowFilter )( allRecords.map( r => texttable.Row(r, annotation(r)) ) )
+    }
+  }
+
+
+  private def ethContractAbiImportTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genOptionalGenericAddressParser )
+
+    Def.inputTaskDyn {
+      val log = streams.value.log
+      val is = interactionService.value
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+      val mbAddress = parser.parsed
+
+      mbAddress match {
+        case Some( address ) => ( config / ethContractAbiDefaultImport ).toTask( s" 0x${address.hex}" )
+        case None            => {
+          syncOut {
+            println( "You are importing an ABI unattached to any contract address. You must provide an alias, so you can refer to it later.")
+          }
+          val abi = parseAbi( assertReadLine( is, "Contract ABI: ", mask = false ) )
+          val rawAlias = assertReadLine( is, s"Please enter an alias for this ABI: ", mask = false ).trim
+          val alias = if (rawAlias.startsWith("abi:")) rawAlias.substring(4) else rawAlias
+          val abiHash = activeShoebox.database.setUnattachedImportedContractAbi( abi ).assert
+          activeShoebox.abiAliasHashManager.createUpdateAbiAlias( chainId, alias, abiHash )
+          log.info( s"The ABI has been successfully imported, with alias 'abi:${alias}'." )
+          EmptyTask
+        }
+      }
     }
   }
 

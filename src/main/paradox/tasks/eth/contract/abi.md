@@ -29,7 +29,7 @@ overwritten or explicitly dropped.
 Sometimes you may temporarily wish to use an ABI that should not be the default ABI for a contract. _ABI overrides_ define
 temporary associations of ABIs with contract addresses that only endure within a single _sbt-ethereum_ session.
 
-**Aliases**
+**Aliases**<a name="aliases"></a>
 
 When _sbt-ethereum_ commands expect an ABI, you can refer to it via the address of a contract for which that ABI is already
 the default. (You can also refer to ABIs by their hashes, which _sbt-ethereum_ computes after normalizing the JSON ABIs by
@@ -222,6 +222,15 @@ _For examples, please see the tutorial section @ref["Acquiring an ABI for a smar
 
 @@@
 
+@@@ warning
+
+**Directly pasted ABIs cannot include newlines!**
+
+If you are directly pasting an ABI into the console (rather than importing from _Etherscan_), it can't be a pretty-printed ABI with newlines. _sbt-ethereum_ expects you to "hit return" only after
+you have pasted the ABI text. If you have a pretty-printed ABI, condense it, for example using sites like [this](https://codebeautify.org/jsonminifier).
+
+@@@
+
 ### ethContractAbiDefaultSet
 
 @@@ div { .keydesc }
@@ -251,16 +260,35 @@ Enter an optional alias for the address '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756
 
 @@@ div { .keydesc }
 
-
 **Usage:**
 ```
-> ethContractAbiImport <address-as-hex-or-ens-or-alias>
+> ethContractAbiImport [<address-as-hex-or-ens-or-alias>]
 ```
-For now, this is a shorthand for @ref:[`ethContractAbiDefaultImport`](#ethcontractabidefaultimport). Please see that command for more information.
-
+If an address is supplied, this is a shorthand for @ref:[`ethContractAbiDefaultImport`](#ethcontractabidefaultimport). Please see that command for more information.
 It imports (either via _Etherscan_ or by copy-and-paste) an ABI as the _default ABI_ associated with the given address.
 
-_**Note: In the future, this command may also support imports with no address supplied, simply to bring in an ABI and define an alias for it**_
+If no address is supplied, it imports the ABI and then prompts your for an @ref:[ABI alias](#aliases), by which you can refer to the ABI.
+Once you have a named ABI, use tasks like @ref:[`ethContractAbiOverrideSet`](#ethcontractabioverrideset), @ref:[`ethContractAbiDefaultSet`](#ethcontractabidefaultset), and @ref:[`ethContractAbiPrintPretty`](#ethcontractabiprintpretty) 
+
+**Example:**
+
+```
+> ethContractAbiImport
+You are importing an ABI unattached to any contract address. You must provide an alias, so you can refer to it later.
+Contract ABI: [{"outputs":[],"constant":false,"payable":false,"inputs":[{"name":"fortune","type":"string","internalType":"string"}],"name":"addFortune","stateMutability":"nonpayable","type":"function"},{"outputs":[{"name":"count","type":"uint256","internalType":"uint256"}],"constant":true,"payable":false,"inputs":[],"name":"countFortunes","stateMutability":"view","type":"function"},{"outputs":[{"name":"fortune","type":"string","internalType":"string"}],"constant":true,"payable":false,"inputs":[],"name":"drawFortune","stateMutability":"view","type":"function"},{"outputs":[{"name":"","type":"string","internalType":"string"}],"constant":true,"payable":false,"inputs":[{"name":"","type":"uint256","internalType":"uint256"}],"name":"fortunes","stateMutability":"view","type":"function"},{"inputs":[{"name":"author","type":"address","indexed":false,"internalType":"address"},{"name":"fortune","type":"string","indexed":false,"internalType":"string"}],"name":"FortuneAdded","anonymous":false,"type":"event"},{"payable":false,"inputs":[{"name":"initialFortune","type":"string","internalType":"string"}],"stateMutability":"nonpayable","type":"constructor"}]
+Please enter an alias for this ABI: fortune
+[info] The ABI has been successfully imported, with alias 'abi:fortune'.
+[success] Total time: 22 s, completed Feb 4, 2021, 8:54:09 PM
+```
+
+@@@
+
+@@@ warning
+
+**Directly pasted ABIs cannot include newlines!**
+
+If you are directly pasting an ABI into the console (rather than importing from _Etherscan_), it can't be a pretty-printed ABI with newlines. _sbt-ethereum_ expects you to "hit return" only after
+you have pasted the ABI text. If you have a pretty-printed ABI, condense it, for example using sites like [this](https://codebeautify.org/jsonminifier).
 
 @@@
 

@@ -169,6 +169,18 @@ class Database( parent : Shoebox ) extends PermissionsOverrideSource with AutoRe
   }
 
   private [sbtethereum]
+  def setUnattachedImportedContractAbi( abi : Abi ) : Failable[EthHash] = {
+    DataSource.flatMap { ds =>
+      Failable {
+        borrow( ds.getConnection() ){ conn =>
+          val ( abiHash, _ ) = Table.NormalizedAbis.upsert( conn, abi )
+          abiHash
+        }
+      }
+    }
+  }
+
+  private [sbtethereum]
   def setImportedContractAbi( chainId : Int, contractAddress : EthAddress, abi : Abi ) : Failable[Unit] = {
     DataSource.flatMap { ds =>
       Failable {
