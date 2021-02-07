@@ -2,6 +2,7 @@
 
 * [Abi*](abi.md)
 * [Compilation*](compilation.md)
+* [Other](other.md)
 
 @@@
 
@@ -13,7 +14,8 @@
 
 # ethContract*
 
-_sbt-ethereum_ tasks related to addresses, including @ref:[managing and working with contract ABIs](abi.md) and @ref:[keeping track of past compilations and deployments of smart contracts](compilation.md).
+_sbt-ethereum_ tasks related to contract addresses, including @ref:[managing and working with contract ABIs](abi.md) and @ref:[keeping track of past compilations and deployments of smart contracts](compilation.md),
+and miscellaneous tasks, like looking up contract storage elements.
 
 ### ethContractAbi*
 
@@ -31,4 +33,13 @@ in _sbt-ethereum_'s shoebox database. See @ref:[compilations commands page](comp
 @@@ div { #compilationList .embedded-toc-list }
 &nbsp;
 @@@
+
+### Other
+
+Other contract-related utilities, check @ref:[here](other.md), or choose a command below:
+
+@@@ div { #otherList .embedded-toc-list }
+&nbsp;
+@@@
+
 

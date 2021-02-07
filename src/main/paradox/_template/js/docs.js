@@ -121,6 +121,7 @@ function init() {
     
     copyTocSecondLevelList( "ethContractToc", 0, "abiList" );
     copyTocSecondLevelList( "ethContractToc", 1, "compilationList" );
+    copyTocSecondLevelList( "ethContractToc", 2, "otherList" );
     
     copyTocSecondLevelList( "ethLanguageToc", 0, "solidityList" );
 

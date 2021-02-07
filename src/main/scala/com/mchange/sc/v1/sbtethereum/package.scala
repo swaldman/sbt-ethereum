@@ -71,6 +71,14 @@ package object sbtethereum {
 
   private [sbtethereum] val EmptyStackTrace = Array.empty[StackTraceElement]
 
+  private [sbtethereum] val StorageSlots = {
+    immutable.Map[String,ByteSeqExact32] (
+      "eip-1967:storage" -> ByteSeqExact32( "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc".decodeHexAsSeq ),
+      "eip-1967:beacon"  -> ByteSeqExact32( "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50".decodeHexAsSeq ),
+      "eip-1967:admin"   -> ByteSeqExact32( "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103".decodeHexAsSeq )
+    )
+  }
+
   private [sbtethereum] def nst( t : Throwable ) : Throwable = {
     t.setStackTrace( EmptyStackTrace )
     t

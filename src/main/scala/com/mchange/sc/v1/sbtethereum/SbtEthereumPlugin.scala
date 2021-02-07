@@ -51,6 +51,7 @@ import com.mchange.sc.v1.consuela.io._
 import com.mchange.sc.v1.consuela.ethereum._
 import jsonrpc.{Abi,Client,MapStringCompilationContractFormat}
 import specification.Denominations
+import Client.BlockNumber
 import com.mchange.sc.v1.consuela.ethereum.specification.Types.{Unsigned8,Unsigned256}
 import com.mchange.sc.v1.consuela.ethereum.specification.Fees.BigInt._
 import com.mchange.sc.v1.consuela.ethereum.specification.Denominations._
@@ -299,6 +300,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethContractCompilationCull    = taskKey [Unit] ("Removes never-deployed compilations from the shoebox database.")
     val ethContractCompilationInspect = inputKey[Unit] ("Dumps to the console full information about a compilation, based on either a code hash or contract address")
     val ethContractCompilationList    = taskKey [Unit] ("Lists summary information about compilations known in the shoebox")
+
+    val ethContractStorageLookup      = inputKey[Unit] ("Looks up the value of a given storage slot of a deployed smart contract.")
 
     val ethDebugGanacheStart = taskKey[Unit] (s"Starts a local ganache environment (if the command '${testing.Default.Ganache.Executable}' is in your PATH)")
     val ethDebugGanacheHalt  = taskKey[Unit] ("Stops any local ganache environment that may have been started previously")
@@ -820,6 +823,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethContractCompilationInspect in Test := { ethContractCompilationInspectTask( Test ).evaluated },
 
     ethContractCompilationList := { ethContractCompilationListTask.value },
+
+    ethContractStorageLookup in Compile := { ethContractStorageLookupTask( Compile ).evaluated },
+
+    ethContractStorageLookup in Test := { ethContractStorageLookupTask( Test ).evaluated },
 
     ethDebugGanacheStart in Test := { ethDebugGanacheStartTask.value },
 
@@ -3705,6 +3712,33 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
   }
 
+  private def ethContractStorageLookupTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
+    val parser = Defaults.loadForParser(xethFindCacheRichParserInfo in config)( genContractStorageLookupParser )
+
+    Def.inputTask {
+      val chainId = findNodeChainIdTask(warn=true)(config).value
+      val log = streams.value.log
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+
+      val ( contractAddress, storageSlot, mbBlockNumber ) = parser.parsed
+      val blockNumber = mbBlockNumber.getOrElse(BlockNumber.Latest)
+
+      val storageValue = jsonrpc.Invoker.withClient { (client, url) =>
+        Await.result( client.eth.getStorageAt( contractAddress, storageSlot, blockNumber ), invokerContext.pollTimeout )
+      }
+
+      log.info( s"For contract at address ${verboseAddress(chainId, contractAddress)}...")
+      blockNumber match {
+        case BlockNumber.Earliest      => log.info( s"  as of the earliest block..." )
+        case BlockNumber.Latest        => log.info( s"  as of the most recent block..." )
+        case BlockNumber.Pending       => log.info( s"  as of the most recent block (including pending blocks)..." )
+        case BlockNumber.Quantity( n ) => log.info( s"  as of block number ${n}..." )
+      }
+      log.info( s"    storage slot 0x${storageSlot.unsignedBytes(32).hex} contains value 0x${storageValue.unsignedBytes(32).hex}." )
+    }
+  }
+
   private def ethDebugGanacheStartTask : Initialize[Task[Unit]] = Def.task {
     val log = streams.value.log
 
@@ -4991,7 +5025,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     val log = streams.value.log
     val is  = interactionService.value
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val mbAmount = (Space ~> bigIntParser("[optional-gas-limit-override]")).?.parsed
+    val mbAmount = (Space ~> unsignedBigIntParser("[optional-gas-limit-override]")).?.parsed
 
     val ovr = {
       mbAmount match {
@@ -5150,7 +5184,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethTransactionNonceOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
     val chainId = findNodeChainIdTask(warn=true)(config).value
-    val amount = (Space ~> bigIntParser("<nonce-override>")).parsed
+    val amount = (Space ~> unsignedBigIntParser("<nonce-override>")).parsed
     Mutables.NonceOverrides.set( chainId, amount )
     log.info( s"Nonce override set to ${amount} for chain with ID ${chainId}." )
     log.info(  "Future transactions will use this value as a fixed nonce, until this override is explcitly unset with 'ethTransactionNonceOverrideDrop'." )

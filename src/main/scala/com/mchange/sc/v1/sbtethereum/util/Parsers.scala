@@ -14,6 +14,7 @@ import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.bitcoin.BtcAddress
 import com.mchange.sc.v1.consuela.ethereum.{jsonrpc,specification,EthAddress,EthChainId,EthHash}
 import specification.Denominations
+import jsonrpc.Client.BlockNumber
 
 import com.mchange.sc.v1.consuela.slip.Slip44
 
@@ -124,9 +125,11 @@ object Parsers {
 
   private [sbtethereum] val RawLongParser = (Digit.+).map( chars => chars.mkString.toLong )
 
-  private [sbtethereum] val RawBigIntParser = (Digit.+).map( chars => BigInt( chars.mkString ) )
+  private val HexAsUnsignedBigIntParser = literal( "0x" ) ~> HexByteAsString.*.map( hexBytes => BigInt(hexBytes.mkString,16) )
 
-  private [sbtethereum] def bigIntParser( tabHelp : String ) = token(RawBigIntParser, tabHelp)
+  private [sbtethereum] val RawUnsignedBigIntParser = (Digit.+).map( chars => BigInt( chars.mkString ) ) | HexAsUnsignedBigIntParser
+
+  private [sbtethereum] def unsignedBigIntParser( tabHelp : String ) = token(RawUnsignedBigIntParser, tabHelp)
 
   private [sbtethereum] val RawAmountParser = ((Digit|literal('.')).+).map( chars => BigDecimal( chars.mkString ) )
 
@@ -144,7 +147,11 @@ object Parsers {
 
   private [sbtethereum] val RawIsoOffsetLocalEpochMillisParser = transformOrFail( NotSpace, s => Instant.from( ISO_OFFSET_DATE_TIME.parse(s) ).toEpochMilli() )
 
-  private [sbtethereum] val RawPermissiveIsoEpochMillisParser  = RawIsoInstantEpochMillisParser | RawIsoOffsetLocalEpochMillisParser 
+  private [sbtethereum] val RawPermissiveIsoEpochMillisParser  = RawIsoInstantEpochMillisParser | RawIsoOffsetLocalEpochMillisParser
+
+  private [sbtethereum] val RawBlockNumberParser = {
+    literal("earliest").map( _ => BlockNumber.Earliest) | literal("latest").map( _ => BlockNumber.Latest ) | literal("pending").map( _ => BlockNumber.Pending ) | RawUnsignedBigIntParser.map( value => BlockNumber.Quantity( value ) )
+  }
 
   private [sbtethereum] def intParser( tabHelp : String ) = token( RawIntParser, tabHelp )
 
@@ -351,6 +358,30 @@ object Parsers {
     }
     yield {
       ( epp, mbAddress, mbSecret )
+    }
+  }
+
+  private val StorageSlotParser : Parser[BigInt] = {
+    val NamedSlotParser = {
+      StorageSlots.foldLeft( failure("nonnumeric, unknown named storage slot") : Parser[BigInt] ) { (accum, next) =>
+        val (nextKey, nextVal) = next
+        accum | literal(nextKey).map( _ => nextVal.widen.toUnsignedBigInt )
+      }
+    }
+    unsignedBigIntParser("<storage-slot>") | NamedSlotParser
+  }
+
+  private [sbtethereum] def genContractStorageLookupParser(
+    state : State,
+    mbRpi : Option[RichParserInfo]
+  ) : Parser[Tuple3[EthAddress,BigInt,Option[BlockNumber]]] = {
+    for {
+      contractAddress <- genAddressParser("<contract-address>")( state, mbRpi )
+      storageSlot     <- Space ~> token(StorageSlotParser)
+      blockNumber     <- (Space ~> token(RawBlockNumberParser)).?
+    }
+    yield {
+      ( contractAddress, storageSlot, blockNumber )
     }
   }
 
@@ -708,7 +739,7 @@ object Parsers {
 
   private [sbtethereum] def genCompleteErc20TokenConvertAtomsToTokensParser( state : State, mbRpi : Option[RichParserInfo] ) : Parser[Tuple2[EthAddress, BigInt]] = {
     (Space ~> createAddressParser( "<erc20-token-contract-address>", mbRpi )).flatMap { contractAddress =>
-      (Space ~> bigIntParser( "<amount-in-atoms>" )).map { numAtoms =>
+      (Space ~> unsignedBigIntParser( "<amount-in-atoms>" )).map { numAtoms =>
         ( contractAddress, numAtoms )
       }
     }
@@ -833,7 +864,7 @@ object Parsers {
       bytes   <- bytesParser("<txn-data-hex>")
       _       <- Space
       amount  <- valueInWeiParser("<amount-to-pay>")
-      mbNonce <- (Space ~> bigIntParser("[optional nonce]")).?
+      mbNonce <- (Space ~> unsignedBigIntParser("[optional nonce]")).?
     }
     yield {
       Tuple4(to, bytes.toVector, amount, mbNonce )
