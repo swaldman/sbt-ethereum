@@ -180,6 +180,8 @@ object Parsers {
     token(mandatory.?)
   }
 
+  private [sbtethereum] val FunctionNameTypesParser = (Space ~> token(ID, "<function-name>") ~ (Space ~> token(ID, "<argument-type>")).*)
+
   private [sbtethereum]
   final object DurationParsers {
     import java.time.{Duration => JDuration}

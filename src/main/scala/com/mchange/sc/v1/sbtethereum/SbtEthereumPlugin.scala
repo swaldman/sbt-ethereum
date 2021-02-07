@@ -396,9 +396,10 @@ object SbtEthereumPlugin extends AutoPlugin {
     val ethTransactionUnsignedRaw        = inputKey[EthTransaction.Unsigned]("Prepare a raw message transaction to be signed elsewhere.")
     val ethTransactionUnsignedEtherSend  = inputKey[EthTransaction.Unsigned]("Prepare send transaction to be signed elsewhere.")
 
-    val ethUtilHashKeccak256 = inputKey[Unit]("Logs the Keccack256 hash of a bytestring given as hex.")
-    val ethUtilTimeIsoNow    = taskKey[Unit]("Logs in ISO_INSTANT format the current time (useful as a template for inputs to other time utilities)")
-    val ethUtilTimeUnix      = inputKey[Unit]("Accepts a given ISO_INSTANT formatted timestamp, or uses NOW if none is given, and logs this time in UNIX epoch seconds and milliseconds.")
+    val ethUtilFunctionIdentifier = inputKey[Unit]("Computes the four-byte function identify for a given set of names and types.")
+    val ethUtilHashKeccak256      = inputKey[Unit]("Logs the Keccack256 hash of a bytestring given as hex.")
+    val ethUtilTimeIsoNow         = taskKey[Unit]("Logs in ISO_INSTANT format the current time (useful as a template for inputs to other time utilities)")
+    val ethUtilTimeUnix           = inputKey[Unit]("Accepts a given ISO_INSTANT formatted timestamp, or uses NOW if none is given, and logs this time in UNIX epoch seconds and milliseconds.")
 
     // erc20 tasks
     val erc20AllowancePrint       = inputKey[Erc20.Balance]("Prints the allowance of an address to operate on ERC20 tokens owned by a different address.")
@@ -1058,6 +1059,8 @@ object SbtEthereumPlugin extends AutoPlugin {
     ethTransactionView in Compile := { ethTransactionViewTask( Compile ).evaluated },
 
     ethTransactionView in Test := { ethTransactionViewTask( Test ).evaluated },
+
+    ethUtilFunctionIdentifier := { ethUtilFunctionIdentifierTask.evaluated },
 
     ethUtilHashKeccak256 := { ethUtilHashKeccak256Task.evaluated },
 
@@ -5761,6 +5764,16 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       Await.result( f_out, timeout )
     }
+  }
+
+  private def ethUtilFunctionIdentifierTask : Initialize[InputTask[Unit]] = Def.inputTask {
+    val log = streams.value.log
+    val ( name, argtypes ) = FunctionNameTypesParser.parsed
+    val argtypesvec = argtypes.toVector
+    val signature = ethabi.signatureForFunctionNamesAndInputTypes( name, argtypesvec )
+    val identifier = ethabi.identifierForFunctionNamesAndInputTypes( name, argtypesvec )
+    log.info( s"Canonical signature: ${signature}" )
+    log.info( s"Identifier: ${identifier.hex0x}" )
   }
 
   private val ethUtilHashKeccak256Task : Initialize[InputTask[Unit]] = Def.inputTask {

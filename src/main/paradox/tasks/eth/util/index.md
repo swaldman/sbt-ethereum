@@ -4,6 +4,29 @@ Some utilities that may be useful when interacting with _Ethereum_ smart contrac
 
 See also @ref[`ensNameHashes`](../../ens.md#ensnamehashes)
 
+### ethUtilFunctionIdentifier
+
+@@@ div { .keydesc }
+
+**Usage:**
+```
+> ethUtilFunctionIdentifier <name> [argument-type] [argument-type]...
+```
+
+Computes the canonical function signature and four-byte function identifier of a standard Ethereum smart contract function,
+given the function name and argument types. For no argument functions, just provide a name with no argument types.
+
+See also @ref:[ethContractAbiCallEncode](../contract/abi.md#ethcontractabicallencode) and @ref:[ethContractAbiCallDecode](../contract/abi.md#ethcontractabicalldecode).
+
+**Example:**
+```
+> ethUtilFunctionIdentifier addFortune string
+[info] Canonical signature: addFortune(string)
+[info] Identifier: 0x4cf373e6
+```
+
+@@@
+
 ### ethUtilHashKeccak256
 
 @@@ div { .keydesc}
