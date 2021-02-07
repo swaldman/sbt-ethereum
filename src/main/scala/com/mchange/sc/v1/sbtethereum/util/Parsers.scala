@@ -365,7 +365,7 @@ object Parsers {
     val NamedSlotParser = {
       StorageSlots.foldLeft( failure("nonnumeric, unknown named storage slot") : Parser[BigInt] ) { (accum, next) =>
         val (nextKey, nextVal) = next
-        accum | literal(nextKey).map( _ => nextVal.widen.toUnsignedBigInt )
+        accum | literal(nextKey).map( _ => nextVal )
       }
     }
     unsignedBigIntParser("<storage-slot>") | NamedSlotParser

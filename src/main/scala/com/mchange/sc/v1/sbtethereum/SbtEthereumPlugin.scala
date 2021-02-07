@@ -14,6 +14,7 @@ import compile.{Compiler, ResolveCompileSolidity, SemanticVersion, SolcJInstalle
 import util.warner._
 import util.BaseCodeAndSuffix
 import util.Erc20
+import util.Eip1967
 import util.EthJsonRpc._
 import util.Parsers._
 import util.SJsonNewFormats._
@@ -3479,6 +3480,9 @@ object SbtEthereumPlugin extends AutoPlugin {
       val log = streams.value.log
       val is = interactionService.value
       val timeout = xethcfgAsyncOperationTimeout.value
+
+      implicit val invokerContext = (xethInvokerContext in config).value
+      
       val address = parser.parsed
       val mbKnownCompilation = activeShoebox.database.deployedContractInfoForAddress( chainId, address ).get
       mbKnownCompilation match {
@@ -3518,9 +3522,49 @@ object SbtEthereumPlugin extends AutoPlugin {
                   val tryIt = queryYN( is, "An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] " )
                   if ( tryIt ) {
                     syncOut {
-                      println( s"Attempting to fetch ABI for address '${hexString(address)}' from Etherscan." )
+                      println( s"Checking to see if address '${hexString(address)}' is an EIP-1967 transparent proxy." )
                     }
-                    val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( address )
+                    val (mbProxied, oops) = {
+                      try {
+                        ( Some( Await.result( Eip1967.findProxied( address ), invokerContext.pollTimeout ) ), false )
+                      }
+                      catch {
+                        case expected : NotEip1967TransparentProxyException => ( None, false )
+                        case other    : Exception => {
+                          WARNING.log( s"An Exception occurred while checking if '${hexString(address)}' is an EIP-1967 transparent proxy.", other )
+                          (None, true )
+                        }
+                      }
+                    }
+                    val finalAddress : EthAddress = {
+                      mbProxied match {
+                        case Some( proxied ) => {
+                          syncOut {
+                            println( s"'${hexString(address)}' appears to be an EIP-1967 transparent proxy for '${hexString(proxied)}'." )
+                            val useProxied = queryYN( is, "Import the ABI of the proxied contract instead of the apparent proxy? [y/n] " )
+                            if (useProxied) {
+                              println( s"Will attempt to import the ABI associated with proxied contract at '${proxied.hex0x}'." )
+                              proxied
+                            }
+                            else {
+                              println( s"Will attempt to import the ABI associated with the apparent proxy contract at '${address.hex0x}'." )
+                              address
+                            }
+                          }
+                        }
+                        case None => {
+                          syncOut {
+                            if (oops) println( s"A failure interfered with the check. Treating '${hexString(address)}' as an ordinary contract, not an EIP-1967 transparent proxy." )
+                            else println( s"'${hexString(address)}' does not appear to be an EIP-1967 transparent proxy." )
+                          }
+                          address
+                        }
+                      }
+                    }
+                    syncOut {
+                      println( s"Attempting to fetch ABI for address '${hexString(finalAddress)}' from Etherscan." )
+                    }
+                    val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( finalAddress )
                     Await.ready( fAbi, timeout )
                     fAbi.value.get match {
                       case Success( abi ) => {

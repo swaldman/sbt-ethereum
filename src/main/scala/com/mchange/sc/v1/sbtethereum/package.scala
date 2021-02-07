@@ -6,6 +6,7 @@ import com.mchange.sc.v2.lang.borrow
 import com.mchange.sc.v2.ens
 import com.mchange.sc.v1.consuela._
 import com.mchange.sc.v1.consuela.ethereum._
+import com.mchange.sc.v1.sbtethereum.util.Eip1967
 import ethabi._
 import jsonrpc.{Abi,Compilation,Client}
 import specification.Denominations.Denomination // XXX: Ick! Refactor this in consuela!
@@ -15,6 +16,7 @@ import scala.concurrent.duration.Duration
 import scala.util.control.NonFatal
 import java.io.File
 import play.api.libs.json._
+
 
 package object sbtethereum {
 
@@ -41,6 +43,8 @@ package object sbtethereum {
   final class CannotReadDirectoryException( msg : String, cause : Throwable = null ) extends SbtEthereumException( msg, cause )
   final class OperationAbortedByUserException( msg : String ) extends SbtEthereumException( s"Aborted by user: ${msg}", null, noStackTrace = true )
   final class UnexpectedConfigurationException( config : sbt.Configuration ) extends SbtEthereumException( s"A task was executed with unexpected configuration '${config}'." )
+
+  final class NotEip1967TransparentProxyException( address : EthAddress ) extends SbtEthereumException( s"${address.hex0x} is not an EIP-1967 transparent proxy." )
 
   final class CantReadInteractionException extends SbtEthereumException("Failed to read from sbt.InteractionService! (Perhaps an interactive task was run noninteractively.)")
 
@@ -72,10 +76,10 @@ package object sbtethereum {
   private [sbtethereum] val EmptyStackTrace = Array.empty[StackTraceElement]
 
   private [sbtethereum] val StorageSlots = {
-    immutable.Map[String,ByteSeqExact32] (
-      "eip-1967:storage" -> ByteSeqExact32( "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc".decodeHexAsSeq ),
-      "eip-1967:beacon"  -> ByteSeqExact32( "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50".decodeHexAsSeq ),
-      "eip-1967:admin"   -> ByteSeqExact32( "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103".decodeHexAsSeq )
+    immutable.Map[String,BigInt] (
+      "eip-1967:logic"  -> Eip1967.Slot.Logic,
+      "eip-1967:beacon" -> Eip1967.Slot.Beacon,
+      "eip-1967:admin"  -> Eip1967.Slot.Admin
     )
   }
 
