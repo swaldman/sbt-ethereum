@@ -395,7 +395,7 @@ object Parsers {
     val RestrictToNonconstants : jsonrpc.Abi.Function => Boolean = fcn => !fcn.constant
   }
 
-  private val DummyFunction = jsonrpc.Abi.Function("<dummy-function-you-should-never-see>",immutable.Seq.empty,immutable.Seq.empty,true,false,"pure")
+  private val DummyFunction = jsonrpc.Abi.Function("<dummy-function-you-should-never-see>",immutable.Seq.empty,immutable.Seq.empty,"pure")
 
   private [sbtethereum] def functionParser( abi : jsonrpc.Abi, functionFilter : jsonrpc.Abi.Function => Boolean ) : Parser[jsonrpc.Abi.Function] = {
     val namesToFunctions           = abi.functions.groupBy( _.name )

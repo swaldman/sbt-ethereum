@@ -19,8 +19,8 @@ object Eip1967 {
 
   val BeaconImplementationFunction = {
     val inputs  = immutable.Seq.empty
-    val outputs = immutable.Seq( jsonrpc.Abi.Function.Parameter( "", "address", "address" ) )
-    jsonrpc.Abi.Function("implementation", inputs, outputs, true, false, "view" )
+    val outputs = immutable.Seq( jsonrpc.Abi.Function.Parameter( "", "address", None ) )
+    jsonrpc.Abi.Function("implementation", inputs, outputs, "view" )
   }
 
   val BeaconImplementationIdentifier = ethabi.identifierForAbiFunction(BeaconImplementationFunction)
