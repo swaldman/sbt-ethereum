@@ -1,5 +1,12 @@
 # TODO
 
+Quick fixes
+
+-- ensure that new ABI aliases set by ethContractAbiImport cause the abi alias cache to be refreshed
+-- fix parsing of bigints as hex
+-- let ethUtilHashKeccak256 accept utf8 strings
+
+
 DB schema updates
 
 * Implement a tags table

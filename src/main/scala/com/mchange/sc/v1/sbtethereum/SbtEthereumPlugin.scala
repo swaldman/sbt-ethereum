@@ -3154,7 +3154,7 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
 
       def finishUpdate = {
-        log.info( s"The ABI previously associated with ${sourceDesc} ABI has been associated with address ${hexString(toLinkAddress)}." )
+        log.info( s"The ABI previously associated with ${sourceDesc} has been associated with address ${hexString(toLinkAddress)}." )
         if (! activeShoebox.addressAliasManager.hasNonSyntheticAddressAliases( chainId, toLinkAddress ).assert ) {
           kludgeySleepForInteraction()
           syncOut {

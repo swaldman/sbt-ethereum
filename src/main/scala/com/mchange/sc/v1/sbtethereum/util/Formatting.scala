@@ -323,7 +323,7 @@ object Formatting {
             println( s" (${ pf.format(xferInEth * ethPrice) } ${currencyCode}), for a maximum total cost of ${ maxTotalCostInEth } ether (${ pf.format(maxTotalCostInEth * ethPrice) } ${currencyCode})." )
           }
           case None => {
-            println( s"for a maximum total cost of ${ maxTotalCostInEth } ether." )
+            println( s" for a maximum total cost of ${ maxTotalCostInEth } ether." )
           }
         }
       }
