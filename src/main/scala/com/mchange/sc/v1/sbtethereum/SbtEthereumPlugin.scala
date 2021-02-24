@@ -3467,7 +3467,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           val abiHash = activeShoebox.database.setUnattachedImportedContractAbi( abi ).assert
           activeShoebox.abiAliasHashManager.createUpdateAbiAlias( chainId, alias, abiHash )
           log.info( s"The ABI has been successfully imported, with alias 'abi:${alias}'." )
-          EmptyTask
+          xethTriggerDirtyAliasCache
         }
       }
     }
