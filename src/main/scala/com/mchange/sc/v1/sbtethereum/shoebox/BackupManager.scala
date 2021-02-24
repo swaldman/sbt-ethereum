@@ -85,6 +85,7 @@ class BackupManager( parent : Shoebox ) {
     Thread.sleep(5000)
 
     info( s"Backing up sbt-ethereum shoebox. Reinstallable compilers will be excluded." )
+    info( "This may take a few minutes." )
     zip( outFile, parent.Directory_ExistenceAndPermissionsUnenforced.assert, canonicalFileFilter _ )
     info( s"sbt-ethereum shoebox successfully backed up to '${outFile}'." )
 
