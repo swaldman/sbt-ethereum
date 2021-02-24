@@ -121,11 +121,11 @@ object Parsers {
     }
   }
 
-  private [sbtethereum] val RawIntParser = (Digit.+).map( chars => chars.mkString.toInt )
+  private val HexAsUnsignedBigIntParser = literal( "0x" ) ~> HexDigit.+.map( hexBytes => BigInt(hexBytes.mkString,16) )
 
-  private [sbtethereum] val RawLongParser = (Digit.+).map( chars => chars.mkString.toLong )
+  private [sbtethereum] val RawUnsignedIntParser = (Digit.+).map( chars => chars.mkString.toInt ) | HexAsUnsignedBigIntParser.map( _.toValidInt )
 
-  private val HexAsUnsignedBigIntParser = literal( "0x" ) ~> HexByteAsString.*.map( hexBytes => BigInt(hexBytes.mkString,16) )
+  private [sbtethereum] val RawUnsignedLongParser = (Digit.+).map( chars => chars.mkString.toLong ) | HexAsUnsignedBigIntParser.map( _.toValidLong )
 
   private [sbtethereum] val RawUnsignedBigIntParser = (Digit.+).map( chars => BigInt( chars.mkString ) ) | HexAsUnsignedBigIntParser
 
@@ -153,7 +153,7 @@ object Parsers {
     literal("earliest").map( _ => BlockNumber.Earliest) | literal("latest").map( _ => BlockNumber.Latest ) | literal("pending").map( _ => BlockNumber.Pending ) | RawUnsignedBigIntParser.map( value => BlockNumber.Quantity( value ) )
   }
 
-  private [sbtethereum] def intParser( tabHelp : String ) = token( RawIntParser, tabHelp )
+  private [sbtethereum] def unsignedIntParser( tabHelp : String ) = token( RawUnsignedIntParser, tabHelp )
 
   private [sbtethereum] def etherscanApiKeyParser( tabHelp : String ) = token( RawEtherscanApiKeyParser, tabHelp )
 
@@ -214,7 +214,7 @@ object Parsers {
 
     val JDurationParser = {
       for {
-        amount  <- RawLongParser
+        amount  <- RawUnsignedLongParser
         _       <- Space
         unitStr <- ID.examples( AllUnits )
         unit    <- findUnit( unitStr ).fold( failure( s"Unknown unit: ${unitStr}" ) : Parser[ChronoUnit] )( u => success( u ) )
@@ -624,7 +624,7 @@ object Parsers {
         }
       }
     }
-    special | RawIntParser.map( i => ( None, i ) )
+    special | RawUnsignedIntParser.map( i => ( None, i ) )
   }
 
   private val TokenedBinaryAddressFormatParser = token(literal("binary-format:") ~> RawBytesParser.map( bytes => ( None, bytes ) )).examples( "binary-format:<hex>", "bc1<bech32-data>", "<base58-data>" )

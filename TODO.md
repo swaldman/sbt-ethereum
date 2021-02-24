@@ -2,7 +2,6 @@
 
 Quick fixes
 
--- fix parsing of bigints as hex
 -- let ethUtilHashKeccak256 accept utf8 strings
 
 

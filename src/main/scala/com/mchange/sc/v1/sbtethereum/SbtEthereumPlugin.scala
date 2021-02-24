@@ -4112,7 +4112,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeChainIdDefaultSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     assert( config == Compile, "Only the Compile confg is supported for now." )
 
-    val parser  = Space ~> intParser("<new-default-chain-id>")
+    val parser  = Space ~> unsignedIntParser("<new-default-chain-id>")
 
     Def.inputTaskDyn {
       val log     = streams.value.log
@@ -4170,7 +4170,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   private def ethNodeChainIdOverrideSetTask( config : Configuration ) : Initialize[InputTask[Unit]] = {
     assert( config == Compile, "Only the Compile confg is supported for now." )
 
-    val parser  = Space ~> intParser(s"<chain-id>")
+    val parser  = Space ~> unsignedIntParser(s"<chain-id>")
 
     Def.inputTaskDyn {
       val log = streams.value.log
