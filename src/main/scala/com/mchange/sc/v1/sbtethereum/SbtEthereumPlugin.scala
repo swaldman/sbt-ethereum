@@ -5778,7 +5778,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
   private val ethUtilHashKeccak256Task : Initialize[InputTask[Unit]] = Def.inputTask {
     val log = streams.value.log
-    val bytesToHash = (Space ~> bytesParser("<hex-string>")).parsed
+    val bytesToHash = (Space ~> (bytesParser("<hex-string>") | utf8BytesParser("<quoted-string-as-utf8>"))).parsed
     val hashed = hash.Keccak256.hash( bytesToHash ).bytes
     log.info( hexString( hashed ) )
   }

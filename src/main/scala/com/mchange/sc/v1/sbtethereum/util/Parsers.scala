@@ -53,6 +53,8 @@ object Parsers {
 
   private val ZWSP = "\u200B" // HACK: we add zero-width space to parser examples lists where we don't want autocomplete to apply to unique examples
 
+  private val UTF8 = scala.io.Codec.UTF8
+
   // use rawAddressParserMaybeWithChainId( None ) instead of RawAddressParser
   // private val RawAddressParser = ( literal("0x").? ~> Parser.repeat( HexDigit, 40, 40 ) ).map( chars => EthAddress.apply( chars.mkString ) )
 
@@ -434,6 +436,10 @@ object Parsers {
   private val RawStringInputParser : Parser[String] = {
     ( StringVerbatim | StringEscapable | SingleQuoteStringVerbatim | NotAnyQuoted ).map( str => s""""${str}"""")
   }
+
+  private val RawQuotedStringToUnquotedStringParser = StringVerbatim | StringEscapable | SingleQuoteStringVerbatim
+
+  private [sbtethereum] def utf8BytesParser( tabHelp : String ) = token(RawQuotedStringToUnquotedStringParser.map( _.getBytes( UTF8.charSet ).toImmutableSeq ), tabHelp)
 
   private val BytesN_Regex = """bytes(\d+)""".r
 

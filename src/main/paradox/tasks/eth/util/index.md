@@ -36,13 +36,21 @@ See also @ref:[ethContractAbiCallEncode](../contract/abi.md#ethcontractabicallen
 > ethUtilHashKeccak256 <hex-string>
 ```
 
-Computes the _Ethereum_-standard Keccak256 hash of a given bytestring.
+```
+> ethUtilHashKeccak256 <quoted-string-as-utf8>
+```
+
+Computes the _Ethereum_-standard Keccak256 hash of a given bytestring or quoted string (as UTF8 bytes).
 
 **Example:**
 ```
 > ethUtilHashKeccak256 0xabcdef
 [info] 0x800d501693feda2226878e1ec7869eef8919dbc5bd10c2bcd031b94d73492860
 [success] Total time: 1 s, completed Nov 9, 2019 10:33:43 PM
+
+> ethUtilHashKeccak256 "Hello"
+[info] 0x06b3dfaec148fb1bb2b066f10ec285e7c9bf402ab32aa78a5d38e34566810cd2
+[success] Total time: 0 s, completed Feb 24, 2021, 6:38:14 AM
 ```
 @@@
 
