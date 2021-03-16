@@ -235,7 +235,7 @@ For a given ERC-20 token contract, using _and trusting_ its self-reported `decim
 
 **Usage:**
 ```
-> erc20ConvertTokensToAtoms <token-contract-address-as-hex-or-ens-or-alias>
+> erc20Summary <token-contract-address-as-hex-or-ens-or-alias>
 ```
 For a given ERC-20 token contract, print standard self-reported metainformation.
 
