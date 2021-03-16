@@ -3517,89 +3517,94 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       val abi = {
         val mbEtherscanAbi : Option[Abi] = {
-          val fmbApiKey = activeShoebox.database.getEtherscanApiKey()
-          fmbApiKey match {
-            case Succeeded( mbApiKey ) => {
-              mbApiKey match {
-                case Some( apiKey ) => {
-                  val tryIt = queryYN( is, "An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] " )
-                  if ( tryIt ) {
-                    syncOut {
-                      println( s"Checking to see if address '${hexString(address)}' is an EIP-1967 transparent proxy." )
-                    }
-                    val (mbProxied, oops) = {
-                      try {
-                        ( Some( Await.result( Eip1967.findProxied( address ), invokerContext.pollTimeout ) ), false )
+          if (chainId != 1 ) { // currently we only support downloading Ethereum mainnet ABIs from Etherscan
+            None
+          }
+          else {
+            val fmbApiKey = activeShoebox.database.getEtherscanApiKey()
+            fmbApiKey match {
+              case Succeeded( mbApiKey ) => {
+                mbApiKey match {
+                  case Some( apiKey ) => {
+                    val tryIt = queryYN( is, "An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] " )
+                    if ( tryIt ) {
+                      syncOut {
+                        println( s"Checking to see if address '${hexString(address)}' is an EIP-1967 transparent proxy." )
                       }
-                      catch {
-                        case expected : NotEip1967TransparentProxyException => ( None, false )
-                        case other    : Exception => {
-                          WARNING.log( s"An Exception occurred while checking if '${hexString(address)}' is an EIP-1967 transparent proxy.", other )
-                          (None, true )
+                      val (mbProxied, oops) = {
+                        try {
+                          ( Some( Await.result( Eip1967.findProxied( address ), invokerContext.pollTimeout ) ), false )
                         }
-                      }
-                    }
-                    val finalAddress : EthAddress = {
-                      mbProxied match {
-                        case Some( proxied ) => {
-                          syncOut {
-                            println( s"'${hexString(address)}' appears to be an EIP-1967 transparent proxy for '${hexString(proxied)}'." )
-                            val useProxied = queryYN( is, "Import the ABI of the proxied contract instead of the apparent proxy? [y/n] " )
-                            if (useProxied) {
-                              println( s"Will attempt to import the ABI associated with proxied contract at '${proxied.hex0x}'." )
-                              proxied
-                            }
-                            else {
-                              println( s"Will attempt to import the ABI associated with the apparent proxy contract at '${address.hex0x}'." )
-                              address
-                            }
+                        catch {
+                          case expected : NotEip1967TransparentProxyException => ( None, false )
+                          case other    : Exception => {
+                            WARNING.log( s"An Exception occurred while checking if '${hexString(address)}' is an EIP-1967 transparent proxy.", other )
+                            (None, true )
                           }
                         }
-                        case None => {
-                          syncOut {
-                            if (oops) println( s"A failure interfered with the check. Treating '${hexString(address)}' as an ordinary contract, not an EIP-1967 transparent proxy." )
-                            else println( s"'${hexString(address)}' does not appear to be an EIP-1967 transparent proxy." )
+                      }
+                      val finalAddress : EthAddress = {
+                        mbProxied match {
+                          case Some( proxied ) => {
+                            syncOut {
+                              println( s"'${hexString(address)}' appears to be an EIP-1967 transparent proxy for '${hexString(proxied)}'." )
+                              val useProxied = queryYN( is, "Import the ABI of the proxied contract instead of the apparent proxy? [y/n] " )
+                              if (useProxied) {
+                                println( s"Will attempt to import the ABI associated with proxied contract at '${proxied.hex0x}'." )
+                                proxied
+                              }
+                              else {
+                                println( s"Will attempt to import the ABI associated with the apparent proxy contract at '${address.hex0x}'." )
+                                address
+                              }
+                            }
                           }
-                          address
+                          case None => {
+                            syncOut {
+                              if (oops) println( s"A failure interfered with the check. Treating '${hexString(address)}' as an ordinary contract, not an EIP-1967 transparent proxy." )
+                              else println( s"'${hexString(address)}' does not appear to be an EIP-1967 transparent proxy." )
+                            }
+                            address
+                          }
+                        }
+                      }
+                      syncOut {
+                        println( s"Attempting to fetch ABI for address '${hexString(finalAddress)}' from Etherscan." )
+                      }
+                      val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( finalAddress )
+                      Await.ready( fAbi, timeout )
+                      fAbi.value.get match {
+                        case Success( abi ) => {
+                          syncOut {
+                            println( "ABI found:" )
+                            println( Json.stringify( Json.toJson( abi ) ) )
+                            val useIt = queryYN( is, "Use this ABI? [y/n] ")
+                            if (useIt) Some( abi ) else None
+                          }
+                        }
+                        case Failure( e ) => {
+                          log.warn( s"Failed to import ABI from Etherscan: ${e}" )
+                          DEBUG.log( "Etherscan-verified ABI import failure.", e )
+                          None
                         }
                       }
                     }
-                    syncOut {
-                      println( s"Attempting to fetch ABI for address '${hexString(finalAddress)}' from Etherscan." )
-                    }
-                    val fAbi = etherscan.Api.Simple( apiKey ).getVerifiedAbi( finalAddress )
-                    Await.ready( fAbi, timeout )
-                    fAbi.value.get match {
-                      case Success( abi ) => {
-                        syncOut {
-                          println( "ABI found:" )
-                          println( Json.stringify( Json.toJson( abi ) ) )
-                          val useIt = queryYN( is, "Use this ABI? [y/n] ")
-                          if (useIt) Some( abi ) else None
-                        }
-                      }
-                      case Failure( e ) => {
-                        log.warn( s"Failed to import ABI from Etherscan: ${e}" )
-                        DEBUG.log( "Etherscan-verified ABI import failure.", e )
-                        None
-                      }
+                    else {
+                      None
                     }
                   }
-                  else {
+                  case None => {
+                    log.warn("No Etherscan API key has been set, so you will have to directly paste the ABI.")
+                    log.warn("Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeySet'.")
                     None
                   }
                 }
-                case None => {
-                  log.warn("No Etherscan API key has been set, so you will have to directly paste the ABI.")
-                  log.warn("Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeySet'.")
-                  None
-                }
               }
-            }
-            case failed : Failed[_] => {
-              log.warn( s"An error occurred while trying to check if the database contains an Etherscan API key: '${failed.message}'" )
-              failed.xdebug("An error occurred while trying to check if the database contains an Etherscan API key")
-              None
+              case failed : Failed[_] => {
+                log.warn( s"An error occurred while trying to check if the database contains an Etherscan API key: '${failed.message}'" )
+                failed.xdebug("An error occurred while trying to check if the database contains an Etherscan API key")
+                None
+              }
             }
           }
         }
