@@ -26,7 +26,7 @@
     <div id="rightColumn">
     </div>
     <div id="pageFooter">
-      <b>&copy; 2020 Machinery For Change LLC</b> &mdash;
+      <b>&copy; 2021 Machinery For Change LLC</b> &mdash;
       <i>This software provided <b>without warranty to the extent permitted by applicable law</b> under your choice of the <a href="http://www.gnu.org/licenses/lgpl-2.1.html">Lesser GNU Public License, v.2.1 (LGPL)</a> or
 	the <a href="http://www.eclipse.org/legal/epl-v10.html">Eclipse Public License, v.1.0 (EPL)]</a></i>
     </div>
