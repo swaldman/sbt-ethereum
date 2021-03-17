@@ -1,6 +1,8 @@
 package com.mchange.sc.v1.sbtethereum.compile
 
 import com.mchange.sc.v1.sbtethereum._
+import util.Rawifier.rawifyIfApplicable
+
 import java.io.{BufferedInputStream, File}
 import java.net.URL
 import scala.collection._
@@ -10,19 +12,8 @@ import com.mchange.sc.v3.failable._
 import scala.util.matching.Regex
 
 object SourceFile {
-  // for eventual resolution of github URL imports
-  private val GithubUrlRegex = """^(?:https?\/\/)?(\S*github\S*.com)(\/\S*)$""".r
-  private val BlobRegex      = """\/blob""".r
-
   val AbsoluteFileRegex: Regex = """^(?:/|\\).*|[A-Z]\:\\.*""".r
   val PragmaSolidityRegex: Regex = """(?i)pragma\s+solidity\s+\^([^\s\;]+)\s*\;""".r
-
-  def transformSpecialUrl( mbSpecialUrl : String ) : Option[String] = {
-    mbSpecialUrl match {
-      case GithubUrlRegex( host, path ) => Some( s"""https://raw.githubusercontent.com${ BlobRegex.replaceAllIn(path, "") }""" )
-      case _                            => None
-    }
-  }
 
   final object Location {
     def apply( parent : Location, spec : String = "" ) : Location = {
@@ -41,7 +32,7 @@ object SourceFile {
 
     def apply( url : java.net.URL ) : Location = {
       val spec = url.toExternalForm
-      Location.URL( new java.net.URL( transformSpecialUrl( spec ).getOrElse( spec ) ) )
+      Location.URL( new java.net.URL( rawifyIfApplicable( spec ) ) )
     }
 
     private val FileSeparator = System.getProperty("file.separator")
@@ -109,7 +100,7 @@ object SourceFile {
         Location.File( f.getParentFile ).resolveLocalKey( f.getName )
       }
       case _ if (key.indexOf(':') >= 0) => {
-        val spec = transformSpecialUrl( key ).getOrElse( key )
+        val spec = rawifyIfApplicable( key )
         val ( parent, name ) = {
           val nameIndex = spec.lastIndexOf('/') + 1
           ( spec.substring(0, nameIndex), spec.substring( nameIndex ) )
