@@ -43,12 +43,12 @@ can supply any of
 
 1. The ABI JSON directly (with no embedded newlines)
 2. A JSON object (with no embedded newlines) containing the ABI under the key `abi` or under the path `metadata/abi` (checked in that order)
-3. A URL or path-to-a-file whose contents are either (1) or (2)
+3. A URL or path-to-a-file whose contents are either a JSON ABI or JSON object containing an ABI as `abi` or `metadata/abi`. Pretty-printed JSON with embedded newlines is just fine!
 4. A URL or path-to-a-file whose data contains a unique nonempty, "strict" (meaning no unexpected elements) ABI that can be scraped from its contents (without or with unescaping HTML entities)
 
 @@@
 
-Together this means that usually you can import an ABI just by pasting in a URL, for example the URLs presented for verified contracts by [_Etherscan_](https://etherscan.io) or [_Blockscout_](blockscout.com),
+Together this means that usually you can import an ABI just by pasting in a URL, for example the URLs presented for verified contracts by [_Etherscan_](https://etherscan.io) or [_Blockscout_](https://blockscout.com),
 or URLs to standard contract metadata or _Truffle_ complation artifacts.
 
 @@@ note
@@ -388,7 +388,7 @@ ABIs can be imported by direct copy-and-paste of JSON, or by providing the URL o
 JSON ABIs are interpreted directly, or are extracted from within JSON objects under the key "abi", or under the path "metadata" / "abi.
 If the URL or file does not contain JSON directly, this task will offer to "scrape" the ABI from the source. If a unique, nonempty, strictly valid ABI can be scraped from the source, _sbt-ethereum_ will offer to import it. (See @ref:[Importing Contract ABIs](#importing_contract_abis)))
 
-Once you have a named ABI, use tasks like @ref:[`ethContractAbiOverrideSet`](#ethcontractabioverrideset), @ref:[`ethContractAbiDefaultSet`](#ethcontractabidefaultset), and @ref:[`ethContractAbiPrintPretty`](#ethcontractabiprintpretty)
+Once you have a named ABI, you can use it in tasks like @ref:[`ethContractAbiOverrideSet`](#ethcontractabioverrideset), @ref:[`ethContractAbiDefaultSet`](#ethcontractabidefaultset), and @ref:[`ethContractAbiPrintPretty`](#ethcontractabiprintpretty)
 
 **Example (ABI scraped from a URL):**
 
