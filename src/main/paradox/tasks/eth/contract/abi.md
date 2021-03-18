@@ -19,21 +19,73 @@ in which case you can interact with the contract through an ABI that describes t
 When you compile and deploy a smart contract with _sbt-ethereum_, the deployment address automatically becomes the
 _default contract ABI_ for the contract. When you wish to interact with a smart contract you have not yourself deployed (or if
 the compilation ABI is not the appropriate interface), you can set associate a default ABI with an address via
-@ref:[ethContractAbiDefaultImport](#ethContractAbiDefaultImport) or @ref:[ethContractAbiDefaultSet](#ethContractAbiDefaultSet).
+@ref:[`ethContractAbiDefaultImport`](#ethContractAbiDefaultImport) or @ref:[`ethContractAbiDefaultSet`](#ethContractAbiDefaultSet).
 
 Default ABI associations are store in the _sbt-ethereum_ "shoebox" and are persistent. Once set, they will remain unless they are
 overwritten or explicitly dropped.
 
-**Override Contract ABIs**
+**<a name="importing_contract_abis"></a>Importing Contract ABIs**
+
+Prior to _sbt-ethereum_ version 0.5.3, tasks that import contract ABIs (@ref:[`ethContractAbiImport`](#ethcontractabiimport) and @ref:[`ethContractAbiDefaultImport`](#ethcontractabidefaultimport))
+did so in only two ways:
+
+@@@ div {.tight}
+
+* Require users to @ref:[setup an _Etherscan_ API key](../../etherscan.md), and then download ABIs from there (for _Ethereum_ mainnet only)
+* Require users to directly paste the ABI, formatted with no embedded newlines (i.e. compact, not "pretty-printed")
+
+@@@
+
+Beginning in version 0.5.3, ABI importing is much more permitted. When prompted for `Contract ABI or Source: `, users
+can supply any of
+
+@@@ div {.tight}
+
+1. The ABI JSON directly (with no embedded newlines)
+2. A JSON object (with no embedded newlines) containing the ABI under the key `abi` or under the path `metadata/abi` (checked in that order)
+3. A URL or path-to-a-file whose contents are either (1) or (2)
+4. A URL or path-to-a-file whose data contains a unique nonempty, "strict" (meaning no unexpected elements) ABI that can be scraped from its contents (without or with unescaping HTML entities)
+
+@@@
+
+Together this means that usually you can import an ABI just by pasting in a URL, for example the URLs presented for verified contracts by [_Etherscan_](https://etherscan.io) or [_Blockscout_](blockscout.com),
+or URLs to standard contract metadata or _Truffle_ complation artifacts.
+
+@@@ note
+
+**Github URLs are treated specially**
+
+"Ordinary" URLs like https://github.com/CirclesUBI/circles-contracts/blob/master/build/contracts/Token.json are automatically converted
+to "raw" Github URLs like https://raw.githubusercontent.com/CirclesUBI/circles-contracts/master/build/contracts/Token.json.)
+
+@@@
+
+For chains other than _Ethereum_ mainnet (where _Etherscan_ could help), importing URLs used to be a significant annoyance. Now it should be
+much, much easier. Just paste a URL containing the ABI and go.
+
+@@@ warning
+
+**When importing URLs, be careful who you trust!**
+
+It would be possible for a web page to be crafted that _seems_ to contain one ABI, but includes some invisible something that renders
+that visible ABI invalid, while invisibly embedding an invald ABI.
+
+_sbt-ethereum_ always asks user to confirm ABIs upon import, but practically speaking, users are not going to verify ABIs by proofreading them and comparing with contract source.
+If you are importing an ABI from a URL, think about whether you trust the source (and avoid insecure protocols like unencrypted `http`.).
+
+@@@
+
+
+**Overriding Contract ABIs**
 
 Sometimes you may temporarily wish to use an ABI that should not be the default ABI for a contract. _ABI overrides_ define
-temporary associations of ABIs with contract addresses that only endure within a single _sbt-ethereum_ session.
+temporary associations of ABIs with contract addresses that only endure within a single _sbt-ethereum_ session. See e.g. @ref:[`ethContractAbiOverride`](#ethcontractabioverride) and @ref[`ethContractAbiOverrideDrop`](#ethcontractabioverridedrop).
 
 **Aliases**<a name="aliases"></a>
 
 When _sbt-ethereum_ commands expect an ABI, you can refer to it via the address of a contract for which that ABI is already
 the default. (You can also refer to ABIs by their hashes, which _sbt-ethereum_ computes after normalizing the JSON ABIs by
-removing unnecessary spaces, and sometimes exposes, see e.g. [ethContractAbiAliasList](#ethContractAbiAliasList).)
+removing unnecessary spaces, and sometimes exposes, see e.g. [`ethContractAbiAliasList`](#ethContractAbiAliasList).)
 
 However, it may be convenient to name ABIs you interact with frequently and may wish to reuse. So _sbt-ethereum_
 permits you to define _ABI aliases_. To refer to ABI aliases where _sbt-ethereum_ expects an ABI, prefix the alias name with `abi:`.
@@ -44,7 +96,7 @@ supported standard ABI alias is `abi:standard:erc20`.
 **Function Call Encoding and Decoding**
 
 A contracts functions and the form its calls will take (arguments, return values) are specified by contract ABIs.
-@ref:[ethContractAbiCallEncode](#ethContractAbiCallEncode) and @ref:[ethContractAbiCallDecode](#ethContractAbiCallDecode)
+@ref:[`ethContractAbiCallEncode`](#ethContractAbiCallEncode) and @ref:[`ethContractAbiCallDecode`](#ethContractAbiCallDecode)
 permit you to generate the hex bytes that a function call translates to, or to decode those bytes back into a function name
 and arguments.
 
@@ -218,7 +270,7 @@ Imports an ABI into the _sbt-ethereum_ shoebox database, and associates it as th
 
 ABIs can be imported manually, by direct copy-and-paste of JSON, or by providing a URL or the path to a file in which the ABI can be found.
 JSON ABIs are interpreted directly, or are extracted from within JSON objects under the key "abi", or under the path "metadata" / "abi.
-If the URL or file does not contain JSON directly, this task will offer to "scrape" the ABI from the source. If a unique, nonempty, strictly valid ABI can be scraped from the source, _sbt-ethereum_ will offer to import it.
+If the URL or file does not contain JSON directly, this task will offer to "scrape" the ABI from the source. If a unique, nonempty, strictly valid ABI can be scraped from the source, _sbt-ethereum_ will offer to import it. (See @ref:[Importing Contract ABIs](#importing_contract_abis)))
 
 For _Ethereum_ mainnet, ABIs can also be imported automatically from _Etherscan_, if @ref:[an _Etherscan_ API key has been set](../../etherscan.md).
 
@@ -226,6 +278,19 @@ When importing from _Etherscan_, _sbt_ethereum_ will now check to see if the con
 If the contract does appear to be a proxy, _sbt-ethereum_ will offer to download the API of the proxied contract, which is usually what you'll prefer. (Whichever ABI you choose,
 you can have access to alternative ABI by using @ref:[ethContractAbiImport](#ethcontractabiimport) _without supplying a contract address_. Paste in the alternative ABI when
 queried, then define an @ref:[ABI alias](#aliases). To use the alternative ABI, use @ref:[ethContractAbiOverrideSet](#ethcontractabioverrideset).)
+
+@@@
+
+@@@ warning
+
+**Directly pasted ABIs cannot include newlines!**
+
+If you are directly pasting an ABI into the console (rather than importing from _Etherscan_), it can't be a pretty-printed ABI with newlines. _sbt-ethereum_ expects you to "hit return" only after
+you have pasted the ABI text. If you have a pretty-printed ABI, condense it, for example using sites like [this](https://codebeautify.org/jsonminifier).
+
+@@@
+
+@@@ div { .keydesc }
 
 **Example (scraped from URL):**
 ```
@@ -282,15 +347,6 @@ Use this ABI? [y/n] y
 
 @@@
 
-@@@ warning
-
-**Directly pasted ABIs cannot include newlines!**
-
-If you are directly pasting an ABI into the console (rather than providing a URL or file path, or importing from _Etherscan_), it can't be a pretty-printed ABI with newlines. _sbt-ethereum_ expects you to "hit return" only after
-you have pasted the ABI text. If you have a pretty-printed ABI, condense it, for example using sites like [this](https://codebeautify.org/jsonminifier).
-
-@@@
-
 ### ethContractAbiDefaultSet
 
 @@@ div { .keydesc }
@@ -330,7 +386,7 @@ It imports (either via _Etherscan_ or by copy-and-paste) an ABI as the _default 
 If no address is supplied, it imports the ABI and then prompts your for an @ref:[ABI alias](#aliases), by which you can refer to the ABI.
 ABIs can be imported by direct copy-and-paste of JSON, or by providing the URL or the path to a file in which the ABI can be found.
 JSON ABIs are interpreted directly, or are extracted from within JSON objects under the key "abi", or under the path "metadata" / "abi.
-If the URL or file does not contain JSON directly, this task will offer to "scrape" the ABI from the source. If a unique, nonempty, strictly valid ABI can be scraped from the source, _sbt-ethereum_ will offer to import it.
+If the URL or file does not contain JSON directly, this task will offer to "scrape" the ABI from the source. If a unique, nonempty, strictly valid ABI can be scraped from the source, _sbt-ethereum_ will offer to import it. (See @ref:[Importing Contract ABIs](#importing_contract_abis)))
 
 Once you have a named ABI, use tasks like @ref:[`ethContractAbiOverrideSet`](#ethcontractabioverrideset), @ref:[`ethContractAbiDefaultSet`](#ethcontractabidefaultset), and @ref:[`ethContractAbiPrintPretty`](#ethcontractabiprintpretty)
 
@@ -370,6 +426,19 @@ Please enter an alias for this ABI: whoami
 [info] Refreshing caches.
 [success] Total time: 20 s, completed Mar 18, 2021, 1:16:31 AM
 ```
+
+@@@
+
+@@@ warning
+
+**Directly pasted ABIs cannot include newlines!**
+
+If you are directly pasting an ABI into the console (rather than providing a URL or file path, or importing from _Etherscan_), it can't be a pretty-printed ABI with newlines. _sbt-ethereum_ expects you to "hit return" only after
+you have pasted the ABI text. If you have a pretty-printed ABI, condense it, for example using sites like [this](https://codebeautify.org/jsonminifier).
+
+@@@
+
+@@@ div {.keydesc}
 
 **Example (directly pasted JSON ABI):**
 
@@ -465,15 +534,6 @@ Please enter an alias for this ABI: fortune
 [info] Refreshing caches.
 [success] Total time: 29 s, completed Mar 18, 2021, 1:14:07 AM
 ```
-
-@@@
-
-@@@ warning
-
-**Directly pasted ABIs cannot include newlines!**
-
-If you are directly pasting an ABI into the console (rather than importing from _Etherscan_), it can't be a pretty-printed ABI with newlines. _sbt-ethereum_ expects you to "hit return" only after
-you have pasted the ABI text. If you have a pretty-printed ABI, condense it, for example using sites like [this](https://codebeautify.org/jsonminifier).
 
 @@@
 
