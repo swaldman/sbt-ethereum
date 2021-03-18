@@ -3595,7 +3595,7 @@ object SbtEthereumPlugin extends AutoPlugin {
                     }
                   }
                   case None => {
-                    log.warn("No Etherscan API key has been set, so you will have to directly paste the ABI.")
+                    log.warn("No Etherscan API key has been set, so you will have to directly paste the JSON ABI, or a URL or path-to-a-file containing it.")
                     log.warn("Consider acquiring an API key from Etherscan, and setting it via 'etherscanApiKeySet'.")
                     None
                   }

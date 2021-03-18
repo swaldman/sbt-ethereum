@@ -216,16 +216,56 @@ for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-
 ```
 Imports an ABI into the _sbt-ethereum_ shoebox database, and associates it as the default ABI for the given address for the current [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) Chain ID.
 
-ABIs can be imported manually by cut-and-paste. They can also be imported automatically from _Etherscan_, if @ref:[an _Etherscan_ API key has been set](../../etherscan.md).
+ABIs can be imported manually, by direct copy-and-paste of JSON, or by providing a URL or the path to a file in which the ABI can be found.
+JSON ABIs are interpreted directly, or are extracted from within JSON objects under the key "abi", or under the path "metadata" / "abi.
+If the URL or file does not contain JSON directly, this task will offer to "scrape" the ABI from the source. If a unique, nonempty, strictly valid ABI can be scraped from the source, _sbt-ethereum_ will offer to import it.
+
+For _Ethereum_ mainnet, ABIs can also be imported automatically from _Etherscan_, if @ref:[an _Etherscan_ API key has been set](../../etherscan.md).
 
 When importing from _Etherscan_, _sbt_ethereum_ will now check to see if the contract appears to be an [EIP-1967 transparent proxy](https://eips.ethereum.org/EIPS/eip-1967).
 If the contract does appear to be a proxy, _sbt-ethereum_ will offer to download the API of the proxied contract, which is usually what you'll prefer. (Whichever ABI you choose,
 you can have access to alternative ABI by using @ref:[ethContractAbiImport](#ethcontractabiimport) _without supplying a contract address_. Paste in the alternative ABI when
 queried, then define an @ref:[ABI alias](#aliases). To use the alternative ABI, use @ref:[ethContractAbiOverrideSet](#ethcontractabioverrideset).)
 
-**Example:**
+**Example (scraped from URL):**
 ```
-> ethContractAbiImport AaveLendingPoolV2-Proxy
+> ethContractAbiDefaultImport 0xe599f637dfb705e56589951a5d777afdaf618b5b
+To import an ABI, you may provide the JSON ABI directly, or else a file path or URL from which the ABI can be downloaded.
+Contract ABI or Source: https://etherscan.io/address/0xe599f637dfb705e56589951a5d777afdaf618b5b#code
+[info] Attempting to interactively import a contract ABI.
+[info] Checking to see if you have provided a JSON array or object directly.
+[info] The provided text does not appear to be a JSON ABI.
+[info] Checking if the provided source exists as a File.
+[info] No file found. Checking if the provided source is interpretable as a URL.
+[info] Interpreted user-provided source as a URL. Attempting to fetch contents.
+We can attempt to SCRAPE a unique ABI from the text of the provided source.
+Be sure you trust 'https://etherscan.io/address/0xe599f637dfb705e56589951a5d777afdaf618b5b#code' to contain a reliable representation of the ABI.
+Scrape for the ABI? [y/n] y
+[info] We had to scrape, but we were able to recover a unique ABI from source 'https://etherscan.io/address/0xe599f637dfb705e56589951a5d777afdaf618b5b#code'!
+Ready to import the following ABI:
+[ {
+  "constant" : true,
+  "inputs" : [ ],
+  "name" : "whoAmI",
+  "outputs" : [ {
+    "name" : "me",
+    "type" : "address"
+  } ],
+  "payable" : false,
+  "stateMutability" : "view",
+  "type" : "function"
+} ]
+Do you wish to import this ABi? [y/n] y
+[info] A default ABI is now known for the contract at address 0xe599f637DFb705E56589951A5d777aFDaf618B5B
+Enter an optional alias for the address '0xe599f637DFb705E56589951A5d777aFDaf618B5B', now associated with the newly imported default ABI (or [return] for none): whoami
+[info] Alias 'whoami' now points to address '0xe599f637DFb705E56589951A5d777aFDaf618B5B' (for chain with ID 1).
+[info] Refreshing caches.
+[success] Total time: 24 s, completed Mar 18, 2021, 1:08:18 AM
+```
+
+**Example (automatic Etherscan import with transparent proxy detection):**
+```
+> ethContractAbiDefaultImport AaveLendingPoolV2-Proxy
 An Etherscan API key has been set. Would you like to try to import the ABI for this address from Etherscan? [y/n] y
 Checking to see if address '0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9' is an EIP-1967 transparent proxy.
 '0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9' appears to be an EIP-1967 transparent proxy for '0xC6845a5C768BF8D7681249f8927877Efda425baf'.
@@ -246,7 +286,7 @@ Use this ABI? [y/n] y
 
 **Directly pasted ABIs cannot include newlines!**
 
-If you are directly pasting an ABI into the console (rather than importing from _Etherscan_), it can't be a pretty-printed ABI with newlines. _sbt-ethereum_ expects you to "hit return" only after
+If you are directly pasting an ABI into the console (rather than providing a URL or file path, or importing from _Etherscan_), it can't be a pretty-printed ABI with newlines. _sbt-ethereum_ expects you to "hit return" only after
 you have pasted the ABI text. If you have a pretty-printed ABI, condense it, for example using sites like [this](https://codebeautify.org/jsonminifier).
 
 @@@
@@ -288,17 +328,142 @@ If an address is supplied, this is a shorthand for @ref:[`ethContractAbiDefaultI
 It imports (either via _Etherscan_ or by copy-and-paste) an ABI as the _default ABI_ associated with the given address.
 
 If no address is supplied, it imports the ABI and then prompts your for an @ref:[ABI alias](#aliases), by which you can refer to the ABI.
-Once you have a named ABI, use tasks like @ref:[`ethContractAbiOverrideSet`](#ethcontractabioverrideset), @ref:[`ethContractAbiDefaultSet`](#ethcontractabidefaultset), and @ref:[`ethContractAbiPrintPretty`](#ethcontractabiprintpretty) 
+ABIs can be imported by direct copy-and-paste of JSON, or by providing the URL or the path to a file in which the ABI can be found.
+JSON ABIs are interpreted directly, or are extracted from within JSON objects under the key "abi", or under the path "metadata" / "abi.
+If the URL or file does not contain JSON directly, this task will offer to "scrape" the ABI from the source. If a unique, nonempty, strictly valid ABI can be scraped from the source, _sbt-ethereum_ will offer to import it.
 
-**Example:**
+Once you have a named ABI, use tasks like @ref:[`ethContractAbiOverrideSet`](#ethcontractabioverrideset), @ref:[`ethContractAbiDefaultSet`](#ethcontractabidefaultset), and @ref:[`ethContractAbiPrintPretty`](#ethcontractabiprintpretty)
+
+**Example (ABI scraped from a URL):**
 
 ```
 > ethContractAbiImport
 You are importing an ABI unattached to any contract address. You must provide an alias, so you can refer to it later.
-Contract ABI: [{"outputs":[],"constant":false,"payable":false,"inputs":[{"name":"fortune","type":"string","internalType":"string"}],"name":"addFortune","stateMutability":"nonpayable","type":"function"},{"outputs":[{"name":"count","type":"uint256","internalType":"uint256"}],"constant":true,"payable":false,"inputs":[],"name":"countFortunes","stateMutability":"view","type":"function"},{"outputs":[{"name":"fortune","type":"string","internalType":"string"}],"constant":true,"payable":false,"inputs":[],"name":"drawFortune","stateMutability":"view","type":"function"},{"outputs":[{"name":"","type":"string","internalType":"string"}],"constant":true,"payable":false,"inputs":[{"name":"","type":"uint256","internalType":"uint256"}],"name":"fortunes","stateMutability":"view","type":"function"},{"inputs":[{"name":"author","type":"address","indexed":false,"internalType":"address"},{"name":"fortune","type":"string","indexed":false,"internalType":"string"}],"name":"FortuneAdded","anonymous":false,"type":"event"},{"payable":false,"inputs":[{"name":"initialFortune","type":"string","internalType":"string"}],"stateMutability":"nonpayable","type":"constructor"}]
+To import an ABI, you may provide the JSON ABI directly, or else a file path or URL from which the ABI can be downloaded.
+Contract ABI or Source: https://etherscan.io/address/0xe599f637dfb705e56589951a5d777afdaf618b5b#code
+[info] Attempting to interactively import a contract ABI.
+[info] Checking to see if you have provided a JSON array or object directly.
+[info] The provided text does not appear to be a JSON ABI.
+[info] Checking if the provided source exists as a File.
+[info] No file found. Checking if the provided source is interpretable as a URL.
+[info] Interpreted user-provided source as a URL. Attempting to fetch contents.
+We can attempt to SCRAPE a unique ABI from the text of the provided source.
+Be sure you trust 'https://etherscan.io/address/0xe599f637dfb705e56589951a5d777afdaf618b5b#code' to contain a reliable representation of the ABI.
+Scrape for the ABI? [y/n] y
+[info] We had to scrape, but we were able to recover a unique ABI from source 'https://etherscan.io/address/0xe599f637dfb705e56589951a5d777afdaf618b5b#code'!
+Ready to import the following ABI:
+[ {
+  "constant" : true,
+  "inputs" : [ ],
+  "name" : "whoAmI",
+  "outputs" : [ {
+    "name" : "me",
+    "type" : "address"
+  } ],
+  "payable" : false,
+  "stateMutability" : "view",
+  "type" : "function"
+} ]
+Do you wish to import this ABi? [y/n] y
+Please enter an alias for this ABI: whoami
+[info] The ABI has been successfully imported, with alias 'abi:whoami'.
+[info] Refreshing caches.
+[success] Total time: 20 s, completed Mar 18, 2021, 1:16:31 AM
+```
+
+**Example (directly pasted JSON ABI):**
+
+```
+> ethContractAbiImport
+You are importing an ABI unattached to any contract address. You must provide an alias, so you can refer to it later.
+To import an ABI, you may provide the JSON ABI directly, or else a file path or URL from which the ABI can be downloaded.
+Contract ABI or Source: [{"outputs":[],"constant":false,"payable":false,"inputs":[{"name":"fortune","type":"string","internalType":"string"}],"name":"addFortune","stateMutability":"nonpayable","type":"function"},{"outputs":[{"name":"count","type":"uint256","internalType":"uint256"}],"constant":true,"payable":false,"inputs":[],"name":"countFortunes","stateMutability":"view","type":"function"},{"outputs":[{"name":"fortune","type":"string","internalType":"string"}],"constant":true,"payable":false,"inputs":[],"name":"drawFortune","stateMutability":"view","type":"function"},{"outputs":[{"name":"","type":"string","internalType":"string"}],"constant":true,"payable":false,"inputs":[{"name":"","type":"uint256","internalType":"uint256"}],"name":"fortunes","stateMutability":"view","type":"function"},{"inputs":[{"name":"author","type":"address","indexed":false,"internalType":"address"},{"name":"fortune","type":"string","indexed":false,"internalType":"string"}],"name":"FortuneAdded","anonymous":false,"type":"event"},{"payable":false,"inputs":[{"name":"initialFortune","type":"string","internalType":"string"}],"stateMutability":"nonpayable","type":"constructor"}]
+[info] Attempting to interactively import a contract ABI.
+[info] Checking to see if you have provided a JSON array or object directly.
+[info] Found JSON array. Will attempt to interpret as ABI directly.
+Ready to import the following ABI:
+[ {
+  "outputs" : [ ],
+  "constant" : false,
+  "payable" : false,
+  "inputs" : [ {
+    "name" : "fortune",
+    "type" : "string",
+    "internalType" : "string"
+  } ],
+  "name" : "addFortune",
+  "stateMutability" : "nonpayable",
+  "type" : "function"
+}, {
+  "outputs" : [ {
+    "name" : "count",
+    "type" : "uint256",
+    "internalType" : "uint256"
+  } ],
+  "constant" : true,
+  "payable" : false,
+  "inputs" : [ ],
+  "name" : "countFortunes",
+  "stateMutability" : "view",
+  "type" : "function"
+}, {
+  "outputs" : [ {
+    "name" : "fortune",
+    "type" : "string",
+    "internalType" : "string"
+  } ],
+  "constant" : true,
+  "payable" : false,
+  "inputs" : [ ],
+  "name" : "drawFortune",
+  "stateMutability" : "view",
+  "type" : "function"
+}, {
+  "outputs" : [ {
+    "name" : "",
+    "type" : "string",
+    "internalType" : "string"
+  } ],
+  "constant" : true,
+  "payable" : false,
+  "inputs" : [ {
+    "name" : "",
+    "type" : "uint256",
+    "internalType" : "uint256"
+  } ],
+  "name" : "fortunes",
+  "stateMutability" : "view",
+  "type" : "function"
+}, {
+  "inputs" : [ {
+    "name" : "author",
+    "type" : "address",
+    "indexed" : false,
+    "internalType" : "address"
+  }, {
+    "name" : "fortune",
+    "type" : "string",
+    "indexed" : false,
+    "internalType" : "string"
+  } ],
+  "name" : "FortuneAdded",
+  "anonymous" : false,
+  "type" : "event"
+}, {
+  "payable" : false,
+  "inputs" : [ {
+    "name" : "initialFortune",
+    "type" : "string",
+    "internalType" : "string"
+  } ],
+  "stateMutability" : "nonpayable",
+  "type" : "constructor"
+} ]
+Do you wish to import this ABi? [y/n] y
 Please enter an alias for this ABI: fortune
 [info] The ABI has been successfully imported, with alias 'abi:fortune'.
-[success] Total time: 22 s, completed Feb 4, 2021, 8:54:09 PM
+[info] Refreshing caches.
+[success] Total time: 29 s, completed Mar 18, 2021, 1:14:07 AM
 ```
 
 @@@
