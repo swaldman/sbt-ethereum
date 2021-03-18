@@ -14,7 +14,7 @@ final object Rawifier {
   }
 
   // for now only github is supported
-  def rawify( mbUnraw : String ) : Option[String] = rawifyGithubUrl( mbUnraw )
+  def rawifyUrl( mbUnraw : String ) : Option[String] = rawifyGithubUrl( mbUnraw )
 
-  def rawifyIfApplicable( mbUnraw : String ) : String = rawify( mbUnraw ).getOrElse( mbUnraw )
+  def rawifyUrlIfApplicable( mbUnraw : String ) : String = rawifyUrl( mbUnraw ).getOrElse( mbUnraw )
 }

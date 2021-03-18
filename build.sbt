@@ -42,7 +42,8 @@ lazy val root = (project in file(".")).enablePlugins(ParadoxPlugin).settings (
     "com.mchange"          %  "c3p0"                  % "0.9.5.5",
     "com.h2database"       %  "h2"                    % "1.4.192",
     "ch.qos.logback"       %  "logback-classic"       % "1.1.7",
-    "com.google.code.gson" %  "gson"                  % "2.8.6" // yuk, but for ABI scraping (and only that) we need a parser lenient in the way GSON's is, and I can't make play-json / jackson
+    "com.google.code.gson" %  "gson"                  % "2.8.6",        // yuk, but for ABI scraping (and only that) we need a parser lenient in the way GSON's can be setup to be, and I can't make play-json / jackson
+    "org.unbescape"        % "unbescape"              % "1.1.6.RELEASE" // also for scraping ABIs from entity-encoded HTML
   ),
   sourceGenerators in Compile += generateBuildInfoSourceGeneratorTask,
   paradoxTheme := None,

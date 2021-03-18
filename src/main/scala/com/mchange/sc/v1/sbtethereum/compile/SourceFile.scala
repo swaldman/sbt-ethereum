@@ -1,7 +1,7 @@
 package com.mchange.sc.v1.sbtethereum.compile
 
 import com.mchange.sc.v1.sbtethereum._
-import util.Rawifier.rawifyIfApplicable
+import util.Rawifier.rawifyUrlIfApplicable
 
 import java.io.{BufferedInputStream, File}
 import java.net.URL
@@ -32,7 +32,7 @@ object SourceFile {
 
     def apply( url : java.net.URL ) : Location = {
       val spec = url.toExternalForm
-      Location.URL( new java.net.URL( rawifyIfApplicable( spec ) ) )
+      Location.URL( new java.net.URL( rawifyUrlIfApplicable( spec ) ) )
     }
 
     private val FileSeparator = System.getProperty("file.separator")
@@ -100,7 +100,7 @@ object SourceFile {
         Location.File( f.getParentFile ).resolveLocalKey( f.getName )
       }
       case _ if (key.indexOf(':') >= 0) => {
-        val spec = rawifyIfApplicable( key )
+        val spec = rawifyUrlIfApplicable( key )
         val ( parent, name ) = {
           val nameIndex = spec.lastIndexOf('/') + 1
           ( spec.substring(0, nameIndex), spec.substring( nameIndex ) )

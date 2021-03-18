@@ -3,8 +3,8 @@ package com.mchange.sc.v1.sbtethereum.util
 import com.mchange.sc.v1.sbtethereum.{nst, syncOut, AbiUnknownException, SbtEthereumPlugin, SbtEthereumException}
 import com.mchange.sc.v1.consuela.ethereum.{EthAddress, EthHash, jsonrpc}
 
-import Rawifier.rawify
-import InteractiveQuery.aborted
+import Rawifier.rawifyUrl
+import InteractiveQuery.{aborted,queryYN}
 
 import play.api.libs.json._
 
@@ -178,13 +178,29 @@ private [sbtethereum] object Abi {
   // unused for now
   private [this] def fromUnknownString( s : String ) = fromJsonText( s ) orElse fromURL(s) orElse fromFile(s) orElse Failable.fail( s"Could not interpret as JSON text or as a URL or File pointing to JSON text." )
 
-  def interactImportContractAbi( log : sbt.Logger, is : sbt.InteractionService ) : Failable[jsonrpc.Abi] = syncOut {
-    println("To import an ABI, you may provide the JSON ABI directly, or a file path or URL from which the ABI can be downloaded.")
-    val source = is.readLine("Contract ABI or Source: ", mask = false).getOrElse( aborted( "ABI import aborted by user. No ABI or source file / url provided." ) )
+  def interactImportVerifyContractAbi( log : sbt.Logger, is : sbt.InteractionService ) : Failable[jsonrpc.Abi] = syncOut {
+    for {
+      abi <- interactImportContractAbi( log, is )
+    }
+    yield {
+      println("Ready to import the following ABI:")
+      println( Json.prettyPrint( abi.json ) )
+      val verify = queryYN( is, "Do you wish to import this ABi? [y/n] " )
+      if (!verify) aborted("User aborted ABI import.")
+      else abi
+    }
+  }
+
+  // should hold the System.out lock, called only from interactImportVerifyContractAbi(...) which does
+  private def interactImportContractAbi( log : sbt.Logger, is : sbt.InteractionService ) : Failable[jsonrpc.Abi] = Failable.flatCreate {
+    println("To import an ABI, you may provide the JSON ABI directly, or else a file path or URL from which the ABI can be downloaded.")
+    val source = is.readLine("Contract ABI or Source: ", mask = false).getOrElse( "" ).trim
+
+    if (source.isEmpty) aborted( "ABI import aborted by user. No ABI or source file / url provided." )
 
     log.info("Attempting to interactively import a contract ABI.")
 
-    def verboseFromJsValue( jsv : JsValue ) : Failable[jsonrpc.Abi] = Failable.flatCreate {
+    def verboseFromJsValue( jsv : JsValue ) : Failable[jsonrpc.Abi] = {
       jsv match {
         case jsa : JsArray => {
           log.info("Found JSON array. Will attempt to interpret as ABI directly.")
@@ -204,6 +220,7 @@ private [sbtethereum] object Abi {
       }
     }
 
+    log.info("Checking to see if you have provided a JSON array or object directly.")
     val f_jsObjectOrArray : Failable[JsValue] = Failable {
       Json.parse( source ) match {
         case jsa : JsArray  => jsa
@@ -217,6 +234,8 @@ private [sbtethereum] object Abi {
         verboseFromJsValue( jsv )
       }
       case Failed( _ ) => {
+        log.info("The provided text does not appear to be a JSON ABI.")
+
         val f_bytes : Failable[Array[Byte]] = Failable.flatCreate {
           log.info("Checking if the provided source exists as a File.")
           val srcFile = new File( source )
@@ -243,7 +262,7 @@ private [sbtethereum] object Abi {
             }
 
             val mbRawBytes = {
-              rawify(source).map { rawified =>
+              rawifyUrl(source).map { rawified =>
                 log.info( s"'${source}' was reinterpreted into raw URL '${rawified}. Trying that, will retry provided URL if necessary." )
                 tryAsUrl(rawified)
               }
@@ -268,24 +287,50 @@ private [sbtethereum] object Abi {
                 out
               }
               case Failed(_) => {
-                log.warn( "Attempting to SCRAPE a unique ABI from the text of the source!" )
-                log.warn( s"Be sure you trust '${source}' to contain a reliable representation of the ABI." )
+                def scrapeFromText( text : String ) : Option[Failable[jsonrpc.Abi]] = {
+
+                  val candidateAbis = scrapeForDistinctNonemptyStrictAbis( text )
+                  candidateAbis.size match {
+                    case 0 => {
+                      None
+                    }
+                    case 1 => {
+                      log.info(s"We had to scrape, but we were able to recover a unique ABI from source '${source}'!")
+                      Some( Failable.succeed( candidateAbis.head ) )
+                    }
+                    case n => {
+                      val msg = s"While scraping '${source}', found ${n} elements that could be interpreted as nonempty ABIs. You'll have to copy and paste in the correct ABI."
+                      log.error(msg)
+                      candidateAbis.foreach { abi =>
+                        log.debug( s"Scraped ABI: ${abi}" )
+                      }
+                      Some( Failable.fail( msg, false ) )
+                    }
+                  }
+                }
+
+                println( "We can attempt to SCRAPE a unique ABI from the text of the provided source." )
+                println( s"Be sure you trust '${source}' to contain a reliable representation of the ABI." )
+
+                val approveScrape = queryYN( is, "Scrape for the ABI? [y/n] " )
+
+                if (! approveScrape ) aborted( s"User aborted scrape of ABI from source '${source}." )
+
                 val text = new String( bytes, Codec.UTF8.charSet ) // we presume UTF8-encoding, best we can do for now
-                val candidateAbis = scrapeForDistinctNonemptyAbis( text )
-                candidateAbis.size match {
-                  case 0 => {
-                    val msg = s"No ABIs could be scraped from provided ABI source '${source}'."
-                    log.error(msg)
-                    Failable.fail( msg, false )
-                  }
-                  case 1 => {
-                    log.info(s"We had to scrape, but we were able to recover a unique ABI from source '${source}'!")
-                    Failable.succeed( candidateAbis.head )
-                  }
-                  case n => {
-                    val msg = s"While scraping '${source}', found multiple elements that could be interpreted as nonempty ABIs. You'll have to copy and paste in the correct ABI."
-                    log.error(msg)
-                    Failable.fail( msg, false )
+                scrapeFromText( text ) match {
+                  case Some( failable ) => failable
+                  case None => { // No ABI found
+                    log.info( s"No ABI was discovered in the raw bytes downloaded from '${source}'.")
+                    log.info(  "Retrying, after unescaping as HTML." )
+                    val unescaped = unescapeAsHtml( text )
+                    scrapeFromText( unescaped ) match {
+                      case Some( failable ) => failable
+                      case None             => {
+                        val msg = s"Found no fully-recognizable, nonempty ABIs in raw or unescaped text of source '${source}'. Giving up."
+                        log.error(msg)
+                        Failable.fail( msg, false )
+                      }
+                    }
                   }
                 }
               }
@@ -297,12 +342,19 @@ private [sbtethereum] object Abi {
     }
   }
 
-  private def scrapeForDistinctNonemptyAbis( text : String ) : immutable.Set[jsonrpc.Abi] = {
+  private def unescapeAsHtml( escaped : String ) : String = org.unbescape.html.HtmlEscape.unescapeHtml( escaped )
+
+  private def scrapeForDistinctNonemptyStrictAbis( text : String ) : immutable.Set[jsonrpc.Abi] = {
     val candidateIndices = text.zipWithIndex.collect { case ( c, i ) if (c == '[') => i }
-    candidateIndices.map( i => scrapeNonemptyAbiAt( text, i ) ).collect { case Succeeded( abi ) => abi }.toSet
+    candidateIndices.map( i => scrapeNonemptyStrictAbiAt( text, i ) ).collect { case Succeeded( abi ) => abi }.toSet
   }
 
-  private def scrapeNonemptyAbiAt( text : String, index : Int ) : Failable[jsonrpc.Abi] = scrapeAbiAt( text, index ).flatMap( abi => if (abi.json.value.length == 0 ) Failable.fail( "Empty ABI." ) else Failable.succeed( abi ) )
+  private def scrapeNonemptyStrictAbiAt( text : String, index : Int ) : Failable[jsonrpc.Abi] = {
+    scrapeAbiAt( text, index ).flatMap( abi =>
+      if (abi.json.value.length == 0 ) Failable.fail( "Empty ABI." )
+      else if ( abi.unexpected.length > 0 ) Failable.fail( "Nonstrict ABI. Contains unexpected elements." )
+      else Failable.succeed( abi ) )
+  }
 
   private def scrapeAbiAt( text : String, index : Int ) : Failable[jsonrpc.Abi] = scrapeJsonElementAt( text, index ).map( _.as[jsonrpc.Abi] )
 

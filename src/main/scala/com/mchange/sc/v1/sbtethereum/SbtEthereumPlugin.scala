@@ -3461,7 +3461,8 @@ object SbtEthereumPlugin extends AutoPlugin {
           syncOut {
             println( "You are importing an ABI unattached to any contract address. You must provide an alias, so you can refer to it later.")
           }
-          val abi = parseAbi( assertReadLine( is, "Contract ABI: ", mask = false ) )
+          // val abi = parseAbi( assertReadLine( is, "Contract ABI: ", mask = false ) )
+          val abi = interactImportVerifyContractAbi( log, is ).assert
           val rawAlias = assertReadLine( is, s"Please enter an alias for this ABI: ", mask = false ).trim
           val alias = if (rawAlias.startsWith("abi:")) rawAlias.substring(4) else rawAlias
           val abiHash = activeShoebox.database.setUnattachedImportedContractAbi( abi ).assert
@@ -3610,7 +3611,7 @@ object SbtEthereumPlugin extends AutoPlugin {
         }
         mbEtherscanAbi match {
           case Some( etherscanAbi ) => etherscanAbi
-          case None                 => parseAbi( assertReadLine( is, "Contract ABI: ", mask = false ) )
+          case None                 => interactImportVerifyContractAbi( log, is ).assert /* parseAbi( assertReadLine( is, "Contract ABI: ", mask = false ) ) */
 
         }
       }
@@ -7368,7 +7369,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     util.Formatting.displayTransactionSubmissionRequest( log, chainId, Mutables.abiOverridesForChain( chainId ), priceFeed, currencyCode, txn, proposedSender )  // syncOut internal
   }
 
-  private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
+  // private def parseAbi( abiString : String ) = Json.parse( abiString ).as[Abi]
 
   private [sbtethereum]
   def interactiveSetAliasForAddress( chainId : Int )( state : State, log : sbt.Logger, is : sbt.InteractionService, describedAddress : String, address : EthAddress ) : Unit = {
