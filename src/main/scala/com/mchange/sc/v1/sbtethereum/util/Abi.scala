@@ -15,8 +15,11 @@ import com.mchange.sc.v1.log.MLevel._
 
 import com.mchange.sc.v2.io._
 
-import java.io.File
+import java.io.{File,StringReader}
 import java.net.URL
+
+import scala.collection._
+import scala.io.Codec
 
 import Formatting._
 
@@ -62,7 +65,7 @@ private [sbtethereum] object Abi {
 
   def abiTextHash( abi : jsonrpc.Abi ) : ( String, EthHash ) = {
     val abiText = Json.stringify( Json.toJson( abi.withStandardSort ) ) // Note the use of withStandardSort!!!
-    val abiHash = EthHash.hash( abiText.getBytes( scala.io.Codec.UTF8.charSet ) )
+    val abiHash = EthHash.hash( abiText.getBytes( Codec.UTF8.charSet ) )
     ( abiText, abiHash )
   }
 
@@ -252,13 +255,70 @@ private [sbtethereum] object Abi {
           }
         }
         f_bytes match {
+
+          // once we're here, we know that source was a legit file or URL,
+          // shouldn't be a literal ABI
+          // so we'll risk including it in log strings
+
           case Succeeded( bytes ) => {
             val f_unscraped = Failable( Json.parse( bytes ) ).flatMap( verboseFromJsValue )
-            f_unscraped
+            f_unscraped match {
+              case out @ Succeeded( abi ) => {
+                log.info( s"The data discovered at source '${source}' was successfully interpreted as an ABI.")
+                out
+              }
+              case Failed(_) => {
+                log.warn( "Attempting to SCRAPE a unique ABI from the text of the source!" )
+                log.warn( s"Be sure you trust '${source}' to contain a reliable representation of the ABI." )
+                val text = new String( bytes, Codec.UTF8.charSet ) // we presume UTF8-encoding, best we can do for now
+                val candidateAbis = scrapeForDistinctNonemptyAbis( text )
+                candidateAbis.size match {
+                  case 0 => {
+                    val msg = s"No ABIs could be scraped from provided ABI source '${source}'."
+                    log.error(msg)
+                    Failable.fail( msg, false )
+                  }
+                  case 1 => {
+                    log.info(s"We had to scrape, but we were able to recover a unique ABI from source '${source}'!")
+                    Failable.succeed( candidateAbis.head )
+                  }
+                  case n => {
+                    val msg = s"While scraping '${source}', found multiple elements that could be interpreted as nonempty ABIs. You'll have to copy and paste in the correct ABI."
+                    log.error(msg)
+                    Failable.fail( msg, false )
+                  }
+                }
+              }
+            }
           }
           case failed @ Failed(_) => Failable.refail(failed)
         }
       }
     }
+  }
+
+  private def scrapeForDistinctNonemptyAbis( text : String ) : immutable.Set[jsonrpc.Abi] = {
+    val candidateIndices = text.zipWithIndex.collect { case ( c, i ) if (c == '[') => i }
+    candidateIndices.map( i => scrapeNonemptyAbiAt( text, i ) ).collect { case Succeeded( abi ) => abi }.toSet
+  }
+
+  private def scrapeNonemptyAbiAt( text : String, index : Int ) : Failable[jsonrpc.Abi] = scrapeAbiAt( text, index ).flatMap( abi => if (abi.json.value.length == 0 ) Failable.fail( "Empty ABI." ) else Failable.succeed( abi ) )
+
+  private def scrapeAbiAt( text : String, index : Int ) : Failable[jsonrpc.Abi] = scrapeJsonElementAt( text, index ).map( _.as[jsonrpc.Abi] )
+
+  // this is horrible, but i haven't been able to make play-json / jackson be tolerant of non-json crap after initial JSON,
+  // and i need that to scrape. i want to scrape.
+  private def scrapeJsonElementAt( text : String, index : Int ) : Failable[JsValue] = Failable {
+    import com.google.gson.JsonParser
+    import com.google.gson.stream.JsonReader
+
+    val readyText    = text.substring(index)
+    val stringReader = new StringReader( readyText )
+    val jsonReader   = new JsonReader( stringReader )
+    jsonReader.setLenient(true)
+    val scraped = JsonParser.parseReader( jsonReader )
+
+    // back to play-json now!
+    Json.parse( scraped.toString )
   }
 }
