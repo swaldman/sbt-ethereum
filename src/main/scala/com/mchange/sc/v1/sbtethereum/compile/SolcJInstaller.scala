@@ -45,7 +45,7 @@ object SolcJInstaller {
 
   val SupportedVersions = SolcJSupportedVersions ++ OtherSolcjCompatibleSupportedVersion.keySet
 
-  val DefaultSolcJVersion = "0.7.6"
+  val DefaultSolcJVersion = "0.8.1"
 
   private def mbVersionUrl( version : String ) : Option[URL] = {
     if ( SolcJSupportedVersions( version ) ) {
