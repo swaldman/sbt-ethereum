@@ -46,5 +46,11 @@ object SemanticVersion {
 
 final case class SemanticVersion( major : Int, minor : Int, patch : Int ) {
   def versionString = s"$major.$minor.$patch"
+
+  def < ( other : SemanticVersion ) = SemanticVersion.DefaultOrdering.lt( this, other )
+  def > ( other : SemanticVersion ) = SemanticVersion.DefaultOrdering.gt( this, other )
+
+  def <= ( other : SemanticVersion ) = SemanticVersion.DefaultOrdering.lteq( this, other )
+  def >= ( other : SemanticVersion ) = SemanticVersion.DefaultOrdering.gteq( this, other )
 }
 

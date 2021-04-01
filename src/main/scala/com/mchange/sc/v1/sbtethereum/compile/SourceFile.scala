@@ -12,8 +12,16 @@ import com.mchange.sc.v3.failable._
 import scala.util.matching.Regex
 
 object SourceFile {
-  val AbsoluteFileRegex: Regex = """^(?:/|\\).*|[A-Z]\:\\.*""".r
-  val PragmaSolidityRegex: Regex = """(?i)pragma\s+solidity\s+\^([^\s\;]+)\s*\;""".r
+  val AbsoluteFileRegex          : Regex = """^(?:/|\\).*|[A-Z]\:\\.*""".r
+  val AnyPragmaSolidityRegex     : Regex = """(?i)pragma\s+solidity\s+[\<\>\=\~\^]*([^\s\;\<]+).*\;""".r
+  val CaretPragmaSolidityRegex   : Regex = """(?i)pragma\s+solidity\s+\^([^\s\;]+)\s*\;""".r
+  val SpdxLicenseIdentifierRegex : Regex = """//\s*SPDX-License-Identifier\s*:\s*(\S+)[\s;]*""".r
+
+  val SemanticVersionZero = SemanticVersion("0.0.0")
+
+  val CondensePragmasForVersionsBelow = SemanticVersionZero
+
+  def condensePragmasDisabled : Boolean = CondensePragmasForVersionsBelow == SemanticVersionZero
 
   final object Location {
     def apply( parent : Location, spec : String = "" ) : Location = {
@@ -135,19 +143,19 @@ object SourceFile {
 }
 
 case class SourceFile( immediateParent : SourceFile.Location, rawText : String, lastModified : Long ) {
-  import SourceFile.PragmaSolidityRegex
+  import SourceFile._
 
-  private def exciseAndPrepend( semanticVersion : SemanticVersion ) : String = {
+  private def caretPragmaExciseAndPrepend( semanticVersion : SemanticVersion ) : String = {
     val pragma = s"pragma solidity ^${ semanticVersion.versionString };${SEP}${SEP}"
-    pragma + PragmaSolidityRegex.replaceAllIn( rawText, _ => "" ).trim
+    pragma + CaretPragmaSolidityRegex.replaceAllIn( rawText, _ => "" ).trim
   }
 
-  lazy val pragmaResolvedText : String = {
-    val matches = PragmaSolidityRegex.findAllMatchIn( rawText ).toVector
+  private lazy val caretPragmaCompatibleVersion : Option[SemanticVersion] = {
+    val matches = CaretPragmaSolidityRegex.findAllMatchIn( rawText ).toVector
     matches.length match {
-      case 0 => rawText
+      case 0 => None
 
-      case 1 => exciseAndPrepend( SemanticVersion( matches.head.group(1) ) )
+      case 1 => Some( SemanticVersion( matches.head.group(1) ) )
 
       case n => {
         val versions = matches.map( m => SemanticVersion( m.group(1) ) )
@@ -158,8 +166,40 @@ case class SourceFile( immediateParent : SourceFile.Location, rawText : String, 
 
           case None => throw new IncompatibleSolidityVersionsException( versions )
         }
-        exciseAndPrepend( compatibleVersion )
+        Some( compatibleVersion )
       }
+    }
+  }
+
+  // currently unused because pragma condensation is disabled
+  private def latestRequiredSolidityVersion : Option[SemanticVersion] = {
+    val allVersions = AnyPragmaSolidityRegex.findAllMatchIn( rawText ).toSeq.map( m => SemanticVersion( m.group(1) ) )
+    immutable.SortedSet( allVersions : _* ).lastOption
+  }
+
+  // currently a no-op because pragma condensation is disabled
+  private lazy val pragmaResolvedText : String = {
+    if ( !condensePragmasDisabled && latestRequiredSolidityVersion.map( _ < CondensePragmasForVersionsBelow ).getOrElse( false ) ) { // if we found no pragma versions, no point in condensing, so false
+      caretPragmaCompatibleVersion.fold( rawText )( sv => caretPragmaExciseAndPrepend(sv) )
+    }
+    else {
+      rawText
+    }
+  }
+
+  lazy val resolvedText = {
+    val licenseIdentifiers = SpdxLicenseIdentifierRegex.findAllMatchIn( pragmaResolvedText ).map( _.group(1) ).toSet
+
+    // println( "licenseIdentifiers: " + licenseIdentifiers.mkString(", ") )
+
+    def mbp( parens : Boolean, id : String ) = if (parens) s"(${id})" else id
+
+    def identifierHeader( parens : Boolean ) = "// SPDX-License-Identifier: " + licenseIdentifiers.map( id => mbp( parens, id ) ).mkString(" AND ") + s"${SEP}${SEP}"
+
+    licenseIdentifiers.size match {
+      case 0 => pragmaResolvedText
+      case 1 => identifierHeader(false) + SpdxLicenseIdentifierRegex.replaceAllIn( pragmaResolvedText, _ => "" )
+      case _ => identifierHeader(true)  + SpdxLicenseIdentifierRegex.replaceAllIn( pragmaResolvedText, _ => "" )
     }
   }
 }

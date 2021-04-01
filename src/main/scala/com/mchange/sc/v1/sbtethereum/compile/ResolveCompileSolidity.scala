@@ -176,7 +176,7 @@ object ResolveCompileSolidity {
               | *    '${file.getPath}'
               | */
               |
-              |""".stripMargin + sourceFile.pragmaResolvedText
+              |""".stripMargin + sourceFile.resolvedText
         }
         Files.write( debugDestFile.toPath, combinedSource.getBytes( Codec.UTF8.charSet ) )
         log.info( s"Compiling '${ file.getName }'. (Debug source: '${ debugDestFile.getPath }')" )

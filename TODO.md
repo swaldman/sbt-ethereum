@@ -2,7 +2,9 @@
 
 Quick fixes
 
--- let ethUtilHashKeccak256 accept utf8 strings
+-- Let stub utiity classes deploy contracts (especially to simplify testing)
+-- Support Panic(uint256) output from asserts
+-- Convenience constructor in stub.Payment.ofWei(...) accepting BigInt (or maybe better yet, a stub.Denominations class auto-imported?)
 
 
 DB schema updates
