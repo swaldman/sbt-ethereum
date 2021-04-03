@@ -6563,6 +6563,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     require( config == Compile || config == Test, "For now we expect to load compilations for deployment selection or stub generation only in Compile and Test configurations." )
 
     val log = streams.value.log
+    val someLog = Some(log)
 
     val dummy = (compileSolidity in config).value // ensure compilation has completed
 
@@ -6603,10 +6604,25 @@ object SbtEthereumPlugin extends AutoPlugin {
       }
       val rawNewOverlaps = next.keySet.intersect( addTo.keySet )
       val realNewOverlaps = rawNewOverlaps.foldLeft( immutable.Set.empty[String] ){ ( cur, key ) =>
-        val origCodeBcas = BaseCodeAndSuffix( addTo( key ).code )
-        val nextCodeBcas = BaseCodeAndSuffix( next( key ).code )
+        val origCodeBcas = BaseCodeAndSuffix( addTo( key ).code, someLog )
+        val nextCodeBcas = BaseCodeAndSuffix( next( key ).code, someLog )
 
-        if ( origCodeBcas.baseCodeHex != nextCodeBcas.baseCodeHex ) cur + key else cur
+        if ( origCodeBcas.baseCodeHex != nextCodeBcas.baseCodeHex ) {
+          /*
+          syncOut {
+            println( s"origCodeBcas.baseCodeHex (${origCodeBcas.baseCodeHex.length} bytes):\n${origCodeBcas.baseCodeHex}" )
+            println( s"nextCodeBcas.baseCodeHex (${nextCodeBcas.baseCodeHex.length} bytes):\n${nextCodeBcas.baseCodeHex}" )
+            print( "diff:\n" )
+            (0 until origCodeBcas.baseCodeHex.length).foreach { i =>
+              if (origCodeBcas.baseCodeHex(i) == nextCodeBcas.baseCodeHex(i)) print("*") else print("[" + origCodeBcas.baseCodeHex(i) + "/" + nextCodeBcas.baseCodeHex(i) + "]")
+            }
+          }
+          */ 
+          cur + key
+        }
+        else {
+          cur
+        }
       }
       ( addAllKeepShorterSource( addTo, next ), overlaps ++ realNewOverlaps )
     }
