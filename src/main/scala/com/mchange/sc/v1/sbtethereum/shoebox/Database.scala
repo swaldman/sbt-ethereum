@@ -294,6 +294,8 @@ class Database( parent : Shoebox ) extends PermissionsOverrideSource with AutoRe
           mbProjectName     = mbProjectName
         )
 
+        // println( s"newCompilation -- fullCodeHash: ${newCompilation.fullCodeHash}, baseCodeHash: ${newCompilation.baseCodeHash}" );
+
         val mbKnownCompilation = Table.KnownCompilations.select( conn, bcas.fullCodeHash )
 
         mbKnownCompilation match {
@@ -758,26 +760,30 @@ class Database( parent : Shoebox ) extends PermissionsOverrideSource with AutoRe
       // ensure the h2 database is bound to localhost, not some visible interface
       System.setProperty("h2.bindAddress", "127.0.0.1")
 
-      for {
-        dir     <- Directory
-        jdbcUrl <- JdbcUrl
-      } yield {
-        val ds = new ComboPooledDataSource
-        try {
-          ds.setDriverClass( "org.h2.Driver" )
-          ds.setJdbcUrl( jdbcUrl )
-          ds.setTestConnectionOnCheckout( true )
-          if ( ensureSchema ) Schema_h2.ensureSchema( Database.this, ds )
-          ds
-        } catch {
-          case t : Throwable =>
-            try ds.close() catch suppressInto(t)
-            throw t
-        }
-        finally {
-          dir.listFiles.filter( _.isFile ).foreach( setUserOnlyFilePermissions )
+      val out = {
+        for {
+          dir     <- Directory
+          jdbcUrl <- JdbcUrl
+        } yield {
+          val ds = new ComboPooledDataSource
+          try {
+            ds.setDriverClass( "org.h2.Driver" )
+            ds.setJdbcUrl( jdbcUrl )
+            ds.setTestConnectionOnCheckout( true )
+            if ( ensureSchema ) Schema_h2.ensureSchema( Database.this, ds )
+            ds
+          } catch {
+            case t : Throwable =>
+              try ds.close() catch suppressInto(t)
+              throw t
+          }
+          finally {
+            dir.listFiles.filter( _.isFile ).foreach( setUserOnlyFilePermissions )
+          }
         }
       }
+      
+      out.xwarn("Failure while initializing DataSource" + (if (ensureSchema) " (with schema check/migration):" else ":"))
     }
 
     private def suppressInto( original : Throwable ) : PartialFunction[Throwable,Unit] = {

@@ -39,7 +39,7 @@ private [sbtethereum] object Schema_h2 {
 
   // Increment this value and add a migration to migrateUpOne(...)
   // to modify the schema
-  val SchemaVersion = 7
+  val SchemaVersion = 8
 
   // should be executed in a transaction, although it looks like in h2 DDL commands autocommit anyway :(
 
@@ -238,6 +238,20 @@ private [sbtethereum] object Schema_h2 {
           stmt.executeUpdate( "ALTER TABLE known_compilations ADD COLUMN project_name VARCHAR(256) AFTER ast" )
         }
       }
+      case 7 => {
+        /* Schema version 8 changes "known_compilations" primary key to a compound primary key, full_code_hash and base_code_hash, to accommodate different parses of base vs full code
+         */
+        borrow( conn.createStatement() ) { stmt =>
+          stmt.executeUpdate("ALTER TABLE known_compilations RENAME TO known_compilations_v7")
+          stmt.executeUpdate( Table.KnownCompilations.V8.CreateSql )
+          stmt.executeUpdate(
+            s"""|INSERT INTO known_compilations (full_code_hash, base_code_hash, code_suffix, name, source, language, language_version, compiler_version, compiler_options, abi_hash, user_doc, developer_doc, metadata, ast, project_name)
+                |SELECT full_code_hash, base_code_hash, code_suffix, name, source, language, language_version, compiler_version, compiler_options, abi_hash, user_doc, developer_doc, metadata, ast, project_name
+                |FROM known_compilations_v7""".stripMargin
+          )
+          stmt.executeUpdate("DROP TABLE known_compilations_v7")
+        }
+      }
       case unknown => throw new SchemaVersionException( s"Cannot migrate from unknown schema version $unknown." )
     }
     versionFrom + 1
@@ -245,8 +259,21 @@ private [sbtethereum] object Schema_h2 {
 
   @tailrec
   private def migrateUpTo( conn : Connection, versionFrom : Int, versionTo : Int ) : Unit = {
-    val next = migrateUpOne( conn, versionFrom )
-    if ( next != versionTo ) migrateUpTo( conn, next, versionFrom )
+    DEBUG.log(s"Upgrading from schema version ${versionFrom} to schema version ${versionFrom+1}.");
+    val next = {
+      try {
+        migrateUpOne( conn, versionFrom )
+      }
+      catch {
+        case t : Throwable => {
+          WARNING.log("A problem occurred while upgrading from schema version ${versionFrom} to schema version ${versionFrom+1}.", t)
+          throw t
+        }
+      }
+    }
+    DEBUG.log(s"Upgrade from schema version ${versionFrom} to schema version ${versionFrom+1} successfully completed.");
+
+    if ( next != versionTo ) migrateUpTo( conn, next, versionTo )
   }
 
   private def migrateSchema( schemaOwner : Database, conn : Connection, versionFrom : Int, versionTo : Int ) : Unit = {
@@ -443,7 +470,31 @@ private [sbtethereum] object Schema_h2 {
              |)""".stripMargin // we delete known_compilations when culling undeployed compilations
         }
       }
-      val CreateSql = V7.CreateSql
+      final object V8 {
+        val CreateSql: String = {
+          """|CREATE TABLE IF NOT EXISTS known_compilations (
+             |   full_code_hash    CHAR(128),
+             |   base_code_hash    CHAR(128),
+             |   code_suffix       CLOB NOT NULL,
+             |   name              VARCHAR(128),
+             |   source            CLOB,
+             |   language          VARCHAR(64),
+             |   language_version  VARCHAR(64),
+             |   compiler_version  VARCHAR(64),
+             |   compiler_options  VARCHAR(256),
+             |   abi_hash          CHAR(128),
+             |   user_doc          CLOB,
+             |   developer_doc     CLOB,
+             |   metadata          CLOB,
+             |   ast               CLOB,
+             |   project_name      VARCHAR(256),
+             |   PRIMARY KEY ( full_code_hash, base_code_hash ),
+             |   FOREIGN KEY ( base_code_hash ) REFERENCES known_code ( base_code_hash ) ON DELETE CASCADE,
+             |   FOREIGN KEY ( abi_hash )       REFERENCES normalized_abis ( abi_hash )
+             |)""".stripMargin // we delete known_compilations when culling undeployed compilations
+        }
+      }
+      val CreateSql = V8.CreateSql
 
       val SelectSql: String = {
         """|SELECT
