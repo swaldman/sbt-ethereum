@@ -92,7 +92,7 @@ object SbtEthereumPlugin extends AutoPlugin {
   // still, generally we should try to log through sbt loggers
   private implicit val logger = mlogger( this )
 
-  final case class TimestampedAbi( abi : Abi, timestamp : Option[Long] )
+  final case class TimestampedAbi( abi : Abi, timestamp : Option[Long], mbBytecode : Option[String] )
 
   private val MainScheduler = Scheduler.Default
 
@@ -4922,7 +4922,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       def doSpawn( deploymentAlias : String, codeHex : String, inputs : immutable.Seq[String], valueInWei : Unsigned256, abi : Abi ) : ( String, Either[EthHash,Client.TransactionReceipt] ) = {
 
-        val inputsBytes = ethabi.constructorCallData( inputs, abi ).get // asserts that we've found a meaningful ABI, and can parse the constructor inputs
+        val inputsBytes = ethabi.constructorCallDataFromStringArgs( inputs, abi ).get // asserts that we've found a meaningful ABI, and can parse the constructor inputs
         val inputsHex = inputsBytes.hex
         val dataHex = codeHex ++ inputsHex
 
@@ -6310,7 +6310,7 @@ object SbtEthereumPlugin extends AutoPlugin {
     }
     val allMbTsAbis : immutable.Map[String,Option[TimestampedAbi]] = {
       val sureNamedAbis = namedAbis map { case ( name, abi ) => ( name, Some( abi ) ) }
-      val mbCompilationAbis = currentCompilations map { case ( name, contract ) => ( name,  contract.info.mbAbi.map( abi => TimestampedAbi( abi, contract.info.sourceTimestamp ) ) ) }
+      val mbCompilationAbis = currentCompilations map { case ( name, contract ) => ( name,  contract.info.mbAbi.map( abi => TimestampedAbi( abi, contract.info.sourceTimestamp, if (contract.code.nonEmpty) Some(contract.code) else None ) ) ) }
       sureNamedAbis ++ mbCompilationAbis
     }
 
@@ -6349,7 +6349,7 @@ object SbtEthereumPlugin extends AutoPlugin {
               stubsDir.mkdirs()
               val mbFileSets : immutable.Iterable[Option[immutable.Set[File]]] = allMbTsAbis map { case ( className, mbTsAbi ) =>
                 mbTsAbi flatMap { tsabi =>
-                  val regenerated = stub.Generator.regenerateStubClasses( stubsDir, className, stubPackage, tsabi.abi, tsabi.timestamp )
+                  val regenerated = stub.Generator.regenerateStubClasses( stubsDir, className, stubPackage, tsabi.abi, tsabi.timestamp, tsabi.mbBytecode )
                   val fileset = regenerated map { regen =>
                     regen match {
                       case stub.Generator.Regenerated.Updated( srcFile, sourceCode ) => {
@@ -6701,7 +6701,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           val filename = f.getName()
           val name = filename.take( filename.length - JsonFilter.DotSuffix.length ) // the filter ensures they do have the suffix
           val json = borrow ( Source.fromFile( f ) )( _.mkString ) // is there a better way
-          ( name, TimestampedAbi( Json.parse( json ).as[Abi], Some(f.lastModified) ) )
+          ( name, TimestampedAbi( Json.parse( json ).as[Abi], Some(f.lastModified), None ) )
         }
 
         files.map( toTuple ).toMap // the directory ensures there should be no dups!
