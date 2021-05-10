@@ -39,13 +39,14 @@ object SolcJInstaller {
       "0.6.2"  -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.6.2rev1/solcj-compat-0.6.2rev1.jar"   ),
       "0.6.12" -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.6.12rev1/solcj-compat-0.6.12rev1.jar" ),
       "0.7.6"  -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.7.6rev1/solcj-compat-0.7.6rev1.jar"   ),
-      "0.8.1"  -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.8.1rev1/solcj-compat-0.8.1rev1.jar"   )
+      "0.8.1"  -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.8.1rev1/solcj-compat-0.8.1rev1.jar"   ),
+      "0.8.4"  -> new URL( "https://repo1.maven.org/maven2/com/mchange/solcj-compat/0.8.4rev2/solcj-compat-0.8.4rev2.jar"   )
     )
   }
 
   val SupportedVersions = SolcJSupportedVersions ++ OtherSolcjCompatibleSupportedVersion.keySet
 
-  val DefaultSolcJVersion = "0.8.1"
+  val DefaultSolcJVersion = "0.8.4"
 
   private def mbVersionUrl( version : String ) : Option[URL] = {
     if ( SolcJSupportedVersions( version ) ) {
