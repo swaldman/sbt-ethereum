@@ -516,7 +516,7 @@ private [sbtethereum] object Schema_h2 {
            |WHERE full_code_hash = ? and base_code_hash = ?""".stripMargin
       }
       val SelectBaseCodeHashesSql : String = {
-        "SELECT base_code_hash WHERE full_code_hash = ?"
+        "SELECT base_code_hash FROM known_compilations WHERE full_code_hash = ?"
       }
       val UpsertSql: String = {
         """|MERGE INTO known_compilations (
