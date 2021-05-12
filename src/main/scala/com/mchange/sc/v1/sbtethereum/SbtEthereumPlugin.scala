@@ -3716,26 +3716,45 @@ object SbtEthereumPlugin extends AutoPlugin {
           }
         }
         case Right( hash ) => {
-          val mbinfo = activeShoebox.database.compilationInfoForCodeHash( hash ).get // throw any db problem
-          syncOut{
-            mbinfo.fold( println( s"Contract with code hash '$hash' not found." ) ) { info =>
-              section( "Code Hash", Some( hash.hex ), true )
-              section( "Code", Some( info.code ), true )
-              section( "Contract Name", info.mbName )
-              section( "Contract Source", info.mbSource )
-              section( "Contract Language", info.mbLanguage )
-              section( "Language Version", info.mbLanguageVersion )
-              section( "Compiler Version", info.mbCompilerVersion )
-              section( "Compiler Options", info.mbCompilerOptions )
-              section( "ABI Hash", info.mbAbiHash.map( hexString ) )
-              jsonSection( "ABI Definition", info.mbAbi )
-              jsonSection( "User Documentation", info.mbUserDoc )
-              jsonSection( "Developer Documentation", info.mbDeveloperDoc )
-              section( "Metadata", info.mbMetadata )
-              section( "AST", info.mbAst )
-              section( "Project Name", info.mbProjectName )
-              addressSection( "Deployments", activeShoebox.database.chainIdContractAddressesForCodeHash( hash ).get )
+          val infos = activeShoebox.database.compilationInfosForCodeHash( hash ).get // throw any db problem
+
+          def printInfo( info : shoebox.Database.CompilationInfo ) = {
+            section( "Code Hash", Some( hash.hex ), true )
+            section( "Code", Some( info.code ), true )
+            section( "Contract Name", info.mbName )
+            section( "Contract Source", info.mbSource )
+            section( "Contract Language", info.mbLanguage )
+            section( "Language Version", info.mbLanguageVersion )
+            section( "Compiler Version", info.mbCompilerVersion )
+            section( "Compiler Options", info.mbCompilerOptions )
+            section( "ABI Hash", info.mbAbiHash.map( hexString ) )
+            jsonSection( "ABI Definition", info.mbAbi )
+            jsonSection( "User Documentation", info.mbUserDoc )
+            jsonSection( "Developer Documentation", info.mbDeveloperDoc )
+            section( "Metadata", info.mbMetadata )
+            section( "AST", info.mbAst )
+            section( "Project Name", info.mbProjectName )
+            addressSection( "Deployments", activeShoebox.database.chainIdContractAddressesForCodeHash( hash ).get )
+          }
+
+          def printMultipleInfos() = {
+            println( s"Uh oh! Multiple compilations found for identical code hash ${hexString(hash)}." )
+            println(  "This can happen if the same code was interpreted differently during different compilations," )
+            println(  "in particular if the part of the code that is 'base code' vs the suffix that encodes metadata are interpreted differently." )
+            println(  "Showing information on all compilations." )
+            println()
+            infos.foreach { info =>
+              printInfo( info )
+              println()
+              println(cap)
+              println()
             }
+          }
+
+          infos.size match {
+            case 0 => syncOut( println( s"Contract with code hash '$hash' not found." ) )
+            case 1 => syncOut( printInfo( infos.head ) )
+            case _ => syncOut( printMultipleInfos() )
           }
         }
       }

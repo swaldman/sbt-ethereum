@@ -50,7 +50,7 @@ private [sbtethereum] object Abi {
         lookup.resolveAbi( None ).map( abi => ( abi, Some( lookup ) ) )
       }
       case HashSource( hash ) => {
-        val mbAbi = SbtEthereumPlugin.activeShoebox.abiAliasHashManager.findAbiByAbiHash( hash ).assert orElse SbtEthereumPlugin.activeShoebox.database.compilationInfoForCodeHash( hash ).assert.flatMap( _.mbAbi )
+        val mbAbi = SbtEthereumPlugin.activeShoebox.abiAliasHashManager.findAbiByAbiHash( hash ).assert orElse SbtEthereumPlugin.activeShoebox.database.compilationInfosForCodeHash( hash ).assert.find( _.mbAbi.nonEmpty ).flatMap( _.mbAbi )
         mbAbi.map( abi => Tuple2( abi, None ) )
       }
     }

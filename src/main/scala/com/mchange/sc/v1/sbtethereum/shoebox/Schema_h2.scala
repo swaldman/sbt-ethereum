@@ -513,7 +513,10 @@ private [sbtethereum] object Schema_h2 {
            |   ast,
            |   project_name
            |FROM known_compilations
-           |WHERE full_code_hash = ?""".stripMargin
+           |WHERE full_code_hash = ? and base_code_hash = ?""".stripMargin
+      }
+      val SelectBaseCodeHashesSql : String = {
+        "SELECT base_code_hash WHERE full_code_hash = ?"
       }
       val UpsertSql: String = {
         """|MERGE INTO known_compilations (
@@ -534,11 +537,13 @@ private [sbtethereum] object Schema_h2 {
            |   project_name
            |) VALUES( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )""".stripMargin
       }
+      /*
       val UpdateAbiSql: String = {
         """|UPDATE known_compilations
            |SET abi_hash = ?
-           |WHERE full_code_hash = ?""".stripMargin
+           |WHERE full_code_hash = ? and base_code_hash = ?""".stripMargin
       }
+      */ 
       case class KnownCompilation (
         fullCodeHash      : EthHash,
         baseCodeHash      : EthHash,
@@ -599,7 +604,20 @@ private [sbtethereum] object Schema_h2 {
         }
       }
 
-      def select( conn : Connection, fullCodeHash : EthHash ) : Option[KnownCompilation] = {
+      def allBaseCodeHashes( conn : Connection, fullCodeHash : EthHash ) : immutable.Set[EthHash] = {
+        borrow( conn.prepareStatement( SelectBaseCodeHashesSql ) ) { ps =>
+          ps.setString(1, fullCodeHash.hex.toLowerCase)
+          borrow( ps.executeQuery() ) { rs =>
+            val s = new mutable.ArrayBuffer[EthHash]
+            while (rs.next()) {
+              s += EthHash.withBytes( rs.getString(1).decodeHex )
+            }
+            s.toSet
+          }
+        }
+      }
+
+      def select( conn : Connection, fullCodeHash : EthHash, baseCodeHash : EthHash ) : Option[KnownCompilation] = {
         import Json.parse
 
         val extract : ResultSet => KnownCompilation = { rs =>
@@ -624,6 +642,7 @@ private [sbtethereum] object Schema_h2 {
 
         borrow( conn.prepareStatement( SelectSql ) ) { ps =>
           ps.setString(1, fullCodeHash.hex.toLowerCase)
+          ps.setString(2, baseCodeHash.hex.toLowerCase)
           borrow( ps.executeQuery() )( getMaybeSingleValue( extract ) )
         }
       }

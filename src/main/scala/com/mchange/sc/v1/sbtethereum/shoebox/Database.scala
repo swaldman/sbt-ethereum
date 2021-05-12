@@ -296,7 +296,7 @@ class Database( parent : Shoebox ) extends PermissionsOverrideSource with AutoRe
 
         // println( s"newCompilation -- fullCodeHash: ${newCompilation.fullCodeHash}, baseCodeHash: ${newCompilation.baseCodeHash}" );
 
-        val mbKnownCompilation = Table.KnownCompilations.select( conn, bcas.fullCodeHash )
+        val mbKnownCompilation = Table.KnownCompilations.select( conn, bcas.fullCodeHash, bcas.baseCodeHash )
 
         mbKnownCompilation match {
           case Some( kc ) => {
@@ -353,7 +353,7 @@ class Database( parent : Shoebox ) extends PermissionsOverrideSource with AutoRe
           for {
             deployedCompilation <- Table.DeployedCompilations.select( conn, chainId, address )
             knownCode           <- Table.KnownCode.select( conn, deployedCompilation.baseCodeHash )
-            knownCompilation    <- Table.KnownCompilations.select( conn, deployedCompilation.fullCodeHash )
+            knownCompilation    <- Table.KnownCompilations.select( conn, deployedCompilation.fullCodeHash, deployedCompilation.baseCodeHash )
           } yield {
             DeployedContractInfo (
               chainId              = deployedCompilation.chainId,
@@ -401,34 +401,40 @@ class Database( parent : Shoebox ) extends PermissionsOverrideSource with AutoRe
   }
 
   private [sbtethereum]
-  def compilationInfoForCodeHash( codeHash : EthHash ) : Failable[Option[CompilationInfo]] =  {
+  def compilationInfosForCodeHash( codeHash : EthHash ) : Failable[immutable.Set[CompilationInfo]] =  {
     DataSource.flatMap { ds =>
       Failable {
         borrow( ds.getConnection ) { conn =>
-          for {
-            knownCompilation <- Table.KnownCompilations.select( conn, codeHash )
-            knownCodeHex <- Table.KnownCode.select( conn, knownCompilation.baseCodeHash )
-          } yield {
-            CompilationInfo (
-              codeHash          = codeHash,
-              code              = knownCodeHex,
-              mbName            = knownCompilation.mbName,
-              mbSource          = knownCompilation.mbSource,
-              mbLanguage        = knownCompilation.mbLanguage,
-              mbLanguageVersion = knownCompilation.mbLanguageVersion,
-              mbCompilerVersion = knownCompilation.mbCompilerVersion,
-              mbCompilerOptions = knownCompilation.mbCompilerOptions,
-              mbAbiHash         = knownCompilation.mbAbiHash,
-              mbAbi             = knownCompilation.mbAbiHash.flatMap( Table.NormalizedAbis.select( conn, _ ) ),
-              mbUserDoc         = knownCompilation.mbUserDoc,
-              mbDeveloperDoc    = knownCompilation.mbDeveloperDoc,
-              mbMetadata        = knownCompilation.mbMetadata,
-              mbAst             = knownCompilation.mbAst,
-              mbProjectName     = knownCompilation.mbProjectName
-            )
-          }
+          val baseCodeHashes = Table.KnownCompilations.allBaseCodeHashes( conn, codeHash )
+          baseCodeHashes.map( bch => compilationInfoForFullCodeHashBaseCodeHash( conn, codeHash, bch ) ).collect { case Some( ci ) => ci }
         }
       }
+    }
+  }
+
+  private [sbtethereum]
+  def compilationInfoForFullCodeHashBaseCodeHash( conn : Connection, fullCodeHash : EthHash, baseCodeHash : EthHash ) : Option[CompilationInfo] = {
+    for {
+      knownCompilation <- Table.KnownCompilations.select( conn, fullCodeHash, baseCodeHash )
+      knownCodeHex <- Table.KnownCode.select( conn, knownCompilation.baseCodeHash )
+    } yield {
+      CompilationInfo (
+        codeHash          = fullCodeHash,
+        code              = knownCodeHex,
+        mbName            = knownCompilation.mbName,
+        mbSource          = knownCompilation.mbSource,
+        mbLanguage        = knownCompilation.mbLanguage,
+        mbLanguageVersion = knownCompilation.mbLanguageVersion,
+        mbCompilerVersion = knownCompilation.mbCompilerVersion,
+        mbCompilerOptions = knownCompilation.mbCompilerOptions,
+        mbAbiHash         = knownCompilation.mbAbiHash,
+        mbAbi             = knownCompilation.mbAbiHash.flatMap( Table.NormalizedAbis.select( conn, _ ) ),
+        mbUserDoc         = knownCompilation.mbUserDoc,
+        mbDeveloperDoc    = knownCompilation.mbDeveloperDoc,
+        mbMetadata        = knownCompilation.mbMetadata,
+        mbAst             = knownCompilation.mbAst,
+        mbProjectName     = knownCompilation.mbProjectName
+      )
     }
   }
 
