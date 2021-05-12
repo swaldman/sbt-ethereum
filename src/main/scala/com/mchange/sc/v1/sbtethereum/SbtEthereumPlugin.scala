@@ -4930,7 +4930,7 @@ object SbtEthereumPlugin extends AutoPlugin {
           log.debug( s"Contract constructor inputs encoded to the following hex: '${inputsHex}'" )
         }
 
-        val f_txnHash = Invoker.transaction.createContract( lazySigner, valueInWei, dataHex.decodeHexAsSeq, nonceOverride )
+        val f_txnHash = Invoker.transaction.createContract( lazySigner, valueInWei, dataHex.decodeHexAsSeq, nonceOverride, errors = abi.errors )
 
         val f_out = {
           for {
@@ -5188,7 +5188,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
-      val f_out = Invoker.transaction.sendMessage( lazySigner, contractAddress, Unsigned256( amount ), callData, nonceOverride ) flatMap { txnHash =>
+      val f_out = Invoker.transaction.sendMessage( lazySigner, contractAddress, Unsigned256( amount ), callData, nonceOverride, errors = abi.errors ) flatMap { txnHash =>
         log.info( s"""Called function '${function.name}', with args '${args.mkString(", ")}', sending ${amount} wei ${mbWithNonceClause(nonceOverride)}to address '0x${contractAddress.hex}' in transaction with hash '0x${txnHash.hex}'.""" )
         log.info( s"Waiting for the transaction to be mined (will wait up to ${invokerContext.pollTimeout})." )
         Invoker.futureTransactionReceipt( txnHash ).map( ctr => prettyPrintEval( log, Some(abi), txnHash, invokerContext.pollTimeout, ctr ) )
@@ -5574,7 +5574,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
-      val f_out = Invoker.transaction.sendMessage( lazySigner, to, Unsigned256( amount ), data, nonceOverride ) flatMap { txnHash =>
+      val f_out = Invoker.transaction.sendMessage( lazySigner, to, Unsigned256( amount ), data, nonceOverride, errors = mbAbi.map( _.errors).getOrElse(Nil) ) flatMap { txnHash =>
         log.info( s"""Sending data '0x${data.hex}' with ${amount} wei to address '0x${to.hex}' ${mbWithNonceClause(nonceOverride)}in transaction with hash '0x${txnHash.hex}'.""" )
         Invoker.futureTransactionReceipt( txnHash ).map( ctr => prettyPrintEval( log, mbAbi, txnHash, invokerContext.pollTimeout, ctr ) )
       }
@@ -5734,7 +5734,7 @@ object SbtEthereumPlugin extends AutoPlugin {
 
       implicit val invokerContext = (xethInvokerContext in config).value
 
-      val f_out = Invoker.constant.sendMessage( from, contractAddress, Unsigned256(amount), callData ) map { rawResult =>
+      val f_out = Invoker.constant.sendMessage( from, contractAddress, Unsigned256(amount), callData, errors = abi.errors ) map { rawResult =>
         log.debug( s"Outputs of function are ( ${abiFunction.outputs.mkString(", ")} )" )
         log.debug( s"Raw result of call to function '${function.name}': 0x${rawResult.hex}" )
         val results = decodeReturnValuesForFunction( rawResult, abiFunction ).get // throw an Exception if we can't get results
